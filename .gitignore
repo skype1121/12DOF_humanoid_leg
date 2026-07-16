@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+
+# 개인 메모 (GitHub에 올리지 않음)
+건들지마 메모장이야.txt
+
+# 에이전트 도구 로컬 설정
+.claude/
+.codex/
+.agents/
+
+# CAD export 로그
+URDF12DOF/export.log

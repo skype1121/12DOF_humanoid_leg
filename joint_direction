@@ -1,0 +1,26 @@
+JOINT_DIRECTION = {
+    "hip_f_joint": {
+        "+": "hip_extension",   # 다리 뒤로 들기
+        "-": "hip_flexion",     # 다리 앞으로 들기
+    },
+    "hip_a_joint": {
+        "+": "hip_abduction",   # 다리 바깥쪽으로 벌림
+        "-": "hip_adduction",   # 다리 안쪽으로 모음
+    },
+    "hip_r_joint": {
+        "+": "hip_external_rotation",  # 고관절 외회전
+        "-": "hip_internal_rotation",  # 고관절 내회전
+    },
+    "knee_joint": {
+        "+": "knee_flexion",    # 무릎 굽힘
+        "-": "knee_extension",  # 무릎 폄
+    },
+    "ankle_f_joint": {
+        "+": "ankle_dorsiflexion",     # 발등이 정강이 쪽, 발끝 위
+        "-": "ankle_plantarflexion",   # 발끝 아래, 까치발
+    },
+    "ankle_r_joint": {
+        "+": "ankle_inversion", # 발바닥 안쪽으로 기울임
+        "-": "ankle_eversion",  # 발바닥 바깥쪽으로 기울임
+    },
+}

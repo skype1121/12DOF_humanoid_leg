@@ -1,0 +1,103 @@
+{
+  "project_name": "humanoid_leg_test1",
+  "default_mode": "SIM",
+  "available_modes": [
+    "SIM",
+    "REAL",
+    "SIM_TO_REAL",
+    "REAL_TO_SIM"
+  ],
+  "target_status_values": [
+    "Disconnected",
+    "Connecting",
+    "Connected"
+  ],
+  "motor_status_values": [
+    "Disabled",
+    "Enabled"
+  ],
+  "safety_status_values": [
+    "OK",
+    "E-STOP ACTIVE"
+  ],
+  "joint_names": [
+    "left_hip_f_joint",
+    "left_hip_a_joint",
+    "left_hip_r_joint",
+    "left_knee_joint",
+    "left_ankle_f_joint",
+    "left_ankle_r_joint",
+    "right_hip_f_joint",
+    "right_hip_a_joint",
+    "right_hip_r_joint",
+    "right_knee_joint",
+    "right_ankle_f_joint",
+    "right_ankle_r_joint"
+  ],
+  "joint_limits_deg": {
+    "left_hip_f_joint": {
+      "min": -180.0,
+      "max": 180.0
+    },
+    "left_hip_a_joint": {
+      "min": -180.0,
+      "max": 180.0
+    },
+    "left_hip_r_joint": {
+      "min": -180.0,
+      "max": 180.0
+    },
+    "left_knee_joint": {
+      "min": -180.0,
+      "max": 180.0
+    },
+    "left_ankle_f_joint": {
+      "min": -180.0,
+      "max": 180.0
+    },
+    "left_ankle_r_joint": {
+      "min": -180.0,
+      "max": 180.0
+    },
+    "right_hip_f_joint": {
+      "min": -180.0,
+      "max": 180.0
+    },
+    "right_hip_a_joint": {
+      "min": -180.0,
+      "max": 180.0
+    },
+    "right_hip_r_joint": {
+      "min": -180.0,
+      "max": 180.0
+    },
+    "right_knee_joint": {
+      "min": -180.0,
+      "max": 180.0
+    },
+    "right_ankle_f_joint": {
+      "min": -180.0,
+      "max": 180.0
+    },
+    "right_ankle_r_joint": {
+      "min": -180.0,
+      "max": 180.0
+    }
+  },
+  "ak_motor_count": 12,
+  "ak_motor_status_values": [
+    "Disconnected",
+    "Connecting",
+    "Connected"
+  ],
+  "command_rate_limit": {
+    "max_joint_delta_deg_per_command": 30.0
+  },
+  "safety_rules": {
+    "require_target_connected_for_motor_enable": true,
+    "require_safety_ok_for_motor_enable": true,
+    "disable_motor_on_estop": true,
+    "disable_joint_control_on_estop": true,
+    "prevent_mode_change_while_motor_enabled": true
+  }
+}

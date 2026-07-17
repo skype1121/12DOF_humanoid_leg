@@ -45,9 +45,14 @@ def send(sock, command_type, params=None, timeout=300.0):
     raise RuntimeError("Isaac 응답 수신 실패")
 
 
-def remote_code(duration, video, frames_dir):
+def remote_code(duration, video, frames_dir, num_steps=None, speed=1.0):
     gait = json.load(open(os.path.join(REPO, "config", "sim_walk_params.json")))
+    gp = dict(gait["gait"])
+    if speed != 1.0:  # 속도: 위상 시간 스케일 (안정성은 1.0에서 검증됨)
+        gp["lean_dur"] /= speed
+        gp["step_dur"] /= speed
     cap = (f"capture_every=15, capture_dir={frames_dir!r}," if video else "")
+    ns = "None" if num_steps is None else str(int(num_steps))
     return f"""
 import sys, importlib, shutil, json
 shutil.rmtree({REPO!r}+"/sim_walking/__pycache__", ignore_errors=True)
@@ -60,9 +65,10 @@ s.zero(settle=100)
 s.make_cam("/World/SessCamWalk", (2.3, 1.1, 0.85), (0.0, -0.35, 0.30))
 import omni.kit.viewport.utility as vpu
 vpu.get_active_viewport().camera_path = "/World/SessCamWalk"
-g = GS.StaticGait(GS.StaticGaitParams(**{json.dumps(gait["gait"])}))
+g = GS.StaticGait(GS.StaticGaitParams(**{json.dumps(gp)}), num_steps={ns})
+dur = {duration} if g._t_stop() is None else g._t_stop() + g.stop_dur + 3.0
 fb = {json.dumps(gait["feedback"])}
-m = RN.run_gait(s, g, duration_s={duration}, tag="demo", {cap}
+m = RN.run_gait(s, g, duration_s=dur, tag="demo", {cap}
                 bal_kp=fb["bal_kp"], bal_ki=fb["bal_ki"], bal_clamp=fb["bal_clamp"],
                 lat_kp=fb["lat_kp"], lat_kd=fb["lat_kd"], lat_clamp=fb["lat_clamp"],
                 yaw_kp=fb["yaw_kp"], yaw_clamp=fb["yaw_clamp"])
@@ -72,7 +78,12 @@ print("METRICS_JSON:" + json.dumps(m))
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--duration", type=float, default=16.0)
+    ap.add_argument("--duration", type=float, default=16.0,
+                    help="시뮬 시간[s] (--steps 지정 시 무시)")
+    ap.add_argument("--steps", type=int, default=None,
+                    help="이 스텝 수만큼 걷고 우아하게 정지")
+    ap.add_argument("--speed", type=float, default=1.0,
+                    help="보행 속도 배율 (1.0에서 검증됨; 1.2 정도까지 시도 가능)")
     ap.add_argument("--video", action="store_true")
     ap.add_argument("--out", default=os.path.join(REPO, "demo_output"))
     args = ap.parse_args()
@@ -106,7 +117,8 @@ def main():
     print(f"[3/4] 보행 데모 실행 ({args.duration:.0f}s 시뮬 — 실제 수십 초 소요)...")
     t0 = time.time()
     resp = send(sock, "simulation.execute_script",
-                {"code": remote_code(args.duration, args.video, frames_dir)})
+                {"code": remote_code(args.duration, args.video, frames_dir,
+                                     num_steps=args.steps, speed=args.speed)})
     raw = json.dumps(resp)
     mm = re.search(r"METRICS_JSON:(\{.*?\})(?:\\n|\")", raw)
     if not mm:

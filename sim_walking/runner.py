@@ -13,7 +13,8 @@ def run_gait(s: Session, fsm, duration_s, tag="run",
              abort_on_fall=True, extra_stop=None,
              balance=True, bal_kp=0.010, bal_ki=0.03, bal_clamp=0.10,
              lat_kp=0.008, lat_kd=0.004, lat_clamp=0.12,
-             yaw_kp=-0.008, yaw_clamp=0.12):
+             yaw_kp=-0.008, yaw_clamp=0.12,
+             push=None):
     """fsm.targets(t)를 60Hz로 구동.
 
     balance=True:
@@ -37,9 +38,21 @@ def run_gait(s: Session, fsm, duration_s, tag="run",
     _yaw_cache = [0.0]
     sgnL = ANAT_SIGN["dorsiflexion"]["left"]
     sgnR = ANAT_SIGN["dorsiflexion"]["right"]
+    obs_every = 2  # 폐루프 정책 관측 주기 (프레임)
     for f in range(n_frames):
         t = f / FPS
+        # 폐루프 정책 지원: observe()가 있으면 관측 제공 (policy_interface 참조)
+        if hasattr(fsm, "observe") and f % obs_every == 0:
+            from .policy_interface import build_obs
+            fsm.observe(build_obs(s, t))
         tg = fsm.targets(t)
+        # 외란 주입: push=(t_start, dur_s, [fx,fy,fz] N) — 골반에 월드 힘
+        if push and push[0] <= t < push[0] + push[1]:
+            try:
+                s.pelvis.apply_forces(np.array([push[2]], dtype=float),
+                                      is_global=True)
+            except Exception:
+                pass
         if balance:
             if f % 2 == 0:
                 lean_ap, lean_lat = s.lean()
@@ -86,16 +99,16 @@ def run_gait(s: Session, fsm, duration_s, tag="run",
     te = s.telemetry()
     dx = te["pelvis_x"] - x0[0]
     dy = te["pelvis_y"] - x0[1]
-    # 스텝 카운트: 발 z가 리프트 문턱(바닥 0.050 + 8mm)을 넘는 상승 에지
+    # 스텝 카운트: 발 z 상승 에지 (스윙 피크 0.065+ vs 롤링 노이즈 ≤0.064 실측 분리)
     steps = {"left": 0, "right": 0}
     up = {"left": False, "right": False}
     for r in rows:
         for side in ("left", "right"):
             z = r["foot_z"][side]
-            if not up[side] and z > 0.058:
+            if not up[side] and z > 0.064:
                 steps[side] += 1
                 up[side] = True
-            elif up[side] and z < 0.053:
+            elif up[side] and z < 0.056:
                 up[side] = False
     metrics = {
         "steps_left": steps["left"], "steps_right": steps["right"],

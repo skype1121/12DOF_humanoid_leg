@@ -106,3 +106,27 @@ def test_lat_ref_bounded():
     amp = g.p.lean_roll_deg + 1e-9
     for i in range(0, 2000):
         assert abs(g.lat_ref(i * 0.01)) <= amp
+
+
+def test_stop_sequence_continuity_and_neutral():
+    """num_steps 지정 시: 정지 전환 연속(<3°/10ms), 종료 후 직립 유지."""
+    with open(os.path.join(REPO, "config", "sim_walk_params.json")) as f:
+        cfg = json.load(f)
+    g = StaticGait(StaticGaitParams(**cfg["gait"]), num_steps=5)
+    ts = g._t_stop()
+    assert ts is not None
+    prev = None
+    for i in range(0, int((ts + g.stop_dur + 2.0) * 100)):
+        tg = g.targets(i * 0.01)
+        if prev:
+            for k, v in tg.items():
+                assert abs(v - prev[k]) * R2D < 3.0, f"{k} jump at t={i*0.01:.2f}"
+        prev = tg
+    # 종료 후: 롤/발목롤/hip_a 0 + lat_ref 0, hip_f는 벌린 스탠스 유지(전도 방지)
+    final = g.targets(ts + g.stop_dur + 1.0)
+    assert abs(final["left_hip_a_joint"]) < 1e-6
+    assert abs(final["right_ankle_r_joint"]) < 1e-6
+    assert abs(g.lat_ref(ts + g.stop_dur + 1.0)) < 1e-6
+    base = g._targets_raw(ts - 1e-6)
+    assert abs(final["left_hip_f_joint"] - base["left_hip_f_joint"]) < 1e-9
+    assert abs(final["right_hip_f_joint"] - base["right_hip_f_joint"]) < 1e-9

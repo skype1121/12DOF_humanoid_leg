@@ -43,10 +43,27 @@ class StaticGaitParams:
 
 
 class StaticGait:
-    """상태: 0=LEAN_L, 1=STEP_R, 2=LEAN_R, 3=STEP_L"""
+    """상태: 0=LEAN_L, 1=STEP_R, 2=LEAN_R, 3=STEP_L
 
-    def __init__(self, p: StaticGaitParams = None):
+    num_steps 지정 시 해당 스텝 수를 마친 뒤 stop_dur 동안
+    직립(중앙 체중, 힙 중립)으로 부드럽게 복귀·유지한다."""
+
+    def __init__(self, p: StaticGaitParams = None,
+                 num_steps: int = None, stop_dur: float = 1.5):
         self.p = p or StaticGaitParams()
+        self.num_steps = num_steps
+        self.stop_dur = stop_dur
+
+    def _t_stop(self):
+        """num_steps번째 스텝이 끝나는 시각 (STEP 상태 종료 시점)."""
+        if not self.num_steps:
+            return None
+        p = self.p
+        cyc = 2.0 * (p.lean_dur + p.step_dur)
+        n_full = (self.num_steps - 1) // 2
+        if self.num_steps % 2 == 1:      # 홀수 = 오른스텝 종료
+            return n_full * cyc + p.lean_dur + p.step_dur
+        return n_full * cyc + cyc        # 짝수 = 왼스텝 종료
 
     # ---------- 위상 ----------
     def _locate(self, t):
@@ -75,15 +92,24 @@ class StaticGait:
 
     def lat_ref(self, t):
         """의도된 pelvis 롤 각 [deg] (+왼쪽) — runner 측방 피드백 기준값."""
+        ts = self._t_stop()
+        if ts is not None and t >= ts:
+            u = min(1.0, (t - ts) / self.stop_dur)
+            n, si, uu = self._locate(ts - 1e-6)
+            return self.p.lean_roll_deg * self._lean_dir(n, si, uu) * (1.0 - _ease(u))
         n, si, u = self._locate(t)
         return self.p.lean_roll_deg * self._lean_dir(n, si, u)
 
     # ---------- 시상면 힙 스케줄 ----------
     def _hip_deg(self, side, n, si, u):
         """상태별 힙 굴곡각 [deg] (해부학: +앞).
-        오른다리: S1 스윙(-S→+S), S2 +S→0, S3 0→-S, S0 -S 유지.
-        왼다리:  S3 스윙(-S→+S), S0 +S→0, S1 0→-S, S2 -S 유지.
-        첫 사이클(n=0)은 아직 안 움직인 다리 기준으로 0에서 시작."""
+
+        v2: 지지다리 후퇴(몸 전진 견인)를 전부 '양발지지(LEAN)' 구간에 배치.
+        한발지지 중 견인은 반작용 피치 스파이크(lean_ap ~18° → 장거리 전도)를
+        유발했음(실측). 스윙 중 지지다리는 유지(hold)만 한다.
+        오른다리: S1 스윙(-S→+S), S2(LEAN_R) +S→-S 견인, S3/S0 유지(-S).
+        왼다리:  S3 스윙(-S→+S), S0(LEAN_L) +S→-S 견인, S1/S2 유지(-S).
+        첫 사이클(n=0)은 0에서 시작해 첫 LEAN에서 견인."""
         S = self.p.step_hip_deg
         e = _ease(u)
         if side == "right":
@@ -93,19 +119,52 @@ class StaticGait:
                 frm = -S if n > 0 else 0.0
                 return frm + (S - frm) * e
             if si == 2:
-                return S * (1.0 - e)
-            return -S * e
+                return S - 2.0 * S * e      # 양발지지 견인 +S→-S
+            return -S                        # 유지
         else:
             if si == 0:
-                return (S * (1.0 - e)) if n > 0 else 0.0
+                if n > 0:
+                    return S - 2.0 * S * e   # 양발지지 견인 +S→-S
+                return -S * e                # 첫 사이클: 0→-S (양발지지)
             if si == 1:
-                return -S * e
+                return -S                    # 유지 (첫 사이클 포함)
             if si == 2:
                 return -S
             return -S + 2.0 * S * e
 
     # ---------- 타깃 ----------
     def targets(self, t):
+        ts = self._t_stop()
+        if ts is not None and t >= ts:
+            # 정지 시퀀스: 롤/무릎/발목만 중립 복귀, hip_f는 착지 자세 유지
+            # (벌린 발 그대로 힙을 0으로 강제하면 몸이 뒤로 끌려 전도 — 실측)
+            u = min(1.0, (t - ts) / self.stop_dur)
+            w = 1.0 - _ease(u)
+            base = self._targets_raw(ts - 1e-6)
+            neutral = self._neutral_targets()
+            out = {k: neutral[k] + (base[k] - neutral[k]) * w for k in base}
+            out["left_hip_f_joint"] = base["left_hip_f_joint"]
+            out["right_hip_f_joint"] = base["right_hip_f_joint"]
+            return out
+        return self._targets_raw(t)
+
+    def _neutral_targets(self):
+        """직립 유지 자세 (트림 + 상시 무릎 굽힘)."""
+        p = self.p
+        d2r = math.pi / 180.0
+        out = {}
+        for side in ("left", "right"):
+            out[f"{side}_hip_f_joint"] = 0.0
+            out[f"{side}_hip_a_joint"] = 0.0
+            out[f"{side}_hip_r_joint"] = 0.0
+            out[f"{side}_knee_joint"] = ANAT_SIGN["knee_flexion"][side] \
+                * p.stance_knee_deg * d2r
+            out[f"{side}_ankle_f_joint"] = ANAT_SIGN["dorsiflexion"][side] \
+                * p.dorsi_trim_rad
+            out[f"{side}_ankle_r_joint"] = 0.0
+        return out
+
+    def _targets_raw(self, t):
         p = self.p
         d2r = math.pi / 180.0
         n, si, u = self._locate(t)

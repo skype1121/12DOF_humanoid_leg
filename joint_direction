@@ -1,26 +1,58 @@
+# =====================================================================
+#  JOINT_DIRECTION  —  12DOF 하체 관절 +/− 부호별 해부학적 방향
+# =====================================================================
+#  ✅ 2026-07-18  Isaac Sim(newURDF12DOF)에서 관절을 실제로 구동해
+#     실측 검증한 값으로 갱신.  (예전 per-type 정의는 아래 참고 블록)
+#
+#  [기준 좌표계 — 시뮬레이터에서 확인]
+#    · 정면(전방/anterior) = 월드 −Y   (로봇 앞 −Y에 놓은 cone을 마주봄)
+#    · 후방(posterior)      = 월드 +Y
+#    · 로봇의 왼쪽(left)     = 월드 +X ,  오른쪽(right) = 월드 −X
+#    · 위(up)               = 월드 +Z
+#
+#  [측정 방법] 각 관절에 +각도를 명령한 뒤, 발(ankle_r 링크)의 이동과
+#    회전을 참조벡터(발끝 = −Y, 발바닥 법선 = −Z)로 분해해 해부학적
+#    동작을 판정.  발목은 선 자세에서 발바닥이 바닥에 닿아 ROM이 막혀
+#    3° 정도만 움직이므로, 발을 공중에 띄운 상태(힙 굴곡)에서 발목의
+#    순수 회전만 분리해 22° 풀 ROM으로 재검증함.
+#
+#  [⚠ 중요 — 좌우 부호가 반대다]
+#    URDF 관절축이 좌우로 '해부학적 미러'가 아니라서, 같은 +명령이
+#    왼다리와 오른다리에서 서로 '반대' 동작을 낸다. (발목 내반/외반만 예외)
+#    → 양 다리에 '같은' 해부학적 동작을 시키려면 부호가 아래처럼 달라짐
+#      (맨 아래 대칭보행 참고표).  실제 CAN 제어에서는
+#      config/robot_12dof_hardware_map.json 의 joint별 sign/direction 으로 보정.
+#
+#  ── 예전 per-type 정의 (참고용, 실측결과 부정확) ─────────────────────
+#    hip_f:+extension  hip_a:+abduction  hip_r:+external_rotation
+#    knee:+flexion     ankle_f:+dorsiflexion     ankle_r:+inversion
+#    → 실측: 위 정의는 대부분 '한쪽 다리'에만 맞고, ankle_r 는
+#      양쪽 모두 반대였다(+ 는 실제로 eversion).
+# =====================================================================
+
+# key = URDF / 하드웨어맵 관절 이름.  "+","-" = 해당 부호 명령 시의 동작.
 JOINT_DIRECTION = {
-    "hip_f_joint": {
-        "+": "hip_extension",   # 다리 뒤로 들기
-        "-": "hip_flexion",     # 다리 앞으로 들기
-    },
-    "hip_a_joint": {
-        "+": "hip_abduction",   # 다리 바깥쪽으로 벌림
-        "-": "hip_adduction",   # 다리 안쪽으로 모음
-    },
-    "hip_r_joint": {
-        "+": "hip_external_rotation",  # 고관절 외회전
-        "-": "hip_internal_rotation",  # 고관절 내회전
-    },
-    "knee_joint": {
-        "+": "knee_flexion",    # 무릎 굽힘
-        "-": "knee_extension",  # 무릎 폄
-    },
-    "ankle_f_joint": {
-        "+": "ankle_dorsiflexion",     # 발등이 정강이 쪽, 발끝 위
-        "-": "ankle_plantarflexion",   # 발끝 아래, 까치발
-    },
-    "ankle_r_joint": {
-        "+": "ankle_inversion", # 발바닥 안쪽으로 기울임
-        "-": "ankle_eversion",  # 발바닥 바깥쪽으로 기울임
-    },
+    # ---- 왼다리 (left, +X) ----
+    "left_hip_f_joint":    {"+": "hip_flexion",           "-": "hip_extension"},         # + 앞으로 / − 뒤로
+    "left_hip_a_joint":    {"+": "hip_adduction",         "-": "hip_abduction"},         # + 모음  / − 벌림
+    "left_hip_r_joint":    {"+": "hip_external_rotation", "-": "hip_internal_rotation"}, # + 외회전 / − 내회전
+    "left_knee_joint":     {"+": "knee_extension",        "-": "knee_flexion"},          # + 폄    / − 굽힘
+    "left_ankle_f_joint":  {"+": "ankle_dorsiflexion",    "-": "ankle_plantarflexion"},  # + 발끝위 / − 까치발
+    "left_ankle_r_joint":  {"+": "ankle_eversion",        "-": "ankle_inversion"},       # + 바깥쪽 / − 안쪽
+
+    # ---- 오른다리 (right, −X) ----
+    "right_hip_f_joint":   {"+": "hip_extension",         "-": "hip_flexion"},           # + 뒤로   / − 앞으로
+    "right_hip_a_joint":   {"+": "hip_abduction",         "-": "hip_adduction"},         # + 벌림   / − 모음
+    "right_hip_r_joint":   {"+": "hip_internal_rotation", "-": "hip_external_rotation"}, # + 내회전 / − 외회전
+    "right_knee_joint":    {"+": "knee_flexion",          "-": "knee_extension"},        # + 굽힘   / − 폄
+    "right_ankle_f_joint": {"+": "ankle_plantarflexion",  "-": "ankle_dorsiflexion"},    # + 까치발 / − 발끝위
+    "right_ankle_r_joint": {"+": "ankle_eversion",        "-": "ankle_inversion"},       # + 바깥쪽 / − 안쪽
 }
+
+# ── 양 다리에 '같은' 해부학적 동작을 낼 때 필요한 부호 (대칭 보행 참고표) ──
+#     hip 앞굴곡 (flexion)      :  left +,  right −
+#     벌림      (abduction)     :  left −,  right +
+#     고관절 외회전(external)   :  left +,  right −
+#     무릎 굽힘 (knee flexion)  :  left −,  right +
+#     발끝위    (dorsiflexion)  :  left +,  right −
+#     발 안쪽   (inversion)     :  left −,  right −    ← ankle_r 만 좌우 '같은' 부호

@@ -12,7 +12,8 @@ def run_gait(s: Session, fsm, duration_s, tag="run",
              telem_every=6, capture_every=None, capture_dir=None,
              abort_on_fall=True, extra_stop=None,
              balance=True, bal_kp=0.010, bal_ki=0.03, bal_clamp=0.10,
-             lat_kp=0.008, lat_kd=0.004, lat_clamp=0.12):
+             lat_kp=0.008, lat_kd=0.004, lat_clamp=0.12,
+             yaw_kp=-0.008, yaw_clamp=0.12):
     """fsm.targets(t)를 60Hz로 구동.
 
     balance=True:
@@ -33,6 +34,7 @@ def run_gait(s: Session, fsm, duration_s, tag="run",
     lean_lat = 0.0
     lat_prev = None
     lat_rate = 0.0
+    _yaw_cache = [0.0]
     sgnL = ANAT_SIGN["dorsiflexion"]["left"]
     sgnR = ANAT_SIGN["dorsiflexion"]["right"]
     for f in range(n_frames):
@@ -55,6 +57,14 @@ def run_gait(s: Session, fsm, duration_s, tag="run",
             lcorr = max(-lat_clamp, min(lat_clamp, lcorr))
             tg["left_hip_a_joint"] = tg.get("left_hip_a_joint", 0.0) + lcorr
             tg["right_hip_a_joint"] = tg.get("right_hip_a_joint", 0.0) + lcorr
+            # 요(yaw): 진행방향 유지 — hip_r 대칭 보정 (부호는 실측 캘리브레이션)
+            if yaw_kp:
+                if f % 2 == 0:
+                    _, _, _, yaw_now = s.pelvis_pose()
+                    _yaw_cache[0] = yaw_now
+                ycorr = max(-yaw_clamp, min(yaw_clamp, yaw_kp * _yaw_cache[0]))
+                tg["left_hip_r_joint"] = tg.get("left_hip_r_joint", 0.0) + ycorr
+                tg["right_hip_r_joint"] = tg.get("right_hip_r_joint", 0.0) + ycorr
         s.cmd(named=tg)
         s.step(1)
         if f % telem_every == 0:
@@ -76,7 +86,20 @@ def run_gait(s: Session, fsm, duration_s, tag="run",
     te = s.telemetry()
     dx = te["pelvis_x"] - x0[0]
     dy = te["pelvis_y"] - x0[1]
+    # 스텝 카운트: 발 z가 리프트 문턱(바닥 0.050 + 8mm)을 넘는 상승 에지
+    steps = {"left": 0, "right": 0}
+    up = {"left": False, "right": False}
+    for r in rows:
+        for side in ("left", "right"):
+            z = r["foot_z"][side]
+            if not up[side] and z > 0.058:
+                steps[side] += 1
+                up[side] = True
+            elif up[side] and z < 0.053:
+                up[side] = False
     metrics = {
+        "steps_left": steps["left"], "steps_right": steps["right"],
+        "steps_total": steps["left"] + steps["right"],
         "tag": tag,
         "duration_run": round((f + 1) / FPS, 2),
         "fell_at": fell_at,

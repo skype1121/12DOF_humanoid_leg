@@ -1,0 +1,31 @@
+{
+  "_doc": {
+    "purpose": "검증된 시뮬 보행 데모 파라미터 (2026-07-18 동결). 시뮬 전용 — 실물 제어와 무관.",
+    "validated": "walk_scene.usd, 60Hz, 16s 런 2회 재현: 전진 0.62~0.68m(8스텝), 낙상 0, final_yaw +2.1°",
+    "tuning_notes": [
+      "gait: 정적 4상(LEAN_L→STEP_R→LEAN_R→STEP_L). 주기 로킹(gait_fsm.py)은 측방 공진 전도로 폐기.",
+      "체중이동 = hip_a 평행사변형 0.18rad + ankle_r 전신롤 3.5° (둘 다 필요 — hip_a만으론 CoM이 발 위 도달 불가)",
+      "runner 피드백: 피치(발목 P+I 0.010/0.03) 관상(힙 P+D 0.012/0.010, lat_ref 추종) 요(hip_r P -0.008)",
+      "bal_kp 0.016으로 올리면 과교정 전도(실험) — 0.010 유지",
+      "잔여 제한: STEP 후반 lean_ap 피크 ~18°(회복됨), 측방 드리프트 ~0.14m/16s"
+    ]
+  },
+  "gait": {
+    "lean_hip_rad": 0.18,
+    "lean_roll_deg": 3.5,
+    "lean_dur": 1.6,
+    "step_dur": 1.0,
+    "step_hip_deg": 8.0,
+    "knee_lift_deg": 30.0,
+    "hip_lift_deg": 8.0,
+    "clear_deg": 8.0,
+    "stance_knee_deg": 6.0,
+    "dorsi_trim_rad": 0.0244
+  },
+  "feedback": {
+    "bal_kp": 0.010, "bal_ki": 0.03, "bal_clamp": 0.10,
+    "lat_kp": 0.012, "lat_kd": 0.010, "lat_clamp": 0.15,
+    "yaw_kp": -0.008, "yaw_clamp": 0.12
+  },
+  "sim": {"fps": 60, "scene": "isaacsim_scene/walk_scene.usd"}
+}

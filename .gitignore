@@ -12,3 +12,5 @@ __pycache__/
 
 # CAD export 로그
 URDF12DOF/export.log
+demo_output/
+.pytest_cache/

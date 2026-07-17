@@ -1,0 +1,32 @@
+{
+  "_doc": {
+    "purpose": "시뮬레이션 전용 관절 리밋 (deg). 실물 모터 리밋 아님 — 실물은 config/robot_12dof_hardware_map.json의 target/hard_limit_deg가 관할.",
+    "provenance": "2026-07-18 Isaac Sim에서 자기충돌 ON + 단독 관절 스윕(±149° 명령)으로 충돌 차단각 실측. 리밋 = min(충돌각-3° 마진, 해부학 참고값). 충돌이 안 잡히는 방향(인접링크는 PhysX가 자기충돌 필터)은 해부학 참고값 사용.",
+    "frame": "부호 의미는 joint_direction 파일(시뮬 실측) 기준. 정면=-Y.",
+    "sweep_raw_deg": {
+      "hip_f": "±147 자유(충돌없음)", "hip_r": "±148.6 자유", "knee": "±148.2 자유",
+      "left_hip_a": "+16.9(내전, 반대다리 충돌)/-147.5 자유", "right_hip_a": "+147.5 자유/-17.2(내전 충돌)",
+      "ankle_f": "±112 (발-무릎부 비인접 충돌)", "ankle_r": "+116/-126, +116/-122"
+    },
+    "notes": [
+      "hip_a 내전 충돌각은 반대 다리가 중립일 때 기준. 양다리 동시 내전 시 ±9.4°에서 먼저 닿음 — 자기충돌 ON 유지가 안전망.",
+      "해부학 참고값(사람 하지 ROM 기반 보수값): hip flexion 100/extension 30, abduction 35, rotation 30, knee flexion 120/extension(과신전) 5, ankle dorsi 30/plantar 45, inv/ev 20.",
+      "이 값은 시뮬 보행 개발용 임시 확정값. 실물 기구 스펙 확정 시 갱신할 것."
+    ]
+  },
+  "self_collision_required": true,
+  "limits_deg": {
+    "left_hip_f_joint":    {"lower": -30.0,  "upper": 100.0, "lower_means": "extension",   "upper_means": "flexion",      "upper_src": "anatomical", "lower_src": "anatomical"},
+    "right_hip_f_joint":   {"lower": -100.0, "upper": 30.0,  "lower_means": "flexion",     "upper_means": "extension",    "upper_src": "anatomical", "lower_src": "anatomical"},
+    "left_hip_a_joint":    {"lower": -35.0,  "upper": 13.9,  "lower_means": "abduction",   "upper_means": "adduction",    "upper_src": "collision(16.9)-3", "lower_src": "anatomical"},
+    "right_hip_a_joint":   {"lower": -14.2,  "upper": 35.0,  "lower_means": "adduction",   "upper_means": "abduction",    "upper_src": "anatomical", "lower_src": "collision(17.2)-3"},
+    "left_hip_r_joint":    {"lower": -30.0,  "upper": 30.0,  "lower_means": "internal",    "upper_means": "external",     "upper_src": "anatomical", "lower_src": "anatomical"},
+    "right_hip_r_joint":   {"lower": -30.0,  "upper": 30.0,  "lower_means": "external",    "upper_means": "internal",     "upper_src": "anatomical", "lower_src": "anatomical"},
+    "left_knee_joint":     {"lower": -120.0, "upper": 5.0,   "lower_means": "flexion",     "upper_means": "extension",    "upper_src": "anatomical", "lower_src": "anatomical"},
+    "right_knee_joint":    {"lower": -5.0,   "upper": 120.0, "lower_means": "extension",   "upper_means": "flexion",      "upper_src": "anatomical", "lower_src": "anatomical"},
+    "left_ankle_f_joint":  {"lower": -45.0,  "upper": 30.0,  "lower_means": "plantarflex", "upper_means": "dorsiflex",    "upper_src": "anatomical", "lower_src": "anatomical"},
+    "right_ankle_f_joint": {"lower": -30.0,  "upper": 45.0,  "lower_means": "dorsiflex",   "upper_means": "plantarflex",  "upper_src": "anatomical", "lower_src": "anatomical"},
+    "left_ankle_r_joint":  {"lower": -20.0,  "upper": 20.0,  "lower_means": "inversion",   "upper_means": "eversion",     "upper_src": "anatomical", "lower_src": "anatomical"},
+    "right_ankle_r_joint": {"lower": -20.0,  "upper": 20.0,  "lower_means": "inversion",   "upper_means": "eversion",     "upper_src": "anatomical", "lower_src": "anatomical"}
+  }
+}

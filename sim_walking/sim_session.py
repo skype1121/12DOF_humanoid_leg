@@ -146,9 +146,22 @@ class Session:
         return np.asarray(p[0], float), roll, pitch, yaw
 
     def lean(self):
-        """직립 대비 기울기: (전후 lean_ap[+뒤로], 좌우 lean_lat)[deg]"""
-        _, roll, pitch, _ = self.pelvis_pose()
-        return (90.0 - roll), pitch
+        """직립 대비 기울기 [deg]: (lean_ap: +뒤로/-앞으로, lean_lat: +왼쪽(+X)).
+
+        오일러 분해는 pelvis 기본자세(roll 90°)에서 짐벌 문제가 있어
+        body-up 벡터(월드)를 직접 투영해 계산한다.
+        pelvis 로컬 +Y가 직립 시 월드 +Z를 향한다(임포트 90°X 회전 기준).
+        """
+        _, q = self.pelvis.get_world_poses()
+        w, x, y, z = np.asarray(q[0], float)
+        # R @ [0,1,0] (로컬 Y축의 월드 방향)
+        upx = 2 * (x * y - w * z)
+        upy = 1 - 2 * (x * x + z * z)
+        upz = 2 * (y * z + w * x)
+        # 전후: up이 +Y(후방)로 기울면 +  (정면=-Y)
+        lean_ap = np.degrees(np.arctan2(upy, upz))
+        lean_lat = np.degrees(np.arctan2(upx, upz))
+        return float(lean_ap), float(lean_lat)
 
     def joints_deg(self):
         return {n: float(v) for n, v in
@@ -242,12 +255,14 @@ class Session:
             stage.SetEditTarget(old)
         return path
 
-    def capture(self, out_path, cam_path=None):
+    def capture(self, out_path, cam_path=None, wait=22):
+        """wait=0이면 비동기 캡처(물리 타이밍 왜곡 없음 — 보행 중 연속캡처용)."""
         import omni.kit.viewport.utility as vpu
         vp = vpu.get_active_viewport()
         if cam_path:
             vp.camera_path = cam_path
             self.step(8)
         vpu.capture_viewport_to_file(vp, out_path)
-        self.step(22)
+        if wait:
+            self.step(wait)
         return os.path.exists(out_path)

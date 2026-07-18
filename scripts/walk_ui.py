@@ -18,6 +18,7 @@ from tkinter import ttk
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST, PORT = "localhost", int(os.environ.get("ISAAC_MCP_PORT", 8766))
+SCENE = os.path.join(REPO, "isaacsim_scene", "walk_scene.usd")
 
 # 월드 좌표 규약 (joint_direction 실측): 정면=-Y, 왼쪽=+X
 DIRS = {"앞": (0, -1), "뒤": (0, +1), "왼쪽": (+1, 0), "오른쪽": (-1, 0)}
@@ -81,6 +82,27 @@ class IsaacLink:
         except json.JSONDecodeError as e:
             return {"ok": False, "error": f"JSON 오류: {e}: {frag[:200]}"}
 
+    def ensure_scene(self):
+        """씬이 walk_scene.usd 가 아니면 자동 전환 (walk_demo.py 와 동일).
+
+        Isaac Sim은 빈 스테이지로 뜨므로, 이게 없으면 로봇 프림을 못 찾아
+        모든 명령이 실패한다.
+        """
+        with self.lock:
+            try:
+                if self.sock is None:
+                    self._connect()
+                info = self._send_raw("scene.get_info", {})
+                if "walk_scene.usd" in json.dumps(info):
+                    return {"ok": True, "note": "씬 이미 열려 있음"}
+                self._send_raw("simulation.execute_script", {"code":
+                    f"import omni.usd; "
+                    f"omni.usd.get_context().open_stage({SCENE!r})"})
+            except (OSError, ConnectionError) as e:
+                self.sock = None
+                return {"ok": False, "error": f"연결 실패: {e}"}
+        return {"ok": True, "note": "walk_scene.usd 로 전환함"}
+
 
 class WalkUI:
     POLL_MS = 700
@@ -94,6 +116,10 @@ class WalkUI:
         root.geometry("560x640")
         self._build()
         self._poll_queue()
+        # 씬 전환은 몇 초 걸리므로 백그라운드에서 (UI 멈춤 방지)
+        threading.Thread(
+            target=lambda: self.q.put(("씬 확인", self.link.ensure_scene())),
+            daemon=True).start()
         self._poll_status()
 
     # ---------- 레이아웃 ----------
@@ -213,8 +239,17 @@ class WalkUI:
 
     def _show_status(self, st):
         if not st.get("ok"):
-            self.mode_var.set("― 미연결 ―")
-            self.mode_lbl.config(fg="gray")
+            # "미연결"은 소켓이 안 붙었을 때만. 그 외는 진짜 원인을 보여준다
+            # (예전엔 컨트롤러 오류까지 전부 "미연결"로 뭉뚱그려 오해를 샀음).
+            err = str(st.get("error", ""))
+            if err.startswith("연결 실패"):
+                self.mode_var.set("― 미연결 ―")
+                self.mode_lbl.config(fg="gray")
+                self.stat_var.set("Isaac Sim + MCP 확장이 떠 있는지 확인하세요")
+            else:
+                self.mode_var.set("⚠ 컨트롤러 오류")
+                self.mode_lbl.config(fg="#dc2626")
+                self.stat_var.set(st.get("hint") or err[:90])
             return
         mode = st.get("mode", "?")
         colors = {"STAND": "#16a34a", "WALK": "#2563eb", "HOLD": "#d97706",
@@ -224,6 +259,8 @@ class WalkUI:
                 "FALLEN": "⚠ 넘어짐! 리셋 필요"}
         self.mode_var.set(icon.get(mode, mode))
         self.mode_lbl.config(fg=colors.get(mode, "black"))
+        if st.get("recovered"):
+            self._log("  ♻ 물리 뷰가 끊겨 자동 복구했습니다 (자세 초기화됨)")
         self.stat_var.set(
             f"전진 {st.get('forward_m', 0):+.2f} m   "
             f"기울기 전후 {st.get('lean_ap', 0):+.1f}° / 좌우 {st.get('lean_lat', 0):+.1f}°   "

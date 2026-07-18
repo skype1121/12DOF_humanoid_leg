@@ -154,7 +154,34 @@ class LiveWalkController:
         self.push_left = max(1, int(float(dur) * FPS))
         return {"ok": True, "force": [fx, fy, fz], "frames": self.push_left}
 
+    def _alive(self):
+        """물리 뷰와 업데이트 구독이 둘 다 살아있는지 확인.
+
+        타임라인 Stop/씬 재오픈으로 Physics Simulation View가 사라지면
+        get_joint_positions()가 None을 돌려주고, _on_update가 매 프레임
+        실패해 err_count>30에서 스스로 unsubscribe 한다(영구 정지).
+        """
+        if self._sub is None:
+            return False
+        try:
+            return self.s.art.get_joint_positions() is not None
+        except Exception:
+            return False
+
     def status(self):
+        recovered = False
+        if not self._alive():
+            # 죽은 컨트롤러를 그대로 두면 UI가 영영 응답을 못 받는다.
+            # Isaac 안에 캐시된 _ctrl은 UI를 재시작해도 되살아나지 않으므로
+            # 여기서 한 번 자동으로 재attach 한다.
+            try:
+                self.reset()
+                recovered = True
+            except Exception as ex:
+                return {"ok": False, "mode": "DEAD",
+                        "error": f"{type(ex).__name__}: {ex}",
+                        "hint": "walk_scene.usd 가 열려 있는지 확인하고 "
+                                "Isaac Sim에서 ▶Play 를 누르세요."}
         te = self.s.telemetry()
         ap, lat = te["lean_ap"], te["lean_lat"]
         d = {
@@ -169,6 +196,8 @@ class LiveWalkController:
         if self.mode == "WALK" and self.gait is not None:
             ts = self.gait._t_stop()
             d["stopping"] = ts is not None
+        if recovered:
+            d["recovered"] = True
         return d
 
     def reset(self):

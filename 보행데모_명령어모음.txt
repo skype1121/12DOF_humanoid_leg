@@ -10,20 +10,20 @@
 ISAACSIM_ROOT=/home/ryu/isaacsim/isaac-sim-5.1.0 /home/ryu/isaacsim-mcp-server/scripts/run_isaac_sim.sh
 
   · 성공 로그: "Isaac Sim MCP server started on localhost:8766"
-  · 씬은 자동으로 안 열림 → File > Open 으로
-    /home/ryu/humanoid_leg_test1/isaacsim_scene/walk_scene.usd 열기
-    (walk_demo.py 를 쓰면 씬 전환은 자동으로 해줌)
+  · 씬(walk_scene.usd)은 walk_ui.py / walk_demo.py 가 자동으로 열어줌.
+    (직접 열려면 File > Open >
+     /home/ryu/humanoid_leg_test1/isaacsim_scene/walk_scene.usd)
   · 클로드(터미널)는 새 세션이면 MCP가 자동 연결됨.
     연결 확인 문구: "get_scene_info로 연결 확인해줘"
 
 
-■ 1. 걷기 리모컨 UI (스탠딩/걷기/즉시정지/외란)
+■ 1. 걷기 리모컨 UI (스탠딩/걷기/즉시정지/외란)  ★혼자 할 땐 이 2줄이 전부
 ───────────────────────────────────────────────────────────────────
 cd /home/ryu/humanoid_leg_test1
 python3 scripts/walk_ui.py
 
+  · 씬 전환은 UI가 알아서 함 (로그창에 "✓ 씬 확인" 뜨면 준비 완료)
   · 처음 누를 버튼: [● 스탠딩 시작/유지] (초기화 포함, 몇 초 걸림)
-  · 안 먹을 때:  pkill -f "scripts/walk_ui"   후 다시 실행
   · 로봇 넘어졌을 때: [♻ 리셋] 버튼
 
 
@@ -76,14 +76,41 @@ git checkout sim-walking-demo                # 보행 작업으로 복귀
 
 ■ 7. 문제 해결 체크리스트
 ───────────────────────────────────────────────────────────────────
-1) walk_demo/UI가 "접속 실패"
-   → 아이작심 + MCP 확장이 떠있는지 확인 (0번 명령어)
-2) UI 상태가 "― 미연결 ―" 고정
-   → pkill -f "scripts/walk_ui"  후  python3 scripts/walk_ui.py
+1) walk_demo/UI가 "접속 실패" / UI가 "― 미연결 ―"
+   → 소켓 자체가 안 붙은 것. 아이작심 + MCP 확장 확인 (0번 명령어)
+   → 확인: ss -ltn | grep 8766      (LISTEN 이면 떠 있는 것)
+
+2) UI가 "⚠ 컨트롤러 오류"
+   → 소켓은 붙었고 명령이 실패한 것. UI 하단 메시지에 진짜 원인이 나옴.
+   → 대개 자동 복구되지만(로그에 "♻ 물리 뷰가 끊겨 자동 복구") 안 되면
+     아이작심에서 ▶Play, 그래도 안 되면 [♻ 리셋]
+
+   ※ 2026-07-18 수정 전 이력: 물리 뷰가 죽으면 컨트롤러가 err_count>30에서
+     스스로 unsubscribe → 모든 상태조회 실패 → UI가 "미연결"로 표시했다.
+     이 상태는 walk_ui.py 를 재시작해도 절대 안 고쳐진다(썩은 객체가
+     UI가 아니라 아이작심 파이썬 안의 live_controller._ctrl 에 있으므로).
+     지금은 status()가 _alive() 검사 후 자동 재attach 하므로 해결됨.
+
 3) 로봇이 넘어져서 이상함
    → UI [♻ 리셋]  (또는 아이작심에서 Stop▶Play)
+
 4) 클로드가 아이작심을 못 볼 때
    → 클로드 터미널 세션 재시작 (MCP 도구는 세션 시작 시 로드됨)
+
+5) sim_walking/*.py 를 고쳤는데 동작이 그대로일 때  ★중요
+   → 아이작심이 옛 바이트코드를 계속 쓰는 것. 같은 초 안에 편집하면
+     mtime 기반 pyc 검증이 속아서 조용히 옛 코드가 돈다.
+     아이작심 Script Editor 에서 아래 3종 세트를 실행:
+
+     import sys, shutil, importlib, os
+     REPO='/home/ryu/humanoid_leg_test1'
+     shutil.rmtree(os.path.join(REPO,'sim_walking','__pycache__'),
+                   ignore_errors=True)
+     for m in [k for k in list(sys.modules) if k.startswith('sim_walking')]:
+         del sys.modules[m]
+     importlib.invalidate_caches()
+
+     → 가장 확실한 방법은 아이작심 자체를 재시작하는 것
 
 
 ■ 주요 파일 위치

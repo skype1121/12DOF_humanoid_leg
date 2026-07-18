@@ -111,17 +111,18 @@ def set_payload(m_add, offset):
     view.set_coms(coms, ALL)
 
 
+@torch.inference_mode()
 def rollout():
-    obs, _ = env.unwrapped.reset(), None
+    # 전체(리셋 포함)를 inference_mode로 — env 내부 버퍼 모드 혼용 금지
+    env.unwrapped.reset()
     obs = env.get_observations()
     falls = torch.zeros(N, device=uenv.device)
     verr = 0.0
     lean_sum = 0.0
     for _ in range(STEPS):
-        with torch.inference_mode():
-            actions = policy(obs)
-            obs, _, dones, _ = env.step(actions)
-            policy_nn.reset(dones)
+        actions = policy(obs)
+        obs, _, dones, _ = env.step(actions)
+        policy_nn.reset(dones)
         falls += uenv.termination_manager.terminated.float()
         vel_yaw = math_utils.quat_apply_inverse(
             math_utils.yaw_quat(robot.data.root_quat_w), robot.data.root_lin_vel_w[:, :3]

@@ -45,9 +45,10 @@ def send(sock, command_type, params=None, timeout=600.0):
     raise RuntimeError("Isaac 응답 수신 실패")
 
 
-def remote_code(duration, cmd_x, video, frames_dir, checkpoint):
+def remote_code(duration, cmd_x, video, frames_dir, checkpoint, scenario=False):
     cap = (f"capture_every=15, capture_dir={frames_dir!r}," if video else "")
     ck = "None" if checkpoint is None else repr(checkpoint)
+    sc = "True" if scenario else "False"
     return f"""
 import sys, importlib, shutil, json
 for pkg in ("sim_walking", "rl_walking"):
@@ -67,11 +68,25 @@ vpu.get_active_viewport().camera_path = "/World/SessCamRL"
 pol = RLWalkPolicy(checkpoint={ck}, cmd=({cmd_x}, 0.0, 0.0))
 pol.attach(s); pol.reset()
 
+SCENARIO = [  # 승윤님 최종 목표 시연: 서기 → 좌회전 → 직진 → 정지
+    (3.0, (0.0, 0.0, 0.0)),    # 3s 서기
+    (5.2, (0.0, 0.0, 0.8)),    # 2.2s 좌회전 (~100°)
+    (13.2, (0.4, 0.0, 0.0)),   # 8s 직진
+    (99.0, (0.0, 0.0, 0.0)),   # 정지·서기
+]
+
 class TrackCam:
-    # 정책 호출에 편승해 카메라가 골반을 추적 (전진 시 화면 이탈 방지)
-    def __init__(self, s, pol, every=0.15):
+    # 정책 호출에 편승: 카메라 골반 추적 + (시나리오 모드) 명령 스케줄 주입
+    def __init__(self, s, pol, every=0.15, scenario=False):
         self.s, self.pol, self.every, self._next = s, pol, every, 0.0
+        self.scenario = scenario
     def targets(self, t):
+        if self.scenario:
+            import numpy as _np
+            for t_end, cmd in SCENARIO:
+                if t < t_end:
+                    self.pol.cmd = _np.array(cmd, dtype=_np.float32)
+                    break
         if t >= self._next:
             self._next = t + self.every
             p, _ = self.s.pelvis.get_world_poses()
@@ -84,7 +99,7 @@ class TrackCam:
     def reset(self):
         self.pol.reset()
 
-m = RN.run_gait(s, TrackCam(s, pol), duration_s={duration}, tag="rl_demo", balance=False, {cap})
+m = RN.run_gait(s, TrackCam(s, pol, scenario={sc}), duration_s={duration}, tag="rl_demo", balance=False, {cap})
 print("METRICS_JSON:" + json.dumps(m))
 """
 
@@ -94,6 +109,8 @@ def main():
     ap.add_argument("--duration", type=float, default=20.0)
     ap.add_argument("--cmd-x", type=float, default=0.5, help="전진 속도 명령 [m/s]")
     ap.add_argument("--checkpoint", default=None, help="exported/policy.pt 경로 (기본: 최신)")
+    ap.add_argument("--scenario", action="store_true",
+                    help="시나리오 데모: 서기 3s → 좌회전 → 직진 8s → 정지")
     ap.add_argument("--video", action="store_true")
     ap.add_argument("--out", default=os.path.join(REPO, "demo_output"))
     args = ap.parse_args()
@@ -125,7 +142,8 @@ def main():
     t0 = time.time()
     resp = send(sock, "simulation.execute_script",
                 {"code": remote_code(args.duration, args.cmd_x, args.video,
-                                     frames_dir, args.checkpoint)})
+                                     frames_dir, args.checkpoint,
+                                     scenario=args.scenario)})
     raw = json.dumps(resp)
     mm = re.search(r"METRICS_JSON:(\{.*?\})(?:\\n|\")", raw)
     if not mm:

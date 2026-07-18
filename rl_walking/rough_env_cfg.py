@@ -20,7 +20,7 @@ from isaaclab.utils import configclass
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 
-from .env_cfg import Biped12FlatEnvCfg
+from .stage2_env_cfg import Biped12FlatStage3EnvCfg
 
 # 소형 이족용 저난도 지형 믹스 (단위 m)
 BIPED12_TERRAINS_CFG = TerrainGeneratorCfg(
@@ -63,7 +63,9 @@ BIPED12_TERRAINS_CFG = TerrainGeneratorCfg(
 
 
 @configclass
-class Biped12RoughEnvCfg(Biped12FlatEnvCfg):
+class Biped12RoughEnvCfg(Biped12FlatStage3EnvCfg):
+    """험지 = 3단계(실물질량·페이로드·지연) 위에 지형만 추가 — 올인원 최종형."""
+
     def __post_init__(self):
         super().__post_init__()
         # 지형 교체: plane → generator + curriculum

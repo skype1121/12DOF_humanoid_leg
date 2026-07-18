@@ -43,6 +43,16 @@ gym.register(
 )
 
 gym.register(
+    id="Biped12-Velocity-Flat-Stage3-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.stage2_env_cfg:Biped12FlatStage3EnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12FlatPPORunnerCfg",
+    },
+)
+
+gym.register(
     id="Biped12-Velocity-Rough-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

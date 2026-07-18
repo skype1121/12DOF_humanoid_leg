@@ -8,6 +8,48 @@ from .sim_session import Session
 FPS = 60.0
 
 
+def count_steps(rows, swing_fn=None):
+    """텔레메트리 rows(0.1s 간격)에서 '물리적으로 확인된 스텝' 수 집계.
+
+    스텝 = 롤링 베이스라인(최근 2s 최솟값) 대비 +12mm 상승 후 2.5s 내
+    복귀하는 완결 사이클. swing_fn(t)->side 가 주어지면 해당 시점에
+    그 발이 스윙 '명령' 중이었을 때만 집계한다 (명령된 스텝의 물리적 확인).
+    순수 물리 신호만으론 얕은 스윙(+14mm)과 LEAN 중 하중발 에지 롤링
+    (+13.6mm, 완결 사이클 형성)이 분리 불가였음 — 실측."""
+    steps = {"left": 0, "right": 0}
+    up = {"left": False, "right": False}
+    t_up = {"left": 0.0, "right": 0.0}
+    z_base = {"left": 0.0, "right": 0.0}   # 이륙 시점 베이스라인 고정
+    ok_up = {"left": False, "right": False}
+    hist = {"left": [], "right": []}
+    for r in rows:
+        for side in ("left", "right"):
+            z = r["foot_z"][side]
+            h = hist[side]
+            h.append(z)
+            if len(h) > 20:      # rows는 0.1s 간격 → 2s 윈도우
+                h.pop(0)
+            b = min(h)
+            if not up[side] and z > b + 0.012:
+                up[side] = True
+                t_up[side] = r["t"]
+                z_base[side] = b
+                ok_up[side] = (swing_fn is None) or \
+                    (swing_fn(r["t"]) == side or swing_fn(t_up[side] - 0.2) == side)
+            elif up[side]:
+                # 상승 유지 중 스윙 명령이 걸리면 인정 (선행 리프트 케이스)
+                if swing_fn is not None and not ok_up[side] \
+                        and swing_fn(r["t"]) == side:
+                    ok_up[side] = True
+                # 복귀는 '이륙 시점' 베이스라인 기준 — 롤링 베이스라인이
+                # 2s 만에 적응해 미복귀 상승을 사이클로 오인하는 것 방지
+                if z < z_base[side] + 0.005:
+                    up[side] = False
+                    if r["t"] - t_up[side] < 2.5 and ok_up[side]:
+                        steps[side] += 1
+    return steps
+
+
 def run_gait(s: Session, fsm, duration_s, tag="run",
              telem_every=6, capture_every=None, capture_dir=None,
              abort_on_fall=True, extra_stop=None,
@@ -99,17 +141,8 @@ def run_gait(s: Session, fsm, duration_s, tag="run",
     te = s.telemetry()
     dx = te["pelvis_x"] - x0[0]
     dy = te["pelvis_y"] - x0[1]
-    # 스텝 카운트: 발 z 상승 에지 (스윙 피크 0.065+ vs 롤링 노이즈 ≤0.064 실측 분리)
-    steps = {"left": 0, "right": 0}
-    up = {"left": False, "right": False}
-    for r in rows:
-        for side in ("left", "right"):
-            z = r["foot_z"][side]
-            if not up[side] and z > 0.064:
-                steps[side] += 1
-                up[side] = True
-            elif up[side] and z < 0.056:
-                up[side] = False
+    swing_fn = fsm.swing_side if hasattr(fsm, "swing_side") else None
+    steps = count_steps(rows, swing_fn=swing_fn)
     metrics = {
         "steps_left": steps["left"], "steps_right": steps["right"],
         "steps_total": steps["left"] + steps["right"],
@@ -128,7 +161,9 @@ def run_gait(s: Session, fsm, duration_s, tag="run",
         "max_abs_lean_lat": round(max(abs(r["lean_lat"]) for r in rows), 2) if rows else None,
         "n_captures": len(caps),
     }
-    outdir = "/home/ryu/.claude/jobs/88d43fa3/tmp"
+    outdir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "demo_output", "telemetry")
+    os.makedirs(outdir, exist_ok=True)
     with open(os.path.join(outdir, f"telem_{tag}.json"), "w") as fh:
         json.dump({"metrics": metrics, "rows": rows}, fh)
     return metrics

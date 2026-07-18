@@ -53,17 +53,42 @@ class StaticGait:
         self.p = p or StaticGaitParams()
         self.num_steps = num_steps
         self.stop_dur = stop_dur
+        self._forced_t_stop = None
 
     def _t_stop(self):
-        """num_steps번째 스텝이 끝나는 시각 (STEP 상태 종료 시점)."""
+        """정지 블렌드 시작 시각 = 마지막 스텝 '다음 LEAN 종료' 시점.
+
+        이 스케줄에선 LEAN(양발지지) 종료 때 양 힙이 같은 각(-S)이 되어
+        양발이 나란해진다 → 여기서 멈추면 발 모아 서기가 되고,
+        걷기 재시작도 깨끗하다 (t=0 자세와 위상 호환)."""
+        if self._forced_t_stop is not None:
+            return self._forced_t_stop
         if not self.num_steps:
             return None
         p = self.p
         cyc = 2.0 * (p.lean_dur + p.step_dur)
         n_full = (self.num_steps - 1) // 2
-        if self.num_steps % 2 == 1:      # 홀수 = 오른스텝 종료
-            return n_full * cyc + p.lean_dur + p.step_dur
-        return n_full * cyc + cyc        # 짝수 = 왼스텝 종료
+        if self.num_steps % 2 == 1:      # 홀수 = 오른스텝(S1) → S2 종료까지
+            return n_full * cyc + 2.0 * p.lean_dur + p.step_dur
+        return n_full * cyc + cyc + p.lean_dur   # 짝수 = 왼스텝(S3) → 다음 S0 종료
+
+    def request_stop(self, t_now):
+        """걷는 도중 정지 요청: 진행 중인 스윙을 마치고 다음 LEAN 종료에 정지.
+        반환값 = 확정된 정지 시각."""
+        p = self.p
+        cyc = 2.0 * (p.lean_dur + p.step_dur)
+        n, si, u = self._locate(t_now)
+        base = n * cyc
+        if si == 0:                       # LEAN_L 진행 중 → 이 LEAN 끝에서
+            ts = base + p.lean_dur
+        elif si == 1:                     # 오른스윙 중 → S2 끝에서
+            ts = base + 2.0 * p.lean_dur + p.step_dur
+        elif si == 2:                     # LEAN_R 진행 중 → 이 LEAN 끝에서
+            ts = base + 2.0 * p.lean_dur + p.step_dur
+        else:                             # 왼스윙 중 → 다음 사이클 S0 끝에서
+            ts = base + cyc + p.lean_dur
+        self._forced_t_stop = ts
+        return ts
 
     # ---------- 위상 ----------
     def _locate(self, t):
@@ -89,6 +114,14 @@ class StaticGait:
         if si == 2:   # LEAN_R: +1 → -1
             return 1.0 - 2.0 * _ease(u)
         return -1.0
+
+    def swing_side(self, t):
+        """t 시점에 스윙 명령 중인 발 ("left"/"right"/None) — 스텝 검증용."""
+        ts = self._t_stop()
+        if ts is not None and t >= ts:
+            return None
+        _, si, _ = self._locate(t)
+        return "right" if si == 1 else ("left" if si == 3 else None)
 
     def lat_ref(self, t):
         """의도된 pelvis 롤 각 [deg] (+왼쪽) — runner 측방 피드백 기준값."""
@@ -136,16 +169,13 @@ class StaticGait:
     def targets(self, t):
         ts = self._t_stop()
         if ts is not None and t >= ts:
-            # 정지 시퀀스: 롤/무릎/발목만 중립 복귀, hip_f는 착지 자세 유지
-            # (벌린 발 그대로 힙을 0으로 강제하면 몸이 뒤로 끌려 전도 — 실측)
+            # 정지 시퀀스: LEAN 종료(양발 나란, 양힙 -S) 자세에서
+            # 전체를 직립 중립으로 블렌드. 힙 -S→0 견인은 양발지지라 안전.
             u = min(1.0, (t - ts) / self.stop_dur)
             w = 1.0 - _ease(u)
             base = self._targets_raw(ts - 1e-6)
             neutral = self._neutral_targets()
-            out = {k: neutral[k] + (base[k] - neutral[k]) * w for k in base}
-            out["left_hip_f_joint"] = base["left_hip_f_joint"]
-            out["right_hip_f_joint"] = base["right_hip_f_joint"]
-            return out
+            return {k: neutral[k] + (base[k] - neutral[k]) * w for k in base}
         return self._targets_raw(t)
 
     def _neutral_targets(self):

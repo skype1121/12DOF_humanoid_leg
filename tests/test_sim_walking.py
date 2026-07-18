@@ -122,11 +122,71 @@ def test_stop_sequence_continuity_and_neutral():
             for k, v in tg.items():
                 assert abs(v - prev[k]) * R2D < 3.0, f"{k} jump at t={i*0.01:.2f}"
         prev = tg
-    # 종료 후: 롤/발목롤/hip_a 0 + lat_ref 0, hip_f는 벌린 스탠스 유지(전도 방지)
+    # 정지 시작점 = LEAN 종료 → 양 힙이 같은 해부학 각(-S) = 양발 나란
+    # (raw 부호는 좌우 반대이므로 합이 0이면 나란)
+    base = g._targets_raw(ts - 1e-6)
+    assert abs(base["left_hip_f_joint"] + base["right_hip_f_joint"]) < 1e-6
+    # 종료 후: 전 관절 중립 (발 모아 직립 — 걷기 재시작 가능 상태)
     final = g.targets(ts + g.stop_dur + 1.0)
+    assert abs(final["left_hip_f_joint"]) < 1e-6
+    assert abs(final["right_hip_f_joint"]) < 1e-6
     assert abs(final["left_hip_a_joint"]) < 1e-6
     assert abs(final["right_ankle_r_joint"]) < 1e-6
     assert abs(g.lat_ref(ts + g.stop_dur + 1.0)) < 1e-6
-    base = g._targets_raw(ts - 1e-6)
-    assert abs(final["left_hip_f_joint"] - base["left_hip_f_joint"]) < 1e-9
-    assert abs(final["right_hip_f_joint"] - base["right_hip_f_joint"]) < 1e-9
+
+
+def test_request_stop_mid_walk():
+    """걷는 중 정지 요청: 진행 중 스윙 완료 후 LEAN 종료에 정지, 연속성 유지."""
+    with open(os.path.join(REPO, "config", "sim_walk_params.json")) as f:
+        cfg = json.load(f)
+    g = StaticGait(StaticGaitParams(**cfg["gait"]))
+    # 오른스윙 한가운데(t = lean + step/2)에서 정지 요청
+    t_req = g.p.lean_dur + g.p.step_dur * 0.5
+    ts = g.request_stop(t_req)
+    assert ts > t_req
+    # 스윙은 완료돼야 함: ts >= 스윙 종료 시각
+    assert ts >= g.p.lean_dur + g.p.step_dur
+    prev = None
+    for i in range(0, int((ts + g.stop_dur + 1.0) * 100)):
+        tg = g.targets(i * 0.01)
+        if prev:
+            for k, v in tg.items():
+                assert abs(v - prev[k]) * R2D < 3.0, f"{k} jump at {i*0.01:.2f}"
+        prev = tg
+    final = g.targets(ts + g.stop_dur + 0.5)
+    assert abs(final["left_hip_f_joint"]) < 1e-6
+
+
+def test_step_counter_synthetic():
+    """카운터: 스윙 창 안의 리프트만 집계, 창 밖 롤링 범프·미복귀 상승 제외."""
+    from sim_walking.runner import count_steps
+
+    def mkrow(t, zl, zr):
+        return {"t": t, "foot_z": {"left": zl, "right": zr}}
+
+    rows = []
+    for i in range(200):           # 20초, 0.1s 간격
+        t = round(i * 0.1, 1)
+        zl = zr = 0.050
+        if 2.0 <= t <= 3.0:        # 오른발 스윙 창 내 리프트 (스텝)
+            zr = 0.050 + 0.020
+        if 6.0 <= t <= 7.0:        # 왼발 스윙 창 내 리프트 (스텝)
+            zl = 0.050 + 0.020
+        if 10.0 <= t <= 10.6:      # 창 밖 왼발 롤링 범프 (제외돼야 함)
+            zl = 0.050 + 0.014
+        if t >= 15.0:              # 미복귀 상승 (정지 자세 굴림 — 제외)
+            zr = 0.050 + 0.014
+        rows.append(mkrow(t, zl, zr))
+
+    def swing_fn(t):
+        if 1.9 <= t <= 3.1:
+            return "right"
+        if 5.9 <= t <= 7.1:
+            return "left"
+        return None
+
+    s = count_steps(rows, swing_fn=swing_fn)
+    assert s == {"left": 1, "right": 1}, s
+    # swing_fn 없이도 미복귀 상승은 제외
+    s2 = count_steps(rows)
+    assert s2["right"] == 1, s2   # 15s+ 상승은 미복귀라 미집계

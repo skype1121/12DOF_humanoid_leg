@@ -94,6 +94,27 @@ scripts/walk_demo.py   원커맨드 데모(TCP 8766로 실행 중 Isaac 구동)
    상세와 이식 로드맵: `config/sim_dynamics.json`의
    `sim2real_gain_experiment_2026_07_18` 참고.
 
+## sim → real 브리지 (`real_bridge.py`)
+
+검증된 실물 스택(Stage8 12축 MIT 노드)을 **무변경**으로 존중하는 tape 방식:
+
+```bash
+python3 scripts/sim2real_dryrun.py --steps 4              # 4보 보행 tape + 검증
+python3 scripts/sim2real_dryrun.py --shift-only --steps 4 # 체중이동만 (실물 1차 데모 권장)
+```
+- 출력: `demo_output/sim2real_tape.jsonl` — Stage8 `SET_JOINT_TARGET` 명령 시퀀스
+  (단일 관절/상대각/JSON — 노드가 거부하는 멀티관절 페이로드 미사용)
+- 변환: 시뮬 rad → deg × 하드웨어맵 `direction`·`sign` (모터 방향 캘리브레이션을
+  하드웨어맵에 기록하면 자동 반영), 리밋 = 하드웨어맵 ∩ 시뮬 실측
+- 검증: 관절명/리밋/델타(노드 슬루 4°/tick@50Hz + SafetyFilter 30° 기준) — 위반 시 FAIL
+- **안전**: ROS/CAN 미접촉(dry-run 전용). ARM/BASELINE은 절대 자동 송신하지 않음 —
+  운영 절차는 jsonl 첫 줄 `_meta.operator_procedure` 참조
+- **주의**: tape는 개루프(밸런스 피드백 없음) → 거치대/서스펜션 테스트와
+  스탠딩 체중이동 검증용. 자유 기립 보행 이식은 게인 실험 결론(위 7번) 선행 필요
+
+베이스라인 규약: 실물을 시뮬 중립(전 관절 0°) 자세로 두고
+`SET_BASELINE_FROM_CURRENT_ALL` → tape의 target_deg = 시뮬 절대각.
+
 ## RL로 교체하려면
 
 `policy_interface.py` 참고. `targets(t)`(+선택 `observe(obs)`)만 구현하면

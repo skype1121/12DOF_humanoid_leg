@@ -190,3 +190,53 @@ def test_step_counter_synthetic():
     # swing_fn 없이도 미복귀 상승은 제외
     s2 = count_steps(rows)
     assert s2["right"] == 1, s2   # 15s+ 상승은 미복귀라 미집계
+
+
+def test_real_bridge_tape_valid():
+    """sim→real tape: 데모 구성에서 위반 0, 페이로드가 Stage8 스키마 준수."""
+    from sim_walking.real_bridge import BridgeConfig, build_tape
+    with open(os.path.join(REPO, "config", "sim_walk_params.json")) as f:
+        cfg = json.load(f)
+    g = StaticGait(StaticGaitParams(**cfg["gait"]), num_steps=4)
+    tape, stats = build_tape(g, g._t_stop() + g.stop_dur + 1.0,
+                             BridgeConfig(stream_hz=12.5))
+    assert stats["violations"] == []
+    assert stats["commands"] == len(tape) > 100
+    for rec in tape[:50] + tape[-50:]:
+        p = rec["payload"]
+        assert p["command"] == "SET_JOINT_TARGET"
+        assert p["joint"] in JOINT_NAMES
+        assert isinstance(p["target_deg"], float)
+        assert "joints" not in p and "joints_deg" not in p  # 멀티관절 금지 준수
+    # 시간 단조 증가
+    ts = [r["t"] for r in tape]
+    assert ts == sorted(ts)
+
+
+def test_real_bridge_applies_hw_sign(monkeypatch):
+    """하드웨어맵 sign/direction 캘리브레이션이 tape에 자동 반영된다."""
+    import sim_walking.real_bridge as RB
+    hw = RB._load_hw_map()
+    flipped = {k: dict(v) for k, v in hw.items()}
+    flipped["left_knee_joint"]["sign"] = -1
+    monkeypatch.setattr(RB, "_load_hw_map", lambda: flipped)
+    with open(os.path.join(REPO, "config", "sim_walk_params.json")) as f:
+        cfg = json.load(f)
+    g = StaticGait(StaticGaitParams(**cfg["gait"]), num_steps=2)
+    # sign 반전 시 left_knee 리밋 검증은 반전각 기준으로 걸리므로 sim limit 끄고 확인
+    tape, stats = RB.build_tape(g, 5.0, RB.BridgeConfig(use_sim_limits=False))
+    knee = [r["payload"]["target_deg"] for r in tape
+            if r["payload"]["joint"] == "left_knee_joint"]
+    # 시뮬 left_knee 스탠스 -6°(무릎굽힘 raw -) → sign -1 이면 +6° 로 반전
+    assert any(v > 4.0 for v in knee), knee[:5]
+
+
+def test_real_bridge_delta_guard():
+    """스트림 주기 대비 과속 명령은 위반으로 잡힌다 (아주 낮은 hz에서)."""
+    from sim_walking.real_bridge import BridgeConfig, build_tape
+    with open(os.path.join(REPO, "config", "sim_walk_params.json")) as f:
+        cfg = json.load(f)
+    gp = dict(cfg["gait"]); gp["knee_lift_deg"] = 60.0   # 과격한 스윙
+    g = StaticGait(StaticGaitParams(**gp))
+    _, stats = build_tape(g, 8.0, BridgeConfig(stream_hz=2.0))
+    assert len(stats["violations"]) > 0

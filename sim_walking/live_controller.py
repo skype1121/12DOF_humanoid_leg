@@ -39,7 +39,8 @@ class LiveWalkController:
         self.fb_cfg = cfg["feedback"]
         self.s = Session.attach(fresh_physics=True)
         self.fb = BalanceFeedback(self.s, **self.fb_cfg)
-        self.mode = "STAND"          # STAND | WALK | FALLEN
+        self.mode = "STAND"          # STAND | WALK | HOLD | FALLEN
+        self._hold_targets = None    # HOLD(즉시정지) 시점 목표 동결
         self.gait = None
         self.t = 0.0                 # WALK 모드 보행 시각
         self.push_left = 0           # 남은 외란 프레임
@@ -76,7 +77,10 @@ class LiveWalkController:
         try:
             if self.mode == "FALLEN":
                 return
-            if self.mode == "WALK" and self.gait is not None:
+            if self.mode == "HOLD":
+                # 즉시정지: 목표 동결 (실물 STOP_ALL 철학 — 피드백도 미적용)
+                tg = dict(self._hold_targets)
+            elif self.mode == "WALK" and self.gait is not None:
                 self.t += 1.0 / FPS
                 tg = self.gait.targets(self.t)
                 ref = self.gait.lat_ref(self.t)
@@ -84,10 +88,9 @@ class LiveWalkController:
                 if ts is not None and self.t > ts + self.gait.stop_dur + 0.3:
                     self.mode = "STAND"     # 정지 완료 → 스탠딩 유지로 전환
                     self.gait = None
+                tg = self.fb.apply(tg, lat_ref=ref)
             else:
-                tg = dict(self._neutral)
-                ref = 0.0
-            tg = self.fb.apply(tg, lat_ref=ref)
+                tg = self.fb.apply(dict(self._neutral), lat_ref=0.0)
             if self.push_left > 0:
                 self.push_left -= 1
                 try:
@@ -133,6 +136,16 @@ class LiveWalkController:
         ts = self.gait.request_stop(self.t)
         return {"ok": True, "mode": self.mode, "stop_at_t": round(ts, 2),
                 "in": round(ts - self.t, 2)}
+
+    def halt(self):
+        """즉시 정지: 현재 관절 목표를 동결(HOLD). 복귀는 stand/walk/reset."""
+        if self.mode == "FALLEN":
+            return {"ok": False, "error": "FALLEN — reset 필요"}
+        self._hold_targets = {n: float(v) for n, v in
+                              zip(self.s.names, self.s._last_target)}
+        self.gait = None
+        self.mode = "HOLD"
+        return {"ok": True, "mode": self.mode, "note": "목표 동결(피드백 미적용)"}
 
     def push(self, fx=0.0, fy=0.0, fz=0.0, dur=0.15):
         fx = float(np.clip(fx, -60, 60))
@@ -205,6 +218,8 @@ def command(d):
             return c.walk(steps=d.get("steps"), speed=d.get("speed", 1.0))
         if cmd == "stop_walk":
             return c.stop_walk()
+        if cmd == "halt":
+            return c.halt()
         if cmd == "push":
             return c.push(fx=d.get("fx", 0.0), fy=d.get("fy", 0.0),
                           fz=d.get("fz", 0.0), dur=d.get("dur", 0.15))

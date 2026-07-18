@@ -56,7 +56,7 @@ class IsaacLink:
             "import sys, json\n"
             f"sys.path.insert(0, {REPO!r})\n"
             "from sim_walking import live_controller as LC\n"
-            f"print('RESP:' + json.dumps(LC.command({cmd!r})))\n"
+            f"print('RESP:' + json.dumps(LC.command({cmd!r}), ensure_ascii=False))\n"
         )
         with self.lock:
             for attempt in (1, 2):
@@ -121,6 +121,11 @@ class WalkUI:
         self.btn_stopw = tk.Button(row1, text="✋ 걷다가 서기", height=2,
                                    command=lambda: self.run({"cmd": "stop_walk"}))
         self.btn_stopw.pack(side="left", expand=True, fill="x", padx=4)
+        self.btn_halt = tk.Button(row1, text="■ 즉시 정지", height=2,
+                                  fg="white", bg="#b91c1c",
+                                  activebackground="#dc2626",
+                                  command=lambda: self.run({"cmd": "halt"}))
+        self.btn_halt.pack(side="left", expand=True, fill="x", padx=4)
 
         row2 = tk.Frame(mo); row2.pack(fill="x", pady=3)
         tk.Label(row2, text="스텝 수:").pack(side="left", padx=(8, 2))
@@ -212,8 +217,10 @@ class WalkUI:
             self.mode_lbl.config(fg="gray")
             return
         mode = st.get("mode", "?")
-        colors = {"STAND": "#16a34a", "WALK": "#2563eb", "FALLEN": "#dc2626"}
+        colors = {"STAND": "#16a34a", "WALK": "#2563eb", "HOLD": "#d97706",
+                  "FALLEN": "#dc2626"}
         icon = {"STAND": "● 스탠딩", "WALK": "▶ 보행 중",
+                "HOLD": "■ 즉시정지(동결) — 스탠딩/리셋으로 복귀",
                 "FALLEN": "⚠ 넘어짐! 리셋 필요"}
         self.mode_var.set(icon.get(mode, mode))
         self.mode_lbl.config(fg=colors.get(mode, "black"))

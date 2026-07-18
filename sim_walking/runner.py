@@ -59,27 +59,19 @@ def run_gait(s: Session, fsm, duration_s, tag="run",
              push=None):
     """fsm.targets(t)를 60Hz로 구동.
 
-    balance=True:
-      - 시상면: lean_ap → 양발목 대칭 도르시 보정 (P+I). 감도 ~-168deg/rad.
-      - 관상면: lean_lat → 양힙 hip_a 평행사변형 보정 (P+D).
-        평행사변형 로킹에선 골반이 수평이어야 하므로 lean_lat 자체가 오차.
-        raw + 는 양쪽 다 '골반 왼쪽(+X) 이동' 방향.
-    returns: dict(metrics), telemetry rows 는 tmp json 저장.
+    balance=True: BalanceFeedback(feedback.py) — 시상면(발목 P+I),
+      관상면(hip_a P+D, fsm.lat_ref 추종), 요(hip_r P).
+    returns: dict(metrics), telemetry rows 는 demo_output/telemetry 저장.
     """
-    from .sim_session import ANAT_SIGN
+    from .feedback import BalanceFeedback
     n_frames = int(duration_s * FPS)
     rows = []
     caps = []
     fell_at = None
     x0 = None
-    bal_i = 0.0
-    lean_ap = 0.0
-    lean_lat = 0.0
-    lat_prev = None
-    lat_rate = 0.0
-    _yaw_cache = [0.0]
-    sgnL = ANAT_SIGN["dorsiflexion"]["left"]
-    sgnR = ANAT_SIGN["dorsiflexion"]["right"]
+    fb = BalanceFeedback(s, bal_kp=bal_kp, bal_ki=bal_ki, bal_clamp=bal_clamp,
+                         lat_kp=lat_kp, lat_kd=lat_kd, lat_clamp=lat_clamp,
+                         yaw_kp=yaw_kp, yaw_clamp=yaw_clamp)
     obs_every = 2  # 폐루프 정책 관측 주기 (프레임)
     for f in range(n_frames):
         t = f / FPS
@@ -96,30 +88,8 @@ def run_gait(s: Session, fsm, duration_s, tag="run",
             except Exception:
                 pass
         if balance:
-            if f % 2 == 0:
-                lean_ap, lean_lat = s.lean()
-                bal_i += bal_ki * lean_ap * (2.0 / FPS)
-                bal_i = max(-bal_clamp, min(bal_clamp, bal_i))
-                if lat_prev is not None:
-                    lat_rate = (lean_lat - lat_prev) / (2.0 / FPS)
-                lat_prev = lean_lat
-            corr = max(-bal_clamp, min(bal_clamp, bal_kp * lean_ap + bal_i))
-            tg["left_ankle_f_joint"] = tg.get("left_ankle_f_joint", 0.0) + sgnL * corr
-            tg["right_ankle_f_joint"] = tg.get("right_ankle_f_joint", 0.0) + sgnR * corr
-            # 관상면: (측정 - 의도 lat_ref) 오차만 교정. lean>ref -> 골반 오른쪽으로
             ref = fsm.lat_ref(t) if hasattr(fsm, "lat_ref") else 0.0
-            lcorr = -(lat_kp * (lean_lat - ref) + lat_kd * lat_rate)
-            lcorr = max(-lat_clamp, min(lat_clamp, lcorr))
-            tg["left_hip_a_joint"] = tg.get("left_hip_a_joint", 0.0) + lcorr
-            tg["right_hip_a_joint"] = tg.get("right_hip_a_joint", 0.0) + lcorr
-            # 요(yaw): 진행방향 유지 — hip_r 대칭 보정 (부호는 실측 캘리브레이션)
-            if yaw_kp:
-                if f % 2 == 0:
-                    _, _, _, yaw_now = s.pelvis_pose()
-                    _yaw_cache[0] = yaw_now
-                ycorr = max(-yaw_clamp, min(yaw_clamp, yaw_kp * _yaw_cache[0]))
-                tg["left_hip_r_joint"] = tg.get("left_hip_r_joint", 0.0) + ycorr
-                tg["right_hip_r_joint"] = tg.get("right_hip_r_joint", 0.0) + ycorr
+            tg = fb.apply(tg, lat_ref=ref)
         s.cmd(named=tg)
         s.step(1)
         if f % telem_every == 0:

@@ -101,8 +101,16 @@ class Session:
         return s
 
     def set_gains(self, kp, kd):
+        """균일 게인(스칼라) 또는 관절별 게인(dict {관절이름: 값}) 설정."""
+        def to_arr(v):
+            if isinstance(v, dict):
+                arr = np.zeros(self.nd)
+                for n, val in v.items():
+                    arr[self.idx[n]] = float(val)
+                return arr
+            return np.full(self.nd, float(v))
         self.art.get_articulation_controller().set_gains(
-            kps=np.full(self.nd, float(kp)), kds=np.full(self.nd, float(kd)))
+            kps=to_arr(kp), kds=to_arr(kd))
 
     def set_torque_limit(self, tmax):
         try:
@@ -116,9 +124,10 @@ class Session:
         for _ in range(n):
             self.app.update()
 
-    def cmd(self, named=None, absolute=None):
+    def cmd(self, named=None, absolute=None, efforts=None):
         """named: {관절이름: rad} (미지정 관절은 이전 목표 유지).
-        absolute: 길이 nd 배열로 전체 목표 교체."""
+        absolute: 길이 nd 배열로 전체 목표 교체.
+        efforts: 길이 nd 토크 피드포워드 [Nm] (MIT tau_ff 상당, 드라이브에 가산)."""
         from isaacsim.core.utils.types import ArticulationAction
         if absolute is not None:
             t = np.asarray(absolute, float).copy()
@@ -127,7 +136,15 @@ class Session:
             for k, v in (named or {}).items():
                 t[self.idx[k]] = float(v)
         self._last_target = t
-        self.art.apply_action(ArticulationAction(joint_positions=t))
+        self.art.apply_action(ArticulationAction(
+            joint_positions=t,
+            joint_efforts=None if efforts is None else np.asarray(efforts, float)))
+
+    def gravity_ff(self, clamp=25.0):
+        """중력보상 토크 [Nm] (실물 MIT tau_ff 상당). 부호는 호출부에서 캘리브레이션."""
+        g = self.art._articulation_view.get_generalized_gravity_forces()
+        g = np.asarray(g, float).reshape(-1)[:self.nd]
+        return np.clip(g, -clamp, clamp)
 
     def zero(self, settle=60):
         self.cmd(absolute=np.zeros(self.nd))

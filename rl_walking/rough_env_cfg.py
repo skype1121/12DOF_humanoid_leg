@@ -58,6 +58,11 @@ BIPED12_TERRAINS_CFG = TerrainGeneratorCfg(
             proportion=0.05, slope_range=(0.0, 0.2), platform_width=2.0,
             border_width=0.25,
         ),
+        # 연석/문턱 모사: 불규칙 높이 격자 (턱 2~5cm)
+        "curbs": terrain_gen.MeshRandomGridTerrainCfg(
+            proportion=0.15, grid_width=0.45, grid_height_range=(0.02, 0.05),
+            platform_width=2.0,
+        ),
     },
 )
 

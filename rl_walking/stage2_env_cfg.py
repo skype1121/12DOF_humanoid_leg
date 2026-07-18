@@ -43,8 +43,23 @@ class Biped12FlatStage2EnvCfg(Biped12FlatEnvCfg):
         # 부드러움 (실물 저 kd 진동 대비)
         self.rewards.action_rate_l2.weight = -0.02
         self.rewards.joint_vel_l2.weight = -1.0e-3
-        # 걷기는 이미 발현 — 에어타임 가중 절반으로 (품질 항으로 강등)
-        self.rewards.feet_air_time.weight = 0.5
+        # ── 걸음새 가드레일 (2단계 평가에서 케이던스 5.1/s 종종걸음 퇴행 적발 →
+        #    "뚜벅뚜벅" 기준 강제. 승윤님 품질 기준 2026-07-19 05:2x) ──
+        # 단일지지 지속 보상 유지 (절반 강등이 퇴행 원인이었음 — 원상 복구)
+        self.rewards.feet_air_time.weight = 1.0
+        # 케이던스 조절기: 에어타임 0.30s 미만 스텝은 음수, 초과는 양수
+        # (base mdp.feet_air_time은 (last_air_time - threshold)를 착지 순간 지급)
+        from isaaclab.managers import RewardTermCfg as _RewTerm
+        from isaaclab.managers import SceneEntityCfg as _SceneCfg
+        self.rewards.step_time_regulator = _RewTerm(
+            func=mdp.feet_air_time,
+            weight=2.0,
+            params={
+                "command_name": "base_velocity",
+                "sensor_cfg": _SceneCfg("contact_forces", body_names=".*_ankle_r_joint"),
+                "threshold": 0.30,
+            },
+        )
 
 
 @configclass
@@ -53,6 +68,8 @@ class Biped12FlatStage3EnvCfg(Biped12FlatStage2EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        # 후진 보행 추가 (음성 명령 "뒤로 가" 대비 — 승윤님 최종 목표)
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.4, 0.8)
         # 실물 질량 정합: 실측 ~12kg → 전 링크 1.15~1.26 스케일 (11.5~12.5kg 브래키팅)
         self.events.link_mass_calib = EventTerm(
             func=mdp.randomize_rigid_body_mass,

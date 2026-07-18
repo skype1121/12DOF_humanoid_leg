@@ -73,6 +73,32 @@
 | RA30P 압력센서(발) | 접촉 검출 → 관측 보강 | 차기 학습에서 obs에 발 접촉 2bit 추가 시 계단·외란 성능 ↑ (시뮬 접촉센서와 1:1 대응) |
 | RealSense D455 | 지각 보행 (계단 높이맵) | Isaac Lab height-scan 관측 재학습 필요. 현 스택은 블라인드 험지까지 (TiledCamera Blackwell 이슈로 비전 학습은 보류) |
 
+## 4-1. URDF 수정 시 재작업 절차 (소폭 수정 = ~10분 + 리줌 학습 15분)
+
+젯슨/배터리 장착 등으로 URDF가 바뀌면 아래만 다시 실행 (전부 이번에 만든 스크립트):
+
+```bash
+cd /home/ryu/humanoid_leg_test1
+# 1) base 링크 주입본 재생성 (rl_walking/assets/biped12_base.urdf 만드는 파이썬 스니펫
+#    — docs/RL보행_작업로그.md 03:0x 항 참조, 새 URDF 경로로 src만 교체)
+# 2) USD 변환
+OMNI_KIT_ACCEPT_EULA=YES /home/ryu/IsaacLab/isaaclab.sh -p /home/ryu/IsaacLab/scripts/tools/convert_urdf.py \
+  rl_walking/assets/biped12_base.urdf rl_walking/assets/usd/biped12.usd \
+  --merge-joints --joint-stiffness 150 --joint-damping 5 --headless
+# 3) 리밋 주입 + 질량/구조 검증 (log_picture에 리포트 생성)
+/home/ryu/IsaacLab/isaaclab.sh -p rl_walking/scripts/postprocess_usd.py --headless
+# 4) 관절 부호 무중력 프로브 (부호 뒤집힘 자동 검출)
+/home/ryu/IsaacLab/isaaclab.sh -p rl_walking/scripts/probe_signs.py --headless
+# 5) 스폰 검증 게이트
+/home/ryu/IsaacLab/isaaclab.sh -p rl_walking/scripts/validate_env.py --headless
+# 6) 기존 체크포인트 리줌 미세조정 (소폭 수정이면 보통 이걸로 충분)
+... train.py --task Biped12-Velocity-Flat-Stage3-v0 --resume --load_run <최신> --max_iterations 1000
+```
+
+- 소폭 수정(질량±20%·부품 추가·CoM 이동)은 이미 DR 분포 안 → 기존 정책 재평가만으로 통과하는 경우 多
+- 관절 이름/수가 바뀌면: biped12_cfg.py 기본자세와 env 정규식 갱신 + 전면 재학습(~30분/단계)
+- 전 코드가 관절 "이름" 기반이라 인덱스 재매핑은 불필요
+
 ## 5. 체크리스트 (이식 준비 완료 판정)
 
 - [x] 평지 정책: 시뮬 무낙상 + 속도추종 — 낙상 0/64env×30s @0.5m/s (log_picture/정책평가_run1.txt)

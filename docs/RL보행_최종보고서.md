@@ -1,0 +1,107 @@
+# RL 보행 학습 최종보고서 — 12시간 자율 작업
+
+**작성**: Claude (자율 모드) · **기간**: 2026-07-19 03:00~15:00 KST · **승인**: 승윤님
+**한 줄 요약**: 12DOF 하체 로봇이 **실물 이식 제약(kd≤5·50Hz·슬루 4°/tick·모터별 한계)을 학습 단계에 내장한 채** Isaac Lab 병렬 PPO로 **사람 케이던스 영역(2.0걸음/s)의 동적 보행**을 학습했고, 정책 익스포트(ONNX/JIT)와 이식 가이드까지 준비 완료.
+
+> 읽는 순서: 이 보고서(결과) → `RL보행_작업로그.md`(흐름 전체) → `log_picture/자료목록.md`(증거)
+> 재현 명령어: 부록 A. 시뮬 전용 — 실물 모터/CAN 무접촉.
+
+---
+
+## 1. 결과 요약
+
+### 1-1. 평지 보행 (런1: 3000 iter, 29분 학습)
+
+| 지표 | RL 정책 | 기존 4상 FSM (비교) |
+|---|---|---|
+| 전진 속도 | **0.5 m/s 명령 추종** (오차 0.061m/s) | 0.04 m/s (준정적) |
+| 낙상 | **0 / 64환경 × 30초** | 무낙상 (검증 범위 내) |
+| 직립도 | **평균 2.25°, p95 6.23°** | 피크 15~18° |
+| 걸음 케이던스 | **2.0 걸음/s (121spm) — 사람 보행 영역** | 0.38 걸음/s |
+| 단일지지 비율 | 92.7% (동적 보행) | 낮음 (양발지지 위주) |
+| 게인 | **kp150/kd5 — 실물 이식 가능** | kp250/kd25 — 이식 불가(kd 상한 5) |
+| 토크 사용 | 평균 4.5Nm (한계의 18%) | — |
+| 발목롤 속도 | 최대 4.03rad/s < AK45-36 한계 5.0 **준수** | — |
+
+- 학습 속도: **208,000 스텝/초** (RTX 5080, 4096 환경 병렬) — 풀 학습 1회 29분
+- 증거: `log_picture/정책평가_run1.txt`, `08_학습곡선_런1.png`, `09_보행영상_런1.mp4`
+
+### 1-2. 2단계 강건화 (측방·회전·서기 + 외란 ±0.5m/s + 마찰 0.2~1.25)
+(작성 중 — 런2 완료 후 채움)
+
+### 1-3. 낮은 계단 (2~6cm, 블라인드)
+(작성 중 — 험지 런 완료 후 채움)
+
+---
+
+## 2. 핵심 설계 결정과 근거
+
+1. **kd≤5를 학습 루프에 내장** — 게인 정합 실험(2026-07-18)의 교훈: kd25로 만든 보행은 kd5로 못 옮긴다. RL도 같은 함정을 피하려면 처음부터 실물 동역학에서 학습해야 한다. kp150/kd5(±20% DR)로 학습했고, 이 게인은 AK 2.0 드라이버 범위(Kp 0-500, Kd 0-5) 그대로 이식 가능.
+2. **정책 50Hz = 실물 노드 틱** — 물리 200Hz × decimation 4. 이식 시 재보정 불필요.
+3. **슬루 4°/tick을 액션 후처리로 구현** — 실물 Stage8 노드의 슬루를 학습 중에도 겪게 함 (미반영 시 실물에서 위상지연으로 작용해 저댐핑 전도 유발).
+4. **모터별 액추에이터 모델** — AK70-10 ×10 / **AK45-36 ×2(발목롤)** 분리: AK45-36은 피크 토크는 동급(24Nm)이지만 속도가 1/8(±6rad/s), 반사관성 13배(0.0236kg·m²). 이걸 무시하면 발목으로 빠른 측방 보상을 하는 불가능한 정책이 나온다.
+5. **액터 관측 = 실물 측정 가능 신호만** — IMU(iAHRS) 자이로+중력벡터, 엔코더 관절상태, 직전 액션. base 선속도는 크리틱 특권 관측으로만 (Berkeley Humanoid Lite 방식).
+6. **발 전후 대칭 활용** — 인체식 푸시오프 셰이핑 배제(실측: 역효과), flat-foot 접촉 + 발목롤 편차 페널티로 대체.
+7. **서기 함정 회피** — 에어타임 보상의 명령 게이팅(단일지지만 인정 = 호핑 차단), 전진 위주 명령 커리큘럼, 리셋 랜덤화, 주기 푸시.
+
+## 3. 검증 스토리 (발표용 서사)
+
+새벽 3시대의 디버깅이 이 작업의 백미다 (상세: 작업로그):
+- 변환한 로봇이 무액션 개루프에서 2초 내 후방 전도 → 자산 버그 의심
+- **가설 1 (관절 부호 뒤집힘)**: 무중력·루트동결 12관절 프로브로 전 관절 실측 → **전부 정상, 기각** (log_picture/05)
+- **가설 2 (왼발 충돌체 소실)**: 접촉 전수조사로 기각 — "왼발 0N"은 진단 스크립트의 센서 인덱싱 버그(관절체 BFS ≠ 센서 DFS)였음
+- **진상**: 편차×kp=토크 정확 일치로 물리 무결 입증. 개루프 후방 기울음은 이 로봇의 실제 특성(구 시뮬도 트림 전 3.46° + 상시 피드백 필요) — **밸런스는 원래 제어기의 몫이고, 그 제어기가 바로 RL 정책**
+- 적대적 리뷰(3렌즈 병렬) → major 3건 → 0.001N 정밀 전수조사로 유령 자기접촉력 전무 확정, 진단 버그 수정, 학습 유효성 확인
+
+## 4. 이식 준비 상태
+
+- ✅ 정책 익스포트: `logs/rsl_rl/biped12_flat/<런>/exported/policy.pt(.onnx)` — Jetson ONNX Runtime 사용 가능 (45→12 MLP, 추론 <1ms)
+- ✅ 관측/액션 사양·관절 순서·기본자세·베이스라인 규약 문서화: `docs/RL보행_이식가이드.md`
+- ✅ walk_scene 재생 어댑터 (`rl_walking/policy_adapter.py` + `scripts/rl_walk_demo.py`) — sim-to-sim 전이 테스트 겸용
+- ⚠ 실물 온라인 제어의 선결 과제: Stage8 노드가 단일관절 명령만 수용 → 12관절×50Hz=600msg/s 대역폭 검증 또는 멀티관절 명령 확장 필요
+- 향후 센서: RA30P 압력센서 → 접촉 관측 추가 재학습(성능↑), D455 → 지각 보행(현 스택은 Blackwell TiledCamera 이슈로 비전 학습 보류)
+
+## 5. 남은 일 / 다음 단계 제안
+
+1. (즉시 가능) Isaac Sim GUI에서 `python3 scripts/rl_walk_demo.py` — walk_scene 재생 눈 확인
+2. 실물 오프라인 검증 (이식가이드 §3-2): 센서 로그 → 정책 출력 타당성 검사 (송신 없음)
+3. 실물 스탠딩부터 온라인 테스트 (승윤님 입회, 이식가이드 §3-3 절차)
+4. 압력센서 관측 추가 버전 재학습 (계단·외란 성능 향상)
+5. 지각 보행 (D455) — Isaac Lab 비전 스택 이슈 해소 후
+
+---
+
+## 부록 A. 재현 명령어
+
+```bash
+# 학습 (평지)
+cd /home/ryu/humanoid_leg_test1
+OMNI_KIT_ACCEPT_EULA=YES /home/ryu/IsaacLab/isaaclab.sh -p rl_walking/scripts/train.py \
+  --task Biped12-Velocity-Flat-v0 --headless --num_envs 4096 --max_iterations 3000
+
+# 2단계 (리줌 — --resume 는 값 없는 플래그!)
+... --task Biped12-Velocity-Flat-Stage2-v0 --resume --load_run <런폴더> --checkpoint model_2999.pt
+
+# 정량 평가 + 익스포트
+/home/ryu/IsaacLab/isaaclab.sh -p rl_walking/scripts/eval_policy.py --headless --load_run <런폴더>
+
+# 학습 곡선
+/home/ryu/IsaacLab/_isaac_sim/python.sh rl_walking/scripts/plot_training.py
+
+# 영상
+/home/ryu/IsaacLab/isaaclab.sh -p rl_walking/scripts/play.py --task Biped12-Velocity-Flat-Play-v0 \
+  --headless --num_envs 9 --load_run <런폴더> --video --video_length 500
+
+# walk_scene GUI 재생 (Isaac Sim + MCP 실행 중일 때)
+python3 scripts/rl_walk_demo.py
+```
+
+## 부록 B. 발견한 함정들 (재발 방지)
+
+1. `isaaclab.sh`는 파이썬 에러를 삼키고 exit 0 반환 — 산출물/로그 마커로 판정할 것
+2. `--install`이 코어 isaaclab을 누락 (신형 setuptools의 pkg_resources 제거) → `pip install -e source/isaaclab --no-build-isolation`
+3. `--resume True` 금지 — store_true 플래그라 'True'가 hydra로 새어 파싱 오류
+4. 접촉센서 바디 순서(DFS)는 관절체 바디 순서(BFS)와 다름 — 반드시 `sensor.find_bodies()`로 인덱싱
+5. Isaac Lab은 프로세스당 env 1개만 안전 (SimulationContext 싱글턴)
+6. Kit 헤드리스에서 stdout 유실 가능 — 결과는 파일로 직접 기록
+7. Isaac Lab v3.0 베타는 Isaac Sim 6.0 전용 — 5.1은 v2.3.2가 최종

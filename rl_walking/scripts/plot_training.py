@@ -12,7 +12,15 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
+# 한국어 폰트 — 파일 직접 등록
+_FONT = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+if os.path.exists(_FONT):
+    font_manager.fontManager.addfont(_FONT)
+    plt.rcParams["font.family"] = font_manager.FontProperties(fname=_FONT).get_name()
+plt.rcParams["axes.unicode_minus"] = False
 
 REPO = "/home/ryu/humanoid_leg_test1"
 LOGROOT = os.path.join(REPO, "logs", "rsl_rl", "biped12_flat")

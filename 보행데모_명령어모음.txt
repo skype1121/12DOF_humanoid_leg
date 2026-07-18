@@ -1,0 +1,98 @@
+═══════════════════════════════════════════════════════════════════
+  12DOF 보행 데모 명령어 모음  (2026-07-18, sim-walking-demo 브랜치)
+═══════════════════════════════════════════════════════════════════
+※ 전부 시뮬 전용 — 실물 모터/CAN에는 아무것도 안 보냄
+※ 상세 문서: sim_walking/README.md
+
+
+■ 0. 아이작심 켜기 (클로드가 보고 조작할 수 있는 상태로)
+───────────────────────────────────────────────────────────────────
+ISAACSIM_ROOT=/home/ryu/isaacsim/isaac-sim-5.1.0 /home/ryu/isaacsim-mcp-server/scripts/run_isaac_sim.sh
+
+  · 성공 로그: "Isaac Sim MCP server started on localhost:8766"
+  · 씬은 자동으로 안 열림 → File > Open 으로
+    /home/ryu/humanoid_leg_test1/isaacsim_scene/walk_scene.usd 열기
+    (walk_demo.py 를 쓰면 씬 전환은 자동으로 해줌)
+  · 클로드(터미널)는 새 세션이면 MCP가 자동 연결됨.
+    연결 확인 문구: "get_scene_info로 연결 확인해줘"
+
+
+■ 1. 걷기 리모컨 UI (스탠딩/걷기/즉시정지/외란)
+───────────────────────────────────────────────────────────────────
+cd /home/ryu/humanoid_leg_test1
+python3 scripts/walk_ui.py
+
+  · 처음 누를 버튼: [● 스탠딩 시작/유지] (초기화 포함, 몇 초 걸림)
+  · 안 먹을 때:  pkill -f "scripts/walk_ui"   후 다시 실행
+  · 로봇 넘어졌을 때: [♻ 리셋] 버튼
+
+
+■ 2. 원커맨드 보행 데모 (자동 판정 PASS/FAIL)
+───────────────────────────────────────────────────────────────────
+cd /home/ryu/humanoid_leg_test1
+python3 scripts/walk_demo.py                  # 16초 연속 보행
+python3 scripts/walk_demo.py --steps 4        # 4보 걷고 발모아 정지
+python3 scripts/walk_demo.py --speed 0.9      # 속도 배율 (0.8~1.1 검증됨)
+python3 scripts/walk_demo.py --video          # + 프레임 캡처 & mp4 생성
+                                              #   → demo_output/walk_demo.mp4
+
+
+■ 3. 텔레메트리 그래프 (전진/기울기/발높이/골반높이 4패널)
+───────────────────────────────────────────────────────────────────
+cd /home/ryu/humanoid_leg_test1
+python3 scripts/plot_walk_telemetry.py --list           # 기록 목록
+python3 scripts/plot_walk_telemetry.py                  # 최근 런 그래프
+python3 scripts/plot_walk_telemetry.py --tag demo       # 특정 태그
+xdg-open demo_output/telemetry_demo.png                 # 이미지 열기
+
+  · 기록은 walk_demo.py / 스크립트 실행분만 저장됨 (UI 조작분은 미기록)
+
+
+■ 4. 자동 테스트 (아이작심 없이 오프라인, 14종)
+───────────────────────────────────────────────────────────────────
+cd /home/ryu/humanoid_leg_test1
+python3 -m pytest tests/test_sim_walking.py -v
+
+
+■ 5. sim → real 드라이런 (Stage8 명령 tape 생성·검증, 송신 없음)
+───────────────────────────────────────────────────────────────────
+cd /home/ryu/humanoid_leg_test1
+python3 scripts/sim2real_dryrun.py --steps 4              # 4보 보행 tape
+python3 scripts/sim2real_dryrun.py --shift-only --steps 4 # 체중이동만
+                                                          #   (실물 1차 데모 권장)
+  · 출력: demo_output/sim2real_tape.jsonl
+  · 실물 재생 절차는 jsonl 첫 줄 _meta.operator_procedure 참고
+  · ⚠ 시뮬 kd25 게인을 실물에 그대로 보내면 안 됨 (실물 kd 상한 5)
+    → config/sim_dynamics.json 의 sim2real_gain_experiment 섹션 필독
+
+
+■ 6. git (백업/복구)
+───────────────────────────────────────────────────────────────────
+git log --oneline sim-walking-demo | head    # 작업 이력 보기
+git push -u origin sim-walking-demo          # 깃허브 백업 (아직 안 올림)
+git checkout main                            # 원래 코드로 복귀
+git checkout sim-walking-demo                # 보행 작업으로 복귀
+
+
+■ 7. 문제 해결 체크리스트
+───────────────────────────────────────────────────────────────────
+1) walk_demo/UI가 "접속 실패"
+   → 아이작심 + MCP 확장이 떠있는지 확인 (0번 명령어)
+2) UI 상태가 "― 미연결 ―" 고정
+   → pkill -f "scripts/walk_ui"  후  python3 scripts/walk_ui.py
+3) 로봇이 넘어져서 이상함
+   → UI [♻ 리셋]  (또는 아이작심에서 Stop▶Play)
+4) 클로드가 아이작심을 못 볼 때
+   → 클로드 터미널 세션 재시작 (MCP 도구는 세션 시작 시 로드됨)
+
+
+■ 주요 파일 위치
+───────────────────────────────────────────────────────────────────
+씬(자유베이스):   isaacsim_scene/walk_scene.usd
+씬(관절테스트):   isaacsim_scene/leg12dof_scene.usd
+보행 파라미터:    config/sim_walk_params.json
+관절 리밋(실측):  config/sim_joint_limits.json
+동역학/게인실험:  config/sim_dynamics.json
+관절 방향(실측):  joint_direction
+보행 코드:        sim_walking/   (README.md 포함)
+데모 산출물:      demo_output/   (영상·그래프·tape, git 미추적)

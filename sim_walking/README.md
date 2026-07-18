@@ -10,7 +10,7 @@
 ISAACSIM_ROOT=/home/ryu/isaacsim/isaac-sim-5.1.0 /home/ryu/isaacsim-mcp-server/scripts/run_isaac_sim.sh
 ```
 
-데모:
+데모 (배치 실행 + 판정):
 ```bash
 python3 scripts/walk_demo.py                    # 16초 연속 보행 (판정 출력)
 python3 scripts/walk_demo.py --steps 5          # 5보 걷고 우아하게 정지
@@ -18,6 +18,19 @@ python3 scripts/walk_demo.py --speed 0.9        # 속도 배율 (0.8~1.1 검증)
 python3 scripts/walk_demo.py --video            # 프레임 캡처 + demo_output/walk_demo.mp4
 ```
 판정 기준: **3보 이상 + 전진 0.2m 이상 + 무낙상** → PASS/FAIL 및 지표 출력.
+
+걷기 전용 UI (리모컨 — Main UI와 별개):
+```bash
+python3 scripts/walk_ui.py
+```
+- 스탠딩 시작/유지 · 계속 걷기 · N보 걷고 서기 · **걷다가 서기**(진행 중 정지)
+- 외란 주입: 앞/뒤/왼쪽/오른쪽 (세기 5~40N 슬라이더, 0.15s)
+- 실시간 상태: 모드(스탠딩/보행/넘어짐)·전진·기울기·방향·골반높이
+- 리셋 버튼: 넘어졌을 때 씬 초기화
+- 내부: `sim_walking/live_controller.py`(Isaac 상주, Kit 업데이트 콜백)를
+  TCP 8766 단문 명령으로 제어 — 명령 즉시 반환이라 걷는 중 조작 가능.
+  콜백 구동이라 시뮬이 실시간보다 빠르게(~3.6x) 돈다.
+- 그래프: `python3 scripts/plot_walk_telemetry.py [--tag demo|--list]`
 
 오프라인 테스트 (Isaac 불필요):
 ```bash

@@ -13,6 +13,9 @@ class Biped12FlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     obs_groups = {"policy": ["policy"], "critic": ["policy", "critic"]}
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
+        # log-std: 물리 폭발 배치가 그래디언트를 흔들어도 std>0 보장
+        # (scalar형은 stage2에서 음수 진입 → normal() 크래시 실측)
+        noise_std_type="log",
         actor_obs_normalization=False,
         critic_obs_normalization=False,
         actor_hidden_dims=[512, 256, 128],

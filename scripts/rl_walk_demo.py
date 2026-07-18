@@ -66,7 +66,25 @@ import omni.kit.viewport.utility as vpu
 vpu.get_active_viewport().camera_path = "/World/SessCamRL"
 pol = RLWalkPolicy(checkpoint={ck}, cmd=({cmd_x}, 0.0, 0.0))
 pol.attach(s); pol.reset()
-m = RN.run_gait(s, pol, duration_s={duration}, tag="rl_demo", balance=False, {cap})
+
+class TrackCam:
+    # 정책 호출에 편승해 카메라가 골반을 추적 (전진 시 화면 이탈 방지)
+    def __init__(self, s, pol, every=0.15):
+        self.s, self.pol, self.every, self._next = s, pol, every, 0.0
+    def targets(self, t):
+        if t >= self._next:
+            self._next = t + self.every
+            p, _ = self.s.pelvis.get_world_poses()
+            px, py = float(p[0][0]), float(p[0][1])
+            self.s.make_cam("/World/SessCamRL", (px + 2.0, py - 1.5, 0.95),
+                            (px, py, 0.35))
+        return self.pol.targets(t)
+    def lat_ref(self, t):
+        return self.pol.lat_ref(t)
+    def reset(self):
+        self.pol.reset()
+
+m = RN.run_gait(s, TrackCam(s, pol), duration_s={duration}, tag="rl_demo", balance=False, {cap})
 print("METRICS_JSON:" + json.dumps(m))
 """
 

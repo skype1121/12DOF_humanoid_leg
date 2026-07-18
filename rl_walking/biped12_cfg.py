@@ -53,8 +53,10 @@ BIPED12_CFG = ArticulationCfg(
             # hip_a 양다리 동시 내전 시 ±9.4°에서 다리끼리 충돌 —
             # 자기충돌 OFF로 학습하면 실물에서 다리가 부딪히는 정책이 나온다.
             enabled_self_collisions=True,
-            solver_position_iteration_count=4,
-            solver_velocity_iteration_count=0,
+            # 8/1: 자기충돌+강푸시 조합의 접촉 안정성 (4/0에서 물리 폭발 실측;
+            # 구 GUI 임포트 자산은 32였음 — SC ON 미세 불안정의 유력 원인)
+            solver_position_iteration_count=8,
+            solver_velocity_iteration_count=1,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(

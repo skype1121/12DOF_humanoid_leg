@@ -99,6 +99,19 @@ class Biped12RoughEnvCfg(Biped12FlatStage3EnvCfg):
         # 명령: 전진 위주 저속 (계단은 요 회전 최소화)
         self.commands.base_velocity.ranges.lin_vel_x = (0.2, 0.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-0.3, 0.3)
+        # ── 물리폭발 대책 (계단 모서리 접촉 크래시 2회 실측 → 3중 방어) ──
+        from . import mdp_rewards as capped
+        # ① 폭발 페널티 캡핑 (정상 보행 대비 10~100배 여유 — 폭발만 무력화)
+        self.rewards.dof_acc_l2.func = capped.joint_acc_l2_capped
+        self.rewards.joint_vel_l2.func = capped.joint_vel_l2_capped
+        self.rewards.ang_vel_xy_l2.func = capped.ang_vel_xy_l2_capped
+        self.rewards.lin_vel_z_l2.func = capped.lin_vel_z_l2_capped
+        self.rewards.feet_contact_forces.func = capped.contact_forces_capped
+        # ② 접촉 솔버 강화 (계단 모서리)
+        self.scene.robot.spawn.articulation_props.solver_position_iteration_count = 12
+        self.scene.robot.spawn.articulation_props.solver_velocity_iteration_count = 2
+        # ③ 험지에선 푸시 완화 (모서리 접촉과 중첩 시 폭발 촉발원)
+        self.events.push_robot.params["velocity_range"] = {"x": (-0.3, 0.3), "y": (-0.3, 0.3)}
 
 
 @configclass

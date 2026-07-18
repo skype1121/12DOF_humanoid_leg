@@ -149,6 +149,8 @@ class EventCfg:
             "dynamic_friction_range": (0.3, 0.9),
             "restitution_range": (0.0, 0.0),
             "num_buckets": 64,
+            # dynamic <= static 물리 일관성 강제 (리뷰 지적 반영)
+            "make_consistent": True,
         },
     )
     add_base_mass = EventTerm(
@@ -194,7 +196,7 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-            # 반사관성 추정치(0.01)의 0.5~1.5배 — 미실측 오차 흡수
+            # 반사관성 기준값(ak70 0.003 / 발목롤 0.0236)의 0.5~1.5배 — 미실측 오차 흡수
             "armature_distribution_params": (0.5, 1.5),
             "operation": "scale",
         },

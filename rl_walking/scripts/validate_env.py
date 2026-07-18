@@ -89,8 +89,10 @@ p(f"   보상 (유한해야 함): {fmt(rew)}")
 
 p("=" * 70)
 p("4) 발 접촉력 [N] (양발 접지 시 ~49N/발):")
-ids, names = robot.find_bodies(".*_ankle_r_joint")
 cs = env.scene.sensors["contact_forces"]
+# 주의: 센서 바디 순서(DFS)는 관절체 바디 순서(BFS)와 다르다 —
+# 반드시 센서 자체의 find_bodies로 인덱싱 (리뷰에서 잡힌 배선 버그 수정)
+ids, names = cs.find_bodies(".*_ankle_r_joint")
 forces = cs.data.net_forces_w[:, ids, :].norm(dim=-1)
 p(f"   {names}: {[fmt(f) for f in forces]}")
 
@@ -99,6 +101,8 @@ ok = (
     and torch.isfinite(rew).all()
     and float(robot.data.root_pos_w[:, 2].min()) > 0.55
     and abs(float(robot.data.projected_gravity_b[0, 2]) + 1.0) < 0.1
+    # 양발 모두 실접촉 확인 (배선 오류가 게이트에서 잡히도록)
+    and bool((forces[0] > 20.0).all())
 )
 p("=" * 70)
 p(f"판정: {'PASS' if ok else 'FAIL'}")

@@ -1,0 +1,18 @@
+자기접촉 정밀 전수조사 (임계 0.001N, SC ON, 랜덤화 OFF)
+센서 바디: ['base', 'left_hip_f_joint', 'left_hip_a_joint', 'left_hip_r_joint', 'left_knee_joint', 'left_ankle_f_joint', 'left_ankle_r_joint', 'right_hip_f_joint', 'right_hip_a_joint', 'right_hip_r_joint', 'right_knee_joint', 'right_ankle_f_joint', 'right_ankle_r_joint']
+==========================================================================
+  [기립 step   0] (접촉 없음)
+  [기립 step  10] left_ankle_r_joint=43.025N right_ankle_r_joint=50.236N
+  [기립 step  20] left_ankle_r_joint=50.502N right_ankle_r_joint=51.807N
+  [기립 step  30] left_ankle_r_joint=46.655N right_ankle_r_joint=49.799N
+  [기립 step  40] left_ankle_r_joint=46.919N right_ankle_r_joint=49.525N
+  [기립 step  50] left_ankle_r_joint=46.626N right_ankle_r_joint=48.874N
+  [내전 step   0] left_ankle_r_joint=39.565N right_ankle_r_joint=50.880N
+  [내전 step  10] left_ankle_r_joint=45.458N right_ankle_r_joint=50.873N
+  [내전 step  20] left_ankle_r_joint=45.190N right_ankle_r_joint=51.267N
+  [내전 step  30] left_ankle_r_joint=45.831N right_ankle_r_joint=51.291N
+==========================================================================
+발 이외 바디 접촉 발생 횟수(>0.001N):
+   없음 — SC ON에서도 비인접 링크 간섭력 0.001N 이상 없음
+→ SC ON/OFF 거동 차이는 접촉력이 아니라 솔버 준비단계(컨택 마진 등)의
+  미세 수치 효과로 판정. 물리적 유령힘 없음 = 학습·이식에 무해

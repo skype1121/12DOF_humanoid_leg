@@ -31,3 +31,23 @@ gym.register(
         "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12FlatPPORunnerCfg",
     },
 )
+
+gym.register(
+    id="Biped12-Velocity-Rough-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.rough_env_cfg:Biped12RoughEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12FlatPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Biped12-Velocity-Rough-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.rough_env_cfg:Biped12RoughEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12FlatPPORunnerCfg",
+    },
+)

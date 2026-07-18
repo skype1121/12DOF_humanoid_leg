@@ -66,7 +66,9 @@ def run_case(tag, kp, kd):
     env.reset()
     robot = env.scene["robot"]
     cs = env.scene.sensors["contact_forces"]
-    fids, _ = robot.find_bodies(".*_ankle_r_joint")
+    # 두 인덱스 공간 분리: 접촉력은 센서 순서(DFS), 위치는 관절체 순서(BFS)
+    fids, _ = cs.find_bodies(".*_ankle_r_joint")
+    bids, _ = robot.find_bodies(".*_ankle_r_joint")
 
     p(f"--- {tag}: kp={kp}, kd={kd} ---")
     p("  step |  z0   | pgx    pgy   | 발z L/R      | 접촉N L/R     | tau_max | term")
@@ -77,7 +79,7 @@ def run_case(tag, kp, kd):
         n_term += int(terminated.sum())
         if i % 25 == 0 or (terminated.any() and n_term <= 3):
             pg = robot.data.projected_gravity_b[0]
-            fz = robot.data.body_pos_w[0, fids, 2]
+            fz = robot.data.body_pos_w[0, bids, 2]
             fN = cs.data.net_forces_w[0, fids, :].norm(dim=-1)
             tau = float(robot.data.applied_torque[0].abs().max())
             term_names = ""

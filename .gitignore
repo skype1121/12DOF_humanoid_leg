@@ -14,3 +14,7 @@ __pycache__/
 URDF12DOF/export.log
 demo_output/
 .pytest_cache/
+
+# RL 학습 산출물 (체크포인트·텐서보드 — 용량 큼, 재생성 가능)
+logs/
+outputs/

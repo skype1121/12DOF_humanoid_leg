@@ -1,0 +1,446 @@
+{
+  "summary": "Isaac Lab RL 보행 학습 Phase 0: 설치 호환성·보상 레시피·로봇 스펙 3방향 병렬 리서치",
+  "agentCount": 3,
+  "logs": [
+    "설치 호환성 / RL 레시피 / 로봇 스펙 3방향 병렬 조사 시작",
+    "3방향 리서치 완료"
+  ],
+  "result": {
+    "install": {
+      "isaaclab_version_tag": "v2.3.2",
+      "compat_statement": "Isaac Sim 5.1 호환 라인은 Isaac Lab 2.3.x다. 근거: (1) v2.3.0 공식 릴리즈 노트 첫 문장 \"The Isaac Lab 2.3.0 release, built on Isaac Sim 5.1, delivers enhancements...\" (github.com/isaac-sim/IsaacLab/releases/tag/v2.3.0, 2025-10-28). (2) 최신 패치 v2.3.2(2026-02-02)의 source/isaaclab/setup.py classifiers에 \"Isaac Sim :: 4.5.0 / 5.0.0 / 5.1.0\"이 명시돼 있어 5.1.0 공식 지원이 확인됨. (3) v2.3.2 버전 문서(isaac-sim.github.io/IsaacLab/v2.3.2)가 \"using the latest Isaac Sim 5.1.0 release\"를 권장하고 Linux 드라이버 580.65.06+를 권장(사용자 드라이버 580.159.04는 충족). (4) 그 다음 릴리즈인 v3.0.0-beta2/beta2.patch1(2026-06~07)은 Isaac Sim 6.0/6.0.1 전용이므로 5.1 바이너리에는 쓸 수 없음. 또한 v2.3.2가 main 브랜치의 최종 릴리즈(\"final release from the current main branch\")라서 5.1용으로는 v2.3.2가 최종·최선 태그. 주의: isaac-sim.github.io/IsaacLab/main 문서는 이제 Isaac Sim 6.0 기준이므로 반드시 /v2.3.2/ 버전 문서를 볼 것. Isaac Sim 5.X는 Python 3.11 사용.",
+      "install_steps": [
+        "# 0) Isaac Sim 바이너리 동작 확인 (최초 1회 EULA 동의 필요; 헤드리스 자동화면 export OMNI_KIT_ACCEPT_EULA=YES)",
+        "export ISAACSIM_PATH=\"/home/ryu/isaacsim/isaac-sim-5.1.0\"",
+        "export ISAACSIM_PYTHON_EXE=\"${ISAACSIM_PATH}/python.sh\"",
+        "${ISAACSIM_PYTHON_EXE} -c \"print('Isaac Sim python OK')\"  # Python 3.11이어야 함",
+        "# 1) Isaac Lab 클론 후 5.1 호환 태그로 체크아웃 (main 브랜치는 현재 Isaac Sim 6.0 대상이므로 금지)",
+        "git clone https://github.com/isaac-sim/IsaacLab.git ~/IsaacLab",
+        "cd ~/IsaacLab && git checkout v2.3.2",
+        "# 2) 바이너리 심링크 생성 — conda 불필요. 이 링크가 있으면 isaaclab.sh가 자동으로 _isaac_sim/python.sh를 사용",
+        "ln -s ${ISAACSIM_PATH} _isaac_sim",
+        "# 3) 시스템 의존성",
+        "sudo apt install cmake build-essential",
+        "# 4) Isaac Lab 확장 + RL 프레임워크 설치 (rsl_rl만 필요하면 인자로 지정 가능; 인자 없으면 전부 설치)",
+        "./isaaclab.sh --install rsl_rl",
+        "#    ↑ 이 단계에서 isaaclab.sh의 ensure_cuda_torch()가 torch==2.7.0+cu128, torchvision==0.22.0을 https://download.pytorch.org/whl/cu128 에서 자동 설치(기존 torch 제거 후). Blackwell sm_120 커널이 포함된 빌드임",
+        "# 5) 설치 검증 (헤드리스)",
+        "./isaaclab.sh -p scripts/tutorials/00_sim/create_empty.py --headless",
+        "# 6) sm_120 인식 검증",
+        "./isaaclab.sh -p -c \"import torch; print(torch.__version__, torch.cuda.get_arch_list())\"  # 'sm_120' 포함 + '2.7.0+cu128' 확인",
+        "# 이후 모든 실행은 반드시 ./isaaclab.sh -p <script> 로. 시스템 python 직접 실행 금지 (ModuleNotFoundError: isaaclab의 최다 원인)"
+      ],
+      "blackwell_gotchas": [
+        "필요 스택: RTX 5080 = sm_120은 CUDA 12.8+ 필수. Isaac Lab v2.3.2의 isaaclab.sh가 x86_64에서 torch==2.7.0+cu128 / torchvision==0.22.0을 핀으로 설치하며, PyTorch 2.7의 cu128 휠은 Blackwell(sm_120) 커널을 공식 포함 — 별도 나이틀리/소스빌드 불필요",
+        "가장 흔한 함정: 나중에 pip로 다른 패키지를 설치하다 torch가 PyPI 기본 인덱스(cu126, sm_120 미포함)로 재설치되면 'CUDA error: no kernel image is available for execution on the device' 발생. 복구는 ./isaaclab.sh --install 재실행 또는 _isaac_sim/python.sh -m pip install -U --index-url https://download.pytorch.org/whl/cu128 torch==2.7.0 torchvision==0.22.0",
+        "드라이버: Isaac Sim 5.1.0 문서의 Linux 검증 드라이버는 580.65.06 — 사용자의 580.159.04는 이를 상회하므로 OK. Isaac Sim 5.1 자체는 Blackwell 네이티브 지원(PhysX GPU 커널 포함). 반면 구형 Isaac Gym Preview 4는 sm_120 비호환이므로 혼동 금지",
+        "알려진 Blackwell 버그: TiledCamera(omni.replicator 타일 렌더)가 sm_120 + Isaac Sim 5.1.0에서 무한 행업(IsaacLab issue #4951, RTX 5090 보고). 카메라 없는 고유수용성(proprioceptive) 보행 학습에는 영향 없음 — 12DOF 보행 PPO는 안전",
+        "첫 실행 시 셰이더/커널 컴파일로 수 분간 멈춘 것처럼 보일 수 있음(~/.cache/ov 캐시 생성). 행업으로 오인해 죽이지 말 것",
+        "torch import를 AppLauncher 생성 이전에 하면 GLIBCXX_3.4.30 OSError가 날 수 있음(주로 conda 환경 문제지만, 커스텀 스크립트에서는 AppLauncher 이후 import 습관 권장)"
+      ],
+      "urdf_import_method": "공식 2단계: (1) URDF→USD 변환 — ./isaaclab.sh -p scripts/tools/convert_urdf.py <입력.urdf> <출력.usd> --merge-joints --joint-stiffness 60.0 --joint-damping 5.0 --joint-target-type position --headless. 이족보행이므로 --fix-base는 절대 쓰지 않음(부유 베이스). --merge-joints는 고정 조인트 병합으로 아티큘레이션 단순화(v2.3.1에서 merge-joints 관련 수정 포함). URDF 내 mesh 경로는 절대/상대 경로로 해석 가능해야 함(package:// 경로는 사전 치환 — 기존 메모리의 mesh-path fix와 동일). 고정 조인트 링크에 대한 'unresolved references' 경고는 무시해도 안전(공식 known issue). (2) ArticulationCfg 작성 — from isaaclab.assets import ArticulationCfg; from isaaclab.actuators import ImplicitActuatorCfg; import isaaclab.sim as sim_utils 후: MYBIPED_CFG = ArticulationCfg(spawn=sim_utils.UsdFileCfg(usd_path=\"<변환된.usd>\", rigid_props=sim_utils.RigidBodyPropertiesCfg(...), articulation_props=sim_utils.ArticulationRootPropertiesCfg(enabled_self_collisions=..., solver_position_iteration_count=4)), init_state=ArticulationCfg.InitialStateCfg(pos=(0,0,높이), joint_pos={\"조인트명\": 초기각, ...}), actuators={\"legs\": ImplicitActuatorCfg(joint_names_expr=[\".*hip.*\", \".*knee.*\"], effort_limit_sim=..., velocity_limit_sim=..., stiffness=<kp>, damping=<kd>), \"feet\": ImplicitActuatorCfg(joint_names_expr=[\".*ankle.*\"], ...)}, soft_joint_pos_limit_factor=0.9). 학습 환경은 기존 로코모션 태스크(source/isaaclab_tasks/.../locomotion/velocity/config/ 아래 Isaac-Velocity-Flat-* 계열)를 복사해 scene.robot = MYBIPED_CFG.replace(prim_path=\"{ENV_REGEX_NS}/Robot\")로 교체하고 gym.register로 새 태스크명을 등록하는 것이 공식 패턴(문서 how-to: import_new_asset + write_articulation_cfg).",
+      "headless_train_cmd": "./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py --task <MyBiped-Velocity-v0> --headless --num_envs 4096 [--max_iterations 3000] [--seed 42] — 로그/체크포인트는 logs/rsl_rl/<task명>/<날짜-시각>/model_<iter>.pt 에 저장, TensorBoard로 모니터링 가능. 이어서 학습하려면 --resume True --load_run <run폴더> --checkpoint model_<iter>.pt",
+      "play_cmd": "./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py --task <MyBiped-Velocity-v0> --num_envs 32 --load_run <run폴더명> --checkpoint model_<iter>.pt (체크포인트는 절대경로 /PATH/TO/model.pt도 가능; 헤드리스 영상만 뽑으려면 --headless --video --video_length 200 추가; play 시 ONNX/JIT policy export 파일도 exported/ 폴더에 생성됨)",
+      "known_issues": [
+        "ModuleNotFoundError: No module named 'isaaclab' — 시스템 python으로 직접 실행했을 때. 항상 ./isaaclab.sh -p 사용 (GitHub Discussion #2725)",
+        "cmake/build-essential 미설치 시 --install 중 확장 빌드 실패 — 사전 apt 설치 필요",
+        "--install 중 pip dependency resolver 충돌 경고(pillow, numpy<2 등)는 대체로 무해 — Isaac Lab 2.3.2는 numpy<2 핀이므로 numpy 2.x를 요구하는 패키지를 같은 env에 설치하지 말 것",
+        "환경 reset 직후 stale 데이터: 일부 asset/sensor 필드(링크 포즈, 접촉센서 등)가 즉시 갱신 안 됨 — body_state_w는 PhysX kinematic update로 보정됨(공식 known issue)",
+        "카메라 첫 프레임 공백: 초기화 후 sim.render() ~12회 호출 필요(카메라 쓸 때만 해당)",
+        "Ctrl+C 종료 시 subscription 관련 에러 메시지는 무시해도 안전(공식 known issue)",
+        "URDF importer가 visual/collider 없는 링크에 대해 unresolved reference 경고 출력 — 무시 가능(공식 known issue)",
+        "첫 Isaac Sim 실행 시 EULA 동의 프롬프트가 헤드리스 스크립트를 멈출 수 있음 — 최초 1회 isaac-sim.sh를 직접 실행해 동의하거나 OMNI_KIT_ACCEPT_EULA=YES 설정",
+        "디스플레이 없는 세션에서 GUI 모드 실행 시 Vulkan/GLX 에러 — 학습·변환 모두 --headless 플래그 사용",
+        "main 브랜치/문서를 따라가면 Isaac Sim 6.0 전제(torch 2.9 등)라서 5.1 바이너리와 어긋남 — 태그 v2.3.2와 /v2.3.2/ 버전 문서만 참조",
+        "TiledCamera가 Blackwell(sm_120)+Isaac Sim 5.1에서 행업 (IsaacLab issue #4951) — 비전 기반 태스크로 확장할 때만 문제"
+      ],
+      "sources": [
+        "https://github.com/isaac-sim/IsaacLab/releases (태그·날짜: v2.3.0 2025-10-28, v2.3.1 2025-12-04, v2.3.2 2026-02-02, v3.0.0-beta2 2026-06-17=Isaac Sim 6.0)",
+        "https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.0 ('built on Isaac Sim 5.1' 명시)",
+        "https://raw.githubusercontent.com/isaac-sim/IsaacLab/v2.3.2/source/isaaclab/setup.py (classifiers: Isaac Sim :: 5.1.0; torch>=2.7; cu128 인덱스)",
+        "https://raw.githubusercontent.com/isaac-sim/IsaacLab/v2.3.2/isaaclab.sh (ensure_cuda_torch: x86_64 → torch==2.7.0+cu128, torchvision==0.22.0)",
+        "https://isaac-sim.github.io/IsaacLab/v2.3.2/source/setup/installation/index.html (Isaac Sim 5.1.0 권장, 드라이버 580.65.06+, VRAM 16GB+)",
+        "https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html (심링크 _isaac_sim 설치 절차; main은 6.0 기준이므로 절차 골격만 참조)",
+        "https://isaac-sim.github.io/IsaacLab/v2.3.2/source/how-to/import_new_asset.html (convert_urdf.py 사용법)",
+        "https://isaac-sim.github.io/IsaacLab/v2.3.2/source/how-to/write_articulation_cfg.html (ArticulationCfg/ImplicitActuatorCfg 작성)",
+        "https://isaac-sim.github.io/IsaacLab/v2.3.2/source/overview/reinforcement-learning/rl_existing_scripts.html (rsl_rl train/play 명령)",
+        "https://isaac-sim.github.io/IsaacLab/v2.3.2/source/refs/issues.html (known issues)",
+        "https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html (Linux 드라이버 580.65.06, Ubuntu 22.04/24.04, Blackwell 지원)",
+        "https://github.com/isaac-sim/IsaacLab/issues/4951 (TiledCamera sm_120 행업)",
+        "https://github.com/isaac-sim/IsaacLab/discussions/1888 (RTX 50 시리즈 지원 논의: cu128 torch로 해결)",
+        "https://github.com/isaac-sim/IsaacLab/discussions/2725 (바이너리 설치 ModuleNotFoundError 해결)",
+        "https://forums.developer.nvidia.com/t/isaac-gym-preview-4-incompatible-with-rtx-5080-blackwell-sm-120-libphysxgpu-64-so-missing-sm-120-kernels/367941 (구형 Isaac Gym만 sm_120 비호환)"
+      ]
+    },
+    "recipe": {
+      "reward_terms": [
+        {
+          "name": "track_lin_vel_xy_exp",
+          "desc": "exp(-||cmd_xy - v_xy||^2 / sigma^2), sigma^2=0.25 (요-프레임 기준 xy 선속도). 넓은 sigma가 초기 그래디언트를 보장",
+          "weight_hint": "+2.0 (Berkeley Humanoid Lite biped 12DOF) / +1.0 (Isaac Lab 베이스·Berkeley Humanoid) / 1.2 (humanoid-gym). 소형 12DOF는 +2.0 출발 권장"
+        },
+        {
+          "name": "track_ang_vel_z_exp",
+          "desc": "exp(-(cmd_yaw - omega_z)^2 / sigma^2), sigma^2=0.25",
+          "weight_hint": "+1.0 (BHL biped) / +2.0 (Isaac Lab G1) / +0.5 (베이스). +1.0 출발"
+        },
+        {
+          "name": "feet_air_time_positive_biped",
+          "desc": "단일지지(single stance) 상태 지속시간을 threshold(0.4s)로 clamp해 보상. reward *= (||cmd_xy||>0.1) 게이팅 — 서기 함정과 제자리 호핑 동시 차단 (Isaac Lab mdp/rewards.py 구현)",
+          "weight_hint": "+0.25, threshold 0.4s (G1) / BHL biped +1.0 / Berkeley Humanoid +2.0 (threshold 0.2~0.5s). 걷기가 안 나오면 +1.0까지 올렸다가 발현 후 감축"
+        },
+        {
+          "name": "feet_slide",
+          "desc": "-Σ ||v_foot_xy|| * contact (접지력 이력 norm>1.0N일 때 접촉 판정). 접지 중 발 미끄럼 페널티",
+          "weight_hint": "-0.1 (G1, BHL biped) / -0.25 (Berkeley Humanoid)"
+        },
+        {
+          "name": "flat_orientation_l2",
+          "desc": "projected gravity의 xy 성분 제곱합 페널티 (롤·피치 기울기)",
+          "weight_hint": "-2.0 (BHL biped) / -1.0 (G1). kd5 측방 오버슈트 문제상 -2.0 출발 권장, 험지 전환 시 완화"
+        },
+        {
+          "name": "lin_vel_z_l2",
+          "desc": "베이스 z속도 제곱 페널티 (바운싱 억제)",
+          "weight_hint": "-0.1 (BHL biped) / -2.0 (Isaac Lab 베이스, G1은 0.0). 소형은 -0.1~-0.5"
+        },
+        {
+          "name": "ang_vel_xy_l2",
+          "desc": "베이스 롤·피치 각속도 제곱 페널티 — 저댐핑에서 측방 진동 억제에 직접 기여",
+          "weight_hint": "-0.05 (전 소스 공통). kd5 제약상 -0.1까지 상향 시도 가치"
+        },
+        {
+          "name": "action_rate_l2",
+          "desc": "||a_t - a_{t-1}||^2 페널티. 저 kd에서 하드웨어가 못 잡는 고주파를 정책 차원에서 차단",
+          "weight_hint": "-0.01 출발 (Isaac Lab 베이스·BHL) / G1 -0.005. kd<=5 제약이면 -0.02~-0.05까지 강화 (진동 발생 시)"
+        },
+        {
+          "name": "action_smoothness_2nd",
+          "desc": "||a_t - 2a_{t-1} + a_{t-2}||^2 (2차 차분) + 0.05*Σ|a| — humanoid-gym _reward_action_smoothness. 1차만으로 못 잡는 저주파 떨림 억제",
+          "weight_hint": "-0.002 (humanoid-gym). 저 kd 로봇엔 필수급"
+        },
+        {
+          "name": "joint_torques_l2",
+          "desc": "Σ tau^2 페널티. 25Nm 소형 로봇은 대형 휴머노이드 계수를 그대로 쓰면 무의미하게 작음",
+          "weight_hint": "-2.0e-3 (BHL biped, 소형 스케일) / -1e-5 (대형 기준 Isaac Lab·humanoid-gym). 소형이므로 -1e-4~-2e-3 범위에서 시작"
+        },
+        {
+          "name": "joint_acc_l2",
+          "desc": "Σ qddot^2 페널티",
+          "weight_hint": "-1.0e-6 (BHL biped) / -1.25e-7 (G1 hip·knee) / -2.5e-7 (베이스)"
+        },
+        {
+          "name": "joint_vel_l2",
+          "desc": "Σ qdot^2 페널티 — 저 kd에서 정책이 스스로 관절을 감쇠하도록 유도하는 '수동 댐핑 대체' 항",
+          "weight_hint": "-5e-4 (humanoid-gym dof_vel). kd5 제약이면 생략하지 말 것"
+        },
+        {
+          "name": "joint_deviation_hip_l1",
+          "desc": "hip yaw·roll의 기본자세 대비 L1 편차 페널티 — 다리 벌어짐/꼬임 방지, 측방 안정성",
+          "weight_hint": "-0.2 (BHL biped) / -0.1 (G1)"
+        },
+        {
+          "name": "joint_deviation_ankle_roll_l1",
+          "desc": "ankle roll 기본자세 편차 L1 — 전후 대칭발이라 롤 자세만 잡으면 됨 (푸시오프 셰이핑 불필요)",
+          "weight_hint": "-0.2 (BHL biped)"
+        },
+        {
+          "name": "dof_pos_limits",
+          "desc": "소프트 관절한계 침범량 페널티 (특히 ankle)",
+          "weight_hint": "-1.0 (G1 ankle, BHL biped)"
+        },
+        {
+          "name": "termination_penalty",
+          "desc": "전도/비정상 종료 시 1회성 페널티",
+          "weight_hint": "-10.0 (BHL biped, 소형에 적합) / -200.0 (G1). 소형은 -10~-50 출발"
+        },
+        {
+          "name": "undesired_contacts",
+          "desc": "발 이외 링크(무릎·허벅지·베이스)의 접촉력>1.0N 페널티",
+          "weight_hint": "-1.0 (전 소스 공통)"
+        },
+        {
+          "name": "feet_contact_forces",
+          "desc": "접지력이 임계 초과 시 초과분 페널티 — 착지 충격 완화, 저댐핑 진동 가진원 축소",
+          "weight_hint": "-0.01 (humanoid-gym). van Marum도 접지충격 축소를 차기 과제로 지목"
+        },
+        {
+          "name": "stand_still_joint_deviation_l1",
+          "desc": "joint_deviation_l1 * (||cmd_xy||<0.06) — 명령이 0일 때만 기본자세 편차 페널티 (Isaac Lab 구현). 서기 모드를 별도 보상 없이 처리",
+          "weight_hint": "-0.1~-0.2. 커리큘럼 후반 zero-command 도입 시 활성화"
+        },
+        {
+          "name": "feet_distance / knee_distance",
+          "desc": "좌우 발/무릎 간격이 최소값 미만이면 페널티 (humanoid-gym) — 다리 교차 방지, 측방 전도 억제",
+          "weight_hint": "+0.2 각각 (humanoid-gym, exp형 보상)"
+        },
+        {
+          "name": "base_height",
+          "desc": "exp(-|h - h_target| * 100) (스탠스발 평균 기준 상대높이, humanoid-gym) 또는 L2 페널티. 무릎 굽혀 주저앉기 방지",
+          "weight_hint": "+0.2 (humanoid-gym)"
+        },
+        {
+          "name": "(옵션) gait_phase_contact",
+          "desc": "humanoid-gym _reward_feet_contact_number: sin(2π·phase) 부호로 기대 스탠스발 정의, 접촉 일치 +1.0/불일치 -0.3. 걷기 부트스트랩용 게이트 클록",
+          "weight_hint": "+1.2 (humanoid-gym). 단 van Marum 2024는 클록이 서기 시 외란대응을 저해한다고 명시 — 초기 발현용으로만 쓰고 후반 어닐링 권장"
+        },
+        {
+          "name": "(옵션) single_foot_contact",
+          "desc": "van Marum 2024: cmd≠0일 때 '정확히 한 발 접촉'이면 보상, cmd=0이면 상수 1. 클록 없이 호핑 대신 걷기를 만드는 가장 신뢰성 높은 항이라 결론",
+          "weight_hint": "0.1 (van Marum Table I). 클록 프리 레시피를 원하면 gait_phase 대신 이것"
+        }
+      ],
+      "obs_space": [
+        "[액터] velocity_commands (3): cmd_vx, cmd_vy, cmd_wz — 50Hz 정책 기준",
+        "[액터] base_ang_vel (3): IMU 자이로, 노이즈 U(-0.2,0.2)~(-0.3,0.3) (Isaac Lab / BHL biped)",
+        "[액터] projected_gravity (3): IMU 자세에서 유도, 노이즈 U(-0.05,0.05) — base_lin_vel은 실물에서 추정 불가하므로 액터에서 제외 (Berkeley Humanoid Lite 방식)",
+        "[액터] joint_pos 상대값 (12): q - q_default, 노이즈 U(-0.01,0.01)~(-0.05,0.05)",
+        "[액터] joint_vel (12): 노이즈 U(-1.5,1.5)~(-2.0,2.0) — 저 kd에서 정책이 능동 댐핑을 하려면 필수 입력",
+        "[액터] last_action (12): 직전 정책 출력",
+        "[액터 옵션] sin/cos 게이트 위상 (2): 클록 보상을 쓸 때만 (humanoid-gym; phase = t/cycle_time)",
+        "[액터] 프레임 스태킹: humanoid-gym은 액터 관측 이력 deque 스태킹 사용 (수 프레임~15프레임). 지연·저댐핑 동역학 추정에 유리하므로 5~15스텝 이력 권장. Berkeley Humanoid Lite는 이력 없이 단일 프레임+저주파(25Hz)로도 성공 — 최소구성 대안",
+        "[크리틱 특권] 액터 관측 전체 (노이즈 없는 원본)",
+        "[크리틱 특권] base_lin_vel (3): 시뮬 진짜 값",
+        "[크리틱 특권] push force (2) + push torque (3): 현재 인가 중인 외란 (humanoid-gym)",
+        "[크리틱 특권] friction 계수, base 추가질량/질량스케일, PD 게인 스케일 등 DR 샘플값",
+        "[크리틱 특권] stance mask (2) + contact mask (2): 발 접촉 상태 (humanoid-gym)",
+        "[크리틱 특권] 접지력 벡터, (클록 사용 시) 레퍼런스 대비 관절오차 (12)",
+        "[크리틱] 별도 이력 스태킹 (humanoid-gym: critic 전용 deque)"
+      ],
+      "dr_ranges": [
+        {
+          "param": "지면 마찰 (static/dynamic)",
+          "range": "0.2~1.25 (Berkeley Humanoid) / 0.1~2.0 (humanoid-gym) / 0.4~1.2 (BHL biped). 권장 출발: 0.4~1.2, 안정화 후 0.2~1.25",
+          "why": "실내외 바닥 편차. 너무 이르게 0.1까지 내리면 발현 자체가 안 됨"
+        },
+        {
+          "param": "베이스 추가질량",
+          "range": "-1.0~+1.0kg (Berkeley Humanoid) / -1.0~+2.0kg (BHL biped). 대형용 ±5kg를 소형에 복사하지 말 것",
+          "why": "배터리·배선·상체 부재 오차. 로봇 총질량 대비 ~10% 스케일"
+        },
+        {
+          "param": "링크 질량 스케일",
+          "range": "0.9~1.1배 (Berkeley Humanoid)",
+          "why": "CAD 대비 실물 부품 질량 오차"
+        },
+        {
+          "param": "베이스 CoM 오프셋",
+          "range": "x,y ±0.05m, z ±0.01m (Isaac Lab 베이스)",
+          "why": "상체 없는 구조라 CoM 추정 오차가 자세 제어에 직결"
+        },
+        {
+          "param": "외란 푸시 (interval)",
+          "range": "속도 임펄스 ±0.2 m/s에서 시작해 ±0.5 m/s로 램프, 주기 4s (humanoid-gym) ~ 10-15s (Isaac Lab). van Marum은 20~200N, 200~500ms 지속 3축",
+          "why": "복원 스텝 학습. kd5에서는 초기부터 강하게 주면 안정화 실패 — 커리큘럼 램프 필수"
+        },
+        {
+          "param": "PD 게인 스케일 (kp·kd 동시)",
+          "range": "0.8~1.2배 (BHL biped actuator gains) — 반드시 실물 게인(kd<=5)을 중심값으로",
+          "why": "드라이버 게인 구현 오차·전압 강하. 저 kd 전이의 핵심 랜덤화"
+        },
+        {
+          "param": "관절 armature(로터 관성) 스케일",
+          "range": "1.0~1.05배 (Berkeley Humanoid) — 실측 armature를 먼저 넣고 좁게 랜덤화",
+          "why": "기어드 모터의 반사관성은 물리적 댐핑 역할. kd가 낮을수록 armature 정확도가 안정성을 좌우"
+        },
+        {
+          "param": "관절 마찰(viscous+Coulomb) 스케일",
+          "range": "0.9~1.1배 (Berkeley Humanoid). 실측 후 중심값 설정 (arXiv 2509.06342 방식: 관절별 armature·점성마찰·쿨롱마찰·바이어스·전역지연 피팅)",
+          "why": "저 kd에서 기어 마찰이 사실상 댐퍼 — 미모델 시 시뮬이 과안정"
+        },
+        {
+          "param": "액션/관측 지연",
+          "range": "0~2 제어틱 (50Hz 기준 0~40ms) 랜덤. humanoid-gym action_delay 0.5틱, 실측 스택 지연(예: 제어기 15-19ms + 서보 3ms)을 중심으로",
+          "why": "지연은 저댐핑계에서 위상지연→발산 가진. 실측 후 ± 랜덤화"
+        },
+        {
+          "param": "기본자세 오프셋",
+          "range": "관절당 ±0.05 rad (Berkeley Humanoid·BHL)",
+          "why": "조립 영점 오차"
+        },
+        {
+          "param": "관측 노이즈",
+          "range": "ang_vel ±0.2~0.3, gravity ±0.05, q ±0.01~0.05, qdot ±1.5~2.0 (Isaac Lab / BHL)",
+          "why": "IMU·엔코더 노이즈. 학습 시 켜고 플레이 시 끄기"
+        },
+        {
+          "param": "리셋 상태 랜덤화",
+          "range": "관절 초기위치 기본값의 0.5~1.5배 스케일, 베이스 속도 6축 ±0.5 (Isaac Lab·Berkeley Humanoid)",
+          "why": "매 에피소드를 '이미 움직이는' 상태에서 시작 — 서기 함정 회피에도 기여"
+        },
+        {
+          "param": "토크 한계·토크-속도 곡선",
+          "range": "25Nm 하드리밋 + 실측 속도-토크 감쇠를 시뮬에 고정 반영 (랜덤화보다 정합 우선), 여유 있으면 0.9~1.0배 스케일",
+          "why": "BHL은 실증에서 토크한계의 30%만 사용 — 한계 자체보다 곡선 정합이 중요"
+        },
+        {
+          "param": "슬루 리밋",
+          "range": "4deg/tick을 시뮬 액션 후처리에 고정 구현 (랜덤화 대상 아님, 정합 대상)",
+          "why": "미반영 시 정책이 도달 불가능한 스텝 명령을 학습 — 실물에서 지연처럼 작용해 전도"
+        }
+      ],
+      "curriculum": "명령 커리큘럼: (1단계) 전진 위주 비영 명령만 — lin_vel_x ∈ (0, 0.5), lin_vel_y = 0, ang_vel_z ∈ (-0.5, 0.5), 최소 속도 0.3m/s 데드존(그 이하 명령은 샘플하지 않음). G1 레시피도 x∈(0,1.0), y=0으로 전진 전용 (Isaac Lab g1 rough_env_cfg). 명령 재샘플 주기 10s (Isaac Lab), van Marum은 명령 유지 구간을 [100,300] 스텝으로 늘리는 것이 강건성에 유리하다고 보고. (2단계) 트래킹 보상이 최대치의 ~80% 도달 시 lin_vel_y ∈ (-0.25, 0.25), yaw ±1.0으로 확장 (BHL biped 최종 범위: x ±0.5, y ±0.25, yaw ±1.0 — 소형 12DOF 현실적 상한). (3단계) zero-command(서기) 에피소드를 10~20% 혼합하고 stand_still_joint_deviation 활성화 — van Marum 방식대로 cmd=0 모드에서는 발접촉 관련 페널티를 끄고 복원 스텝을 허용. 푸시 커리큘럼: ±0.2m/s에서 시작, 걷기 발현 후 ±0.5m/s + 주기 단축(15s→4s). 지형: 평지 고정으로 시작, 필요 시 저높이 랜덤 요철만 (BHL은 평지 plane으로 zero-shot 성공). 종료조건: (a) 베이스/힙 링크 접촉력>1.0N 즉시 종료, (b) 자세각 한계 0.78rad(≈45°) 초과 종료 (BHL biped bad_orientation limit_angle=0.78 — kd5 측방 오버슈트 감시에 그대로 유효), (c) time_out 20s. 종료 페널티 -10 (소형 기준, G1은 -200). 클록 보상을 부트스트랩으로 쓴 경우 2단계부터 가중치를 절반씩 어닐링하고 single_foot_contact 또는 air_time 계열로 대체.",
+      "low_kd_strategies": [
+        "게인 정합 학습 (최우선): 시뮬 PD를 실물 배포값(kp 실측, kd<=5)으로 맞춰 처음부터 그 동역학에서 학습한다. kd25로 검증된 정책을 kd5로 내리는 것은 배포 디테일이 아니라 동역학 변경이며, 현재 겪은 측방 오버슈트 전도가 그 전형 증상. Berkeley Humanoid 계열은 실물 게인 그대로 시뮬에 넣고 0.8~1.2배만 랜덤화 (BHL biped env_cfg)",
+        "물리 댐핑 정합: kd가 못 주는 감쇠를 armature(반사 로터관성)·점성마찰·쿨롱마찰이 실제로 제공한다. 관절별 armature/damping/friction/바이어스/전역지연을 실기 데이터로 피팅하면 zero-shot 전이가 된다는 계통 보고 (arXiv 2509.06342). Berkeley Humanoid는 실측 armature 기반 1.0~1.05배 랜덤화",
+        "액추에이터 모델/네트워크: 이상적 PD 토크로 부족하면 (위치오차·속도 이력)→실측 토크 응답을 학습한 actuator net을 시뮬에 삽입 (Hwangbo et al. 2019, Science Robotics 'Learning agile and dynamic motor skills for legged robots'). 저가 드라이버의 전류제한·데드밴드까지 흡수 가능",
+        "정책의 능동 댐핑 유도: joint_vel_l2 (-5e-4, humanoid-gym) + joint_acc_l2 + action_rate_l2 강화(-0.01→-0.02~-0.05) + 2차 차분 smoothness (-0.002) — 하드웨어 kd 대신 정책이 감쇠를 생성하게 만든다. 관측에 joint_vel(+이력 스태킹)이 있어야 작동",
+        "액션 저역필터: 정책 출력에 EMA/저역필터(컷오프 ~5Hz)를 시뮬·실물 양쪽에 동일 삽입. 소형 로봇에서 Kp=20/Kd=1급 저게인 + 5Hz LPF 조합의 실전 보고 있음 (Quiet Walking, arXiv 2502.10983 계열 스택). 단 필터도 위상지연이므로 반드시 학습 중에도 적용",
+        "지연·슬루 정합: 실측 루프 지연을 시뮬에 넣고 0~2틱 랜덤화, 관절당 4deg/tick 슬루 리밋을 시뮬 액션 후처리로 동일 구현 — 저댐핑계는 위상지연에 가장 민감",
+        "접촉 충격 저감 보상: feet_contact_forces 페널티(-0.01)와 착지속도 페널티 — 충격이 저댐핑 측방 진동의 가진원이 되는 것을 차단 (Quiet Walking은 foot contact velocity 페널티를 -5→-25로 올려 저게인 보행 안정화)",
+        "측방 특화 보정: flat_orientation_l2 -2.0, ang_vel_xy_l2 강화, joint_deviation_hip/ankle_roll -0.2, feet/knee distance 보상으로 지지폭 확보 — kd5 측방 오버슈트에 직접 대응하는 항들",
+        "(옵션) 게인 스케일 액션: 정책이 관절별 게인 스케일을 함께 출력하되 kd 상한 5로 클램프 — 스윙은 낮게, 스탠스는 허용 상한까지 (Quiet Walking/DFM의 adaptive PD: P_i=P*+α·σ(x_i), D_i=D*+β·σ(x_i))",
+        "검증 절차: 시뮬에서 kd5 정합 모델로 재검증(사인 추종·외란 응답을 실기 로그와 겹쳐보기) 후 학습 시작 — 게인 정합 실험(브랜치 ebf6f42)의 실측 데이터를 시뮬 피팅에 재사용"
+      ],
+      "standing_trap_avoidance": [
+        "명령 게이팅된 에어타임 보상: feet_air_time(_positive_biped)에 ||cmd_xy||>0.1 게이트 (Isaac Lab 구현 그대로) — 서 있으면 이 보상을 0으로 만들어 '걷지 않으면 못 얻는 보상'을 명시적으로 존재시킴. biped 버전은 단일지지 시간만 보상해 제자리 양발 호핑도 차단",
+        "초기 커리큘럼에서 zero/저속 명령 배제: 최소 0.3m/s 데드존, 전진 전용 명령부터 (G1 레시피: x∈(0,1.0), y=0). 서기(cmd=0)는 걷기 발현 후 10~20%만 혼합",
+        "저속 페널티 명시: humanoid-gym _reward_low_speed — 실속도가 명령의 절반 미만이면 -1.0, 방향 반대면 -2.0, 일치 시 +1.2. '느리게 버티기' 전략의 기대값을 직접 음수로 만든다",
+        "리셋 랜덤화로 정지 상태 탈출: 관절 초기위치 0.5~1.5배 스케일 + 베이스 초기속도 ±0.5m/s (Isaac Lab/Berkeley Humanoid) — 에피소드가 이미 움직이며 시작하므로 '정지 유지'가 기본 상태가 아니게 됨",
+        "주기적 푸시: 4~15s 간격 속도 임펄스 — 서 있기만 하는 정책은 반드시 넘어져 종료 페널티를 받게 됨",
+        "단일접촉 보상 (클록 프리): van Marum 2024의 결론 — cmd≠0일 때 '정확히 한 발 접촉' 보상이 튜닝 없이 걷기를 만드는 가장 신뢰성 높은 방법. 클록 기반은 서기 시 외란대응을 저해하므로 기피",
+        "클록 부트스트랩 (최후 수단): 위 방법으로도 발현이 안 되면 humanoid-gym식 위상 레퍼런스(joint_pos 1.6 + feet_contact_number 1.2)로 스텝을 강제 주입 후 어닐링",
+        "트래킹 sigma를 넓게(sigma^2=0.25): 오차가 커도 그래디언트가 살아 있어 '조금 움직이면 조금 더 받는' 경사 형성 — sigma가 좁으면 서기와 걷기 시도의 보상 차가 0이 되어 함정 강화",
+        "페널티/보상 균형: 토크·액션 페널티를 초기부터 강하게 걸면 '아무것도 안 하기'가 최적이 됨 — 정규화 항은 걷기 발현 후 단계적으로 올리고, 총 보상은 생존 시 양수 우세로 유지"
+      ],
+      "pitfalls": [
+        "kd25로 학습/검증 후 kd5로 배포 (현재 겪은 실패 그 자체): 게인은 폐루프 동역학의 일부다. 학습·검증·배포 게인을 처음부터 일치시키고 ±20%만 랜덤화할 것",
+        "전후 대칭 발에 인체식 보상 이식: 토우오프/푸시오프·발끝 정렬류 셰이핑은 역효과 (사용자 실측 확인). ankle pitch 셰이핑 대신 flat-foot 접촉 유지 + ankle roll 편차 페널티로 대체",
+        "대형 휴머노이드 가중치 무스케일 복사: 토크 페널티 -1e-5(대형)를 소형에 쓰면 사실상 0 — BHL biped는 -2e-3. 질량 랜덤화 ±5kg도 소형엔 ±1kg급으로 축소",
+        "4deg/tick 슬루 리밋 미모델: 시뮬에 없으면 정책이 실물에서 포화되는 액션을 학습 — 포화는 추가 지연처럼 작용해 저댐핑 전도를 촉발",
+        "에어타임 보상 무게이팅: ||cmd|| 게이트 없으면 제자리 호핑 또는 서기 상태에서의 보상 착취 발생",
+        "액터 관측에 base_lin_vel 포함: 실물에 오도메트리가 없으면 추정 불가 — 크리틱 특권 관측으로만 (Berkeley Humanoid Lite는 자이로+중력벡터만으로 성공)",
+        "관측 노이즈·DR을 끄고 학습하거나, 반대로 발현 전부터 마찰 0.1·강푸시 적용: 발현→강건화 순서를 지킬 것",
+        "트래킹 exp의 sigma 과소: 그래디언트 소실로 서기 함정 강화",
+        "종료 페널티 극단값: 너무 크면(-200을 소형에) 과보수적 종종걸음, 너무 작으면 '넘어지며 전진'을 학습",
+        "저역필터를 실물에만 추가: 학습에 없던 위상지연이 배포에서 추가되어 저 kd 진동 유발 — 필터는 시뮬·실물 동일 적용",
+        "클록 보상 영구 유지: van Marum 결론대로 서기 외란대응 저해 — 부트스트랩 후 어닐링",
+        "pycache/설정 스테일 재로드 (프로젝트 기지 이슈): 보상 가중치 변경 후 반드시 클린 재시작으로 반영 확인"
+      ],
+      "sources": [
+        "Isaac Lab velocity env 베이스 cfg (보상·DR·관측·종료 수치): https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/velocity_env_cfg.py",
+        "Isaac Lab G1 rough cfg (biped 가중치 오버라이드): https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/config/g1/rough_env_cfg.py",
+        "Isaac Lab mdp/rewards.py (feet_air_time_positive_biped·feet_slide·stand_still 게이팅 0.1/0.06 구현): https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/mdp/rewards.py",
+        "humanoid-gym 보상 스케일·DR·노이즈 (XBotL config): https://github.com/roboterax/humanoid-gym/blob/main/humanoid/envs/custom/humanoid_config.py",
+        "humanoid-gym 보상 구현·위상클록·특권관측 (XBotL env): https://github.com/roboterax/humanoid-gym/blob/main/humanoid/envs/custom/humanoid_env.py",
+        "van Marum et al. 2024, Revisiting Reward Design and Evaluation for Robust Humanoid Standing and Walking (IROS): https://arxiv.org/abs/2404.19173 (본문 https://arxiv.org/html/2404.19173v2, 프로젝트 https://b-vm.github.io/Robust-SaW/)",
+        "Berkeley Humanoid 논문: https://arxiv.org/abs/2407.21781 / 학습 코드 (보상·DR 실수치 확인): https://github.com/HybridRobotics/isaac_berkeley_humanoid (exts/berkeley_humanoid/.../velocity/velocity_env_cfg.py)",
+        "Berkeley Humanoid Lite 논문 (25Hz 정책, zero-shot, 토크 30% 사용): https://arxiv.org/abs/2504.17249 / 12DOF biped 태스크 코드: https://github.com/HybridRobotics/Berkeley-Humanoid-Lite (source/.../velocity/config/biped/env_cfg.py, Velocity-Berkeley-Humanoid-Lite-Biped-v0)",
+        "저게인·정숙 보행 (Kp=20/Kd=1급 + 5Hz LPF, adaptive PD, 접촉속도 페널티 -25): Learning Quiet Walking for a Small Home Robot, https://arxiv.org/abs/2502.10983",
+        "계통적 sim2real (관절별 armature·점성/쿨롱마찰·지연 피팅으로 zero-shot): https://arxiv.org/abs/2509.06342",
+        "액추에이터 네트워크 원전: Hwangbo et al. 2019, Learning agile and dynamic motor skills for legged robots, Science Robotics (doi:10.1126/scirobotics.aau5872)",
+        "오프폴리시 고속 레시피 참고 (미니멀 보상): Learning Sim-to-Real Humanoid Locomotion in 15 Minutes, https://arxiv.org/abs/2512.01996"
+      ]
+    },
+    "robot": {
+      "urdf_path": "원본: /home/ryu/humanoid_leg_test1/URDF12DOF/urdf/newURDF12DOF.urdf (SolidWorks exporter 산출, 메시 경로 = package://newURDF12DOF/meshes/<link>.STL). Isaac 임포트용 사본: /home/ryu/humanoid_leg_test1/isaacsim_scene/newURDF12DOF_isaac.urdf — 유일한 차이는 메시 filename을 절대경로 /home/ryu/humanoid_leg_test1/URDF12DOF/meshes/<link>.STL 로 재작성한 것(그 외 722줄 동일). 메시 13개 STL: /home/ryu/humanoid_leg_test1/URDF12DOF/meshes/. 주의: 12관절 전부 type=\"continuous\"이고 limit이 lower=0 upper=0 effort=0 velocity=0(또는 limit 태그 자체 없음: right_hip_r/right_knee/right_ankle_f/right_ankle_r) → URDF에는 관절 리밋·토크 리밋이 사실상 없음. 리밋은 config/sim_joint_limits.json, 토크 상한은 config/sim_dynamics.json(25Nm)이 관할하며 임포터는 effort=0을 maxForce=무한대로 둠.",
+      "joint_names_order": [
+        "left_hip_f_joint",
+        "left_hip_a_joint",
+        "left_hip_r_joint",
+        "left_knee_joint",
+        "left_ankle_f_joint",
+        "left_ankle_r_joint",
+        "right_hip_f_joint",
+        "right_hip_a_joint",
+        "right_hip_r_joint",
+        "right_knee_joint",
+        "right_ankle_f_joint",
+        "right_ankle_r_joint"
+      ],
+      "anat_sign_map": "sim_session.py ANAT_SIGN (같은 해부학 동작을 낼 때의 부호; joint_direction 파일 실측 검증 2026-07-18): hip_flexion→hip_f_joint {left:+1,right:-1}; hip_abduction→hip_a_joint {left:-1,right:+1}; hip_ext_rot→hip_r_joint {left:+1,right:-1}; knee_flexion→knee_joint {left:-1,right:+1}; dorsiflexion→ankle_f_joint {left:+1,right:-1}; eversion→ankle_r_joint {left:+1,right:+1} ← ankle_r만 좌우 '같은' 부호(유일한 예외; URDF 축이 left 0 0 1 / right 0 0 -1 로 미러돼 있어서). 원시 부호 의미(joint_direction 파일, /home/ryu/humanoid_leg_test1/joint_direction): left_hip_f +flexion/-extension, left_hip_a +adduction/-abduction, left_hip_r +external/-internal, left_knee +extension/-flexion, left_ankle_f +dorsiflexion/-plantarflexion, left_ankle_r +eversion/-inversion; right_hip_f +extension/-flexion, right_hip_a +abduction/-adduction, right_hip_r +internal/-external, right_knee +flexion/-extension, right_ankle_f +plantarflexion/-dorsiflexion, right_ankle_r +eversion/-inversion. 좌표계: 전방=월드 -Y, 후방=+Y, 로봇왼쪽=+X, 위=+Z. 헬퍼: anat(side, action, amount_rad) -> (관절이름, 부호부여값).",
+      "joint_limits": "config/sim_joint_limits.json limits_deg (2026-07-18 Isaac 자기충돌 ON 스윕 실측+해부학, self_collision_required=true). deg [lower,upper] / rad 환산(×π/180): left_hip_f [-30.0,100.0] = [-0.5235987755982988, 1.7453292519943295] (lower=extension); right_hip_f [-100.0,30.0] = [-1.7453292519943295, 0.5235987755982988] (lower=flexion); left_hip_a [-35.0,13.9] = [-0.6108652381980153, 0.2426007660272118] (upper=adduction, 충돌 16.9°-3 마진); right_hip_a [-14.2,35.0] = [-0.2478367537831948, 0.6108652381980153] (lower=adduction, 충돌 17.2°-3); left_hip_r [-30.0,30.0] = [-0.5235987755982988, 0.5235987755982988]; right_hip_r 동일; left_knee [-120.0,5.0] = [-2.0943951023931953, 0.08726646259971647] (lower=flexion); right_knee [-5.0,120.0] = [-0.08726646259971647, 2.0943951023931953] (upper=flexion); left_ankle_f [-45.0,30.0] = [-0.7853981633974483, 0.5235987755982988] (lower=plantarflex); right_ankle_f [-30.0,45.0] = [-0.5235987755982988, 0.7853981633974483] (lower=dorsiflex); left_ankle_r [-20.0,20.0] = [-0.3490658503988659, 0.3490658503988659] (lower=inversion,upper=eversion); right_ankle_r 동일. 경고: hip_a 내전 충돌각은 반대다리 중립 기준 — 양다리 동시 내전 시 ±9.4°에서 먼저 충돌 → 학습 환경에서도 자기충돌 ON 필수. 스윕 원시값: hip_f ±147 자유, hip_r ±148.6, knee ±148.2, ankle_f ±112, ankle_r +116/-126.",
+      "sim_gains": "config/sim_dynamics.json (provisional=true): sim_gains.default kp=250.0, kd=25.0 (PhysX 드라이브, 단위 Nm/rad, Nm·s/rad — 전 관절 균일; Session.attach()가 적용). torque_limit_nm=25.0 (AK70-10 근거, set_max_efforts로 적용 — URDF effort=0이라 필수). physics: dt=0.016666667 (60Hz), gravity_mps2=-9.81. standing_pose.ankle_dorsiflexion_offset_rad=0.0244 (자유베이스 직립 트림, lean_ap 3.46°→-0.02°; 부호 left ankle_f +, right ankle_f -). 참고: 실물 하드웨어맵 MIT 게인(kp15~30/kd1~2)은 PhysX 1:1 이식 시 기립 불가(발목 중력모멘트 ~34Nm/rad) — sim_gains는 별도 튜닝값.",
+      "real_constraints": "(1) MIT 프로토콜 한계 (sim_dynamics.json sim2real_gain_experiment_2026_07_18.protocol_limits): kp_max=500.0, kd_max=5.0, tau_max=25.0 [Nm]. 병목은 kd<=5 (시뮬 보행은 kd25 사용). (2) Stage8 노드 (real_bridge.py 상수): NODE_TICK_HZ=50.0, NODE_SLEW_DEG_PER_TICK=4.0, SAFETY_MAX_DELTA_DEG=30.0 (SafetyFilter), 토픽 /humanoid/stage8_12axis_mit_command, 페이로드 {\"command\":\"SET_JOINT_TARGET\",\"joint\":이름,\"target_deg\":상대각} 단일 관절만(멀티관절 거부), 각도=베이스라인 대비 상대각 [deg]. 브리지 기본 stream_hz=12.5, deadband_deg=0.2, 슬루 용량=4°×(50/stream_hz)×0.9. 변환: tape deg = 시뮬 rad×180/π×direction×sign (하드웨어맵, 현재 전부 +1). (3) 하드웨어맵 실물 게인 (robot_12dof_hardware_map.json): hip_f/knee kp30 kd2.0, hip_a kp25 kd2.0, hip_r/ankle_f kp20 kd1.5, ankle_r kp15 kd1.0; target_limit_deg=hard_limit_deg=180.0; motor_id 1~12 (좌1-6, 우7-12). (4) sim2real_gain_experiment_2026_07_18 findings 전문: 하드웨어맵 초기 게인 그대로면 기립 불가(후방 전도), 2배(발목 kp40)부터 기립; kd=5 고정+kp{100,150,250} 전부 보행 실패 — 측방 체중이동 오버슈트(롤 명령 3.5°→32° 도달) 전도; 완화(명령 0.09~0.11rad 축소/lean 2.0~2.4s 감속/lat_kd 0.08) 최고 6.3s/2보 후 전도 미해결; 관절 마찰 0.5/2.0Nm 추가(기어박스 모사) 미해결(스틱슬립 시프트 악화); 중력보상 tau_ff는 Isaac get_generalized_gravity_forces가 부동베이스에서 비물리값 반환 → 시뮬 검증 불가, 수동 동역학 필요; 스탠딩·재트림은 kd=5 문제없음(kp60+ 기립, kp150 트림 후 직립 0.3°). real_deploy_guidance: now_possible=스탠딩+정적 체중이동(kp 60~150, kd 3~5, 트림 재캘리브레이션 필수); walking_needs_one_of=[캡처포인트 시프트 재설계, 수동 중력보상 tau_ff(MIT tau 필드), RL(kd<=5·tau<=25를 학습 제약으로 포함), 실물 자연감쇠 실측 후 시뮬 정합 재실험]; warning=시뮬 kd25 파라미터를 실물에 그대로 보내면 안 됨(kd 클램프 5로 전혀 다른 저댐핑 거동).",
+      "masses": "URDF inertial (kg, 13링크, CoM·풀 관성텐서 완비, SolidWorks 좌우대칭): pelvis 3.54036668275575; left_hip_f_joint 0.393578984491956; left_hip_a_joint 0.632623778007109; left_hip_r_joint 0.581468457020583; left_knee_joint 0.602009778953134; left_ankle_f_joint 0.486119247655161; left_ankle_r_joint 0.50489357707771; right_hip_f_joint 0.393578984491956; right_hip_a_joint 0.632623778007108; right_hip_r_joint 0.581468457020582; right_knee_joint 0.602009778953135; right_ankle_f_joint 0.48130619869307; right_ankle_r_joint 0.504893577077711. 총합 9.936941280204964 kg (sim_dynamics 감사값 9.937 일치). 미모델링: 펠비스 상부 젯슨/카메라 질량 (추후 URDF 교체 예정 — RL 학습 시 질량 랜덤화 고려 대상).",
+      "foot_geometry": "발 링크 = ankle_r 링크 (URDF 링크명 left_ankle_r_joint / right_ankle_r_joint; USD /World/newURDF12DOF/{left,right}_ankle_r_joint). URDF collision = 프리미티브 아님, visual과 동일한 풀 STL 메시(25359 삼각형; 좌우 STL 바이트 단위 동일 bbox). 링크 프레임(=ankle_r 관절 원점) 기준 STL 실측: 전체 bbox X [-0.04311685, 0.04223306] (폭 0.0853499), Y [-0.05, 0.0348507], Z [-0.0803, 0.0997] (길이 0.18). 밑창 평면 = Y=-0.05 (관절이 밑창 위 50mm — obs foot_z 접지값 ≈0.050과 일치). 밑창 플레이트: 길이 0.18 m (링크 Z), 폭 0.078 m (X -0.038875~+0.039125). 전후 방향: 링크 +Z = 로봇 전방(-Y 월드; 임포트 시 pelvis X+90° 회전 기준) → 관절 기준 앞쪽 99.7mm / 뒤쪽 80.3mm. 즉 밑창 플레이트 자체는 전후 대칭 직사각형이고 발목 투영점이 플레이트 중심에서 9.7mm 뒤에 있음. README(실측)는 '발이 전후 대칭이라 인체식 푸시오프가 역효과'라고 명시 — RL 보상 설계 시 푸시오프 유도 금지 참고.",
+      "policy_interface_contract": "sim_walking/policy_interface.py — runner.run_gait()가 정책 객체를 덕 타이핑으로 사용. 필수: targets(t: float) -> {관절이름: 목표각[rad]} — 12관절 전부, 60Hz 호출 (runner FPS=60, t = frame/60.0). 선택: lat_ref(t) -> float — 의도된 골반 롤[deg] (+왼쪽; 측방 피드백 기준값); observe(obs: dict) — obs_every=2프레임마다(30Hz) 호출(폐루프 정책용); reset() — 에피소드 시작 시. obs 스키마(build_obs(session,t)가 생성): t[s]; pelvis_z/x/y [m] (전진=-y); lean_ap [deg, +뒤로]; lean_lat [deg, +왼쪽=+X]; yaw [deg]; foot_z {left,right} [m] (바닥 접지≈0.050); joint_pos {관절이름:rad}; joint_vel {관절이름:rad/s}. 규약: 관절 이름은 robot_12dof_hardware_map.json의 12개와 동일, 부호는 joint_direction 실측 기준(해부학 변환=ANAT_SIGN), 리밋은 sim_joint_limits.json. runner 처리 순서(프레임당): observe(30Hz) → tg=targets(t) → balance=True면 BalanceFeedback.apply(tg, lat_ref)가 tg에 가산 보정(발목 P+I: bal_kp*lean_ap+적분, clamp 0.10; hip_a P+D: -(lat_kp*(lean_lat-lat_ref)+lat_kd*rate), clamp 0.15; hip_r P: yaw_kp*yaw, clamp 0.12; 상태 샘플 30Hz) → s.cmd(named=tg) (rad 위치목표, 이름 키, 미지정 관절은 직전 목표 유지; efforts 인자로 tau_ff[Nm] 피드포워드 가능) → s.step(1). 낙상 판정 s.fallen(): pelvis_z<0.45 or |lean_ap|>30 or |lean_lat|>30.",
+      "fsm_api": "gait_static.StaticGait — 순수 파이썬, Isaac 없이 호출 가능 확인: 모듈 import는 math/dataclasses + from .sim_session import ANAT_SIGN 뿐이고, sim_session의 모듈 레벨 import는 json/os/numpy만(Isaac import는 전부 메서드 내부) → 벡터화 RL 환경에서 참조궤적 교사로 사용 가능. 단 t는 스칼라(넘파이 벡터화 아님) — env별/스텝별 호출 방식. 생성: StaticGait(p: StaticGaitParams=None, num_steps=None, stop_dur=1.5). API: targets(t)->dict{12관절:rad}; lat_ref(t)->deg; swing_side(t)->\"left\"/\"right\"/None; request_stop(t_now)->정지확정시각; 내부 _locate(t)->(사이클n, 상태si 0..3, 위상u). 사이클=2*(lean_dur+step_dur) — 동결 파라미터로 5.2s (LEAN_L 1.6→STEP_R 1.0→LEAN_R 1.6→STEP_L 1.0). num_steps 지정 시 마지막 스텝 후 stop_dur 동안 직립 블렌드. _neutral_targets() (stance_knee_deg=6.0, dorsi_trim_rad=0.0244 기준 값): hip_f/hip_a/hip_r 전부 0.0; left_knee = -6°=-0.10471975511965977 rad, right_knee = +0.10471975511965977 rad (ANAT_SIGN knee_flexion 부호); left_ankle_f = +0.0244 rad, right_ankle_f = -0.0244 rad; ankle_r 0.0. 리밋 위반 없음은 smoke_test()(1600×10ms 샘플)로 자체 검증 가능. 주의: StaticGaitParams 클래스 기본값(lean_hip_rad 0.22, lean_roll_deg 6.0, lean_dur 1.2, step_dur 0.8)은 동결 검증값과 다름 — 교사로 쓸 때는 config/sim_walk_params.json의 gait 섹션을 명시적으로 로드해 주입할 것.",
+      "walk_params": "config/sim_walk_params.json (2026-07-18 동결, walk_scene.usd 60Hz 16s×2 재현: 전진 0.62~0.68m 8스텝, 낙상 0, final_yaw +2.1°). gait: lean_hip_rad 0.18, lean_roll_deg 3.5, lean_dur 1.6, step_dur 1.0, step_hip_deg 8.0, knee_lift_deg 30.0, hip_lift_deg 8.0, clear_deg 8.0, stance_knee_deg 6.0, dorsi_trim_rad 0.0244. feedback: bal_kp 0.010, bal_ki 0.03, bal_clamp 0.10, lat_kp 0.012, lat_kd 0.010, lat_clamp 0.15, yaw_kp -0.008, yaw_clamp 0.12. sim: fps 60, scene isaacsim_scene/walk_scene.usd. 튜닝 노트: bal_kp 0.016이면 과교정 전도; 잔여 제한 STEP 후반 lean_ap 피크 ~18°(회복됨), 측방 드리프트 ~0.14m/16s. 검증 성능(README): 36s 21보 1.0m 무낙상; 속도배율 0.8~1.1 PASS, 1.2 전도; 외란(0.15s 골반 힘) 측방 25N 복구, 후방 10N 복구/20N 전도, 전방 15N 전도 — RL 커리큘럼/보상 기준선으로 사용 가능.",
+      "usd_robot_prim": "/World/newURDF12DOF (sim_session.ROBOT_PATH; SingleArticulation 루트). PELVIS_PATH=/World/newURDF12DOF/pelvis (임포트 시 X축 +90° 회전 — roll 기준값 90°, lean 계산은 body-up 벡터 투영 사용). FOOT_LINKS=/World/newURDF12DOF/{left,right}_ankle_r_joint. isaacsim_scene/ USD 목록·역할: walk_scene.usd (보행 메인 씬 — leg12dof_scene.usd 참조 + PhysicsScene, sim_joint_limits 반영본, sim_walk_params의 지정 씬); leg12dof_scene.usd (로봇+지면 조립 씬, ground_base 참조); ground_base.usd (지면/베이스 씬); configuration/ground_base_{base,physics,robot,sensor}.usd (씬 구성 서브레이어 4종); newURDF12DOF_isaac/newURDF12DOF_isaac.usd (URDF 임포터 산출 로봇 에셋, configuration/newURDF12DOF_isaac_{base,physics,robot,sensor}.usd 서브레이어 구조); newURDF12DOF_isaac.urdf (절대경로 메시판 URDF). 참고: 하드웨어맵의 robot_prim_path=/World/URDF12DOF는 구 로봇 경로 — 시뮬은 newURDF12DOF 사용.",
+      "notes": [
+        "Isaac dof_names 순서 주의: sim_session은 순서를 하드코딩하지 않고 attach() 시 art.dof_names로 이름→인덱스 dict를 만들어 전부 이름 키로 접근한다. joint_names_order 필드는 하드웨어맵 isaac_dof_index 0~11 (좌 hip_f,hip_a,hip_r,knee,ankle_f,ankle_r → 우 동일) 기준이며, PhysX 임포터의 실제 dof 순서(브랜치 로봇은 보통 breadth-first)는 런타임에 art.dof_names로 반드시 재확인할 것 — RL 환경 포팅 시 관절 벡터 순서를 이 이름 리스트로 고정 매핑하는 것을 권장.",
+        "URDF 관절 축/원점 (RL 환경 자체 구축 시 필요): left_hip_f origin(0.071,0,0) axis(-1,0,0); right_hip_f origin(-0.071,0,0) axis(1,0,0); hip_a origin(±0.0725,0,0.019625) axis(0,0,-1) 양쪽; hip_r origin(0,-0.12405,-0.02) axis(0,1,0) 양쪽; left_knee origin(-0.02015,-0.15828,0.00035) axis(-1,0,0); right_knee origin(0.02015,-0.15828,-0.00035) axis(1,0,0); ankle_f origin(0,-0.236,0) axis left(-1,0,0)/right(1,0,0); left_ankle_r origin(0.02,-0.08245,-0.0105) axis(0,0,1); right_ankle_r origin(-0.01955,-0.08245,-0.0115) axis(0,0,-1). 대퇴(hip_r→knee) 0.15828m + 하퇴(knee→ankle_f) 0.236m, 힙 간격 0.142m(+어깨 0.0725×2).",
+        "Session.cmd() 단위: joint_positions rad(이름 키 named 또는 길이 nd 배열 absolute), efforts = 길이 nd 토크 피드포워드 [Nm] (MIT tau_ff 상당, 드라이브에 가산). telemetry() 반환: pelvis_z/x/y [m], lean_ap/lean_lat/yaw [deg], foot_z {left,right} [m], jvel_max [rad/s]. gravity_ff(clamp=25.0) [Nm]는 부동베이스에서 비물리값 이슈 있음(sim2real 실험 참조).",
+        "낙상/종료 판정 기준(RL 종료조건 후보): pelvis_z < 0.45 m 또는 |lean_ap| > 30° 또는 |lean_lat| > 30°. 접지 발 링크 z ≈ 0.050 m.",
+        "스텝 카운트 로직(runner.count_steps): 발 z가 롤링 베이스라인(2s 최솟값) 대비 +12mm 상승 후 이륙시점 베이스라인+5mm로 2.5s 내 복귀 + 해당 시점 스윙 명령 일치 — RL 평가 지표로 재사용 가능.",
+        "전진 방향 = 월드 -Y (forward_progress_m = -dy), 측방 드리프트 = dx(+X=왼쪽). 시뮬 60Hz 단일 레이트(물리 dt=1/60, 정책 targets 60Hz, 피드백/관측 샘플 30Hz).",
+        "real 이식용 RL 제약 요약: kd<=5, kp<=500(실용 60~250), tau<=25Nm, 실물 루프 50Hz + 슬루 4°/tick(=200°/s 상한), SafetyFilter 스텝당 30° 제한, 명령은 단일관절 상대각[deg]. sim_dynamics의 RL 로드맵 항목이 'RL (kd<=5, tau<=25를 학습 제약으로 포함)'을 명시.",
+        "게이트 FSM은 개루프이며 검증 보행은 반드시 BalanceFeedback(feedback.py)와 함께 돌아야 함 — 직립 유지에도 능동 밸런스 필요(피드백 정지 시 수 초 내 기울어짐). 교사-학생 증류 시 FSM targets + feedback 보정을 합친 최종 명령을 교사로 쓰는 것이 실거동과 일치.",
+        "관련 파일 절대경로: /home/ryu/humanoid_leg_test1/sim_walking/{sim_session,policy_interface,gait_static,runner,feedback,real_bridge}.py, /home/ryu/humanoid_leg_test1/config/{sim_walk_params,sim_joint_limits,sim_dynamics,robot_12dof_hardware_map}.json, /home/ryu/humanoid_leg_test1/joint_direction (파일), /home/ryu/humanoid_leg_test1/sim_walking/README.md."
+      ]
+    }
+  },
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Research"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "research:install",
+      "phaseIndex": 1,
+      "phaseTitle": "Research",
+      "agentId": "acbd0a6d2efc20aa9",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1784396716455,
+      "queuedAt": 1784396716441,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "v2.3.2",
+      "promptPreview": "웹 리서치 과제: NVIDIA Isaac Lab을 Isaac Sim 5.1.0 **바이너리 설치본**(/home/ryu/isaacsim/isaac-sim-5.1.0, Ubuntu 22.04.5, RTX 5080 16GB Blackwell, driver 580.159.04) 위에 설치해 rsl_rl PPO로 커스텀 12DOF 이족보행 로봇을 헤드리스 학습시키는 정확한 절차를 조사하라.\n\n반드시 WebSearch/WebFetch로 2025-2026 공식 문서(isaac-sim.github.io/IsaacLab)와 GitHub 릴리즈 노트를 확인할 것. 특히:\n1. Isaac Sim 5.1과 호환되는 Isaac Lab의 정확한 버전 태그 (2.3.x? 2.4.x? 최신은?)\n2. conda 없이 Isaac Sim…",
+      "lastProgressAt": 1784396984370,
+      "tokens": 39187,
+      "toolCalls": 21,
+      "durationMs": 267914,
+      "resultPreview": "{\"isaaclab_version_tag\":\"v2.3.2\",\"compat_statement\":\"Isaac Sim 5.1 호환 라인은 Isaac Lab 2.3.x다. 근거: (1) v2.3.0 공식 릴리즈 노트 첫 문장 \\\"The Isaac Lab 2.3.0 release, built on Isaac Sim 5.1, delivers enhancements...\\\" (github.com/isaac-sim/IsaacLab/releases/tag/v2.3.0, 2025-10-28). (2) 최신 패치 v2.3.2(2026-02-02)의 source/isaaclab/setup.py classifiers에 \\\"Isaac Sim :: 4.5.0 / 5.0.0 / 5.1.0\\\"이 명시돼 있어 5.1.0 공식 지원이 확인됨…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "research:recipe",
+      "phaseIndex": 1,
+      "phaseTitle": "Research",
+      "agentId": "ac4378f4d13366098",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1784396716463,
+      "queuedAt": 1784396716441,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "명령 커리큘럼: (1단계) 전진 위주 비영 명령만 — lin_vel_x ∈ …",
+      "promptPreview": "웹+지식 리서치 과제: 12DOF 하체 전용(상체 없음) 소형 휴머노이드의 velocity-tracking 보행 RL 학습 레시피를 증류하라. 로봇 특성: 관절당 최대 25Nm, 발이 전후 대칭(인체식 푸시오프 역효과 확인됨), 실물 모터 드라이버는 kd<=5 제약(시뮬 검증 보행은 kd25였고 kd5로는 측방 오버슈트로 전도 — 이게 핵심 제약), 명령 50Hz, 관절당 슬루 4deg/tick.\n\nWebSearch/WebFetch로 다음을 확인해 종합하라:\n1. Isaac Lab의 G1/H1 velocity env 보상 구성 (source: isaac-sim/IsaacLab 리포의 velocity env mdp rewards)\n2. humanoid-gym (roboterax) 의 보상·DR 세트\n3. va…",
+      "lastProgressAt": 1784397129856,
+      "tokens": 44198,
+      "toolCalls": 24,
+      "durationMs": 413393,
+      "resultPreview": "{\"reward_terms\":[{\"name\":\"track_lin_vel_xy_exp\",\"desc\":\"exp(-||cmd_xy - v_xy||^2 / sigma^2), sigma^2=0.25 (요-프레임 기준 xy 선속도). 넓은 sigma가 초기 그래디언트를 보장\",\"weight_hint\":\"+2.0 (Berkeley Humanoid Lite biped 12DOF) / +1.0 (Isaac Lab 베이스·Berkeley Humanoid) / 1.2 (humanoid-gym). 소형 12DOF는 +2.0 출발 권장\"},{\"name\":\"track_ang_vel_z_exp\",\"desc\":\"exp(-(cmd_yaw - omega_z)^2 / sigma^2), sigma^2=0.25\",\"weight_hint\":\"+1…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 3,
+      "label": "research:robot-spec",
+      "phaseIndex": 1,
+      "phaseTitle": "Research",
+      "agentId": "a9cceb5419bc59e43",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1784396716470,
+      "queuedAt": 1784396716441,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "원본: /home/ryu/humanoid_leg_test1/URDF12DOF/urdf/newURDF12…",
+      "promptPreview": "리포 조사 과제 (읽기 전용): /home/ryu/humanoid_leg_test1 리포에서 RL 학습 환경 포팅에 필요한 로봇 스펙 전체를 추출하라. 웹 검색 불필요 — 파일만 읽어라.\n\n읽을 곳:\n- URDF: 리포 안에서 *.urdf 를 찾아라 (newURDF12DOF 관련). 링크 질량, 관절 리밋, 발 collision 지오메트리(전후 대칭 여부), 메시 경로 방식을 추출\n- sim_walking/sim_session.py: ROBOT_PATH, 관절 이름/순서, ANAT_SIGN 매핑, cmd()/telemetry() 단위\n- sim_walking/policy_interface.py: RL 정책 교체 경계의 정확한 계약 (메서드, 인자, 단위, 주기)\n- sim_walking/gait_static…",
+      "lastProgressAt": 1784397033082,
+      "tokens": 73463,
+      "toolCalls": 25,
+      "durationMs": 316612,
+      "resultPreview": "{\"urdf_path\":\"원본: /home/ryu/humanoid_leg_test1/URDF12DOF/urdf/newURDF12DOF.urdf (SolidWorks exporter 산출, 메시 경로 = package://newURDF12DOF/meshes/<link>.STL). Isaac 임포트용 사본: /home/ryu/humanoid_leg_test1/isaacsim_scene/newURDF12DOF_isaac.urdf — 유일한 차이는 메시 filename을 절대경로 /home/ryu/humanoid_leg_test1/URDF12DOF/meshes/<link>.STL 로 재작성한 것(그 외 722줄 동일). 메시 13개 STL: /home/ryu/humanoid_leg_test1/URDF12DOF/me…"
+    }
+  ],
+  "totalTokens": 156848,
+  "totalToolCalls": 70
+}

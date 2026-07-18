@@ -1,0 +1,63 @@
+12관절 부호 규약 실측 프로브 (중력 OFF, 루트 동결)
+델타는 '해부학적 기대 방향' — 측정이 기대와 맞으면 규약 일치
+==============================================================================
+left_hip_f_joint       cmd=+0.30 도달=+0.295 | 마커 left_knee_joint
+   Δpos[m]  x=+0.0821 y=-0.0021 z=+0.0124
+   Δrpy[rad] r=-0.293 p=+0.007 y=-0.002
+   기대: 무릎 +X(앞) [굴곡]
+
+right_hip_f_joint      cmd=-0.30 도달=-0.294 | 마커 right_knee_joint
+   Δpos[m]  x=+0.0819 y=+0.0022 z=+0.0121
+   Δrpy[rad] r=-0.292 p=-0.007 y=+0.002
+   기대: 무릎 +X(앞) [굴곡]
+
+left_hip_a_joint       cmd=+0.20 도달=+0.192 | 마커 left_ankle_r_joint
+   Δpos[m]  x=+0.0001 y=-0.1144 z=+0.0110
+   Δrpy[rad] r=-0.000 p=+0.191 y=-0.000
+   기대: 발 -Y(중앙쪽) [내전]
+
+right_hip_a_joint      cmd=-0.20 도달=-0.191 | 마커 right_ankle_r_joint
+   Δpos[m]  x=+0.0001 y=+0.1141 z=+0.0111
+   Δrpy[rad] r=-0.000 p=-0.191 y=+0.000
+   기대: 발 +Y(중앙쪽) [내전]
+
+left_hip_r_joint       cmd=+0.30 도달=+0.300 | 마커 left_ankle_r_joint
+   Δpos[m]  x=+0.0005 y=-0.0030 z=+0.0000
+   Δrpy[rad] r=+0.000 p=+0.000 y=+0.300
+   기대: 발 +yaw [외회전]
+
+right_hip_r_joint      cmd=-0.30 도달=-0.300 | 마커 right_ankle_r_joint
+   Δpos[m]  x=+0.0007 y=+0.0035 z=-0.0000
+   Δrpy[rad] r=-0.000 p=+0.000 y=-0.300
+   기대: 발 -yaw [외회전]
+
+left_knee_joint        cmd=-0.40 도달=-0.399 | 마커 left_ankle_f_joint
+   Δpos[m]  x=-0.0911 y=-0.0018 z=+0.0185
+   Δrpy[rad] r=+0.398 p=+0.003 y=+0.001
+   기대: 발목 -X(뒤)+Z(위) [굴곡]
+
+right_knee_joint       cmd=+0.40 도달=+0.399 | 마커 right_ankle_f_joint
+   Δpos[m]  x=-0.0909 y=+0.0019 z=+0.0185
+   Δrpy[rad] r=+0.398 p=-0.004 y=-0.001
+   기대: 발목 -X(뒤)+Z(위) [굴곡]
+
+left_ankle_f_joint     cmd=+0.30 도달=+0.300 | 마커 left_ankle_r_joint
+   Δpos[m]  x=+0.0248 y=-0.0001 z=+0.0006
+   Δrpy[rad] r=-0.300 p=+0.000 y=-0.000
+   기대: 발 +X(앞) [배굴]
+
+right_ankle_f_joint    cmd=-0.30 도달=-0.300 | 마커 right_ankle_r_joint
+   Δpos[m]  x=+0.0249 y=+0.0001 z=+0.0003
+   Δrpy[rad] r=-0.300 p=-0.000 y=+0.000
+   기대: 발 +X(앞) [배굴]
+
+left_ankle_r_joint     cmd=+0.20 도달=+0.200 | 마커 left_ankle_r_joint
+   Δpos[m]  x=-0.0000 y=-0.0001 z=+0.0000
+   Δrpy[rad] r=+0.000 p=-0.200 y=-0.000
+   기대: 발 롤 [외반]
+
+right_ankle_r_joint    cmd=+0.20 도달=+0.200 | 마커 right_ankle_r_joint
+   Δpos[m]  x=+0.0000 y=+0.0001 z=+0.0000
+   Δrpy[rad] r=-0.000 p=+0.200 y=-0.000
+   기대: 발 롤 [외반]
+

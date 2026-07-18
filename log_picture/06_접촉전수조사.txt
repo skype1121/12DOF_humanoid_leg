@@ -1,0 +1,28 @@
+--- SC_ON: kp=250/kd=25, self_collision=True ---
+센서 바디 순서: ['base', 'left_hip_f_joint', 'left_hip_a_joint', 'left_hip_r_joint', 'left_knee_joint', 'left_ankle_f_joint', 'left_ankle_r_joint', 'right_hip_f_joint', 'right_hip_a_joint', 'right_hip_r_joint', 'right_knee_joint', 'right_ankle_f_joint', 'right_ankle_r_joint']
+step |  z    | pgx    | L발목f q/tau | L무릎 q/tau | 접촉>1N 바디(힘)
+   0 | 0.658 | +0.000 | +0.024/  +0.0 | -0.105/  +0.0 | 
+  10 | 0.650 | -0.048 | +0.060/  +3.5 | -0.100/  +1.3 | left_ankle_r_joint(50) right_ankle_r_joint(55)
+  20 | 0.648 | -0.167 | -0.020/ +22.6 | -0.132/  +9.4 | left_ankle_r_joint(49) right_ankle_r_joint(56)
+  30 | 0.644 | -0.256 | -0.062/ +19.7 | -0.151/ +12.9 | left_ankle_r_joint(50) right_ankle_r_joint(55)
+  40 | 0.641 | -0.329 | -0.068/ +19.5 | -0.153/ +12.6 | left_ankle_r_joint(48) right_ankle_r_joint(55)
+  50 | 0.631 | -0.439 | -0.065/ +16.9 | -0.151/ +11.7 | left_ankle_r_joint(47) right_ankle_r_joint(51)
+  60 | 0.584 | -0.635 | -0.049/ +11.5 | -0.141/  +7.9 | left_ankle_r_joint(35) right_ankle_r_joint(40)
+  61 | 0.660 | +0.000 | +0.024/ +10.6 | -0.105/  +7.3 | left_ankle_r_joint(33) right_ankle_r_joint(38)  << 종료!
+
+--- SC_OFF: kp=250/kd=25, self_collision=False ---
+센서 바디 순서: ['base', 'left_hip_f_joint', 'left_hip_a_joint', 'left_hip_r_joint', 'left_knee_joint', 'left_ankle_f_joint', 'left_ankle_r_joint', 'right_hip_f_joint', 'right_hip_a_joint', 'right_hip_r_joint', 'right_knee_joint', 'right_ankle_f_joint', 'right_ankle_r_joint']
+step |  z    | pgx    | L발목f q/tau | L무릎 q/tau | 접촉>1N 바디(힘)
+   0 | 0.658 | +0.000 | +0.024/  -0.0 | -0.105/  -0.0 | 
+  10 | 0.650 | -0.037 | +0.063/  +2.1 | -0.097/  +0.2 | left_ankle_r_joint(47) right_ankle_r_joint(50)
+  20 | 0.648 | -0.137 | -0.005/ +16.8 | -0.124/  +6.4 | left_ankle_r_joint(46) right_ankle_r_joint(52)
+  30 | 0.646 | -0.198 | -0.047/ +22.3 | -0.141/  +9.3 | left_ankle_r_joint(47) right_ankle_r_joint(52)
+  40 | 0.645 | -0.213 | -0.057/ +19.2 | -0.145/  +9.9 | left_ankle_r_joint(46) right_ankle_r_joint(52)
+  50 | 0.646 | -0.198 | -0.046/ +17.9 | -0.141/  +7.1 | left_ankle_r_joint(46) right_ankle_r_joint(52)
+  60 | 0.647 | -0.175 | -0.030/ +14.2 | -0.135/  +5.6 | left_ankle_r_joint(46) right_ankle_r_joint(52)
+  70 | 0.648 | -0.159 | -0.019/ +12.3 | -0.131/  +4.8 | left_ankle_r_joint(46) right_ankle_r_joint(52)
+  80 | 0.648 | -0.154 | -0.015/ +12.3 | -0.129/  +4.8 | left_ankle_r_joint(46) right_ankle_r_joint(52)
+  90 | 0.648 | -0.156 | -0.017/ +13.2 | -0.130/  +5.1 | left_ankle_r_joint(46) right_ankle_r_joint(52)
+ 100 | 0.648 | -0.161 | -0.021/ +14.1 | -0.131/  +5.5 | left_ankle_r_joint(46) right_ankle_r_joint(52)
+ 110 | 0.647 | -0.165 | -0.024/ +14.6 | -0.132/  +5.7 | left_ankle_r_joint(46) right_ankle_r_joint(52)
+

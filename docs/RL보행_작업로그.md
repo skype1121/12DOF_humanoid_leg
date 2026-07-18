@@ -111,4 +111,10 @@
 - 소소한 수리: eval_payload inference_mode 혼용 버그, TaskStop 후 잔여 프로세스는 PID 지정 kill (pgrep 자기매칭 함정 2회째 — 수칙 확정)
 - 험지(계단 2~6cm+연석+요철) 학습 발사 — 3단계 웜스타트, 시나리오 데모 스크립트(서기→좌회전→직진→정지) 준비 완료
 
-(이하 진행하며 계속 기록)
+### 06:15~07:00 — 험지 완주 + 시나리오 데모 + 마무리
+- 험지 1차(2500 iter): 커리큘럼 레벨 2.6/10 = 단높이 2~3.5cm 정복 (계단 위 보행 영상 log_picture/14). 6cm 목표로 연장 학습(+5000 iter) 발사
+- **시나리오 데모 성공** (log_picture/16): walk_scene GUI에서 서기 3s→좌회전→직진 8s→정지, 무낙상 — 음성 명령 계층이 얹힐 (vx,vy,wz) 인터페이스 실증
+- Isaac Sim GUI는 켜둔 채 유지 — 승윤님이 일어나서 `python3 scripts/rl_walk_demo.py --scenario` 바로 실행 가능
+- 메모리 저장: rl-walking-training.md + robot-hardware-and-goal.md
+
+(연장 계단 학습 완료 시 결과 추가 예정)

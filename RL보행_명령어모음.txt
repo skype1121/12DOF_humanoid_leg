@@ -1,0 +1,120 @@
+═══════════════════════════════════════════════════════════════════
+  RL 보행 명령어 모음  (2026-07-19, sim-walking-demo 브랜치)
+═══════════════════════════════════════════════════════════════════
+※ 전부 시뮬 전용 — 실물 모터/CAN에는 아무것도 안 보냄
+※ 문서: docs/RL보행_최종보고서.md · RL보행_이식가이드.md · RL보행_작업로그.md
+※ 증거자료: log_picture/ (인덱스: 자료목록.md)
+※ FSM 데모 명령어는 기존 보행데모_명령어모음.txt 참조
+
+
+■ 0. 아이작심 켜기 (GUI + MCP — FSM 데모와 동일)
+───────────────────────────────────────────────────────────────────
+ISAACSIM_ROOT=/home/ryu/isaacsim/isaac-sim-5.1.0 /home/ryu/isaacsim-mcp-server/scripts/run_isaac_sim.sh
+
+  · 확인: ss -ltn | grep 8766   (LISTEN이면 준비됨)
+
+
+■ 1. RL 보행 데모 (walk_scene에서 재생)  ★제일 자주 쓸 것
+───────────────────────────────────────────────────────────────────
+cd /home/ryu/humanoid_leg_test1
+python3 scripts/rl_walk_demo.py                     # 20초 전진 0.5m/s
+python3 scripts/rl_walk_demo.py --scenario --video  # 서기→좌회전→직진→정지 + mp4
+python3 scripts/rl_walk_demo.py --cmd-x 0.3 --duration 30
+python3 scripts/rl_walk_demo.py --checkpoint <경로>  # 특정 정책 지정
+
+  · 영상: demo_output/rl_walk_demo.mp4
+  · 첫 실행에서 "is_homogeneous" 오류 = 씬 로드 타이밍 → 그냥 한 번 더 실행
+  · 기본 정책 = 가장 최근 익스포트본 (아래 6번)
+
+
+■ 2. 학습 (헤드리스 — GUI 필요 없음, 1회 ~30분)
+───────────────────────────────────────────────────────────────────
+cd /home/ryu/humanoid_leg_test1
+IL=/home/ryu/IsaacLab/isaaclab.sh
+
+# 평지 처음부터
+OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/train.py \
+  --task Biped12-Velocity-Flat-v0 --headless --num_envs 4096 --max_iterations 3000
+
+# 이어서 학습 (⚠ --resume 는 값 없이! "--resume True"는 hydra 오류)
+OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/train.py \
+  --task Biped12-Velocity-Flat-Stage3-v0 --headless --num_envs 4096 \
+  --max_iterations 3000 --resume --load_run <런폴더명> --checkpoint model_XXXX.pt
+
+# 태스크 종류
+#  Biped12-Velocity-Flat-v0        1단계 (걷기 발현)
+#  Biped12-Velocity-Flat-Stage2-v0 2단계 (측방·회전·서기·강외란)
+#  Biped12-Velocity-Flat-Stage3-v0 3단계 (실물12kg·배터리0~5kg·지연·후진) ★이식용
+#  Biped12-Velocity-Rough-v0       계단·연석·요철 (3단계 상속)
+
+  · 진행 확인: 로그의 "Learning iteration N/M" + Mean reward 상승
+  · ⚠ isaaclab.sh는 에러도 exit 0 — 성공은 로그/체크포인트로 판정
+
+
+■ 3. 평가 (정량 지표 + 정책 익스포트)
+───────────────────────────────────────────────────────────────────
+# 표준 평가 (낙상률/추종/직립/케이던스/토크 + ONNX 익스포트 부수효과)
+OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/eval_policy.py --headless \
+  --load_run <런폴더명> --out_tag _이름
+  → log_picture/정책평가_이름.txt
+
+# 배터리 페이로드 그리드 (0~5kg × 위/앞/뒤, 실물 12kg 정합)
+OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/eval_payload.py --headless \
+  --load_run <런폴더명> --mass_scale 1.21 --out_tag _이름
+  → log_picture/페이로드평가_이름.txt
+
+# 보행 영상 (9로봇 10초)
+OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/play.py \
+  --task Biped12-Velocity-Flat-Play-v0 --headless --num_envs 9 \
+  --load_run <런폴더명> --video --video_length 500
+  → logs/rsl_rl/biped12_flat/<런>/videos/play/*.mp4
+  (계단 영상은 --task Biped12-Velocity-Rough-Play-v0)
+
+
+■ 4. 그래프
+───────────────────────────────────────────────────────────────────
+PY=/home/ryu/IsaacLab/_isaac_sim/python.sh
+$PY rl_walking/scripts/plot_training.py                  # 최신 런 학습곡선
+$PY rl_walking/scripts/plot_training.py --run <런폴더명> --out log_picture/이름.png
+$PY rl_walking/scripts/plot_comparison.py                # FSM vs RL 비교차트 재생성
+
+
+■ 5. URDF 수정했을 때 (자산 재생성 + 검증 게이트 — 상세: 이식가이드 §4-1)
+───────────────────────────────────────────────────────────────────
+# ① base링크 주입 URDF 재생성 (작업로그 03:0x 스니펫, src 경로만 교체)
+# ② 변환
+OMNI_KIT_ACCEPT_EULA=YES $IL -p /home/ryu/IsaacLab/scripts/tools/convert_urdf.py \
+  rl_walking/assets/biped12_base.urdf rl_walking/assets/usd/biped12.usd \
+  --merge-joints --joint-stiffness 150 --joint-damping 5 --headless
+# ③ 리밋 주입+질량 검증 → ④ 부호 프로브 → ⑤ 스폰 게이트
+OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/postprocess_usd.py --headless
+OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/probe_signs.py --headless
+OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/validate_env.py --headless
+  → 각각 log_picture/에 리포트. PASS 확인 후 2번 리줌 학습
+
+
+■ 6. 체크포인트 (logs/rsl_rl/biped12_flat/)
+───────────────────────────────────────────────────────────────────
+2026-07-19_04-21-02   런1 — 걸음새 최미려 (케이던스 2.0/s)
+2026-07-19_05-32-42   3단계 — ★이식용 최종 (배터리·지연·12kg 학습)
+                      └ exported/policy.onnx, policy.pt ← 실물/데모용
+2026-07-19_07-15-42   계단 최종 (레벨 3.1, 방폭 처리)
+
+
+■ 7. 문제 해결
+───────────────────────────────────────────────────────────────────
+1) 데모 "is_homogeneous" 오류 → 씬 로드 중. 한 번 더 실행
+2) "--resume True" 금지 → --resume (값 없이)
+3) 학습이 순식간에 끝남/이상 → 로그에서 Traceback 검색
+   (grep -i traceback <로그>; isaaclab.sh는 exit code 못 믿음)
+4) 학습 크래시 "std >= 0" / NaN → 물리폭발. 이미 방어 3종 적용돼 있음
+   (log-std, 솔버 강화, 험지 페널티 캡) — 재발 시 푸시·지형 난이도 낮출 것
+5) GPU 사용량: nvidia-smi (학습 ~5GB, GUI ~3GB — 동시 가능)
+6) ModuleNotFoundError: isaaclab → 반드시 isaaclab.sh -p 로 실행
+7) 프로세스 정리는 pgrep으로 PID 확인 후 kill <PID> (pkill 패턴 금지)
+
+
+■ 8. git
+───────────────────────────────────────────────────────────────────
+git log --oneline | head -15          # 오늘 밤 커밋 11개 확인
+git push -u origin sim-walking-demo   # 깃허브 백업 (아직 안 올림 — 승윤님 결정)

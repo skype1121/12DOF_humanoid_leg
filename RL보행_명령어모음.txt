@@ -92,6 +92,19 @@ OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/play.py \
   (계단 영상은 --task Biped12-Velocity-Rough-Play-v0)
 
 
+■ 3-1. 행잉(공중 매달기) 테스트 사전 예측  (실물 매달기 전 참조)
+───────────────────────────────────────────────────────────────────
+# 데이터 수집 — 행잉(공중 강체고정+영상) / 지상(같은 명령 기준선)
+OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/eval_hang.py --headless --mode hang --video
+OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/eval_hang.py --headless --mode ground
+# 분석 (리포트 + 비교차트)
+/home/ryu/IsaacLab/_isaac_sim/python.sh rl_walking/scripts/analyze_hang.py
+  → log_picture/공중매달기_예측리포트.txt · 20_공중매달기_궤적비교.png
+  · 결론(2026-07-19): 매달면 서기 명령만 정상 유지, 보행 명령은 허우적 —
+    접지 피드백 부재로 폐루프가 깨지는 정상 특성 (정책 결함 아님).
+    걸음새 판단은 접지 상태에서 할 것. 상세: docs/RL보행_이식가이드.md §3-4
+
+
 ■ 4. 그래프
 ───────────────────────────────────────────────────────────────────
 PY=/home/ryu/IsaacLab/_isaac_sim/python.sh

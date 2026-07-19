@@ -27,6 +27,27 @@ python3 scripts/rl_walk_demo.py --checkpoint <경로>  # 특정 정책 지정
   · 기본 정책 = 가장 최근 익스포트본 (아래 6번)
 
 
+■ 1-1. 라이브 뷰 (아이작심 창을 직접 띄워서 눈으로 보기)  ★
+───────────────────────────────────────────────────────────────────
+cd /home/ryu/humanoid_leg_test1
+
+# 평지 로봇 10대 걷기 (학습 네이티브 환경 — 걸음새가 제일 정확)
+DISPLAY=:1 OMNI_KIT_ACCEPT_EULA=YES /home/ryu/IsaacLab/isaaclab.sh -p \
+  rl_walking/scripts/play.py --task Biped12-Velocity-Flat-Play-v0 \
+  --num_envs 10 --load_run 2026-07-19_05-32-42
+
+# 계단·연석 지형 10대 (최고 난이도 칸까지 섞임 — 막힌 로봇은 잔걸음침, 정상)
+DISPLAY=:1 OMNI_KIT_ACCEPT_EULA=YES /home/ryu/IsaacLab/isaaclab.sh -p \
+  rl_walking/scripts/play.py --task Biped12-Velocity-Rough-Play-v0 \
+  --num_envs 10 --load_run 2026-07-19_07-15-42
+
+  · 로딩 1~2분 (지형 생성+셰이더) · 마우스 우클릭 드래그=회전, 휠=줌
+  · 끄기: 창 닫기 (또는 터미널에서 Ctrl+C)
+  · walk_scene 데모(1번)와 달리 GUI/MCP 사전 실행 불필요 — 자체 창을 띄움
+  · ⚠ walk_scene 재생(1번)은 60Hz 물리+무armature라 떨림·절뚝임이 보일 수
+    있음 — 걸음새 품질 판단은 이 라이브 뷰(네이티브 50Hz)가 기준
+
+
 ■ 2. 학습 (헤드리스 — GUI 필요 없음, 1회 ~30분)
 ───────────────────────────────────────────────────────────────────
 cd /home/ryu/humanoid_leg_test1

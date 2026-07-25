@@ -135,3 +135,19 @@ class Biped12FlatStage3PolishEnvCfg(Biped12FlatStage3EnvCfg):
         self.rewards.feet_contact_forces.func = capped.contact_forces_capped
         self.scene.robot.spawn.articulation_props.solver_position_iteration_count = 12
         self.scene.robot.spawn.articulation_props.solver_velocity_iteration_count = 2
+        # ⑥-0 관측 클리핑 (NaN 크래시 5번째 만에 확정한 진범 방어) —
+        #    물리폭발 순간 관측(관절속도 등)이 수만~수억으로 튀며 forward pass가
+        #    Inf → log_prob NaN → std NaN. 보상 캡·솔버로는 관측을 못 막는다.
+        #    정상 보행 범위의 10배 이상으로 잡아 학습 신호는 불변.
+        self.observations.policy.base_ang_vel.clip = (-20.0, 20.0)
+        self.observations.policy.joint_pos.clip = (-10.0, 10.0)
+        self.observations.policy.joint_vel.clip = (-60.0, 60.0)
+        self.observations.policy.actions.clip = (-10.0, 10.0)
+        self.observations.critic.base_lin_vel.clip = (-15.0, 15.0)
+        # ⑥ 좌우 대칭 벌점 — 2회 시도 후 제거 (2026-07-25 실패 기록, 재발 방지용):
+        #    절대차 |L−R| → 양발 동시 축소(종종걸음 6.3보/s)로 회피.
+        #    비율 |L−R|/(L+R+0.05) → ε=0.05가 에어타임 대비 과대해 크기불변 누수
+        #    + 오른발 이중딛기(83보 vs 121보)로 측정 게이밍 (케이던스 7.9/s).
+        #    결론: 수렴 정책 패치로는 교정 불가 — 다음 전면 재학습에서 초기부터
+        #    위상 기반 대칭(발 위상차 π 보상) 또는 ε≤0.005 비율로 형성할 것.
+        #    (함수 feet_air_time_symmetry / _norm은 mdp_rewards.py에 교훈과 함께 보존)

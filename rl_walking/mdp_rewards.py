@@ -57,3 +57,30 @@ def feet_too_close(env, min_gap: float = 0.18, asset_cfg: SceneEntityCfg = Scene
     heading = asset.data.heading_w
     lat = torch.abs(-torch.sin(heading) * diff[:, 0] + torch.cos(heading) * diff[:, 1])
     return (min_gap - lat).clamp(min=0.0)
+
+
+def feet_air_time_symmetry(env, sensor_cfg: SceneEntityCfg, command_name: str = "base_velocity"):
+    """왼발/오른발 last_air_time 차이 벌점 — 절뚝임(비대칭 걸음) 교정.
+
+    2026-07-25 실측: 전 정책이 왼발 성큼(에어 262ms)+오른발 종종(146ms) 비대칭
+    평형에 수렴 (원본 8997부터 존재 — 보상에 대칭 항이 없었음). 서기 명령은 게이팅.
+    """
+    sensor = env.scene.sensors[sensor_cfg.name]
+    air = sensor.data.last_air_time[:, sensor_cfg.body_ids]  # (N, 2발)
+    diff = torch.abs(air[:, 0] - air[:, 1])
+    cmd = torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1)
+    return diff * (cmd > 0.1).float()
+
+
+def feet_air_time_symmetry_norm(env, sensor_cfg: SceneEntityCfg, command_name: str = "base_velocity", eps: float = 0.05):
+    """좌우 에어타임 '비율' 비대칭 벌점 — |L−R|/(L+R+eps), 값 0~1 유계.
+
+    절대차 |L−R| 버전은 양발 에어타임을 동시에 줄이는 퇴화해(종종걸음 6.3보/s)로
+    회피당함 (2026-07-25 대칭라운드 실측). 비율은 크기 불변이라 그 뒷문이 없다.
+    eps는 초기 미접촉 구간 0/0 방지 겸 초단주기 스텝의 벌점 과대평가 완충.
+    """
+    sensor = env.scene.sensors[sensor_cfg.name]
+    air = sensor.data.last_air_time[:, sensor_cfg.body_ids]  # (N, 2발)
+    ratio = torch.abs(air[:, 0] - air[:, 1]) / (air[:, 0] + air[:, 1] + eps)
+    cmd = torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1)
+    return ratio * (cmd > 0.1).float()

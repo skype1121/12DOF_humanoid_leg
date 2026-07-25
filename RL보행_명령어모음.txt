@@ -109,6 +109,20 @@ OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/eval_hang.py --headless --mod
     걸음새 판단은 접지 상태에서 할 것. 상세: docs/RL보행_이식가이드.md §3-4
 
 
+■ 3-2. 실물 이식 준비물 (policy_runner — §3-2 오프라인 검증용)
+───────────────────────────────────────────────────────────────────
+# 실행기 자가검증 (GPU 불필요 — 관측조립 골든테스트·슬루·모델추론)
+python3 rl_walking/deploy/policy_runner.py --selftest
+# 폐루프 시뮬 검증 (러너 경로로 보행 — 관측·목표각 비트일치 확인됨 2026-07-26)
+OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/deploy/sim_validate_runner.py --headless
+  → log_picture/실행기_폐루프검증.txt (PASS: 관측·목표각 오차 0.00e+00)
+# Stage8 대역폭 목 벤치 (CAN 완전 무송신 — 600msg/s 여유 PASS)
+python3 rl_walking/deploy/bench_stage8_mock.py
+  → 요약: log_picture/대역폭검증_요약.txt
+  · 핵심: 노드는 세트포인트 구조 — CAN은 입력율 무관 50Hz×12 고정 송신
+  · 실물 사용법·관측 소스 매핑: rl_walking/deploy/README.md
+
+
 ■ 4. 그래프
 ───────────────────────────────────────────────────────────────────
 PY=/home/ryu/IsaacLab/_isaac_sim/python.sh
@@ -145,6 +159,7 @@ OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/validate_env.py --headless
                       └ exported/policy.onnx, policy.pt ← 실물/데모용
 2026-07-25_22-04-32   폴리시 계속 (model_13499) — 모터 최연화 대안 (발목롤 3.83)
 2026-07-25_22-36-10 / 23-00-29  대칭 교정 시도 2회 — 실패 기록 (게이밍 회피, 자료목록 참조)
+2026-07-25_23-44-35   ★계단 신자산 재정합 (model_14994) — 레벨 2.93, 관절속도 −40%
 ※ 절뚝임(왼발 성큼: 에어 262/146ms)은 원본부터 있던 버릇 — 낙상·한계위반 없음.
   교정은 다음 전면 재학습에서 (위상 기반 대칭 항, stage2_env_cfg.py ⑥ 주석 참조)
 

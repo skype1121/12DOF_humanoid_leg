@@ -1,0 +1,7 @@
+policy_runner 폐루프 검증 — 모델 /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_flat/2026-07-25_21-59-19/exported
+명령 (0.5, 0.0, 0.0), 15s
+전진 거리: 3.61 m (15s, 명령 0.5m/s)
+러너 vs env 관측 45차원 최대 오차: 0.00e+00
+러너 vs env 목표각 최대 오차: 0.00e+00 rad
+낙상: 없음
+판정: PASS

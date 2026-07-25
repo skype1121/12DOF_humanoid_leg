@@ -108,6 +108,13 @@ class Biped12RoughEnvCfg(Biped12FlatStage3EnvCfg):
         self.rewards.lin_vel_z_l2.func = capped.lin_vel_z_l2_capped
         self.rewards.feet_contact_forces.func = capped.contact_forces_capped
         # ② 접촉 솔버 강화 (계단 모서리)
+        # ①-b 관측 클리핑 (2026-07-25 평지 폴리시에서 확정한 NaN 크래시 진범 방어 —
+        #    물리폭발 관측값의 forward pass 오염 차단. 정상 범위 10배 이상이라 신호 불변)
+        self.observations.policy.base_ang_vel.clip = (-20.0, 20.0)
+        self.observations.policy.joint_pos.clip = (-10.0, 10.0)
+        self.observations.policy.joint_vel.clip = (-60.0, 60.0)
+        self.observations.policy.actions.clip = (-10.0, 10.0)
+        self.observations.critic.base_lin_vel.clip = (-15.0, 15.0)
         self.scene.robot.spawn.articulation_props.solver_position_iteration_count = 12
         self.scene.robot.spawn.articulation_props.solver_velocity_iteration_count = 2
         # ③ 험지에선 푸시 완화 (모서리 접촉과 중첩 시 폭발 촉발원)

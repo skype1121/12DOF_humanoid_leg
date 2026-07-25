@@ -114,6 +114,49 @@ gym.register(
 )
 
 gym.register(
+    id="Biped12-Velocity-Stage4V2-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        # Stage4 v2: 회전/후진 명령 강제 배정 + foot_yaw_slip 벌점 (DR 포함)
+        "env_cfg_entry_point": "rl_walking.stage4_v2_env_cfg:Biped12Stage4V2EnvCfg",
+        # 러너 재사용: 같은 biped12_stage4 폴더에 이어 쌓음 (미러 대칭 손실 포함)
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Biped12-Velocity-Stage4V2-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.stage4_v2_env_cfg:Biped12Stage4V2EnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Biped12-Velocity-Stage4V2-Rough-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        # Stage4 v2 험지: 서브지형 비율 v2 (slope 0.20·stairs 0.40·flat 0.15)
+        "env_cfg_entry_point": "rl_walking.stage4_v2_env_cfg:Biped12Stage4V2RoughEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Biped12-Velocity-Stage4V2-Rough-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.stage4_v2_env_cfg:Biped12Stage4V2RoughEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+    },
+)
+
+gym.register(
     id="Biped12-Velocity-Rough-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

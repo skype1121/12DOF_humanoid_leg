@@ -93,6 +93,27 @@ gym.register(
 )
 
 gym.register(
+    id="Biped12-Velocity-Stage4-Rough-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.stage4_rough_env_cfg:Biped12Stage4RoughEnvCfg",
+        # 러너 재사용: 같은 biped12_stage4 폴더에 이어 쌓음 (--resume 워밍스타트 전제)
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Biped12-Velocity-Stage4-Rough-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.stage4_rough_env_cfg:Biped12Stage4RoughEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+    },
+)
+
+gym.register(
     id="Biped12-Velocity-Rough-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

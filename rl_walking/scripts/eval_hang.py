@@ -11,6 +11,8 @@ env 6개 = 명령 케이스 6종 (서기/전진 0.3/전진 0.5/후진/횡보/회
 실행 (모드당 별도 프로세스 — kit 1env 원칙):
   isaaclab.sh -p rl_walking/scripts/eval_hang.py --headless --mode hang --video
   isaaclab.sh -p rl_walking/scripts/eval_hang.py --headless --mode ground
+  Stage4: --task Biped12-Velocity-Stage4-Play-v0 (load_run 기본값 없음 = 최신 런;
+          Stage4 PLAY는 액션지연 0틱 — 태스크 cfg 설정을 그대로 따름)
 분석 (kit 불필요):
   _isaac_sim/python.sh rl_walking/scripts/analyze_hang.py
 """
@@ -22,8 +24,14 @@ from isaaclab.app import AppLauncher
 sys.path.insert(0, "/home/ryu/IsaacLab/scripts/reinforcement_learning/rsl_rl")
 import cli_args  # isort: skip
 
+DEFAULT_TASK = "Biped12-Velocity-Flat-Play-v0"
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--mode", type=str, choices=["hang", "ground"], required=True)
+# eval_policy.py와 동일 패턴: 태스크 등록 kwargs에서 agent/env cfg 해석.
+# 기본값은 종전과 동일 (기존 호출 무변경).
+parser.add_argument("--task", type=str, default=DEFAULT_TASK,
+                    help="평가 태스크 (…-Play-v0). Stage4: Biped12-Velocity-Stage4-Play-v0")
 parser.add_argument("--mass_scale", type=float, default=1.144,
                     help="전 링크 질량 스케일 (실물 12kg 정합 = 1.144, 12URDF0725 자중 10.49kg 기준; 구 자산은 1.21)")
 parser.add_argument("--settle_secs", type=float, default=2.0)
@@ -59,10 +67,7 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
-from isaaclab_tasks.utils import get_checkpoint_path
-
-from rl_walking.agents import Biped12FlatPPORunnerCfg
-from rl_walking.env_cfg import Biped12FlatEnvCfg_PLAY
+from isaaclab_tasks.utils import get_checkpoint_path, load_cfg_from_registry
 
 REPO = "/home/ryu/humanoid_leg_test1"
 HANG_Z = 1.0  # 발끝 지면 여유 ~0.35m
@@ -77,12 +82,13 @@ CASES = [
     ("회전 0.3+0.5", 0.3, 0.0, 0.5),
 ]
 
-agent_cfg = Biped12FlatPPORunnerCfg()
+agent_cfg = load_cfg_from_registry(args_cli.task, "rsl_rl_cfg_entry_point")
 agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
-if not args_cli.load_run:
-    agent_cfg.load_run = "2026-07-19_05-32-42"  # 이식용 3단계 최종 (기본값)
+if not args_cli.load_run and args_cli.task == DEFAULT_TASK:
+    # 이식용 3단계 최종 (기본값) — biped12_flat 로그에만 존재하는 런이므로 Flat 한정
+    agent_cfg.load_run = "2026-07-19_05-32-42"
 
-env_cfg = Biped12FlatEnvCfg_PLAY()
+env_cfg = load_cfg_from_registry(args_cli.task, "env_cfg_entry_point")
 env_cfg.scene.num_envs = len(CASES)
 env_cfg.seed = agent_cfg.seed
 env_cfg.episode_length_s = 120.0  # 기록 중 타임아웃 리셋 방지
@@ -100,7 +106,10 @@ cmd.ranges.heading = None
 
 # 이식 정책이 학습한 실측 루프 지연(~1틱@50Hz)을 평가에도 적용 (리뷰 반영 —
 # PLAY 기본 0틱이면 실물보다 낙관적). 리셋 랜덤(0~1틱)은 rollout에서 1틱 고정.
-env_cfg.actions.joint_pos.max_delay_steps = 1
+# Flat 기본 태스크에만 강제 — 다른 태스크(Stage4 PLAY 등)는 해당 cfg의 지연
+# 설정을 그대로 따른다 (Stage4 PLAY=0틱 → _delay 버퍼 자체가 없어 rollout에서 스킵).
+if args_cli.task == DEFAULT_TASK:
+    env_cfg.actions.joint_pos.max_delay_steps = 1
 
 # DR 제거 (실물 1대 = 명목 조건). 질량만 실물 정합 스케일.
 ev = env_cfg.events
@@ -140,7 +149,7 @@ log_root_path = os.path.abspath(os.path.join("logs", "rsl_rl", agent_cfg.experim
 resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
 
 video_dir = os.path.join(REPO, "demo_output", f"hang_video_{args_cli.mode}{args_cli.out_tag}")
-env = gym.make("Biped12-Velocity-Flat-Play-v0", cfg=env_cfg,
+env = gym.make(args_cli.task, cfg=env_cfg,
                render_mode="rgb_array" if args_cli.video else None)
 if args_cli.video:
     env = gym.wrappers.RecordVideo(
@@ -158,6 +167,9 @@ robot = uenv.scene["robot"]
 cs = uenv.scene.sensors["contact_forces"]
 cmd_term = uenv.command_manager.get_term("base_velocity")
 act_term = uenv.action_manager.get_term("joint_pos")
+# 액션 지연 버퍼(_delay)는 max_delay_steps>0일 때만 생성됨 (actions.py) —
+# 지연 0 cfg(Stage4 PLAY)에서는 fill_(1) 자체를 스킵해야 AttributeError가 없다.
+ACT_DELAY_ON = getattr(act_term, "_max_delay", 0) > 0
 
 FOOT_NAMES = ["left_ankle_r_joint", "right_ankle_r_joint"]  # 발 링크명 = 관절명
 foot_ids, _ = robot.find_bodies(FOOT_NAMES, preserve_order=True)
@@ -186,14 +198,16 @@ def rollout():
     global dones_total, max_foot_force
     uenv.reset()
     cmd_term.vel_command_b[:] = CMD
-    act_term._delay.fill_(1)  # 실측 지연 1틱 고정 (리셋 랜덤 0~1 방지)
+    if ACT_DELAY_ON:
+        act_term._delay.fill_(1)  # 실측 지연 1틱 고정 (리셋 랜덤 0~1 방지)
     obs = env.get_observations()
     for i in range(S_SETTLE + S_RECORD):
         actions = policy(obs)
         obs, _, dones, _ = env.step(actions)
         policy_nn.reset(dones)
         cmd_term.vel_command_b[:] = CMD
-        act_term._delay.fill_(1)
+        if ACT_DELAY_ON:
+            act_term._delay.fill_(1)
         d = dones.view(-1).bool()
         if d.any():
             dones_total += int(d.sum())
@@ -236,6 +250,7 @@ np.savez_compressed(
     cmds=CMD.cpu().numpy(),
     dt=0.02,
     mode=args_cli.mode,
+    task=args_cli.task,
     mass_scale=args_cli.mass_scale,
     checkpoint=resume_path,
     settle_secs=args_cli.settle_secs,
@@ -248,8 +263,10 @@ np.savez_compressed(
 
 # 헤드리스 stdout 유실 대비 — 성공 판정은 이 파일로
 sanity = [
-    f"mode={args_cli.mode} mass_scale={args_cli.mass_scale} checkpoint={resume_path}",
-    f"steps: settle {S_SETTLE} + record {S_RECORD} (50Hz), 액션지연 1틱 고정",
+    f"mode={args_cli.mode} task={args_cli.task} mass_scale={args_cli.mass_scale} "
+    f"checkpoint={resume_path}",
+    f"steps: settle {S_SETTLE} + record {S_RECORD} (50Hz), "
+    + ("액션지연 1틱 고정" if ACT_DELAY_ON else "액션지연 0틱 (태스크 cfg 기준)"),
     f"dones(리셋) 발생: {dones_total}회 (0이어야 정상) — env별 {dones_env.tolist()}",
     f"기록 스텝 수: {len(rec['q'])}",
 ]

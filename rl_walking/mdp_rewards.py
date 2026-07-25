@@ -43,3 +43,17 @@ def contact_forces_capped(env, threshold: float, sensor_cfg: SceneEntityCfg, cap
     net_forces = sensor.data.net_forces_w_history
     violation = torch.max(torch.norm(net_forces[:, :, sensor_cfg.body_ids], dim=-1), dim=1)[0] - threshold
     return torch.sum(violation.clip(min=0.0), dim=1).clamp_max(cap)
+
+def feet_too_close(env, min_gap: float = 0.18, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
+    """양발 횡(좌우) 간격이 min_gap[m] 미만이면 부족분을 벌점으로.
+
+    모아걷기·교차보행(외줄타기 걸음) 방지. 간격은 베이스 진행방향에 수직한
+    성분만 측정 — 보행 중 앞뒤 벌어짐은 무관하게 좌우 간격만 본다.
+    기본 스탠스(12URDF0725): 0.287m. min_gap=0.18은 뚜렷한 모임만 벌점.
+    """
+    asset = env.scene[asset_cfg.name]
+    feet = asset.data.body_pos_w[:, asset_cfg.body_ids, :2]  # (N, 2발, xy)
+    diff = feet[:, 0, :] - feet[:, 1, :]
+    heading = asset.data.heading_w
+    lat = torch.abs(-torch.sin(heading) * diff[:, 0] + torch.cos(heading) * diff[:, 1])
+    return (min_gap - lat).clamp(min=0.0)

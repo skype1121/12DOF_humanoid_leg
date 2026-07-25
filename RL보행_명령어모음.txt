@@ -66,7 +66,10 @@ OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/train.py \
 #  Biped12-Velocity-Flat-v0        1단계 (걷기 발현)
 #  Biped12-Velocity-Flat-Stage2-v0 2단계 (측방·회전·서기·강외란)
 #  Biped12-Velocity-Flat-Stage3-v0 3단계 (실물12kg·배터리0~5kg·지연·후진) ★이식용
+#  Biped12-Velocity-Flat-Stage3Polish-v0 걸음새 폴리시 (발간격·요동 교정 + 방폭+솔버12/2)
 #  Biped12-Velocity-Rough-v0       계단·연석·요철 (3단계 상속)
+# ⚠ 수렴된 정책을 리줌 미세조정할 땐 저학습률 필수 (σ 수축 → NaN 크래시 4회 실측):
+#   ... --resume ... agent.algorithm.learning_rate=1.0e-4 agent.algorithm.desired_kl=0.005
 
   · 진행 확인: 로그의 "Learning iteration N/M" + Mean reward 상승
   · ⚠ isaaclab.sh는 에러도 exit 0 — 성공은 로그/체크포인트로 판정
@@ -136,9 +139,11 @@ OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/validate_env.py --headless
 2026-07-19_05-32-42   3단계 — ★이식용 최종 (배터리·지연·12kg 학습)
                       └ exported/policy.onnx, policy.pt ← 실물/데모용
 2026-07-19_07-15-42   계단 최종 (레벨 3.1, 방폭 처리)
-2026-07-25_21-07-04   ★신URDF(12URDF0725) 미세조정 최종 (model_9999)
-                      └ exported/policy.onnx — 새 자산 이식용 후보
-                      (중간런 20-58-39는 9786에서 물리폭발 크래시 → 9700 리줌 완주본)
+2026-07-25_21-07-04   신URDF(12URDF0725) 미세조정 (model_9999) — 추종 최고(15.68m)·폼 뒤뚱
+2026-07-25_21-59-19   폴리시3 (model_12300) — 균형 최고: 전진 11.94m·p95 5.8°·발간격 교정
+2026-07-25_22-04-32   폴리시 최종 (model_13499) — 모터 최연화: 발목롤 3.83·관절속도 10.96
+                      └ 각 런 exported/policy.onnx 존재. 이식 채택은 승윤님 결정
+                      (뒤뚱·발간격·모아걷기 교정은 12300/13499 계열, 상세: 자료목록.md)
 
 
 ■ 7. 문제 해결

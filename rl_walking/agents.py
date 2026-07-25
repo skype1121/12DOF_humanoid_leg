@@ -1,6 +1,11 @@
 """rsl_rl PPO 러너 설정 — G1 flat 레시피 기반, 비대칭 액터-크리틱."""
 from isaaclab.utils import configclass
-from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
+from isaaclab_rl.rsl_rl import (
+    RslRlOnPolicyRunnerCfg,
+    RslRlPpoActorCriticCfg,
+    RslRlPpoAlgorithmCfg,
+    RslRlSymmetryCfg,
+)
 
 
 @configclass
@@ -35,4 +40,38 @@ class Biped12FlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         lam=0.95,
         desired_kl=0.01,
         max_grad_norm=1.0,
+    )
+
+
+@configclass
+class Biped12Stage4PPORunnerCfg(Biped12FlatPPORunnerCfg):
+    """Stage4 — 기존 러너 복제 + 미러 대칭 손실 (Yu 2018 계열, rsl_rl 네이티브).
+
+    use_data_augmentation=False / use_mirror_loss=True: 배치 자체는 원본만 학습하고,
+    미러 관측에 대한 액터 평균이 미러 액션과 일치하도록 MSE 손실만 추가 (coeff 0.5).
+    미러 함수(관측 245/크리틱 260 레이아웃)는 rl_walking/symmetry.py 참조.
+    """
+
+    max_iterations = 3000
+    experiment_name = "biped12_stage4"
+    algorithm = RslRlPpoAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.008,
+        num_learning_epochs=5,
+        num_mini_batches=4,
+        learning_rate=1.0e-3,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+        symmetry_cfg=RslRlSymmetryCfg(
+            use_data_augmentation=False,
+            use_mirror_loss=True,
+            mirror_loss_coeff=0.5,
+            # 문자열 경로 — rsl_rl ppo.py가 string_to_callable로 해석 (lazy import)
+            data_augmentation_func="rl_walking.symmetry:mirror_biped12",
+        ),
     )

@@ -16,6 +16,11 @@ sys.path.insert(0, "/home/ryu/IsaacLab/scripts/reinforcement_learning/rsl_rl")
 import cli_args  # isort: skip
 
 parser = argparse.ArgumentParser()
+# Stage4 리뷰 수정: 태스크 하드코딩 제거 — Stage4는 experiment_name(biped12_stage4)과
+# 관측 차원(245)이 달라, Flat 고정이면 '무경고로 이전 flat 체크포인트'를 평가하는 함정.
+# 기본값은 종전과 동일 (기존 호출 무변경).
+parser.add_argument("--task", type=str, default="Biped12-Velocity-Flat-Play-v0",
+                    help="평가 태스크 (…-Play-v0). Stage4: Biped12-Velocity-Stage4-Play-v0")
 parser.add_argument("--steps", type=int, default=1500, help="평가 스텝 (50Hz — 1500=30s)")
 parser.add_argument("--num_envs", type=int, default=64)
 parser.add_argument("--cmd_x", type=float, default=0.5)
@@ -42,18 +47,17 @@ import rl_walking  # noqa: F401
 
 import gymnasium as gym
 
-from isaaclab_tasks.utils import get_checkpoint_path
-
-from rl_walking.agents import Biped12FlatPPORunnerCfg
-from rl_walking.env_cfg import Biped12FlatEnvCfg_PLAY
+from isaaclab_tasks.utils import get_checkpoint_path, load_cfg_from_registry
 
 REPO = "/home/ryu/humanoid_leg_test1"
 OUT = os.path.join(REPO, "log_picture", f"정책평가{args_cli.out_tag}.txt")
 
-agent_cfg = Biped12FlatPPORunnerCfg()
+# 태스크 등록 kwargs에서 agent/env cfg를 해석 — experiment_name(로그 디렉토리)과
+# 관측 차원이 태스크와 항상 일치 (Flat 기본값이면 종전 클래스와 동일 객체)
+agent_cfg = load_cfg_from_registry(args_cli.task, "rsl_rl_cfg_entry_point")
 agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
 
-env_cfg = Biped12FlatEnvCfg_PLAY()
+env_cfg = load_cfg_from_registry(args_cli.task, "env_cfg_entry_point")
 env_cfg.scene.num_envs = args_cli.num_envs
 env_cfg.seed = agent_cfg.seed
 # 평가 명령 고정: 전진 cmd_x, 요 0 (heading 유지)
@@ -64,7 +68,7 @@ env_cfg.episode_length_s = 60.0  # 평가 중 타임아웃 리셋 방지
 log_root_path = os.path.abspath(os.path.join("logs", "rsl_rl", agent_cfg.experiment_name))
 resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
 
-env = gym.make("Biped12-Velocity-Flat-Play-v0", cfg=env_cfg)
+env = gym.make(args_cli.task, cfg=env_cfg)
 env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
 runner.load(resume_path)

@@ -136,6 +136,9 @@ OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/validate_env.py --headless
 2026-07-19_05-32-42   3단계 — ★이식용 최종 (배터리·지연·12kg 학습)
                       └ exported/policy.onnx, policy.pt ← 실물/데모용
 2026-07-19_07-15-42   계단 최종 (레벨 3.1, 방폭 처리)
+2026-07-25_21-07-04   ★신URDF(12URDF0725) 미세조정 최종 (model_9999)
+                      └ exported/policy.onnx — 새 자산 이식용 후보
+                      (중간런 20-58-39는 9786에서 물리폭발 크래시 → 9700 리줌 완주본)
 
 
 ■ 7. 문제 해결

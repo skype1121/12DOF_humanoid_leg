@@ -61,7 +61,7 @@ for prim in stage.Traverse():
         if m:
             total_mass += m
         p(f"   {prim.GetName():28s} mass={m}")
-p(f"   >>> 총질량 = {total_mass:.4f} kg (기대 9.937 + base 0.001)")
+p(f"   >>> 총질량 = {total_mass:.4f} kg (기대 10.490 + base 0.001 — 12URDF0725)")
 
 p("=" * 70)
 p("3) 관절: 리밋 주입 전 상태 → 주입 (단위 deg)")

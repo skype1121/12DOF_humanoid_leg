@@ -20,7 +20,7 @@ parser.add_argument("--num_envs", type=int, default=64)
 parser.add_argument("--secs", type=float, default=15.0)
 parser.add_argument("--cmd_x", type=float, default=0.4)
 parser.add_argument("--mass_scale", type=float, default=1.0,
-                    help="전 링크 질량 스케일 (실물 12kg 정합 = 1.21)")
+                    help="전 링크 질량 스케일 (실물 12kg 정합 = 1.144, 12URDF0725 자중 10.49kg 기준)")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -136,7 +136,7 @@ def rollout():
 
 rep = []
 rep.append(f"페이로드 강건성 그리드 평가 — checkpoint: {resume_path}")
-rep.append(f"조건: {N} env × {args_cli.secs:.0f}s, cmd_x={args_cli.cmd_x} m/s. 로봇 자중 9.94kg")
+rep.append(f"조건: {N} env × {args_cli.secs:.0f}s, cmd_x={args_cli.cmd_x} m/s. 로봇 자중 10.49kg (12URDF0725)")
 rep.append(f"판정: 낙상env비율 <10% = PASS, 10~30% = 한계, >30% = FAIL")
 rep.append("=" * 74)
 rep.append(f"{'부착위치':14s} {'질량':>5s} | {'낙상env':>8s} | {'추종오차':>9s} | {'평균기울기':>9s} | 판정")

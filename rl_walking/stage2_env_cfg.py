@@ -7,7 +7,7 @@
 - 걸음새 다듬기: action_rate/joint_vel 페널티 상향 (진동 억제 — 저 kd 이식 대비)
 
 3단계 (페이로드 + sim2real 갭 최소화 — 승윤님 요청 2026-07-19 새벽):
-- 실물 질량 정합: URDF 9.94kg vs 실물 ~12kg → 전 링크 1.15~1.26 스케일 (관성 재계산)
+- 실물 질량 정합: URDF 10.49kg(12URDF0725) vs 실물 ~12kg → 전 링크 1.09~1.19 스케일 (관성 재계산)
 - 페이로드 0~5kg: base 질량 + CoM 오프셋 (배터리 위/앞/뒤 부착 브래키팅)
 - 액션 지연 0~1틱(0~20ms) env별 랜덤 — 실측 루프 지연 정합
 - 관절 마찰 확대 (0~0.1)
@@ -70,13 +70,14 @@ class Biped12FlatStage3EnvCfg(Biped12FlatStage2EnvCfg):
         super().__post_init__()
         # 후진 보행 추가 (음성 명령 "뒤로 가" 대비 — 승윤님 최종 목표)
         self.commands.base_velocity.ranges.lin_vel_x = (-0.4, 0.8)
-        # 실물 질량 정합: 실측 ~12kg → 전 링크 1.15~1.26 스케일 (11.5~12.5kg 브래키팅)
+        # 실물 질량 정합: 실측 ~12kg → 전 링크 1.09~1.19 스케일 (11.4~12.5kg 브래키팅)
+        # (12URDF0725 자산 자중 10.49kg 기준. 구 9.94kg 자산에서는 1.15~1.26이었음)
         self.events.link_mass_calib = EventTerm(
             func=mdp.randomize_rigid_body_mass,
             mode="startup",
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-                "mass_distribution_params": (1.15, 1.26),
+                "mass_distribution_params": (1.09, 1.19),
                 "operation": "scale",  # recompute_inertia 기본 True
             },
         )

@@ -24,8 +24,8 @@ import cli_args  # isort: skip
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--mode", type=str, choices=["hang", "ground"], required=True)
-parser.add_argument("--mass_scale", type=float, default=1.21,
-                    help="전 링크 질량 스케일 (실물 12kg 정합 = 1.21)")
+parser.add_argument("--mass_scale", type=float, default=1.144,
+                    help="전 링크 질량 스케일 (실물 12kg 정합 = 1.144, 12URDF0725 자중 10.49kg 기준; 구 자산은 1.21)")
 parser.add_argument("--settle_secs", type=float, default=2.0)
 parser.add_argument("--record_secs", type=float, default=30.0)
 parser.add_argument("--video", action="store_true", default=False)

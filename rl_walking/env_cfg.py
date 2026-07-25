@@ -137,7 +137,7 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
-    """도메인 랜덤화 — 소형(9.94kg) 스케일. 발현 우선, 강건화는 커리큘럼에서 확대."""
+    """도메인 랜덤화 — 소형(10.49kg, 12URDF0725) 스케일. 발현 우선, 강건화는 커리큘럼에서 확대."""
 
     # -- startup
     physics_material = EventTerm(

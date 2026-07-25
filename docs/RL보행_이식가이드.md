@@ -96,8 +96,8 @@
 
 ```bash
 cd /home/ryu/humanoid_leg_test1
-# 1) base 링크 주입본 재생성 (rl_walking/assets/biped12_base.urdf 만드는 파이썬 스니펫
-#    — docs/RL보행_작업로그.md 03:0x 항 참조, 새 URDF 경로로 src만 교체)
+# 1) base 링크 주입본 재생성 — 전용 스크립트 (이름통일·축규약검사·base주입 자동)
+python3 rl_walking/scripts/make_base_urdf.py --src <새패키지>/urdf/이름.urdf
 # 2) USD 변환
 OMNI_KIT_ACCEPT_EULA=YES /home/ryu/IsaacLab/isaaclab.sh -p /home/ryu/IsaacLab/scripts/tools/convert_urdf.py \
   rl_walking/assets/biped12_base.urdf rl_walking/assets/usd/biped12.usd \
@@ -115,6 +115,14 @@ OMNI_KIT_ACCEPT_EULA=YES /home/ryu/IsaacLab/isaaclab.sh -p /home/ryu/IsaacLab/sc
 - 소폭 수정(질량±20%·부품 추가·CoM 이동)은 이미 DR 분포 안 → 기존 정책 재평가만으로 통과하는 경우 多
 - 관절 이름/수가 바뀌면: biped12_cfg.py 기본자세와 env 정규식 갱신 + 전면 재학습(~30분/단계)
 - 전 코드가 관절 "이름" 기반이라 인덱스 재매핑은 불필요
+
+**실증 — 2026-07-25 최종근사 URDF(12URDF0725) 교체**: 기구 동일·질량만 9.94→10.49kg(+5.6%,
+실물 12kg 정합 스케일 1.21→**1.144**). 위 절차로 교체 후 **재학습 없이 제로샷 통과** —
+정책평가 낙상 0/64×30s·직립 2.75°·발목롤 4.75rad/s, 페이로드 그리드 12/13 PASS
+(유일 한계: 앞+5kg 낙상 23% — CoM 전방이동 영향. **배터리는 위/뒤 장착 권장**).
+익스포트 결함 2건을 make_base_urdf.py가 자동 교정: left_hip_r 관절명 오타(*_Link),
+left_hip_f 축 반전(+1→−1 복원 — 안 잡으면 비대칭 리밋 −30/+100°가 거울반전됨).
+스폰 게이트의 개루프 전도 FAIL은 구 자산과 동일 거동(kd5 개루프 특성)이라 회귀 아님.
 
 ## 5. 체크리스트 (이식 준비 완료 판정)
 

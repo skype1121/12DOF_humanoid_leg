@@ -80,8 +80,9 @@ OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/eval_policy.py --headless \
   → log_picture/정책평가_이름.txt
 
 # 배터리 페이로드 그리드 (0~5kg × 위/앞/뒤, 실물 12kg 정합)
+# ⚠ 1.144 = 12URDF0725 자산(자중 10.49kg) 기준. 구 자산(9.94kg)은 1.21이었음
 OMNI_KIT_ACCEPT_EULA=YES $IL -p rl_walking/scripts/eval_payload.py --headless \
-  --load_run <런폴더명> --mass_scale 1.21 --out_tag _이름
+  --load_run <런폴더명> --mass_scale 1.144 --out_tag _이름
   → log_picture/페이로드평가_이름.txt
 
 # 보행 영상 (9로봇 10초)
@@ -115,7 +116,9 @@ $PY rl_walking/scripts/plot_comparison.py                # FSM vs RL 비교차�
 
 ■ 5. URDF 수정했을 때 (자산 재생성 + 검증 게이트 — 상세: 이식가이드 §4-1)
 ───────────────────────────────────────────────────────────────────
-# ① base링크 주입 URDF 재생성 (작업로그 03:0x 스니펫, src 경로만 교체)
+# 현재 자산 = 12URDF0725 (자중 10.49kg, 2026-07-25 교체·검증 완료)
+# ① base링크 주입 URDF 재생성 (이름통일 *_Link→*_joint · 축규약 검사복원 · base주입 자동)
+python3 rl_walking/scripts/make_base_urdf.py --src <새패키지>/urdf/이름.urdf
 # ② 변환
 OMNI_KIT_ACCEPT_EULA=YES $IL -p /home/ryu/IsaacLab/scripts/tools/convert_urdf.py \
   rl_walking/assets/biped12_base.urdf rl_walking/assets/usd/biped12.usd \

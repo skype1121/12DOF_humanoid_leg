@@ -1,9 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
-     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
-     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
-<robot
-  name="biped12">
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="biped12">
   <link name="base">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -16,720 +12,362 @@
     <parent link="base" />
     <child link="pelvis" />
   </joint>
-  <link
-    name="pelvis">
+  <link name="pelvis">
     <inertial>
-      <origin
-        xyz="-0.000756889252823814 0.105436501070058 -0.0461913513658618"
-        rpy="0 0 0" />
-      <mass
-        value="3.54036668275575" />
-      <inertia
-        ixx="0.0109758114940452"
-        ixy="9.77557123452453E-08"
-        ixz="5.10552568041426E-08"
-        iyy="0.0115818519229548"
-        iyz="0.000332721211086309"
-        izz="0.0168953127791752" />
+      <origin xyz="-0.0010257 0.085132 -0.034646" rpy="0 0 0" />
+      <mass value="3.9846" />
+      <inertia ixx="0.01157" ixy="-3.7629E-06" ixz="-3.6112E-05" iyy="0.01788" iyz="0.00019188" izz="0.0098975" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/pelvis.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/pelvis.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="0.956862745098039 0.898039215686275 0.654901960784314 1" />
+      <material name="">
+        <color rgba="0.79216 0.81961 0.93333 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/pelvis.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/pelvis.STL" />
       </geometry>
     </collision>
   </link>
-  <link
-    name="left_hip_f_joint">
+  <link name="right_hip_f_joint">
     <inertial>
-      <origin
-        xyz="-0.00494197182731525 8.19810799082745E-05 0.00200897073804174"
-        rpy="0 0 0" />
-      <mass
-        value="0.393578984491956" />
-      <inertia
-        ixx="0.000292984347884872"
-        ixy="6.76681598712522E-07"
-        ixz="6.75784794911888E-07"
-        iyy="0.000215875120466875"
-        iyz="4.21606085735458E-07"
-        izz="0.000229606229991153" />
+      <origin xyz="0.004942 9.0766E-05 0.0019878" rpy="0 0 0" />
+      <mass value="0.39358" />
+      <inertia ixx="0.00029298" ixy="-7.4921E-07" ixz="-5.0071E-07" iyy="0.00021604" iyz="2.5338E-07" izz="0.00022944" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_hip_f_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/right_hip_f_Link.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="0.823529411764706 0.823529411764706 0.823529411764706 1" />
+      <material name="">
+        <color rgba="0.82353 0.82353 0.82353 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_hip_f_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/right_hip_f_Link.STL" />
       </geometry>
     </collision>
   </link>
-  <joint
-    name="left_hip_f_joint"
-    type="continuous">
-    <origin
-      xyz="0.071 0 0"
-      rpy="0 0 0" />
-    <parent
-      link="pelvis" />
-    <child
-      link="left_hip_f_joint" />
-    <axis
-      xyz="-1 0 0" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+  <joint name="right_hip_f_joint" type="continuous">
+    <origin xyz="-0.071 0 0" rpy="0 0 0" />
+    <parent link="pelvis" />
+    <child link="right_hip_f_joint" />
+    <axis xyz="1 0 0" />
   </joint>
-  <link
-    name="left_hip_a_joint">
+  <link name="right_hip_a_joint">
     <inertial>
-      <origin
-        xyz="-7.8446125441653E-05 -0.0194416557973496 -0.0225401616100878"
-        rpy="0 0 0" />
-      <mass
-        value="0.632623778007109" />
-      <inertia
-        ixx="0.000630842650543882"
-        ixy="2.11585738664554E-07"
-        ixz="-1.86904962803603E-06"
-        iyy="0.000550787357534651"
-        iyz="-3.90783059385623E-05"
-        izz="0.000844724822630449" />
+      <origin xyz="-5.4792E-06 -0.012105 -0.022701" rpy="0 0 0" />
+      <mass value="0.55181" />
+      <inertia ixx="0.00057399" ixy="9.4644E-08" ixz="1.9333E-08" iyy="0.00043416" iyz="-3.8142E-05" izz="0.0007693" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_hip_a_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/right_hip_a_Link.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="0.309803921568627 0.482352941176471 0.407843137254902 1" />
+      <material name="">
+        <color rgba="1 0.94902 0.9098 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_hip_a_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/right_hip_a_Link.STL" />
       </geometry>
     </collision>
   </link>
-  <joint
-    name="left_hip_a_joint"
-    type="continuous">
-    <origin
-      xyz="0.0725 0 0.019625"
-      rpy="0 0 0" />
-    <parent
-      link="left_hip_f_joint" />
-    <child
-      link="left_hip_a_joint" />
-    <axis
-      xyz="0 0 -1" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+  <joint name="right_hip_a_joint" type="continuous">
+    <origin xyz="-0.0725 0 0.019625" rpy="0 0 0" />
+    <parent link="right_hip_f_joint" />
+    <child link="right_hip_a_joint" />
+    <axis xyz="0 0 -1" />
   </joint>
-  <link
-    name="left_hip_r_joint">
+  <link name="right_hip_r_joint">
     <inertial>
-      <origin
-        xyz="-0.00249240797024916 -0.0278688083398012 0.000149865708657604"
-        rpy="0 0 0" />
-      <mass
-        value="0.581468457020583" />
-      <inertia
-        ixx="0.000592251166491356"
-        ixy="-1.09607145232989E-05"
-        ixz="-1.19053885376211E-07"
-        iyy="0.000603571125269097"
-        iyz="-7.71719284741145E-07"
-        izz="0.000506692603007597" />
+      <origin xyz="0.001998 -0.019712 0.00053316" rpy="0 0 0" />
+      <mass value="0.67544" />
+      <inertia ixx="0.00065584" ixy="1.1267E-05" ixz="-2.0074E-06" iyy="0.00073488" iyz="-1.7097E-06" izz="0.00058516" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_hip_r_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/right_hip_r_Link.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="0.823529411764706 0.823529411764706 0.823529411764706 1" />
+      <material name="">
+        <color rgba="0.82353 0.82353 0.82353 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_hip_r_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/right_hip_r_Link.STL" />
       </geometry>
     </collision>
   </link>
-  <joint
-    name="left_hip_r_joint"
-    type="continuous">
-    <origin
-      xyz="0 -0.12405 -0.02"
-      rpy="0 0 0" />
-    <parent
-      link="left_hip_a_joint" />
-    <child
-      link="left_hip_r_joint" />
-    <axis
-      xyz="0 1 0" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+  <joint name="right_hip_r_joint" type="continuous">
+    <origin xyz="0 -0.12405 -0.02" rpy="0 0 0" />
+    <parent link="right_hip_a_joint" />
+    <child link="right_hip_r_joint" />
+    <axis xyz="0 1 0" />
   </joint>
-  <link
-    name="left_knee_joint">
+  <link name="right_knee_joint">
     <inertial>
-      <origin
-        xyz="0.0246801333933455 -0.0545496012765575 -0.000304477796019498"
-        rpy="0 0 0" />
-      <mass
-        value="0.602009778953134" />
-      <inertia
-        ixx="0.000585936701332531"
-        ixy="1.70048362523097E-08"
-        ixz="-1.74195842929843E-07"
-        iyy="0.00031640180626295"
-        iyz="-9.62957528030028E-08"
-        izz="0.000503966832089585" />
+      <origin xyz="-0.025103 -0.054039 0.0002832" rpy="0 0 0" />
+      <mass value="0.6077" />
+      <inertia ixx="0.00058774" ixy="-1.7004E-08" ixz="-1.7442E-07" iyy="0.00031697" iyz="9.6663E-08" izz="0.00050521" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_knee_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/right_knee_Link.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      <material name="">
+        <color rgba="0.79216 0.81961 0.93333 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_knee_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/right_knee_Link.STL" />
       </geometry>
     </collision>
   </link>
-  <joint
-    name="left_knee_joint"
-    type="continuous">
-    <origin
-      xyz="-0.02015 -0.15828 0.00035"
-      rpy="0 0 0" />
-    <parent
-      link="left_hip_r_joint" />
-    <child
-      link="left_knee_joint" />
-    <axis
-      xyz="-1 0 0" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+  <joint name="right_knee_joint" type="continuous">
+    <origin xyz="0.01985 -0.15827 -0.00035" rpy="0 0 0" />
+    <parent link="right_hip_r_joint" />
+    <child link="right_knee_joint" />
+    <axis xyz="1 0 0" />
   </joint>
-  <link
-    name="left_ankle_f_joint">
+  <link name="right_ankle_f_joint">
     <inertial>
-      <origin
-        xyz="0.0237672498461645 -0.00377237259696195 0.000419837427473757"
-        rpy="0 0 0" />
-      <mass
-        value="0.486119247655161" />
-      <inertia
-        ixx="0.000608809712821453"
-        ixy="1.75284930873659E-05"
-        ixz="2.354582179518E-07"
-        iyy="0.000364967606516678"
-        iyz="4.48617679862131E-08"
-        izz="0.000459663127053177" />
+      <origin xyz="-0.023337 -0.0037975 0.00037445" rpy="0 0 0" />
+      <mass value="0.48131" />
+      <inertia ixx="0.00060642" ixy="-1.7566E-05" ixz="-2.801E-07" iyy="0.00036429" iyz="-4.4903E-08" izz="0.00045794" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_ankle_f_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/right_ankle_f_Link.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="0.309803921568627 0.482352941176471 0.407843137254902 1" />
+      <material name="">
+        <color rgba="0.78039 0.78039 0.78039 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_ankle_f_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/right_ankle_f_Link.STL" />
       </geometry>
     </collision>
   </link>
-  <joint
-    name="left_ankle_f_joint"
-    type="continuous">
-    <origin
-      xyz="0 -0.236 0"
-      rpy="0 0 0" />
-    <parent
-      link="left_knee_joint" />
-    <child
-      link="left_ankle_f_joint" />
-    <axis
-      xyz="-1 0 0" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+  <joint name="right_ankle_f_joint" type="continuous">
+    <origin xyz="0 -0.236 0" rpy="0 0 0" />
+    <parent link="right_knee_joint" />
+    <child link="right_ankle_f_joint" />
+    <axis xyz="1 0 0" />
   </joint>
-  <link
-    name="left_ankle_r_joint">
+  <link name="right_ankle_r_joint">
     <inertial>
-      <origin
-        xyz="4.24748167970057E-05 -0.0247306597877304 0.0106638710800149"
-        rpy="0 0 0" />
-      <mass
-        value="0.50489357707771" />
-      <inertia
-        ixx="0.00103679249806854"
-        ixy="-2.00169093951614E-08"
-        ixz="8.49523384882695E-07"
-        iyy="0.00117235018451729"
-        iyz="-4.70031088846862E-05"
-        izz="0.000363507093104118" />
+      <origin xyz="-0.00045161 -0.026032 0.0097212" rpy="0 0 0" />
+      <mass value="0.54241" />
+      <inertia ixx="0.0010172" ixy="1.5518E-06" ixz="2.1639E-07" iyy="0.0012161" iyz="-4.0478E-05" izz="0.00043185" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_ankle_r_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/right_ankle_r_Link.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="1 0.949019607843137 0.909803921568627 1" />
+      <material name="">
+        <color rgba="0.79216 0.81961 0.93333 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_ankle_r_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/right_ankle_r_Link.STL" />
       </geometry>
     </collision>
   </link>
-  <joint
-    name="left_ankle_r_joint"
-    type="continuous">
-    <origin
-      xyz="0.02 -0.08245 -0.0105"
-      rpy="0 0 0" />
-    <parent
-      link="left_ankle_f_joint" />
-    <child
-      link="left_ankle_r_joint" />
-    <axis
-      xyz="0 0 1" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+  <joint name="right_ankle_r_joint" type="continuous">
+    <origin xyz="-0.01955 -0.08245 -0.0115" rpy="0 0 0" />
+    <parent link="right_ankle_f_joint" />
+    <child link="right_ankle_r_joint" />
+    <axis xyz="0 0 -1" />
   </joint>
-  <link
-    name="right_hip_f_joint">
+  <link name="left_hip_f_joint">
     <inertial>
-      <origin
-        xyz="0.00494197182731511 9.07661399624175E-05 0.00198776004650214"
-        rpy="0 0 0" />
-      <mass
-        value="0.393578984491956" />
-      <inertia
-        ixx="0.000292984347884872"
-        ixy="-7.49212103520382E-07"
-        ixz="-5.00707062789026E-07"
-        iyy="0.000216043413801198"
-        iyz="2.53381610807286E-07"
-        izz="0.00022943793665683" />
+      <origin xyz="-0.004942 8.1981E-05 0.002009" rpy="0 0 0" />
+      <mass value="0.39358" />
+      <inertia ixx="0.00029298" ixy="6.7668E-07" ixz="6.7578E-07" iyy="0.00021588" iyz="4.2161E-07" izz="0.00022961" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_hip_f_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/left_hip_f_Link.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="0.823529411764706 0.823529411764706 0.823529411764706 1" />
+      <material name="">
+        <color rgba="0.79216 0.81961 0.93333 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_hip_f_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/left_hip_f_Link.STL" />
       </geometry>
     </collision>
   </link>
-  <joint
-    name="right_hip_f_joint"
-    type="continuous">
-    <origin
-      xyz="-0.071 0 0"
-      rpy="0 0 0" />
-    <parent
-      link="pelvis" />
-    <child
-      link="right_hip_f_joint" />
-    <axis
-      xyz="1 0 0" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+  <joint name="left_hip_f_joint" type="continuous">
+    <origin xyz="0.071 0 0" rpy="0 0 0" />
+    <parent link="pelvis" />
+    <child link="left_hip_f_joint" />
+    <axis xyz="-1 0 0" />
   </joint>
-  <link
-    name="right_hip_a_joint">
+  <link name="left_hip_a_joint">
     <inertial>
-      <origin
-        xyz="-7.84461254416391E-05 -0.0194416557973496 -0.022540161610088"
-        rpy="0 0 0" />
-      <mass
-        value="0.632623778007108" />
-      <inertia
-        ixx="0.00063084265054388"
-        ixy="2.11585738664523E-07"
-        ixz="-1.86904962803604E-06"
-        iyy="0.000550787357534649"
-        iyz="-3.90783059385622E-05"
-        izz="0.000844724822630448" />
+      <origin xyz="-5.4211E-06 -0.011977 -0.023082" rpy="0 0 0" />
+      <mass value="0.55773" />
+      <inertia ixx="0.00057601" ixy="9.4644E-08" ixz="1.9333E-08" iyy="0.00043618" iyz="-3.8142E-05" izz="0.0007733" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_hip_a_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/left_hip_a_Link.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="1 0.949019607843137 0.909803921568627 1" />
+      <material name="">
+        <color rgba="0.3098 0.48235 0.40784 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_hip_a_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/left_hip_a_Link.STL" />
       </geometry>
     </collision>
   </link>
-  <joint
-    name="right_hip_a_joint"
-    type="continuous">
-    <origin
-      xyz="-0.0725 0 0.019625"
-      rpy="0 0 0" />
-    <parent
-      link="right_hip_f_joint" />
-    <child
-      link="right_hip_a_joint" />
-    <axis
-      xyz="0 0 -1" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+  <joint name="left_hip_a_joint" type="continuous">
+    <origin xyz="0.0725 0 0.019625" rpy="0 0 0" />
+    <parent link="left_hip_f_joint" />
+    <child link="left_hip_a_joint" />
+    <axis xyz="0 0 -1" />
   </joint>
-  <link
-    name="right_hip_r_joint">
+  <link name="left_hip_r_joint">
     <inertial>
-      <origin
-        xyz="0.00247686817749082 -0.0278688083398015 -2.33042530295435E-05"
-        rpy="0 0 0" />
-      <mass
-        value="0.581468457020582" />
-      <inertia
-        ixx="0.000592251166491356"
-        ixy="1.11502172949934E-05"
-        ixz="-1.19053885376146E-07"
-        iyy="0.000603571125269096"
-        iyz="-7.71656937001977E-07"
-        izz="0.000506692603007596" />
+      <origin xyz="-0.0021493 -0.019712 0.00068224" rpy="0 0 0" />
+      <mass value="0.67544" />
+      <inertia ixx="0.00065584" ixy="-1.0844E-05" ixz="-2.0074E-06" iyy="0.00073488" iyz="-1.7098E-06" izz="0.00058516" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_hip_r_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/left_hip_r_Link.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      <material name="">
+        <color rgba="0.79216 0.81961 0.93333 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_hip_r_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/left_hip_r_Link.STL" />
       </geometry>
     </collision>
   </link>
-  <joint
-    name="right_hip_r_joint"
-    type="continuous">
-    <origin
-      xyz="0 -0.12405 -0.02"
-      rpy="0 0 0" />
-    <parent
-      link="right_hip_a_joint" />
-    <child
-      link="right_hip_r_joint" />
-    <axis
-      xyz="0 1 0" />
+  <joint name="left_hip_r_joint" type="continuous">
+    <origin xyz="0 -0.12405 -0.02" rpy="0 0 0" />
+    <parent link="left_hip_a_joint" />
+    <child link="left_hip_r_joint" />
+    <axis xyz="0 1 0" />
   </joint>
-  <link
-    name="right_knee_joint">
+  <link name="left_knee_joint">
     <inertial>
-      <origin
-        xyz="-0.0246801333933492 -0.0545496012765568 0.000304477796019498"
-        rpy="0 0 0" />
-      <mass
-        value="0.602009778953135" />
-      <inertia
-        ixx="0.000585936701332532"
-        ixy="-1.7004836252887E-08"
-        ixz="-1.74195842929764E-07"
-        iyy="0.00031640180626295"
-        iyz="9.62957528028303E-08"
-        izz="0.000503966832089586" />
+      <origin xyz="0.025103 -0.054039 -0.0002832" rpy="0 0 0" />
+      <mass value="0.6077" />
+      <inertia ixx="0.00058774" ixy="1.7004E-08" ixz="-1.7442E-07" iyy="0.00031697" iyz="-9.6663E-08" izz="0.00050521" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_knee_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/left_knee_Link.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      <material name="">
+        <color rgba="0.79216 0.81961 0.93333 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_knee_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/left_knee_Link.STL" />
       </geometry>
     </collision>
   </link>
-  <joint
-    name="right_knee_joint"
-    type="continuous">
-    <origin
-      xyz="0.02015 -0.15828 -0.00035"
-      rpy="0 0 0" />
-    <parent
-      link="right_hip_r_joint" />
-    <child
-      link="right_knee_joint" />
-    <axis
-      xyz="1 0 0" />
+  <joint name="left_knee_joint" type="continuous">
+    <origin xyz="-0.01985 -0.15827 0.00035" rpy="0 0 0" />
+    <parent link="left_hip_r_joint" />
+    <child link="left_knee_joint" />
+    <axis xyz="-1 0 0" />
   </joint>
-  <link
-    name="right_ankle_f_joint">
+  <link name="left_ankle_f_joint">
     <inertial>
-      <origin
-        xyz="-0.0234194232858954 -0.0037975046781451 0.000413858926189725"
-        rpy="0 0 0" />
-      <mass
-        value="0.48130619869307" />
-      <inertia
-        ixx="0.000606211043859547"
-        ixy="-1.75656199189383E-05"
-        ixz="-2.81492874807209E-07"
-        iyy="0.00036365158965168"
-        iyz="-4.48617679865286E-08"
-        izz="0.000458347110188178" />
+      <origin xyz="0.022982 -0.0038485 0.00038851" rpy="0 0 0" />
+      <mass value="0.4765" />
+      <inertia ixx="0.00060382" ixy="1.7528E-05" ixz="2.3407E-07" iyy="0.00036297" iyz="4.4903E-08" izz="0.00045662" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_ankle_f_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/left_ankle_f_Link.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="0.780392156862745 0.780392156862745 0.780392156862745 1" />
+      <material name="">
+        <color rgba="0.3098 0.48235 0.40784 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_ankle_f_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/left_ankle_f_Link.STL" />
       </geometry>
     </collision>
   </link>
-  <joint
-    name="right_ankle_f_joint"
-    type="continuous">
-    <origin
-      xyz="0 -0.236 0"
-      rpy="0 0 0" />
-    <parent
-      link="right_knee_joint" />
-    <child
-      link="right_ankle_f_joint" />
-    <axis
-      xyz="1 0 0" />
+  <joint name="left_ankle_f_joint" type="continuous">
+    <origin xyz="0 -0.236 0" rpy="0 0 0" />
+    <parent link="left_knee_joint" />
+    <child link="left_ankle_f_joint" />
+    <axis xyz="-1 0 0" />
   </joint>
-  <link
-    name="right_ankle_r_joint">
+  <link name="left_ankle_r_joint">
     <inertial>
-      <origin
-        xyz="4.24748167956734E-05 -0.0247306597877199 0.0106638710799816"
-        rpy="0 0 0" />
-      <mass
-        value="0.504893577077711" />
-      <inertia
-        ixx="0.00103679249806854"
-        ixy="-2.0016909395209E-08"
-        ixz="8.49523384882723E-07"
-        iyy="0.00117235018451729"
-        iyz="-4.70031088846862E-05"
-        izz="0.000363507093104118" />
+      <origin xyz="-0.00045161 -0.026032 0.0097212" rpy="0 0 0" />
+      <mass value="0.54241" />
+      <inertia ixx="0.0010172" ixy="1.5518E-06" ixz="2.1639E-07" iyy="0.0012161" iyz="-4.0478E-05" izz="0.00043185" />
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_ankle_r_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/left_ankle_r_Link.STL" />
       </geometry>
-      <material
-        name="">
-        <color
-          rgba="1 0.949019607843137 0.909803921568627 1" />
+      <material name="">
+        <color rgba="0.79216 0.81961 0.93333 1" />
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_ankle_r_joint.STL" />
+        <mesh filename="/home/ryu/humanoid_leg_test1/12URDF0725/meshes/left_ankle_r_Link.STL" />
       </geometry>
     </collision>
   </link>
-  <joint
-    name="right_ankle_r_joint"
-    type="continuous">
-    <origin
-      xyz="-0.01955 -0.08245 -0.0115"
-      rpy="0 0 0" />
-    <parent
-      link="right_ankle_f_joint" />
-    <child
-      link="right_ankle_r_joint" />
-    <axis
-      xyz="0 0 -1" />
+  <joint name="left_ankle_r_joint" type="continuous">
+    <origin xyz="0.02 -0.08245 -0.0105" rpy="0 0 0" />
+    <parent link="left_ankle_f_joint" />
+    <child link="left_ankle_r_joint" />
+    <axis xyz="0 0 1" />
   </joint>
 </robot>

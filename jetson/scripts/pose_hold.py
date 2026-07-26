@@ -93,6 +93,8 @@ def main():
     ap.add_argument("--kp", type=float, default=20.0)
     ap.add_argument("--kd", type=float, default=1.0)
     ap.add_argument("--channel", default="can1")
+    ap.add_argument("--targets-json", default="",
+                    help="모터별 타깃 override {\"1\": deg, ...} — 미지정 시 STAND_DEG")
     a = ap.parse_args()
     kp = min(a.kp, 25.0)
     kd = min(a.kd, 2.0)
@@ -125,7 +127,11 @@ def main():
                 return 1
             p0[m] = statistics.median(reads)
 
-        tgt = {m: min(max(STAND_DEG[m], MEAS_ROM[m][0] + 3), MEAS_ROM[m][1] - 3)
+        base = STAND_DEG
+        if a.targets_json:
+            base = {int(k): float(v) for k, v in
+                    json.load(open(a.targets_json)).items()}
+        tgt = {m: min(max(base[m], MEAS_ROM[m][0] + 3), MEAS_ROM[m][1] - 3)
                for m in IDS}
         dmax = max(abs(tgt[m] - p0[m]) for m in IDS)
         t_ramp = max(6.0, dmax / RAMP_RATE_DEG_S)

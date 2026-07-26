@@ -14,6 +14,21 @@ ISAACSIM_ROOT=/home/ryu/isaacsim/isaac-sim-5.1.0 /home/ryu/isaacsim-mcp-server/s
   · 확인: ss -ltn | grep 8766   (LISTEN이면 준비됨)
 
 
+■ 0-1. main UI 브리지 켜기 (UI 'SIM 대상 연결' 전 필수 — isaac_state_missing 해결)
+───────────────────────────────────────────────────────────────────
+아이작심이 떠 있고 walk_scene + ▶Play 상태에서, 아래를 Isaac Sim
+Script Editor에 붙여넣거나 (MCP로도 가능):
+
+import sys; sys.path.insert(0, "/home/ryu/humanoid_leg_test1")
+from sim_interface import isaac_sim_bridge as B
+B.start()
+
+  · 역할: /tmp/humanoid_isaac_state.json 하트비트(UI 연결 게이트) +
+    슬라이더 명령 파일 적용 (RL/FSM 보행 중엔 슬라이더 무시 — 충돌 방지)
+  · 중지 B.stop() / 상태 B.status()
+  · RL 패널은 이 브리지와 무관하게 TCP로 동작 (안 켜도 RL은 됨)
+
+
 ■ 1. RL 보행 데모 (walk_scene에서 재생)  ★제일 자주 쓸 것
 ───────────────────────────────────────────────────────────────────
 cd /home/ryu/humanoid_leg_test1

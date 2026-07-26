@@ -111,13 +111,13 @@ def main():
     ap.add_argument("--kd", type=float, default=0.5)
     ap.add_argument("--hold", type=float, default=0.6)
     ap.add_argument("--step", type=float, default=0.1,
-                    help="램프 스텝 deg/20ms (기본 0.1=5°/s, 최대 0.5)")
+                    help="램프 스텝 deg/20ms (기본 0.1=5°/s, 최대 0.8)")
     ap.add_argument("--vmax", type=float, default=1.5,
                     help="과속 문턱 rad/s — AK45(6·12)는 속도 디코드 스케일 미확정이라 상향 필요")
     ap.add_argument("--channel", default="can1")
     a = ap.parse_args()
     mid = a.id
-    delta = max(-20.0, min(20.0, a.delta))   # 관찰 가능 한계 (±20°)
+    delta = max(-40.0, min(40.0, a.delta))   # 관찰 가능 한계 (±40° — 촬영용, ROM 가드가 실제 상한)
     kp = min(a.kp, 20.0)                     # 운용게인(30) 미만 강제
     kd = min(a.kd, 2.0)
 
@@ -145,7 +145,7 @@ def main():
                   f"3° 안전띠 침범 — --delta {-delta:+.0f} 로 반대방향 시도")
             return 3
 
-        abort = ramp(bus, mid, p0, p0 + delta, kp, kd, p0, delta, state, a.vmax, min(abs(a.step), 0.5))
+        abort = ramp(bus, mid, p0, p0 + delta, kp, kd, p0, delta, state, a.vmax, min(abs(a.step), 0.8))
         if abort:
             print(f"[ABORT] 전진 램프 중단: {abort} (현재 {state['pos']}°)")
             return 2
@@ -158,7 +158,7 @@ def main():
             time.sleep(0.02)
         dp = (last - p0) if last is not None else 0.0
 
-        abort = ramp(bus, mid, p0 + delta, p0, kp, kd, p0, delta, state, a.vmax, min(abs(a.step), 0.5))
+        abort = ramp(bus, mid, p0 + delta, p0, kp, kd, p0, delta, state, a.vmax, min(abs(a.step), 0.8))
         if abort:
             print(f"[경고] 복귀 램프 중단: {abort} — 제로게인 해제로 마무리")
         print(f"  도달각 = {last:+.2f}°  변위 dp = {dp:+.2f}°")

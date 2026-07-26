@@ -38,7 +38,7 @@
         "left_hip_a_joint"
       ],
       "isaac_dof_index": 1,
-      "direction": 1,
+      "direction": -1,
       "sign": 1,
       "target_limit_deg": 180.0,
       "hard_limit_deg": 180.0,
@@ -78,7 +78,7 @@
         "left_knee_joint"
       ],
       "isaac_dof_index": 3,
-      "direction": 1,
+      "direction": -1,
       "sign": 1,
       "target_limit_deg": 180.0,
       "hard_limit_deg": 180.0,
@@ -118,7 +118,7 @@
         "left_ankle_r_joint"
       ],
       "isaac_dof_index": 5,
-      "direction": 1,
+      "direction": -1,
       "sign": 1,
       "target_limit_deg": 180.0,
       "hard_limit_deg": 180.0,
@@ -158,7 +158,7 @@
         "right_hip_a_joint"
       ],
       "isaac_dof_index": 7,
-      "direction": 1,
+      "direction": -1,
       "sign": 1,
       "target_limit_deg": 180.0,
       "hard_limit_deg": 180.0,
@@ -198,7 +198,7 @@
         "right_knee_joint"
       ],
       "isaac_dof_index": 9,
-      "direction": 1,
+      "direction": -1,
       "sign": 1,
       "target_limit_deg": 180.0,
       "hard_limit_deg": 180.0,
@@ -238,7 +238,7 @@
         "right_ankle_r_joint"
       ],
       "isaac_dof_index": 11,
-      "direction": 1,
+      "direction": -1,
       "sign": 1,
       "target_limit_deg": 180.0,
       "hard_limit_deg": 180.0,
@@ -247,5 +247,8 @@
       "enabled": true,
       "dry_run": false
     }
+  },
+  "_provenance": {
+    "direction": "2026-07-27 실물 검증: 매달림 상태 관절별 미소동작(사인체크) 12/12 관찰 + 20° 전수 재검증 라운드 승윤님 확정. 의미: motor+회전이 URDF+와 같으면 +1. AK45(6·12) 위치 스케일 과대판독 의심 — 별도 확정 전까지 참고"
   }
 }

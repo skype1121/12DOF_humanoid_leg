@@ -77,10 +77,10 @@ def safe_release(bus, mid):
         pass
 
 
-def ramp(bus, mid, start, goal, kp, kd, p0, delta, state):
+def ramp(bus, mid, start, goal, kp, kd, p0, delta, state, vmax=1.5, step_mag=0.1):
     """0.1°/20ms 램프 — 3중 가드. 중단 사유 반환 (None=정상)."""
     cur = start
-    step = 0.1 if goal >= start else -0.1
+    step = step_mag if goal >= start else -step_mag
     last_fb = time.time()
     while True:
         cur = min(cur + step, goal) if step > 0 else max(cur + step, goal)
@@ -94,7 +94,7 @@ def ramp(bus, mid, start, goal, kp, kd, p0, delta, state):
             state["pos"] = fb.position_deg
             if abs(fb.position_deg - p0) > abs(delta) + 6.0:
                 return "폭주감지"
-            if abs(fb.velocity_rad_s) > 1.5:
+            if abs(fb.velocity_rad_s) > vmax:
                 return "과속감지"
         elif now - last_fb > 0.3:
             return "통신상실"
@@ -110,11 +110,15 @@ def main():
     ap.add_argument("--kp", type=float, default=3.0)
     ap.add_argument("--kd", type=float, default=0.5)
     ap.add_argument("--hold", type=float, default=0.6)
+    ap.add_argument("--step", type=float, default=0.1,
+                    help="램프 스텝 deg/20ms (기본 0.1=5°/s, 최대 0.5)")
+    ap.add_argument("--vmax", type=float, default=1.5,
+                    help="과속 문턱 rad/s — AK45(6·12)는 속도 디코드 스케일 미확정이라 상향 필요")
     ap.add_argument("--channel", default="can1")
     a = ap.parse_args()
     mid = a.id
-    delta = max(-10.0, min(10.0, a.delta))   # 관찰 가능 한계 (±10°)
-    kp = min(a.kp, 12.0)                     # 운용게인(15~30) 미만 강제
+    delta = max(-20.0, min(20.0, a.delta))   # 관찰 가능 한계 (±20°)
+    kp = min(a.kp, 20.0)                     # 운용게인(30) 미만 강제
     kd = min(a.kd, 2.0)
 
     bus = can.Bus(channel=a.channel, interface="socketcan")
@@ -141,7 +145,7 @@ def main():
                   f"3° 안전띠 침범 — --delta {-delta:+.0f} 로 반대방향 시도")
             return 3
 
-        abort = ramp(bus, mid, p0, p0 + delta, kp, kd, p0, delta, state)
+        abort = ramp(bus, mid, p0, p0 + delta, kp, kd, p0, delta, state, a.vmax, min(abs(a.step), 0.5))
         if abort:
             print(f"[ABORT] 전진 램프 중단: {abort} (현재 {state['pos']}°)")
             return 2
@@ -154,7 +158,7 @@ def main():
             time.sleep(0.02)
         dp = (last - p0) if last is not None else 0.0
 
-        abort = ramp(bus, mid, p0 + delta, p0, kp, kd, p0, delta, state)
+        abort = ramp(bus, mid, p0 + delta, p0, kp, kd, p0, delta, state, a.vmax, min(abs(a.step), 0.5))
         if abort:
             print(f"[경고] 복귀 램프 중단: {abort} — 제로게인 해제로 마무리")
         print(f"  도달각 = {last:+.2f}°  변위 dp = {dp:+.2f}°")

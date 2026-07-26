@@ -64,6 +64,7 @@ def gait_phase_reward(
     command_name: str = "base_velocity",
     freq: float = GAIT_FREQ_HZ,
     force_threshold: float = 5.0,
+    always_walk: bool = False,
 ) -> torch.Tensor:
     """Siekmann 2021 간이판 주기 보상 — 위상-접촉 일치도. 값 0~1.
 
@@ -92,6 +93,12 @@ def gait_phase_reward(
 
     stand_reward = (contact[:, 0] & contact[:, 1]).to(torch.float32)
 
+    if always_walk:
+        # march(제자리 걷기)판: 명령 0에서도 클록 리듬 스텝 — 서기 보상 없음.
+        # 이 플래그를 쓰는 정책은 '조용히 서기'가 불가능해지므로 배포 노드에서
+        # 정지 상태는 반드시 일반 체크포인트로 전환할 것.
+        return walk_reward
+
     cmd_vec = env.command_manager.get_command(command_name)
     cmd = torch.norm(cmd_vec[:, :2], dim=1) + torch.abs(cmd_vec[:, 2])
     return torch.where(cmd > 0.1, walk_reward, stand_reward)
@@ -113,6 +120,29 @@ def stand_still_full_command(
     cmd = env.command_manager.get_command(command_name)
     cmd_mag = torch.norm(cmd[:, :2], dim=1) + torch.abs(cmd[:, 2])
     return mdp.joint_deviation_l1(env, asset_cfg) * (cmd_mag < command_threshold)
+
+
+def march_position_hold(
+    env,
+    command_name: str = "base_velocity",
+    dead_zone: float = 0.3,
+    cap: float = 2.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """명령 0(march) env의 스폰 원점 XY 이탈 벌점 — 제자리 드리프트 앵커.
+
+    march 1라운드 실측: 리듬·대칭 완성에도 30s에 평균 2.0m 표류 — 명령 0
+    속도추종은 영점 부근 기울기가 없어 위치 누적오차를 못 잡는다. 원점 거리
+    데드존(리셋 산포 ±0.3m 허용) 밖 선형 벌점으로 위치를 앵커. cap은 방폭
+    관례(물리폭발 시 원거리 순간치 폭주 차단). 이동 명령 env는 벌점 0.
+    """
+    asset = env.scene[asset_cfg.name]
+    dist = torch.norm(
+        asset.data.root_pos_w[:, :2] - env.scene.env_origins[:, :2], dim=1)
+    pen = (dist - dead_zone).clamp(min=0.0, max=cap)
+    cmd = env.command_manager.get_command(command_name)
+    zero_cmd = (torch.norm(cmd[:, :2], dim=1) + cmd[:, 2].abs()) < 0.1
+    return torch.where(zero_cmd, pen, torch.zeros_like(pen))
 
 
 def foot_yaw_slip(

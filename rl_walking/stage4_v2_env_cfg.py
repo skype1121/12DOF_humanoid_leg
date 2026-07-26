@@ -199,6 +199,59 @@ class Biped12Stage4V2EnvCfg_PLAY(Biped12Stage4V2EnvCfg):
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
 
 
+@configclass
+class Biped12Stage4V2MarchEnvCfg(Biped12Stage4V2EnvCfg):
+    """제자리 걷기(march)판 — 명령 0 = 정지 대신 클록 리듬 '들었다 놨다'.
+
+    용도: 실물 접지 첫 동적 테스트 (이동 없이 걷기 역학만 검증 — 낙상 위험 최소).
+    ⚠ 이 정책은 '조용히 서기'가 불가능 (명령 0 = 스텝). 배포 노드에서 정지는
+    반드시 일반 체크포인트(R4 model_12994)로 전환할 것.
+
+    R2~R4 확정 오버라이드를 cfg에 명문화 — 리줌 CLI 누락 실수 원천 차단.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        # ── R2~R4 확정값 명문화 (종전 CLI 오버라이드) ──
+        self.rewards.track_ang_vel_z_exp.weight = 2.0       # R2
+        self.rewards.flat_orientation_l2.weight = -3.0      # R3
+        self.rewards.feet_gap.params["min_gap"] = 0.22      # R4
+        # ── march 핵심: 명령 0 env 실효 40% + 위상 보상 상시 가동 ──
+        # spin 15%/backward 15% 강제 배정이 독립 난수로 standing을 덮어쓰므로
+        # (적대 리뷰 확인: 실효 = 설정 × 0.70) 0.571로 설정해 실효 40% 확보
+        self.commands.base_velocity.rel_standing_envs = 0.571
+        self.rewards.gait_phase.params["always_walk"] = True
+        # 정지자세 고정 벌점 제거 — 제자리 스텝의 관절 이탈을 벌하지 않게
+        self.rewards.stand_still = None
+        # 위치 앵커 (march 1라운드 실측 드리프트 2.0m/30s 교정): 원점 0.3m
+        # 데드존 밖 선형 벌점 — 명령 0 env만
+        self.rewards.march_anchor = RewTerm(
+            func=mdp_stage4.march_position_hold,
+            weight=-1.0,
+            params={"dead_zone": 0.3, "cap": 2.0},
+        )
+
+
+@configclass
+class Biped12Stage4V2MarchEnvCfg_PLAY(Biped12Stage4V2MarchEnvCfg):
+    """march 재생/평가 — 전 env 명령 0 (순수 제자리 걷기)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 32
+        self.episode_length_s = 40.0
+        self.observations.policy.enable_corruption = False
+        self.events.base_external_force_torque = None
+        self.events.push_robot = None
+        self.commands.base_velocity.rel_standing_envs = 1.0
+        self.commands.base_velocity.rel_spin_envs = 0.0
+        self.commands.base_velocity.rel_backward_envs = 0.0
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+
+
 ##
 # 험지 v2 — 서브지형 비율 변경판
 ##

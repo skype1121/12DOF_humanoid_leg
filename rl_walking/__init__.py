@@ -157,6 +157,27 @@ gym.register(
 )
 
 gym.register(
+    id="Biped12-Velocity-Stage4V2-March-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        # 제자리 걷기판: 명령 0 = 클록 리듬 스텝 (정지 불가 — 노드에서 전환)
+        "env_cfg_entry_point": "rl_walking.stage4_v2_env_cfg:Biped12Stage4V2MarchEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Biped12-Velocity-Stage4V2-March-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.stage4_v2_env_cfg:Biped12Stage4V2MarchEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+    },
+)
+
+gym.register(
     id="Biped12-Velocity-Stage4V2-Slope-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

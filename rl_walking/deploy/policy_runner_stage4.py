@@ -148,6 +148,40 @@ def yaw_from_quat_wxyz(qw: float, qx: float, qy: float, qz: float) -> float:
     return math.atan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz))
 
 
+class PositionHold:
+    """상위 위치 유지 폐루프 — 제자리 걷기(march) 드리프트 상쇄.
+
+    march 실측(2026-07-26): 정책 관측에 위치·선속도가 없어(IMU·엔코더만)
+    블라인드 정책 단독으로는 드리프트를 못 잡는다 (앵커 벌점 학습 2.0→1.8m 한계).
+    HeadingHold와 동일 패턴의 명령 계층이 정공법:
+      cmd_xy(몸 기준) = clip(-kp·(현위치-기준점, 몸 프레임 회전), ±v_limit)
+    정책은 이 소속도 명령을 잘 추종하므로(학습 분포 내) 재학습 불필요.
+
+    위치 입력: 시뮬=루트 위치, 실물=다리 오도메트리(엔코더+접촉) 또는 외부 측위.
+    v_limit 기본 0.15 m/s — 제자리 유지 목적의 저속 보정 (학습 분포 내).
+    """
+
+    def __init__(self, kp: float = 0.8, v_limit: float = 0.15,
+                 ref_xy: tuple = (0.0, 0.0)):
+        self.kp = float(kp)
+        self.v_limit = float(v_limit)
+        self.ref = (float(ref_xy[0]), float(ref_xy[1]))
+
+    def set_ref(self, x: float, y: float) -> None:
+        """기준점 지정 (march 시작 순간의 현재 위치 권장)."""
+        self.ref = (float(x), float(y))
+
+    def update(self, x: float, y: float, yaw: float) -> tuple:
+        """현 위치(월드 xy)·요 → (vx_cmd, vy_cmd) 몸 프레임 [m/s]."""
+        ex, ey = self.ref[0] - float(x), self.ref[1] - float(y)  # 월드 오차
+        c, s = math.cos(yaw), math.sin(yaw)
+        bx = c * ex + s * ey      # 몸 프레임 (요 회전 역변환)
+        by = -s * ex + c * ey
+        vx = max(-self.v_limit, min(self.v_limit, self.kp * bx))
+        vy = max(-self.v_limit, min(self.v_limit, self.kp * by))
+        return vx, vy
+
+
 class _TermHistory:
     """isaaclab CircularBuffer(batch=1) 동작 재현 — 항별 (T, D) 링버퍼.
 

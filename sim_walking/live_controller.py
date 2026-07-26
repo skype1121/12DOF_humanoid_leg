@@ -64,6 +64,8 @@ class LiveWalkController:
         self._blend_i = 0
         self._sub = None
         self._subscribe()
+        if not self._fsm_ok:
+            self.rl_start_standing()   # v2: 기동 즉시 능동 서기
 
     # ---------- 내부 ----------
     def _make_neutral(self):
@@ -285,6 +287,35 @@ class LiveWalkController:
         return {"ok": True, "cmd": [cx, cy, cw],
                 "heading_hold": self._rl_hh is not None}
 
+    def rl_start_standing(self):
+        """walk 정책 능동 서기 시작 — v2 씬 기본 대기 상태 (개루프 STAND의
+        '뒤로 젖혀진 불안한 자세' 해소, 2026-07-27 승윤님 관찰)."""
+        try:
+            from rl_walking.policy_adapter_stage4 import (
+                FootContacts, RLWalkPolicyStage4)
+            ck = os.path.join(REPO, self.RL_CHECKPOINTS["walk"])
+            contacts = FootContacts(
+                phys_dt=1.0 / FPS,
+                foot_links=getattr(self.s, "foot_links", None))
+            contacts.initialize(self.s)
+            pol = RLWalkPolicyStage4(contacts, checkpoint=ck,
+                                     cmd=(0.0, 0.0, 0.0))
+            pol.attach(self.s)
+            pol.reset()
+            self.gait = pol
+            self.t = 0.0
+            self._rl_cmd = (0.0, 0.0, 0.0)
+            self._rl_ckpt = "walk(stand)"
+            self._rl_hh = None
+            self._rl_stand_until = 0.0
+            self._rl_stop_at = None
+            self._rl_standing = True
+            self.mode = "RL"
+            return {"ok": True, "mode": "RL_STAND"}
+        except Exception as ex:
+            self.last_err = f"start_standing 실패: {type(ex).__name__}: {ex}"
+            return {"ok": False, "error": self.last_err}
+
     def rl_stop(self):
         """RL 소프트 정지: 명령 0으로 1.5s 정책 자체 정지 → STAND 인계."""
         if self.mode == "FALLEN":
@@ -437,6 +468,8 @@ class LiveWalkController:
         self.last_err = ""
         self.y0 = self._pelvis_y()
         self._subscribe()
+        if not self._fsm_ok:
+            self.rl_start_standing()   # v2: 리셋 즉시 능동 서기
         return {"ok": True, "mode": self.mode, "note": "scene reset"}
 
     def shutdown(self):

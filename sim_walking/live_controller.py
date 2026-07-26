@@ -57,6 +57,9 @@ class LiveWalkController:
         self._rl_yaw_fn = None
         self._rl_stand_until = 0.0
         self._rl_stop_at = None
+        self._rl_wait_ds = 0
+        self._blend_from = {}
+        self._blend_i = 0
         self._sub = None
         self._subscribe()
 
@@ -104,14 +107,35 @@ class LiveWalkController:
             if self.mode == "HOLD":
                 # 즉시정지: 목표 동결 (실물 STOP_ALL 철학 — 피드백도 미적용)
                 tg = dict(self._hold_targets)
+            elif self.mode == "RL_SETTLE":
+                # 정지 3단계: 동결 목표 → 중립 자세로 1s 선형 블렌딩 → STAND
+                # (즉시 전환은 march처럼 계속 스텝 밟는 정책에서 스윙 중 낙상)
+                self._blend_i += 1
+                a = min(1.0, self._blend_i / 60.0)
+                tg = {n: (1.0 - a) * self._blend_from.get(n, v) + a * v
+                      for n, v in self._neutral.items()}
+                if a >= 1.0:
+                    self.mode = "STAND"
             elif self.mode == "RL" and self.gait is not None and \
                     self._rl_stop_at is not None and self.t >= self._rl_stop_at:
-                # 소프트 정지 완료: 정책이 명령 0으로 1.5s 자체 정지한 뒤 인계
-                # (급전환 시 회전 보행 중 낙상 실측 — 2026-07-26)
-                self.gait = None
-                self._rl_stop_at = None
-                self.mode = "STAND"
-                tg = self.fb.apply(dict(self._neutral), lat_ref=0.0)
+                # 정지 2단계: 양발 접지 순간 포착 후 동결·블렌딩 개시 (최대 1s 대기
+                # — march는 명령 0에서도 계속 스텝을 밟으므로 스윙 중 인계 금지)
+                import numpy as _np
+                self.t += 1.0 / FPS
+                prev_c = getattr(self.gait, "_prev_c", None)
+                both_down = bool(prev_c is not None
+                                 and prev_c[0] > 0.5 and prev_c[1] > 0.5)
+                self._rl_wait_ds += 1
+                if both_down or self._rl_wait_ds > 60:
+                    self._blend_from = dict(self.gait._targets or self._neutral)
+                    self._blend_i = 0
+                    self.gait = None
+                    self._rl_stop_at = None
+                    self.mode = "RL_SETTLE"
+                    tg = dict(self._blend_from)
+                else:
+                    self.gait.cmd = _np.float32([0.0, 0.0, 0.0])
+                    tg = self._clamp_limits(self.gait.targets(self.t))
             elif self.mode == "RL" and self.gait is not None:
                 # RL 모드: 밸런스 피드백 미적용 (정책 자체 밸런스 — 중첩 금지),
                 # 절대각 소프트 리밋 클램프 (조작 실수·정책 이상 방어)
@@ -254,11 +278,29 @@ class LiveWalkController:
             self.gait = None
             self.mode = "STAND"
             return {"ok": True, "mode": self.mode}
+        # march처럼 '명령 0에서도 계속 밟는' 정책은 walk 정책으로 교체 후 정지 —
+        # walk는 명령 0 서기·밀치기 회복이 학습돼 있어 인수 정지가 안전
+        # (동결·블렌딩만으로는 이동 중 무게중심 때문에 낙상 실측)
+        swapped = False
+        if self._rl_ckpt not in ("walk", "walk(stop)"):
+            try:
+                from rl_walking.policy_adapter_stage4 import RLWalkPolicyStage4
+                ck = os.path.join(REPO, self.RL_CHECKPOINTS["walk"])
+                pol = RLWalkPolicyStage4(
+                    self.gait.contacts, checkpoint=ck, cmd=(0.0, 0.0, 0.0))
+                pol.attach(self.s)
+                pol.reset()
+                self.gait = pol
+                self._rl_ckpt = "walk(stop)"
+                swapped = True
+            except Exception as ex:
+                self.last_err = f"stop-swap 실패: {type(ex).__name__}: {ex}"
         self._rl_cmd = (0.0, 0.0, 0.0)
         self._rl_hh = None
         self._rl_stop_at = self.t + 1.5
-        return {"ok": True, "mode": "RL_STOPPING",
-                "note": "명령 0 정착 1.5s 후 STAND 인계"}
+        self._rl_wait_ds = 0
+        return {"ok": True, "mode": "RL_STOPPING", "stop_swap": swapped,
+                "note": "walk 정책 서기 1.5s → 양발접지 → 1s 블렌딩 → STAND"}
 
     # ---------- 명령 ----------
     def stand(self):

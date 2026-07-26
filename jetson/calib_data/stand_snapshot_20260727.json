@@ -1,0 +1,96 @@
+{
+ "_meta": {
+  "date": "2026-07-27",
+  "method": "연속 제로토크 기록에서 '들고 정렬 유지' 구간(로그 187~191행, 사람 손떨림 ~1° 특성으로 식별; 최말미 완전정지 구간은 손 뗀 후 처짐으로 배제)의 중앙값",
+  "window_rows": "187-191",
+  "target_pose": "시뮬 DEFAULT_POSE: 힙 0, 무릎 ±6°(L−/R+), 발목굽힘 ∓1.4°, 롤 0 — 육안 매칭",
+  "usage": "rl_bridge_node/Stage8 baseline_deg 후보. 부호·오프셋 최종 매핑은 관절별 미소 동작 대조로 검증 후 확정할 것",
+  "power_cycle_note": "매달림 재현값이 전원 사이클 간 ~2° 일치 → 절대 엔코더(원점 유지) 추정 — 단 확정 검증 전"
+ },
+ "motors": {
+  "1": {
+   "joint": "left_hip_f_joint",
+   "stand_deg": 4.1,
+   "window_spread_deg": 3.1,
+   "delta_from_hang_deg": -40.3,
+   "ak45_scale_unconfirmed": false
+  },
+  "2": {
+   "joint": "left_hip_a_joint",
+   "stand_deg": 5.5,
+   "window_spread_deg": 0.7,
+   "delta_from_hang_deg": -4.7,
+   "ak45_scale_unconfirmed": false
+  },
+  "3": {
+   "joint": "left_hip_r_joint",
+   "stand_deg": 8.7,
+   "window_spread_deg": 0.0,
+   "delta_from_hang_deg": 3.8,
+   "ak45_scale_unconfirmed": false
+  },
+  "4": {
+   "joint": "left_knee_joint",
+   "stand_deg": 32.4,
+   "window_spread_deg": 3.6,
+   "delta_from_hang_deg": -0.2,
+   "ak45_scale_unconfirmed": false
+  },
+  "5": {
+   "joint": "left_ankle_f_joint",
+   "stand_deg": 37.0,
+   "window_spread_deg": 1.1,
+   "delta_from_hang_deg": 18.05,
+   "ak45_scale_unconfirmed": false
+  },
+  "6": {
+   "joint": "left_ankle_r_joint",
+   "stand_deg": 3.9,
+   "window_spread_deg": 0.0,
+   "delta_from_hang_deg": -10.0,
+   "ak45_scale_unconfirmed": true
+  },
+  "7": {
+   "joint": "right_hip_f_joint",
+   "stand_deg": 76.4,
+   "window_spread_deg": 4.1,
+   "delta_from_hang_deg": 38.1,
+   "ak45_scale_unconfirmed": false
+  },
+  "8": {
+   "joint": "right_hip_a_joint",
+   "stand_deg": 10.8,
+   "window_spread_deg": 0.5,
+   "delta_from_hang_deg": -7.1,
+   "ak45_scale_unconfirmed": false
+  },
+  "9": {
+   "joint": "right_hip_r_joint",
+   "stand_deg": -0.4,
+   "window_spread_deg": 0.3,
+   "delta_from_hang_deg": -1.2,
+   "ak45_scale_unconfirmed": false
+  },
+  "10": {
+   "joint": "right_knee_joint",
+   "stand_deg": 16.8,
+   "window_spread_deg": 0.4,
+   "delta_from_hang_deg": 2.5,
+   "ak45_scale_unconfirmed": false
+  },
+  "11": {
+   "joint": "right_ankle_f_joint",
+   "stand_deg": 12.9,
+   "window_spread_deg": 0.1,
+   "delta_from_hang_deg": -13.9,
+   "ak45_scale_unconfirmed": false
+  },
+  "12": {
+   "joint": "right_ankle_r_joint",
+   "stand_deg": 2.9,
+   "window_spread_deg": 0.1,
+   "delta_from_hang_deg": -3.8,
+   "ak45_scale_unconfirmed": true
+  }
+ }
+}

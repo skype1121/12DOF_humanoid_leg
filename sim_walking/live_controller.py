@@ -247,6 +247,9 @@ class LiveWalkController:
 
     def rl_stop(self):
         """RL 소프트 정지: 명령 0으로 1.5s 정책 자체 정지 → STAND 인계."""
+        if self.mode == "FALLEN":
+            return {"ok": False, "error": "넘어짐 — 리셋(재시작) 필요",
+                    "mode": self.mode}
         if self.mode != "RL" or self.gait is None:
             self.gait = None
             self.mode = "STAND"

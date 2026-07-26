@@ -502,12 +502,13 @@ class HumanoidControlUI:
         btns = tk.Frame(panel, bg=PANEL_COLOR)
         btns.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(4, 2))
         self.rl_buttons = []
-        for col, (text, cmd) in enumerate((
+        for idx, (text, cmd) in enumerate((
                 ("RL 시작", self.rl_start),
                 ("정지(서기)", self.rl_stop),
-                ("즉시정지", self.rl_halt))):
-            b = self._button(btns, text, cmd, width=9)
-            b.grid(row=0, column=col, padx=2)
+                ("즉시정지", self.rl_halt),
+                ("리셋(재시작)", self.rl_reset))):
+            b = self._button(btns, text, cmd, width=10)
+            b.grid(row=idx // 2, column=idx % 2, padx=2, pady=2)
             self.rl_buttons.append(b)
 
         self.rl_status = tk.StringVar(value="미연결")
@@ -625,6 +626,11 @@ class HumanoidControlUI:
 
     def rl_halt(self):
         self._rl_send({"cmd": "halt"}, label="halt")
+
+    def rl_reset(self):
+        """넘어짐(FALLEN) 복구: 씬을 초기 자세로 리셋 — RL 재시작 전 필수."""
+        self._rl_send({"cmd": "reset"}, label="reset")
+        self._log_event("INFO", "RL 씬 리셋 요청 (넘어짐 복구)")
 
     def _build_motor_status_grid(self, parent, row_index):
         motors = self._panel(parent, "모터 상태")

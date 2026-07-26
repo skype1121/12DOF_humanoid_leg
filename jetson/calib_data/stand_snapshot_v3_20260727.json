@@ -1,0 +1,122 @@
+{
+ "1": {
+  "joint": "left_hip_f_joint",
+  "motor_id": 1,
+  "min_deg": 32.68705205684542,
+  "max_deg": 32.70890899569988,
+  "samples": 20,
+  "miss": 0,
+  "ak45_scale_unconfirmed": false,
+  "median_deg": 32.68705205684542
+ },
+ "2": {
+  "joint": "left_hip_a_joint",
+  "motor_id": 2,
+  "min_deg": 2.1966223548732557,
+  "max_deg": 2.2184792937277162,
+  "samples": 20,
+  "miss": 0,
+  "ak45_scale_unconfirmed": false,
+  "median_deg": 2.2184792937277162
+ },
+ "3": {
+  "joint": "left_hip_r_joint",
+  "motor_id": 3,
+  "min_deg": 7.114433597126814,
+  "max_deg": 7.136290535981274,
+  "samples": 20,
+  "miss": 0,
+  "ak45_scale_unconfirmed": false,
+  "median_deg": 7.114433597126814
+ },
+ "4": {
+  "joint": "left_knee_joint",
+  "motor_id": 4,
+  "min_deg": 14.217938724826398,
+  "max_deg": 14.217938724826398,
+  "samples": 20,
+  "miss": 0,
+  "ak45_scale_unconfirmed": false,
+  "median_deg": 14.217938724826398
+ },
+ "5": {
+  "joint": "left_ankle_f_joint",
+  "motor_id": 5,
+  "min_deg": 34.26075165436656,
+  "max_deg": 34.28260859322101,
+  "samples": 20,
+  "miss": 0,
+  "ak45_scale_unconfirmed": false,
+  "median_deg": 34.28260859322101
+ },
+ "6": {
+  "joint": "left_ankle_r_joint",
+  "motor_id": 6,
+  "min_deg": 4.950596650535249,
+  "max_deg": 4.950596650535249,
+  "samples": 20,
+  "miss": 0,
+  "ak45_scale_unconfirmed": true,
+  "median_deg": 4.950596650535249
+ },
+ "7": {
+  "joint": "right_hip_f_joint",
+  "motor_id": 7,
+  "min_deg": 44.70836842679866,
+  "max_deg": 44.70836842679866,
+  "samples": 20,
+  "miss": 0,
+  "ak45_scale_unconfirmed": false,
+  "median_deg": 44.70836842679866
+ },
+ "8": {
+  "joint": "right_hip_a_joint",
+  "motor_id": 8,
+  "min_deg": 8.797417888920254,
+  "max_deg": 8.819274827774715,
+  "samples": 20,
+  "miss": 0,
+  "ak45_scale_unconfirmed": false,
+  "median_deg": 8.819274827774715
+ },
+ "9": {
+  "joint": "right_hip_r_joint",
+  "motor_id": 9,
+  "min_deg": -1.5409141892394482,
+  "max_deg": -1.519057250384988,
+  "samples": 20,
+  "miss": 0,
+  "ak45_scale_unconfirmed": false,
+  "median_deg": -1.519057250384988
+ },
+ "10": {
+  "joint": "right_knee_joint",
+  "motor_id": 10,
+  "min_deg": 21.86786732388759,
+  "max_deg": 21.86786732388759,
+  "samples": 20,
+  "miss": 0,
+  "ak45_scale_unconfirmed": false,
+  "median_deg": 21.86786732388759
+ },
+ "11": {
+  "joint": "right_ankle_f_joint",
+  "motor_id": 11,
+  "min_deg": 5.6063048161690565,
+  "max_deg": 5.628161755023516,
+  "samples": 20,
+  "miss": 0,
+  "ak45_scale_unconfirmed": false,
+  "median_deg": 5.6063048161690565
+ },
+ "12": {
+  "joint": "right_ankle_r_joint",
+  "motor_id": 12,
+  "min_deg": 8.272851356413208,
+  "max_deg": 8.294708295267668,
+  "samples": 20,
+  "miss": 0,
+  "ak45_scale_unconfirmed": true,
+  "median_deg": 8.294708295267668
+ }
+}

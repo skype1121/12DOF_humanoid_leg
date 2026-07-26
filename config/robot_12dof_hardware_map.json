@@ -1,254 +1,267 @@
 {
-  "version": "stage8_12dof_hardware_map_real_v1",
-  "mode": "REAL_CONTROL",
-  "real_can_write_enabled": true,
-  "robot_prim_path": "/World/URDF12DOF",
-  "articulation_root": "/World/URDF12DOF",
-  "articulation_creation_method": "prim_paths_expr",
-  "note": "Main PC 12-axis real control mapping. Runtime CAN write is controlled by stage8_12axis_mit_control_node.py.",
-  "joints": {
-    "left_hip_f_joint": {
-      "joint_name": "left_hip_f_joint",
-      "side": "left",
-      "body_group": "left_leg",
-      "ui_label": "좌 고관절 F",
-      "motor_id": 1,
-      "isaac_joint_name": "left_hip_f_joint",
-      "isaac_dof_aliases": [
-        "left_hip_f_joint"
-      ],
-      "isaac_dof_index": 0,
-      "direction": 1,
-      "sign": 1,
-      "target_limit_deg": 180.0,
-      "hard_limit_deg": 180.0,
-      "kp": 30.0,
-      "kd": 2.0,
-      "enabled": true,
-      "dry_run": false
-    },
-    "left_hip_a_joint": {
-      "joint_name": "left_hip_a_joint",
-      "side": "left",
-      "body_group": "left_leg",
-      "ui_label": "좌 고관절 A",
-      "motor_id": 2,
-      "isaac_joint_name": "left_hip_a_joint",
-      "isaac_dof_aliases": [
-        "left_hip_a_joint"
-      ],
-      "isaac_dof_index": 1,
-      "direction": -1,
-      "sign": 1,
-      "target_limit_deg": 180.0,
-      "hard_limit_deg": 180.0,
-      "kp": 25.0,
-      "kd": 2.0,
-      "enabled": true,
-      "dry_run": false
-    },
-    "left_hip_r_joint": {
-      "joint_name": "left_hip_r_joint",
-      "side": "left",
-      "body_group": "left_leg",
-      "ui_label": "좌 고관절 R",
-      "motor_id": 3,
-      "isaac_joint_name": "left_hip_r_joint",
-      "isaac_dof_aliases": [
-        "left_hip_r_joint"
-      ],
-      "isaac_dof_index": 2,
-      "direction": 1,
-      "sign": 1,
-      "target_limit_deg": 180.0,
-      "hard_limit_deg": 180.0,
-      "kp": 20.0,
-      "kd": 1.5,
-      "enabled": true,
-      "dry_run": false
-    },
-    "left_knee_joint": {
-      "joint_name": "left_knee_joint",
-      "side": "left",
-      "body_group": "left_leg",
-      "ui_label": "좌 무릎",
-      "motor_id": 4,
-      "isaac_joint_name": "left_knee_joint",
-      "isaac_dof_aliases": [
-        "left_knee_joint"
-      ],
-      "isaac_dof_index": 3,
-      "direction": -1,
-      "sign": 1,
-      "target_limit_deg": 180.0,
-      "hard_limit_deg": 180.0,
-      "kp": 30.0,
-      "kd": 2.0,
-      "enabled": true,
-      "dry_run": false
-    },
-    "left_ankle_f_joint": {
-      "joint_name": "left_ankle_f_joint",
-      "side": "left",
-      "body_group": "left_leg",
-      "ui_label": "좌 발목 F",
-      "motor_id": 5,
-      "isaac_joint_name": "left_ankle_f_joint",
-      "isaac_dof_aliases": [
-        "left_ankle_f_joint"
-      ],
-      "isaac_dof_index": 4,
-      "direction": 1,
-      "sign": 1,
-      "target_limit_deg": 180.0,
-      "hard_limit_deg": 180.0,
-      "kp": 20.0,
-      "kd": 1.5,
-      "enabled": true,
-      "dry_run": false
-    },
-    "left_ankle_r_joint": {
-      "joint_name": "left_ankle_r_joint",
-      "side": "left",
-      "body_group": "left_leg",
-      "ui_label": "좌 발목 R",
-      "motor_id": 6,
-      "isaac_joint_name": "left_ankle_r_joint",
-      "isaac_dof_aliases": [
-        "left_ankle_r_joint"
-      ],
-      "isaac_dof_index": 5,
-      "direction": -1,
-      "sign": 1,
-      "target_limit_deg": 180.0,
-      "hard_limit_deg": 180.0,
-      "kp": 15.0,
-      "kd": 1.0,
-      "enabled": true,
-      "dry_run": false
-    },
-    "right_hip_f_joint": {
-      "joint_name": "right_hip_f_joint",
-      "side": "right",
-      "body_group": "right_leg",
-      "ui_label": "우 고관절 F",
-      "motor_id": 7,
-      "isaac_joint_name": "right_hip_f_joint",
-      "isaac_dof_aliases": [
-        "right_hip_f_joint"
-      ],
-      "isaac_dof_index": 6,
-      "direction": 1,
-      "sign": 1,
-      "target_limit_deg": 180.0,
-      "hard_limit_deg": 180.0,
-      "kp": 30.0,
-      "kd": 2.0,
-      "enabled": true,
-      "dry_run": false
-    },
-    "right_hip_a_joint": {
-      "joint_name": "right_hip_a_joint",
-      "side": "right",
-      "body_group": "right_leg",
-      "ui_label": "우 고관절 A",
-      "motor_id": 8,
-      "isaac_joint_name": "right_hip_a_joint",
-      "isaac_dof_aliases": [
-        "right_hip_a_joint"
-      ],
-      "isaac_dof_index": 7,
-      "direction": -1,
-      "sign": 1,
-      "target_limit_deg": 180.0,
-      "hard_limit_deg": 180.0,
-      "kp": 25.0,
-      "kd": 2.0,
-      "enabled": true,
-      "dry_run": false
-    },
-    "right_hip_r_joint": {
-      "joint_name": "right_hip_r_joint",
-      "side": "right",
-      "body_group": "right_leg",
-      "ui_label": "우 고관절 R",
-      "motor_id": 9,
-      "isaac_joint_name": "right_hip_r_joint",
-      "isaac_dof_aliases": [
-        "right_hip_r_joint"
-      ],
-      "isaac_dof_index": 8,
-      "direction": 1,
-      "sign": 1,
-      "target_limit_deg": 180.0,
-      "hard_limit_deg": 180.0,
-      "kp": 20.0,
-      "kd": 1.5,
-      "enabled": true,
-      "dry_run": false
-    },
-    "right_knee_joint": {
-      "joint_name": "right_knee_joint",
-      "side": "right",
-      "body_group": "right_leg",
-      "ui_label": "우 무릎",
-      "motor_id": 10,
-      "isaac_joint_name": "right_knee_joint",
-      "isaac_dof_aliases": [
-        "right_knee_joint"
-      ],
-      "isaac_dof_index": 9,
-      "direction": -1,
-      "sign": 1,
-      "target_limit_deg": 180.0,
-      "hard_limit_deg": 180.0,
-      "kp": 30.0,
-      "kd": 2.0,
-      "enabled": true,
-      "dry_run": false
-    },
-    "right_ankle_f_joint": {
-      "joint_name": "right_ankle_f_joint",
-      "side": "right",
-      "body_group": "right_leg",
-      "ui_label": "우 발목 F",
-      "motor_id": 11,
-      "isaac_joint_name": "right_ankle_f_joint",
-      "isaac_dof_aliases": [
-        "right_ankle_f_joint"
-      ],
-      "isaac_dof_index": 10,
-      "direction": 1,
-      "sign": 1,
-      "target_limit_deg": 180.0,
-      "hard_limit_deg": 180.0,
-      "kp": 20.0,
-      "kd": 1.5,
-      "enabled": true,
-      "dry_run": false
-    },
-    "right_ankle_r_joint": {
-      "joint_name": "right_ankle_r_joint",
-      "side": "right",
-      "body_group": "right_leg",
-      "ui_label": "우 발목 R",
-      "motor_id": 12,
-      "isaac_joint_name": "right_ankle_r_joint",
-      "isaac_dof_aliases": [
-        "right_ankle_r_joint"
-      ],
-      "isaac_dof_index": 11,
-      "direction": 1,
-      "sign": 1,
-      "target_limit_deg": 180.0,
-      "hard_limit_deg": 180.0,
-      "kp": 15.0,
-      "kd": 1.0,
-      "enabled": true,
-      "dry_run": false
-    }
+ "version": "stage8_12dof_hardware_map_real_v1",
+ "mode": "REAL_CONTROL",
+ "real_can_write_enabled": true,
+ "robot_prim_path": "/World/URDF12DOF",
+ "articulation_root": "/World/URDF12DOF",
+ "articulation_creation_method": "prim_paths_expr",
+ "note": "Main PC 12-axis real control mapping. Runtime CAN write is controlled by stage8_12axis_mit_control_node.py.",
+ "joints": {
+  "left_hip_f_joint": {
+   "joint_name": "left_hip_f_joint",
+   "side": "left",
+   "body_group": "left_leg",
+   "ui_label": "좌 고관절 F",
+   "motor_id": 1,
+   "isaac_joint_name": "left_hip_f_joint",
+   "isaac_dof_aliases": [
+    "left_hip_f_joint"
+   ],
+   "isaac_dof_index": 0,
+   "direction": 1,
+   "sign": 1,
+   "target_limit_deg": 180.0,
+   "hard_limit_deg": 180.0,
+   "kp": 30.0,
+   "kd": 2.0,
+   "enabled": true,
+   "dry_run": false,
+   "stand_zero_deg": 32.69
   },
-  "_provenance": {
-    "direction": "2026-07-27 실물 검증 (매달림 미소동작 12/12 + 20° 전수 라운드 + 발목롤 모서리 기준 재검): 홀수모터 +1/짝수 −1, 단 모터12=+1 — ankle_r URDF 좌우부호 예외(양쪽 +=외번)의 실물 재현. 발목롤 육안 관찰은 발등/발바닥 혼동 잦음 — 반드시 새끼발가락 모서리 상승/하강 기준으로. AK45(6·12) 위치 스케일 과대판독 의심 — 폰 각도기 실측 전 참고"
+  "left_hip_a_joint": {
+   "joint_name": "left_hip_a_joint",
+   "side": "left",
+   "body_group": "left_leg",
+   "ui_label": "좌 고관절 A",
+   "motor_id": 2,
+   "isaac_joint_name": "left_hip_a_joint",
+   "isaac_dof_aliases": [
+    "left_hip_a_joint"
+   ],
+   "isaac_dof_index": 1,
+   "direction": -1,
+   "sign": 1,
+   "target_limit_deg": 180.0,
+   "hard_limit_deg": 180.0,
+   "kp": 25.0,
+   "kd": 2.0,
+   "enabled": true,
+   "dry_run": false,
+   "stand_zero_deg": 2.22
+  },
+  "left_hip_r_joint": {
+   "joint_name": "left_hip_r_joint",
+   "side": "left",
+   "body_group": "left_leg",
+   "ui_label": "좌 고관절 R",
+   "motor_id": 3,
+   "isaac_joint_name": "left_hip_r_joint",
+   "isaac_dof_aliases": [
+    "left_hip_r_joint"
+   ],
+   "isaac_dof_index": 2,
+   "direction": 1,
+   "sign": 1,
+   "target_limit_deg": 180.0,
+   "hard_limit_deg": 180.0,
+   "kp": 20.0,
+   "kd": 1.5,
+   "enabled": true,
+   "dry_run": false,
+   "stand_zero_deg": 7.11
+  },
+  "left_knee_joint": {
+   "joint_name": "left_knee_joint",
+   "side": "left",
+   "body_group": "left_leg",
+   "ui_label": "좌 무릎",
+   "motor_id": 4,
+   "isaac_joint_name": "left_knee_joint",
+   "isaac_dof_aliases": [
+    "left_knee_joint"
+   ],
+   "isaac_dof_index": 3,
+   "direction": -1,
+   "sign": 1,
+   "target_limit_deg": 180.0,
+   "hard_limit_deg": 180.0,
+   "kp": 30.0,
+   "kd": 2.0,
+   "enabled": true,
+   "dry_run": false,
+   "stand_zero_deg": 14.22
+  },
+  "left_ankle_f_joint": {
+   "joint_name": "left_ankle_f_joint",
+   "side": "left",
+   "body_group": "left_leg",
+   "ui_label": "좌 발목 F",
+   "motor_id": 5,
+   "isaac_joint_name": "left_ankle_f_joint",
+   "isaac_dof_aliases": [
+    "left_ankle_f_joint"
+   ],
+   "isaac_dof_index": 4,
+   "direction": 1,
+   "sign": 1,
+   "target_limit_deg": 180.0,
+   "hard_limit_deg": 180.0,
+   "kp": 20.0,
+   "kd": 1.5,
+   "enabled": true,
+   "dry_run": false,
+   "stand_zero_deg": 34.28
+  },
+  "left_ankle_r_joint": {
+   "joint_name": "left_ankle_r_joint",
+   "side": "left",
+   "body_group": "left_leg",
+   "ui_label": "좌 발목 R",
+   "motor_id": 6,
+   "isaac_joint_name": "left_ankle_r_joint",
+   "isaac_dof_aliases": [
+    "left_ankle_r_joint"
+   ],
+   "isaac_dof_index": 5,
+   "direction": -1,
+   "sign": 1,
+   "target_limit_deg": 180.0,
+   "hard_limit_deg": 180.0,
+   "kp": 15.0,
+   "kd": 1.0,
+   "enabled": true,
+   "dry_run": false,
+   "stand_zero_deg": 4.95
+  },
+  "right_hip_f_joint": {
+   "joint_name": "right_hip_f_joint",
+   "side": "right",
+   "body_group": "right_leg",
+   "ui_label": "우 고관절 F",
+   "motor_id": 7,
+   "isaac_joint_name": "right_hip_f_joint",
+   "isaac_dof_aliases": [
+    "right_hip_f_joint"
+   ],
+   "isaac_dof_index": 6,
+   "direction": 1,
+   "sign": 1,
+   "target_limit_deg": 180.0,
+   "hard_limit_deg": 180.0,
+   "kp": 30.0,
+   "kd": 2.0,
+   "enabled": true,
+   "dry_run": false,
+   "stand_zero_deg": 44.71
+  },
+  "right_hip_a_joint": {
+   "joint_name": "right_hip_a_joint",
+   "side": "right",
+   "body_group": "right_leg",
+   "ui_label": "우 고관절 A",
+   "motor_id": 8,
+   "isaac_joint_name": "right_hip_a_joint",
+   "isaac_dof_aliases": [
+    "right_hip_a_joint"
+   ],
+   "isaac_dof_index": 7,
+   "direction": -1,
+   "sign": 1,
+   "target_limit_deg": 180.0,
+   "hard_limit_deg": 180.0,
+   "kp": 25.0,
+   "kd": 2.0,
+   "enabled": true,
+   "dry_run": false,
+   "stand_zero_deg": 8.82
+  },
+  "right_hip_r_joint": {
+   "joint_name": "right_hip_r_joint",
+   "side": "right",
+   "body_group": "right_leg",
+   "ui_label": "우 고관절 R",
+   "motor_id": 9,
+   "isaac_joint_name": "right_hip_r_joint",
+   "isaac_dof_aliases": [
+    "right_hip_r_joint"
+   ],
+   "isaac_dof_index": 8,
+   "direction": 1,
+   "sign": 1,
+   "target_limit_deg": 180.0,
+   "hard_limit_deg": 180.0,
+   "kp": 20.0,
+   "kd": 1.5,
+   "enabled": true,
+   "dry_run": false,
+   "stand_zero_deg": -1.52
+  },
+  "right_knee_joint": {
+   "joint_name": "right_knee_joint",
+   "side": "right",
+   "body_group": "right_leg",
+   "ui_label": "우 무릎",
+   "motor_id": 10,
+   "isaac_joint_name": "right_knee_joint",
+   "isaac_dof_aliases": [
+    "right_knee_joint"
+   ],
+   "isaac_dof_index": 9,
+   "direction": -1,
+   "sign": 1,
+   "target_limit_deg": 180.0,
+   "hard_limit_deg": 180.0,
+   "kp": 30.0,
+   "kd": 2.0,
+   "enabled": true,
+   "dry_run": false,
+   "stand_zero_deg": 21.87
+  },
+  "right_ankle_f_joint": {
+   "joint_name": "right_ankle_f_joint",
+   "side": "right",
+   "body_group": "right_leg",
+   "ui_label": "우 발목 F",
+   "motor_id": 11,
+   "isaac_joint_name": "right_ankle_f_joint",
+   "isaac_dof_aliases": [
+    "right_ankle_f_joint"
+   ],
+   "isaac_dof_index": 10,
+   "direction": 1,
+   "sign": 1,
+   "target_limit_deg": 180.0,
+   "hard_limit_deg": 180.0,
+   "kp": 20.0,
+   "kd": 1.5,
+   "enabled": true,
+   "dry_run": false,
+   "stand_zero_deg": 5.61
+  },
+  "right_ankle_r_joint": {
+   "joint_name": "right_ankle_r_joint",
+   "side": "right",
+   "body_group": "right_leg",
+   "ui_label": "우 발목 R",
+   "motor_id": 12,
+   "isaac_joint_name": "right_ankle_r_joint",
+   "isaac_dof_aliases": [
+    "right_ankle_r_joint"
+   ],
+   "isaac_dof_index": 11,
+   "direction": 1,
+   "sign": 1,
+   "target_limit_deg": 180.0,
+   "hard_limit_deg": 180.0,
+   "kp": 15.0,
+   "kd": 1.0,
+   "enabled": true,
+   "dry_run": false,
+   "stand_zero_deg": 8.29
   }
+ },
+ "_provenance": {
+  "direction": "2026-07-27 실물 검증 (매달림 미소동작 12/12 + 20° 전수 라운드 + 발목롤 모서리 기준 재검): 홀수모터 +1/짝수 −1, 단 모터12=+1 — ankle_r URDF 좌우부호 예외(양쪽 +=외번)의 실물 재현. 발목롤 육안 관찰은 발등/발바닥 혼동 잦음 — 반드시 새끼발가락 모서리 상승/하강 기준으로. AK45(6·12) 위치 스케일 과대판독 의심 — 폰 각도기 실측 전 참고",
+  "stand_zero_deg": "stand_snapshot_v3_20260727: 승윤님이 매달림 상태에서 직립 정렬 재교정 후 제로토크 정지 캡처 (20샘플 중앙값, 노이즈 0.02°, 결측 0). 소프트웨어 영점 앵커 — 모터 인코더 원점(하드웨어)은 건드리지 않음. 변환식: joint_deg = direction × (motor_deg − stand_zero_deg). v2(stand_snapshot_v2) 대체. 주의: 6·12번(AK45)은 위치 스케일 ~1.48배 과대판독 의심 — 상대변화에 스케일 보정 필요(확정 대기)"
+ }
 }

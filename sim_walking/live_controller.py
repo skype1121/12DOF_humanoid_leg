@@ -59,6 +59,7 @@ class LiveWalkController:
         self._rl_stand_until = 0.0
         self._rl_stop_at = None
         self._rl_wait_ds = 0
+        self._rl_standing = False
         self._blend_from = {}
         self._blend_i = 0
         self._sub = None
@@ -250,6 +251,7 @@ class LiveWalkController:
         self.t = 0.0
         self._rl_stand_until = 2.0   # 서기 2s 후 요청 명령 적용 (데모 동일)
         self._rl_stop_at = None
+        self._rl_standing = False
         self._rl_cmd = (float(cmd_x), float(cmd_y), float(wz))
         self._rl_ckpt = str(checkpoint)
         # 헤딩 폐루프: 명시 wz 명령이 없을 때만 (회전 명령과 병용 금지)
@@ -276,6 +278,8 @@ class LiveWalkController:
             if abs(cw) >= 1e-6:
                 self._rl_hh = None    # 명시 회전 → 헤딩홀드 해제
         self._rl_cmd = (cx, cy, cw)
+        if abs(cx) + abs(cy) + abs(cw) > 1e-6:
+            self._rl_standing = False
         if self._rl_hh is None:
             self.gait.cmd = _np.float32([cx, cy, cw])
         return {"ok": True, "cmd": [cx, cy, cw],
@@ -309,10 +313,10 @@ class LiveWalkController:
                 self.last_err = f"stop-swap 실패: {type(ex).__name__}: {ex}"
         self._rl_cmd = (0.0, 0.0, 0.0)
         self._rl_hh = None
-        self._rl_stop_at = self.t + 1.5
-        self._rl_wait_ds = 0
-        return {"ok": True, "mode": "RL_STOPPING", "stop_swap": swapped,
-                "note": "walk 정책 서기 1.5s → 양발접지 → 1s 블렌딩 → STAND"}
+        self._rl_stop_at = None      # FSM 인계 안 함 — 정책이 계속 능동 서기
+        self._rl_standing = True
+        return {"ok": True, "mode": "RL_STAND", "stop_swap": swapped,
+                "note": "walk 정책 능동 서기 (개루프 STAND의 기울어짐 방지)"}
 
     # ---------- 명령 ----------
     def stand(self):
@@ -407,6 +411,8 @@ class LiveWalkController:
             ts = self.gait._t_stop()
             d["stopping"] = ts is not None
         if self.mode == "RL":
+            if getattr(self, "_rl_standing", False):
+                d["mode"] = "RL_STAND"
             d["rl_checkpoint"] = self._rl_ckpt
             d["rl_cmd"] = list(self._rl_cmd)
             d["heading_hold"] = self._rl_hh is not None

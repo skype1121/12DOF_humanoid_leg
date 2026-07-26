@@ -26,7 +26,7 @@
    "kd": 2.0,
    "enabled": true,
    "dry_run": false,
-   "stand_zero_deg": 32.69
+   "stand_zero_deg": 31.99
   },
   "left_hip_a_joint": {
    "joint_name": "left_hip_a_joint",
@@ -47,7 +47,7 @@
    "kd": 2.0,
    "enabled": true,
    "dry_run": false,
-   "stand_zero_deg": 2.22
+   "stand_zero_deg": 2.2
   },
   "left_hip_r_joint": {
    "joint_name": "left_hip_r_joint",
@@ -68,7 +68,7 @@
    "kd": 1.5,
    "enabled": true,
    "dry_run": false,
-   "stand_zero_deg": 7.11
+   "stand_zero_deg": 8.69
   },
   "left_knee_joint": {
    "joint_name": "left_knee_joint",
@@ -262,6 +262,6 @@
  },
  "_provenance": {
   "direction": "2026-07-27 실물 검증 (매달림 미소동작 12/12 + 20° 전수 라운드 + 발목롤 모서리 기준 재검): 홀수모터 +1/짝수 −1, 단 모터12=+1 — ankle_r URDF 좌우부호 예외(양쪽 +=외번)의 실물 재현. 발목롤 육안 관찰은 발등/발바닥 혼동 잦음 — 반드시 새끼발가락 모서리 상승/하강 기준으로. AK45(6·12) 위치 스케일 과대판독 의심 — 폰 각도기 실측 전 참고",
-  "stand_zero_deg": "stand_snapshot_v3_20260727: 승윤님이 매달림 상태에서 직립 정렬 재교정 후 제로토크 정지 캡처 (20샘플 중앙값, 노이즈 0.02°, 결측 0). 소프트웨어 영점 앵커 — 모터 인코더 원점(하드웨어)은 건드리지 않음. 변환식: joint_deg = direction × (motor_deg − stand_zero_deg). v2(stand_snapshot_v2) 대체. 주의: 6·12번(AK45)은 위치 스케일 ~1.48배 과대판독 의심 — 상대변화에 스케일 보정 필요(확정 대기)"
+  "stand_zero_deg": "stand_snapshot_v4_20260727: v3 캡처 후 좌힙 재교정(m1 −0.7°, m3 +1.6°)한 최종 직립 정지 캡처 (제로토크 20샘플 중앙값, 결측 0). 소프트웨어 영점 앵커 — 모터 인코더 원점(하드웨어)은 건드리지 않음. 변환식: joint_deg = direction × (motor_deg − stand_zero_deg). v2→v3→v4 대체 이력. 주의: 6·12번(AK45)은 위치 스케일 ~1.48배 과대판독 의심 — 상대변화에 스케일 보정 필요(확정 대기)"
  }
 }

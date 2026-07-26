@@ -29,6 +29,13 @@ from ak_mit_decoder import decode_ak_mit_feedback  # noqa: E402
 ENTER = bytes([0xFF] * 7 + [0xFC])
 EXIT = bytes([0xFF] * 7 + [0xFD])
 
+#: 실측 ROM (모터 프레임 deg, rom_sweep2_20260727) — 목표각 가드용
+MEAS_ROM = {
+    1: (-114.4, 36.2), 2: (-13.5, 20.9), 3: (-82.3, 89.0), 4: (-64.3, 52.2),
+    5: (-30.6, 41.1), 6: (-25.4, 34.0), 7: (14.4, 153.8), 8: (-22.7, 27.2),
+    9: (-77.3, 61.6), 10: (-68.0, 64.0), 11: (-47.9, 42.9), 12: (-22.5, 36.6),
+}
+
 #: URDF +방향의 해부학 의미 (Isaac 실측 2026-07-18, memory joint-direction-verified)
 URDF_PLUS_MEANING = {
     1: "왼허벅지 앞으로 (굽힘)", 2: "왼다리 안쪽으로 (모음)",
@@ -85,7 +92,7 @@ def ramp(bus, mid, start, goal, kp, kd, p0, delta, state):
         if fb is not None:
             last_fb = now
             state["pos"] = fb.position_deg
-            if abs(fb.position_deg - p0) > 3 * abs(delta) + 1.0:
+            if abs(fb.position_deg - p0) > abs(delta) + 6.0:
                 return "폭주감지"
             if abs(fb.velocity_rad_s) > 1.5:
                 return "과속감지"
@@ -106,7 +113,7 @@ def main():
     ap.add_argument("--channel", default="can1")
     a = ap.parse_args()
     mid = a.id
-    delta = max(-3.0, min(3.0, a.delta))     # 미소동작 한계
+    delta = max(-10.0, min(10.0, a.delta))   # 관찰 가능 한계 (±10°)
     kp = min(a.kp, 12.0)                     # 운용게인(15~30) 미만 강제
     kd = min(a.kd, 2.0)
 
@@ -128,6 +135,11 @@ def main():
             return 1
         p0 = statistics.median(reads)
         print(f"  시작각 p0 = {p0:+.2f}°")
+        lo, hi = MEAS_ROM[mid]
+        if not (lo + 3.0 <= p0 + delta <= hi - 3.0):
+            print(f"[거부] 목표 {p0 + delta:+.1f}°가 실측 ROM({lo:+.1f}~{hi:+.1f}) "
+                  f"3° 안전띠 침범 — --delta {-delta:+.0f} 로 반대방향 시도")
+            return 3
 
         abort = ramp(bus, mid, p0, p0 + delta, kp, kd, p0, delta, state)
         if abort:

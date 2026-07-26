@@ -9,9 +9,18 @@
     /home/ryu/IsaacLab/isaaclab.sh -p rl_walking/scripts/train.py \
         --task Biped12-Velocity-Flat-v0 --headless --num_envs 4096
 """
-import gymnasium as gym
+try:
+    import gymnasium as gym
+except ImportError:      # 배포 장비(젯슨 등)엔 gymnasium 없음 — 등록은 학습 전용,
+    gym = None           # deploy/ 하위(policy_runner 등) import 는 그대로 가능해야 함
 
 # 엔트리포인트는 문자열 — import 시점에 isaaclab을 요구하지 않는다 (lazy)
+if gym is None:
+    def _noop_register(**_kw):
+        pass
+    class _GymStub:
+        register = staticmethod(_noop_register)
+    gym = _GymStub()
 gym.register(
     id="Biped12-Velocity-Flat-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",

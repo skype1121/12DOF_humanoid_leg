@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 """Stage8 12-axis AK MIT real-control node.
 
-Current deployment uses the main PC, ROS2 topics, and SocketCAN `can0`.
+Current deployment uses the main PC, ROS2 topics, and SocketCAN (default
+`can0`; 젯슨 라이브 버스는 `can1` — 젯슨에서는 --can-channel can1 로 기동).
+
+프레임 규약 (2026-07-27 실측 캘리브레이션):
+  baseline_deg·latest_actual_deg·SET_JOINT_TARGET 상대각은 전부 '모터 인코더
+  프레임' deg. config/joint_limits_12dof.json 리밋 표는 'URDF 관절 프레임' —
+  절대각 리밋 검사 전 joint_deg = direction × (motor_deg − stand_zero_deg)
+  변환 필수 (아래 _load_frame_constants / _set_joint_target 참조).
 """
 
+import argparse
 import json
 import math
 import re
@@ -24,7 +32,10 @@ from protocols.ak_mit_command import (  # noqa: E402
     pack_ak_mit_command,
 )
 from protocols.ak_mit_decoder import decode_ak_mit_feedback  # noqa: E402
-from robot_runtime.joint_limits import check_absolute_deg  # noqa: E402
+from robot_runtime.joint_limits import (  # noqa: E402
+    check_absolute_deg,
+    get_absolute_limits_deg,
+)
 from robot_runtime.dof12_mapping import (  # noqa: E402
     JOINT_NAMES_12DOF,
     get_isaac_dof_index,
@@ -41,6 +52,8 @@ JOINT_STATES_TOPIC = "/humanoid/joint_states"
 
 REAL_CAN_WRITE_ENABLED = True
 READ_ONLY_CAN_ENABLED = True
+# 기본 'can0' (메인 PC 호환). 젯슨 라이브 버스는 'can1' — main() 의
+# --can-channel 인자로 교체 가능 (모듈 전역이라 전 경로에 일괄 적용).
 CAN_CHANNEL = "can0"
 CAN_BITRATE = 1000000
 CAN_RESTART_MS = 100
@@ -84,6 +97,63 @@ DEFAULT_LIMIT_GAIN_BY_JOINT = {
 # Stage8 accepts all 12 joint commands, while REAL_CAN_WRITE_ENABLED remains
 # False by default so actual CAN writes stay blocked unless changed on Jetson.
 ALLOWED_JOINTS = list(JOINT_NAMES_12DOF)
+
+
+# ---------------------------------------------------------------------------
+# 프레임 변환 상수 (2026-07-27 실측 캘리브레이션 — config/robot_12dof_hardware_map.json)
+#   joint_deg = direction × (motor_deg − stand_zero_deg)   (모터 → URDF 관절 프레임)
+# check_absolute_deg 의 리밋 표(config/joint_limits_12dof.json)는 URDF 관절 프레임 —
+# 모터 인코더 절대각을 그대로 넣으면 안 되고 반드시 위 식으로 변환 후 검사한다.
+# 주의: jetson/scripts/rl_bridge_node.py 에도 동일 규약의 로더가 있다 (두 노드는
+# 서로 다른 머신에서 돌 수 있어 자체완결 유지) — 규약 변경 시 두 곳 동시 수정.
+# ---------------------------------------------------------------------------
+
+def _load_frame_constants():
+    """하드웨어맵에서 direction/stand_zero_deg 로드 — 12관절 전수 검증, 결함 시 기동 차단."""
+    direction_by_joint = {}
+    stand_zero_by_joint = {}
+    problems = []
+    for joint in JOINT_NAMES_12DOF:
+        config = get_joint_config(joint)
+        joint_ok = True
+        direction = config.get("direction")
+        if isinstance(direction, bool) or direction not in (-1, 1):
+            problems.append(f"{joint}: direction={direction!r} (−1/+1 만 허용)")
+            joint_ok = False
+        stand_zero = config.get("stand_zero_deg")
+        if (isinstance(stand_zero, bool)
+                or not isinstance(stand_zero, (int, float))
+                or not math.isfinite(float(stand_zero))
+                or abs(float(stand_zero)) >= 120.0):
+            problems.append(
+                f"{joint}: stand_zero_deg={stand_zero!r} (유한 float, |SZ|<120° 필요)")
+            joint_ok = False
+        if not joint_ok:
+            continue
+        direction_by_joint[joint] = int(direction)
+        stand_zero_by_joint[joint] = float(stand_zero)
+    if problems:
+        raise ValueError(
+            "하드웨어맵 프레임 상수 검증 실패 — 절대각 리밋 검사의 프레임 변환 불가, "
+            "기동 중단:\n  " + "\n  ".join(problems))
+    return direction_by_joint, stand_zero_by_joint
+
+
+DIRECTION_BY_JOINT, STAND_ZERO_DEG_BY_JOINT = _load_frame_constants()
+
+# 모터 프레임 백스톱 (2026-07-27 적대리뷰 수정): |모터절대각 − stand_zero| 가
+# 해당 관절 하드리밋 '폭'+여유를 넘으면 무조건 거부하는 2차 방어선.
+# 종전 rom_sweep2 절대 min/max 표는 사용 금지 — 그 스윕은 영점 앵커 前 인코더
+# 프레임 기록이라 현재(v4) 프레임과 절대값이 다르다 (같은 이유로 당시 3층
+# 대조도 '폭' 기준만 수행). 절대값을 그대로 쓰면 정상 보행 엔벨로프를 오거부해
+# 스윙 중 다리를 얼릴 수 있었음 (좌무릎 −41° 초과 굽힘 거부 등, 4관점 리뷰
+# 전원 CONFIRMED). '폭'은 프레임 무관 실측이고 12관절 모두 리밋이 0을 걸치므로
+# |joint| ≤ 폭 이 항상 성립 → 정상 타깃 오거부 불가능. DIR 부호와 무관하게
+# 성립해 방향 상수 오염도 잡는다 (SZ 오염은 관절 프레임 검사가 잡음).
+MOTOR_DEV_BACKSTOP_DEG_BY_JOINT = {
+    _j: (float(_lim["hard_max"]) - float(_lim["hard_min"])) + 6.0
+    for _j, _lim in get_absolute_limits_deg().items()
+}
 
 
 @dataclass(frozen=True)
@@ -347,13 +417,31 @@ class Stage8TwelveAxisMitControlCore:
         if abs(target_deg) > float(config["target_limit_deg"]):
             return self._reject("target_limited")
 
-        # 절대각 검사 (2026-07-26 신설): 종전 상대각 ±180° 검사는 사실상 무제한 —
-        # 절대각(baseline+상대) 기준 비대칭 소프트/하드 리밋을 추가 적용한다.
-        # 원본 config/joint_limits_12dof.json (RL 실측 엔벨로프 + 해부학·자기충돌 한계).
-        absolute_deg = self.baseline_deg_by_joint[joint] + target_deg
-        limit_verdict = check_absolute_deg(joint, absolute_deg)
+        # 절대각 검사 (2026-07-26 신설, 2026-07-27 프레임 수정): 종전 상대각 ±180°
+        # 검사는 사실상 무제한 — 절대각(baseline+상대) 기준 비대칭 소프트/하드
+        # 리밋을 추가 적용한다. 원본 config/joint_limits_12dof.json (RL 실측
+        # 엔벨로프 + 해부학·자기충돌 한계).
+        # 프레임 버그 수정: baseline·target 은 '모터 인코더 프레임' deg 인데
+        # 리밋 표는 'URDF 관절 프레임' — joint = DIR×(motor−SZ) 변환 후 검사한다
+        # (종전엔 모터 절대각을 그대로 넣어 리밋이 엉뚱한 프레임에 적용됐음).
+        absolute_deg = self.baseline_deg_by_joint[joint] + target_deg  # 모터 프레임
+        joint_abs_deg = DIRECTION_BY_JOINT[joint] * (
+            absolute_deg - STAND_ZERO_DEG_BY_JOINT[joint])             # 관절 프레임
+        limit_verdict = check_absolute_deg(joint, joint_abs_deg)
         if limit_verdict != "ok":
-            return self._reject(f"{limit_verdict}:{joint}:{absolute_deg:.1f}deg")
+            return self._reject(
+                f"{limit_verdict}:{joint}:joint{joint_abs_deg:.1f}deg"
+                f"(motor{absolute_deg:.1f}deg)")
+
+        # 모터 프레임 백스톱: stand_zero 로부터의 편차가 하드리밋 폭+여유를
+        # 넘으면 거부 — DIR 부호와 무관한 2차 방어선 (프레임 근거는 상수 정의부).
+        dev = abs(absolute_deg - STAND_ZERO_DEG_BY_JOINT[joint])
+        dev_limit = MOTOR_DEV_BACKSTOP_DEG_BY_JOINT[joint]
+        if dev > dev_limit:
+            return self._reject(
+                f"motor_dev_backstop:{joint}:|motor{absolute_deg:.1f}deg-"
+                f"SZ{STAND_ZERO_DEG_BY_JOINT[joint]:.1f}deg|="
+                f"{dev:.1f}deg > {dev_limit:.1f}deg")
 
         self.desired_relative_deg_by_joint[joint] = target_deg
         self.accepted = True
@@ -894,6 +982,22 @@ def load_ros2():
 
 
 def main():
+    global CAN_CHANNEL
+
+    parser = argparse.ArgumentParser(
+        description="Stage8 12-axis AK MIT real-control node")
+    parser.add_argument(
+        "--can-channel", default=CAN_CHANNEL,
+        help="SocketCAN 채널 (기본 can0 — 메인 PC 호환). 젯슨 라이브 버스는 can1 "
+             "이므로 젯슨 배포 시 --can-channel can1 로 기동할 것")
+    # ROS2 런치가 붙이는 --ros-args 등 미지 인자는 무시 (parse_known_args)
+    args, _unknown = parser.parse_known_args()
+    if re.fullmatch(r"can[0-9]+", str(args.can_channel)) is None:
+        print(f"[Stage8-12Axis] invalid --can-channel: {args.can_channel!r} "
+              "(can0/can1/... 형식만 허용)")
+        return 1
+    CAN_CHANNEL = str(args.can_channel)
+
     rclpy, String, error = load_ros2()
     if rclpy is None:
         print(f"[Stage8-12Axis] ROS2 import failed: {error}")
@@ -903,6 +1007,7 @@ def main():
     node = Stage8TwelveAxisMitControlNode(rclpy, String)
     print(f"[Stage8-12Axis] command topic = {COMMAND_TOPIC}")
     print(f"[Stage8-12Axis] status topic = {STATUS_TOPIC}")
+    print(f"[Stage8-12Axis] CAN channel = {CAN_CHANNEL}")
     print(f"[Stage8-12Axis] REAL_CAN_WRITE_ENABLED = {REAL_CAN_WRITE_ENABLED}")
     print(f"[Stage8-12Axis] ALLOWED_JOINTS = {ALLOWED_JOINTS}")
     print("[Stage8-12Axis] 12-axis MIT control node started")

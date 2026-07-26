@@ -6,9 +6,23 @@
   (12×50Hz = 600msg/s — 목 벤치 검증 여유 PASS. 노드 측 게이트/슬루/절대각
   리밋 검사 그대로 통과하므로 브리지가 뚫려도 노드가 막는다.)
 
+프레임 변환 (2026-07-27 실측 캘리브레이션 확정 — config/robot_12dof_hardware_map.json):
+  관절 j: DIR[j] = direction(±1, 실물 미소동작 검증),
+          SZ[j]  = stand_zero_deg(모터 인코더 프레임 deg, stand_snapshot_v4)
+  입력 (모터→관절): joint_rad = radians( DIR × (motor_deg − SZ) )
+  출력 (관절→모터): motor_target_deg = SZ + DIR × degrees(policy_target_rad)
+  발행 상대각 rel = motor_target_deg − baseline_deg → Stage8 절대각 = baseline + rel
+  = motor_target 그대로 복원 (baseline이 어떤 자세로 캡처됐든 무관).
+  AK45(모터 6·12): 위치 스케일 1.0 확정 — 위치엔 보정 없음. 단 velocity 디코드는
+  과대판독 — 관절 6·12의 feedback.velocity_rad_s 는 소비 금지 (qvel은 어떤 관절도
+  피드백 속도를 쓰지 않고 관절 프레임 위치의 유한차분만 사용).
+
 토픽 규약:
-  구독 /humanoid/joint_states            Stage8 노드 발행 (JSON, actual deg)
-  구독 /humanoid/stage8_12axis_mit_status  armed·baseline_deg 확인
+  구독 /humanoid/joint_states            (JSON, name→deg) — 값은 '모터 인코더
+      프레임' deg. 현재 저장소에 발행자 없음(규약 유지) — 실질 피드백 소스는 아래
+  구독 /humanoid/stage8_12axis_mit_status  armed·baseline_deg 확인 + 관절 피드백
+      겸용: joints[j].latest_actual_deg(모터 프레임 deg)를 feedback_age_sec<0.5s
+      일 때만 신선한 관절각으로 흡수 — Stage8 상태만으로 브리지 구동 가능
   구독 /humanoid/imu                     iAHRS 드라이버 (JSON):
       {"timestamp": epoch초, "gyro_rad_s": [wx,wy,wz](body),
        "quat_wxyz": [w,x,y,z](world<-body)}          ※ 드라이버 미구현 — 규약 확정용
@@ -26,10 +40,15 @@
     관측으로 오동작하므로 멈추는 게 안전
   - estop 명령 → STOP_ALL 발행 + 루프 정지
   - 체크포인트: walk=R4(12994) 기본. march 전환은 접지 테스트 단계에서만.
-  - kd는 노드 하드웨어맵 관할(kd5) — 브리지는 게인 미접촉. 시뮬 kd25 금지 원칙.
+  - kd는 노드 하드웨어맵 관할 — 브리지는 게인 미접촉. 시뮬 kd25 금지 원칙.
+  - 게인 게이트: 정책 라이브는 학습게인 kp150/kd5 일치가 전제 (kd5 = MIT 프로토콜
+    상한 = 실물 kd 상한 규칙). 하드웨어맵 kp/kd 불일치 시 --live 기동 거부 —
+    --force-gains 로만 우회 (맵 갱신은 사용자 결정 사항).
+  - 하드웨어맵 결함(12관절 direction/stand_zero_deg 미비) 시 기동 자체 차단.
 
 드라이런 자가검증 (로봇·ROS 불필요):
   python3 jetson/scripts/rl_bridge_node.py --selftest
+  → 하드웨어맵 12/12 검증 + 왕복 항등 + 수치 앵커 + 게인 정책
   → 목 센서(정지 직립)로 500틱 돌려 목표각 유한성·리밋·틱 주기 검증
 """
 from __future__ import annotations
@@ -48,11 +67,17 @@ if REPO not in sys.path:
 from rl_walking.deploy.policy_runner_stage4 import (  # noqa: E402
     CONTACT_FORCE_THRESHOLD_N, HeadingHold, PolicyRunnerStage4,
     yaw_from_quat_wxyz)
-from rl_walking.deploy.policy_runner import JOINT_ORDER  # noqa: E402
+from rl_walking.deploy.policy_runner import (  # noqa: E402
+    DEFAULT_POSE_RAD, JOINT_ORDER)
 
 RATE_HZ = 50.0
 TICK_SEC = 1.0 / RATE_HZ
 SENSOR_STALE_SEC = 0.2
+#: 드라이런(비-live) 관절 신선 한계 — Stage8 비무장 시 CAN 피드백이 12모터
+#: 라운드로빈(~240ms/바퀴)이라 0.2s 게이트로는 영원히 stale. live 무장 시엔
+#: 명령마다 피드백이 와서(50Hz) 0.2s 엄격 게이트가 그대로 적용된다.
+JOINT_STALE_DRYRUN_SEC = 0.5
+STATUS_FEEDBACK_FRESH_SEC = 0.5   # status 경유 관절 피드백(feedback_age_sec) 신선 한계
 COMMAND_TOPIC = "/humanoid/stage8_12axis_mit_command"
 STATUS_TOPIC = "/humanoid/stage8_12axis_mit_status"
 JOINT_STATES_TOPIC = "/humanoid/joint_states"
@@ -68,9 +93,126 @@ CHECKPOINTS = {
         REPO, "logs/rsl_rl/biped12_stage4/2026-07-26_21-41-30/exported"),
 }
 
+# ---------------------------------------------------------------------------
+# 프레임 변환 (2026-07-27 실측 캘리브레이션 확정)
+# ---------------------------------------------------------------------------
+
+#: 하드웨어맵 탐색 순서 — 저장소 상대 우선, 젯슨 배포(/home/mama/rl_calib) 폴백
+HARDWARE_MAP_PATHS = (
+    os.path.join(REPO, "config", "robot_12dof_hardware_map.json"),
+    "/home/mama/rl_calib/robot_12dof_hardware_map.json",
+)
+#: 수치 앵커 (정책 기본자세 → 모터 목표각, 2026-07-27 산출물) — selftest 대조용
+ANCHOR_TARGETS_PATH = os.path.join(
+    REPO, "jetson", "calib_data", "sim_default_stand_targets_20260727.json")
+
+POLICY_KP = 150.0   # 학습 게인 — 정책 라이브 전제 (kd5 = MIT 프로토콜 상한 규칙)
+POLICY_KD = 5.0     # 시뮬 kd25는 절대 실물 전송 금지
+
+
+class FrameMap:
+    """모터 인코더 프레임 ↔ URDF 관절 프레임 변환 (하드웨어맵 단일 원본).
+
+    확정 규약 (stand_snapshot_v4, 2026-07-27):
+      입력: joint_rad = radians( DIR × (motor_deg − SZ) )
+      출력: motor_target_deg = SZ + DIR × degrees(joint_rad)
+    """
+
+    def __init__(self, path, dir_by_joint, sz_by_joint, motor_id_by_joint,
+                 gains_by_joint):
+        self.path = path
+        self.dir_by_joint = dir_by_joint            # {관절: ±1}
+        self.sz_by_joint = sz_by_joint              # {관절: 모터 프레임 deg}
+        self.motor_id_by_joint = motor_id_by_joint  # {관절: 1..12}
+        self.gains_by_joint = gains_by_joint        # {관절: (kp, kd)}
+
+    def motor_deg_to_joint_rad(self, joint, motor_deg):
+        """입력 변환: 모터 인코더 절대각 deg → URDF 관절각 rad."""
+        return math.radians(
+            self.dir_by_joint[joint]
+            * (float(motor_deg) - self.sz_by_joint[joint]))
+
+    def joint_rad_to_motor_deg(self, joint, joint_rad):
+        """출력 변환: URDF 관절 목표각 rad → 모터 인코더 목표각 deg."""
+        return (self.sz_by_joint[joint]
+                + self.dir_by_joint[joint] * math.degrees(float(joint_rad)))
+
+    def gain_mismatches(self):
+        """학습게인(kp150/kd5)과 다른 관절 목록 [(관절, kp, kd), ...]."""
+        return [(j, kp, kd) for j, (kp, kd) in self.gains_by_joint.items()
+                if (kp, kd) != (POLICY_KP, POLICY_KD)]
+
+
+def load_frame_map():
+    """하드웨어맵 로드 + 12관절 전수 검증 — 결함 시 즉시 예외 (기동 차단).
+
+    검증: 12관절 전부 direction ∈ {−1,+1} 그리고 stand_zero_deg 유한 float,
+    |SZ| < 120°. 하나라도 빠지면 어떤 변환도 신뢰 불가 → 하드 페일.
+    """
+    existing = [p for p in HARDWARE_MAP_PATHS if os.path.isfile(p)]
+    if not existing:
+        raise FileNotFoundError(
+            "하드웨어맵 없음 — 다음 경로를 모두 확인함: "
+            + ", ".join(HARDWARE_MAP_PATHS))
+    # 두 사본이 공존하면 DIR/SZ 일치 검증 (적대리뷰 수정): 드라이런은 A사본으로
+    # PASS 받고 브리지는 B사본으로 뜨는 이력(젯슨 구맵 사건)을 원천 차단한다.
+    if len(existing) > 1:
+        def _frame_sig(p):
+            with open(p, encoding="utf-8") as f:
+                js = json.load(f).get("joints") or {}
+            return {n: (c.get("direction"), round(float(c.get("stand_zero_deg", 1e9)), 2))
+                    for n, c in js.items() if isinstance(c, dict) and "motor_id" in c}
+        sigs = {p: _frame_sig(p) for p in existing}
+        first = sigs[existing[0]]
+        for p in existing[1:]:
+            if sigs[p] != first:
+                raise ValueError(
+                    "하드웨어맵 사본 불일치 — direction/stand_zero_deg 가 서로 다름:\n  "
+                    + "\n  ".join(existing)
+                    + "\n  구맵 사본을 동기화한 뒤 재기동하세요 (기동 차단)")
+    path = existing[0]
+    print(f"[FrameMap] 하드웨어맵: {path}")
+    with open(path, encoding="utf-8") as f:
+        joints = json.load(f).get("joints") or {}
+    dir_by, sz_by, mid_by, gains_by = {}, {}, {}, {}
+    problems = []
+    for name in JOINT_ORDER:
+        info = joints.get(name)
+        if not isinstance(info, dict):
+            problems.append(f"{name}: 관절 항목 없음")
+            continue
+        joint_ok = True
+        d = info.get("direction")
+        if isinstance(d, bool) or d not in (-1, 1):
+            problems.append(f"{name}: direction={d!r} (−1/+1 만 허용)")
+            joint_ok = False
+        sz = info.get("stand_zero_deg")
+        if (isinstance(sz, bool) or not isinstance(sz, (int, float))
+                or not math.isfinite(float(sz)) or abs(float(sz)) >= 120.0):
+            problems.append(
+                f"{name}: stand_zero_deg={sz!r} (유한 float, |SZ|<120° 필요)")
+            joint_ok = False
+        if not joint_ok:
+            continue
+        dir_by[name] = int(d)
+        sz_by[name] = float(sz)
+        mid_by[name] = int(info.get("motor_id", 0))
+        gains_by[name] = (float(info.get("kp", 0.0)), float(info.get("kd", 0.0)))
+    if problems:
+        raise ValueError(
+            f"하드웨어맵 검증 실패 ({path}) — 변환 상수 신뢰 불가, 기동 중단:\n  "
+            + "\n  ".join(problems))
+    if sorted(mid_by.values()) != list(range(1, 13)):
+        raise ValueError(
+            f"하드웨어맵 motor_id 이상 (1..12 전단사 아님): {mid_by} ({path})")
+    return FrameMap(path, dir_by, sz_by, mid_by, gains_by)
+
 
 class BridgeCore:
-    """ROS 무관 코어 — 관측 딕셔너리 → 12관절 목표각(deg, 절대). 셀프테스트 공유."""
+    """ROS 무관 코어 — 관측 → 12관절 목표각(rad, URDF 관절 프레임). 셀프테스트 공유.
+
+    모터 인코더 프레임 변환은 코어 밖(FrameMap) 담당 — 코어 입출력은 전부 관절 프레임.
+    """
 
     def __init__(self, checkpoint="walk"):
         self.runner = PolicyRunnerStage4(CHECKPOINTS[checkpoint])
@@ -107,8 +249,74 @@ class BridgeCore:
                                 qpos_rad, qvel_rad_s, contact2)
 
 
-def run_selftest():
-    """목 센서(정지 직립) 500틱 — 유한성·리밋·주기. ROS·로봇 불필요."""
+def _selftest_hwmap():
+    """(1) 하드웨어맵 검증 12/12 — 로더 하드페일 조건 그대로 통과 확인."""
+    fm = load_frame_map()
+    dirs = [fm.dir_by_joint[j] for j in JOINT_ORDER]
+    sz_max = max(abs(v) for v in fm.sz_by_joint.values())
+    return (f"12/12 검증 통과 ({fm.path}) — direction(JOINT_ORDER순)={dirs}, "
+            f"|SZ|max={sz_max:.2f}°")
+
+
+def _selftest_roundtrip():
+    """(2) 왕복 항등: 관절→모터→관절 오차 < 1e-9 rad, 12관절 × 표본각 7개."""
+    fm = load_frame_map()
+    samples = (-1.5, -0.7, -0.10471975511965977, 0.0, 0.0244, 0.9, 1.5)
+    worst = 0.0
+    for j in JOINT_ORDER:
+        for q in samples:
+            q2 = fm.motor_deg_to_joint_rad(j, fm.joint_rad_to_motor_deg(j, q))
+            err = abs(q2 - q)
+            worst = max(worst, err)
+            assert err < 1e-9, f"{j}: 왕복 오차 {err:.3e} rad ≥ 1e-9 (q={q})"
+    return f"관절→모터→관절 항등 12관절×{len(samples)}각 OK (최대 오차 {worst:.1e} rad)"
+
+
+def _selftest_anchors():
+    """(3) 수치 앵커: 정책 기본자세를 실제 변환 경로에 통과시켜 기존 산출물과 대조.
+
+    기대값 = jetson/calib_data/sim_default_stand_targets_20260727.json (motor_id 키,
+    모터 인코더 프레임 deg). 허용오차 0.01°.
+    """
+    fm = load_frame_map()
+    with open(ANCHOR_TARGETS_PATH, encoding="utf-8") as f:
+        anchors = json.load(f)
+    for i, j in enumerate(JOINT_ORDER):
+        got = fm.joint_rad_to_motor_deg(j, float(DEFAULT_POSE_RAD[i]))
+        exp = float(anchors[str(fm.motor_id_by_joint[j])])
+        assert abs(got - exp) <= 0.01, (
+            f"{j}(모터{fm.motor_id_by_joint[j]}): 변환 {got:.4f}° vs "
+            f"산출물 {exp:.4f}° (허용 0.01°)")
+    # 확정 규약 문서의 4대 앵커 — 산출물 파일과 독립인 하드코딩 재확인
+    named = {"left_knee_joint": 20.22, "right_knee_joint": 15.87,
+             "left_ankle_f_joint": 35.68, "right_ankle_f_joint": 4.21}
+    for j, exp in named.items():
+        got = fm.joint_rad_to_motor_deg(
+            j, float(DEFAULT_POSE_RAD[JOINT_ORDER.index(j)]))
+        assert abs(got - exp) <= 0.01, f"4대 앵커 {j}: {got:.4f}° vs {exp}°"
+    return "12/12 산출물 일치 + 4대 앵커(20.22/15.87/35.68/4.21) 일치 (±0.01°)"
+
+
+def _selftest_gains():
+    """(4) 게인 정책: 하드웨어맵 kp/kd ≠ 학습게인(150/5)이면 크게 경고."""
+    fm = load_frame_map()
+    bad = fm.gain_mismatches()
+    if bad:
+        lines = ", ".join(f"{j}(kp{kp:g}/kd{kd:g})" for j, kp, kd in bad)
+        bar = "!" * 72
+        print(f"[WARN] {bar}")
+        print(f"[WARN] 하드웨어맵 kp/kd ≠ 학습게인(kp{POLICY_KP:g}/kd{POLICY_KD:g})"
+              f" — {len(bad)}/12 관절: {lines}")
+        print("[WARN] 정책 라이브는 학습게인 PD 추종이 전제 — 현재 맵 값은 레거시."
+              " 맵 갱신은 사용자 결정 사항.")
+        print("[WARN] 불일치 상태의 --live 는 기동 거부됨 (--force-gains 로만 우회).")
+        print(f"[WARN] {bar}")
+        return f"게인 불일치 {len(bad)}/12 관절 — 경고 출력 (라이브 게이트가 차단)"
+    return f"전 관절 kp{POLICY_KP:g}/kd{POLICY_KD:g} 일치"
+
+
+def _selftest_policy():
+    """(5) 목 센서(정지 직립) 500틱 — 유한성·리밋·주기 (관절 프레임 그대로)."""
     import numpy as np
     core = BridgeCore("walk")
     core.cmd = (0.0, 0.0, 0.0)
@@ -128,9 +336,26 @@ def run_selftest():
         q = out  # 목표 추종 가정 (목)
     dt = (time.perf_counter() - t0) / 500
     assert dt < TICK_SEC, f"틱 연산 {dt*1000:.2f}ms ≥ 20ms — 젯슨에서 재확인 필요"
-    print(f"[PASS] 브리지 셀프테스트: 500틱 유한·리밋 준수, 틱 {dt*1000:.2f}ms "
-          f"(50Hz 예산 20ms, 백엔드 {core.runner.backend})")
-    return 0
+    return (f"500틱 유한·리밋 준수, 틱 {dt*1000:.2f}ms "
+            f"(50Hz 예산 20ms, 백엔드 {core.runner.backend})")
+
+
+def run_selftest():
+    """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 정책 500틱."""
+    tests = [("하드웨어맵", _selftest_hwmap),
+             ("왕복 항등", _selftest_roundtrip),
+             ("수치 앵커", _selftest_anchors),
+             ("게인 정책", _selftest_gains),
+             ("정책 500틱", _selftest_policy)]
+    failed = 0
+    for name, fn in tests:
+        try:
+            print(f"[PASS] {name}: {fn()}")
+        except Exception as e:  # noqa: BLE001 — selftest는 전 항목 보고가 목적
+            failed += 1
+            print(f"[FAIL] {name}: {type(e).__name__}: {e}")
+    print("selftest:", "ALL PASS" if failed == 0 else f"{failed} FAILED")
+    return 0 if failed == 0 else 1
 
 
 def main():
@@ -138,10 +363,31 @@ def main():
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--live", action="store_true",
                     help="실제 Stage8 명령 발행 (없으면 드라이런 — debug 토픽만)")
+    ap.add_argument("--force-gains", action="store_true",
+                    help="하드웨어맵 kp/kd가 학습게인(kp150/kd5)과 달라도 --live 허용. "
+                         "정책은 kp150/kd5 PD 추종을 전제로 학습됨 — 게인 불일치 시 "
+                         "실물 거동이 학습 분포를 벗어난다. 원칙은 맵 갱신(사용자 결정)"
+                         "이고, 이 플래그는 의도적 저게인 예비시험 전용 (기본 False)")
     ap.add_argument("--checkpoint", default="walk", choices=list(CHECKPOINTS))
     args = ap.parse_args()
     if args.selftest:
         return run_selftest()
+
+    # 프레임 변환 상수 — 하드웨어맵 결함 시 여기서 하드 페일 (드라이런 포함 기동 차단)
+    frames = load_frame_map()
+    if args.live:
+        bad = frames.gain_mismatches()
+        if bad and not args.force_gains:
+            lines = ", ".join(f"{j}(kp{kp:g}/kd{kd:g})" for j, kp, kd in bad)
+            print("[거부] --live 기동 불가: 하드웨어맵 kp/kd가 학습게인"
+                  f"(kp{POLICY_KP:g}/kd{POLICY_KD:g})과 불일치 — {lines}\n"
+                  "       정책은 학습게인 PD 추종이 전제. 맵 갱신(사용자 결정) 후 "
+                  "재시도하거나, 저게인 예비시험 의도라면 --force-gains 를 명시할 것.",
+                  file=sys.stderr)
+            return 2
+        if bad:
+            print(f"[경고] --force-gains: 게인 불일치 {len(bad)}/12 관절 상태로 "
+                  "라이브 진행 — 학습 분포 밖 거동 주의", file=sys.stderr)
 
     import rclpy
     from rclpy.node import Node
@@ -151,8 +397,9 @@ def main():
         def __init__(self):
             super().__init__("humanoid_rl_bridge")
             self.core = BridgeCore(args.checkpoint)
+            self.frames = frames        # 모터↔관절 프레임 변환 (기동 시 검증 완료)
             self.live = bool(args.live)
-            self.joint_deg = {}
+            self.joint_deg = {}         # {관절: '모터 인코더 프레임' deg} — 변환 전 원본
             self.joint_ts = 0.0
             self.prev_qpos = None
             self.imu = None
@@ -176,34 +423,85 @@ def main():
 
         # ---- 입력 콜백 ----
         def _on_js(self, msg):
+            """관절각 피드백 (JSON, name→deg) — 값은 '모터 인코더 프레임' deg.
+
+            현재 저장소에 이 토픽 발행자는 없음 (규약 유지용) — 실질 피드백은
+            _on_status 의 latest_actual_deg 경로. 두 경로 모두 모터 프레임 deg를
+            self.joint_deg 에 저장하고, 관절 프레임 변환은 _tick 에서만 수행.
+            """
             try:
                 d = json.loads(msg.data)
             except json.JSONDecodeError:
                 return
             acts = d.get("joints") or d.get("actual_deg_by_joint") or {}
-            if acts:
-                self.joint_deg.update(
-                    {k: float(v) for k, v in acts.items() if k in JOINT_ORDER})
+            if not isinstance(acts, dict):
+                return
+            updated = False
+            for k, v in acts.items():
+                if k not in JOINT_ORDER:
+                    continue
+                try:
+                    self.joint_deg[k] = float(v)   # 모터 프레임 deg
+                except (ValueError, TypeError):
+                    continue   # dict/None 등 불량 항목은 개별 스킵 (콜백 사망 방지)
+                updated = True
+            if updated:
                 self.joint_ts = time.time()
 
         def _on_status(self, msg):
+            """Stage8 상태 — armed/baseline 흡수 + 관절 피드백 겸용 소스.
+
+            joints[j].latest_actual_deg(모터 프레임 deg)는 feedback_age_sec <
+            STATUS_FEEDBACK_FRESH_SEC(0.5s) 일 때만 신선한 관절각으로 채택.
+            joint_ts 는 12관절 전부 신선할 때만 갱신 — 일부만 신선한데 루프가
+            계속 도는 안전 구멍 방지 (나머지 관절은 낡은 값이므로 정지가 안전).
+            """
             try:
                 d = json.loads(msg.data)
             except json.JSONDecodeError:
                 return
             self.armed = bool(d.get("armed"))
             js = d.get("joints") or {}
-            for j, info in js.items():
+            if not isinstance(js, dict):
+                return
+            fresh = 0
+            worst_age = 0.0
+            for j in JOINT_ORDER:
+                info = js.get(j)
+                if not isinstance(info, dict):
+                    continue
                 b = info.get("baseline_deg")
                 if b is not None:
-                    self.baseline[j] = float(b)
+                    try:
+                        self.baseline[j] = float(b)   # 모터 프레임 deg
+                    except (ValueError, TypeError):
+                        pass
+                try:
+                    age = float(info.get("feedback_age_sec"))
+                    val = float(info.get("latest_actual_deg"))
+                except (ValueError, TypeError):
+                    continue   # 피드백 없음(None 등) — 이 관절은 이번 미갱신
+                if age < STATUS_FEEDBACK_FRESH_SEC:
+                    self.joint_deg[j] = val           # 모터 프레임 deg
+                    fresh += 1
+                    worst_age = max(worst_age, age)
+            if fresh == len(JOINT_ORDER):
+                # 데이터 나이 보정 (적대리뷰 수정): 메시지 '도착' 시각이 아니라
+                # 실제 측정 시각으로 기록해야 stale 게이트가 끝단까지 유효하다.
+                # 보정 없으면 CAN 두절 후에도 status 도착만으로 최대 ~0.7s 동안
+                # 얼어붙은 관절각으로 정책이 계속 계산되는 창이 생긴다.
+                self.joint_ts = time.time() - worst_age
 
         def _on_imu(self, msg):
             try:
                 d = json.loads(msg.data)
-                self.imu = (tuple(d["gyro_rad_s"]), tuple(d["quat_wxyz"]))
+                gyro = tuple(float(x) for x in d["gyro_rad_s"])
+                quat = tuple(float(x) for x in d["quat_wxyz"])
+                if len(gyro) != 3 or len(quat) != 4:
+                    return   # 형상 불량 — 소비 금지 (콜백 생존이 우선)
+                self.imu = (gyro, quat)
                 self.imu_ts = float(d.get("timestamp", time.time()))
-            except (json.JSONDecodeError, KeyError, TypeError):
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 pass
 
         def _on_foot(self, msg):
@@ -211,7 +509,7 @@ def main():
                 d = json.loads(msg.data)
                 self.foot = (float(d["left_n"]), float(d["right_n"]))
                 self.foot_ts = float(d.get("timestamp", time.time()))
-            except (json.JSONDecodeError, KeyError, TypeError):
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 pass
 
         def _on_cmd(self, msg):
@@ -228,11 +526,18 @@ def main():
                 self.core.cmd = (0.0, 0.0, 0.0)   # walk 정책 능동 서기 = 정지
                 return
             if c in ("stand", "walk", "march"):
+                if c in ("stand", "march"):
+                    cmd = (0.0, 0.0, 0.0)
+                else:
+                    try:   # 명령 파싱 실패가 콜백을 죽이면 안 됨 — 거부하고 유지
+                        cmd = (float(d.get("vx", 0.3)), float(d.get("vy", 0.0)),
+                               float(d.get("wz", 0.0)))
+                    except (ValueError, TypeError):
+                        self.get_logger().warn(f"walk 명령 vx/vy/wz 파싱 실패 — 무시: {d}")
+                        return
                 ck = "march" if c == "march" else "walk"
                 self.core.reset(checkpoint=ck)
-                self.core.cmd = ((0.0, 0.0, 0.0) if c in ("stand", "march") else
-                                 (float(d.get("vx", 0.3)), float(d.get("vy", 0.0)),
-                                  float(d.get("wz", 0.0))))
+                self.core.cmd = cmd
                 self.core.heading_hold = bool(d.get("heading_hold", True))
                 self.core.active = True
                 self.stopped_for_stale = False
@@ -243,7 +548,8 @@ def main():
             now = time.time()
             if not self.core.active:
                 return
-            fresh = (now - self.joint_ts < SENSOR_STALE_SEC
+            joint_stale = SENSOR_STALE_SEC if self.live else JOINT_STALE_DRYRUN_SEC
+            fresh = (now - self.joint_ts < joint_stale
                      and now - self.imu_ts < SENSOR_STALE_SEC
                      and now - self.foot_ts < SENSOR_STALE_SEC
                      and len(self.joint_deg) == 12)
@@ -253,7 +559,13 @@ def main():
                     self.stopped_for_stale = True
                 return
             self.stopped_for_stale = False
-            qpos = [math.radians(self.joint_deg[j]) for j in JOINT_ORDER]
+            # 입력 변환: joint_deg(모터 인코더 프레임 deg) → 관절 프레임 rad
+            #   joint_rad = radians( DIR × (motor_deg − SZ) )
+            qpos = [self.frames.motor_deg_to_joint_rad(j, self.joint_deg[j])
+                    for j in JOINT_ORDER]
+            # qvel: 관절 프레임 위치의 유한차분 (변환된 qpos 기반이라 프레임 자동
+            # 상속). AK45(6·12) velocity 디코드 과대판독 때문에 피드백 속도값은
+            # 어떤 관절에서도 소비하지 않는다.
             if self.prev_qpos is None:
                 qvel = [0.0] * 12
             else:
@@ -263,11 +575,19 @@ def main():
             contact2 = [1.0 if self.foot[0] > CONTACT_FORCE_THRESHOLD_N else 0.0,
                         1.0 if self.foot[1] > CONTACT_FORCE_THRESHOLD_N else 0.0]
             targets_rad = self.core.tick(gyro, quat, qpos, qvel, contact2)
-            targets_deg = {j: math.degrees(float(v))
-                           for j, v in zip(JOINT_ORDER, targets_rad)}
+            # 출력 변환: 관절 프레임 rad → 모터 인코더 프레임 deg
+            #   motor_target_deg = SZ + DIR × degrees(policy_target_rad)
+            targets_deg_joint = {}   # URDF 관절 프레임 (진단 표기용)
+            targets_deg_motor = {}   # 모터 인코더 프레임 (실제 명령 기준)
+            for j, v in zip(JOINT_ORDER, targets_rad):
+                targets_deg_joint[j] = math.degrees(float(v))
+                targets_deg_motor[j] = self.frames.joint_rad_to_motor_deg(
+                    j, float(v))
             dbg = {"timestamp": now, "live": self.live, "armed": self.armed,
                    "checkpoint": self.core.ckpt_name, "cmd": list(self.core.cmd),
-                   "targets_deg": targets_deg}
+                   # 프레임 명시: joint=URDF 관절 프레임 / motor=모터 인코더 프레임
+                   "targets_deg_joint": targets_deg_joint,
+                   "targets_deg_motor": targets_deg_motor}
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             if not (self.live and self.armed):
                 return
@@ -275,7 +595,9 @@ def main():
                 base = self.baseline.get(j)
                 if base is None:
                     continue   # baseline 미설정 관절은 노드가 어차피 거부
-                rel = targets_deg[j] - base
+                # Stage8 절대각 = baseline + rel = motor_target 그대로 복원
+                # (baseline이 어떤 자세로 캡처됐든 상쇄되어 무관)
+                rel = targets_deg_motor[j] - base
                 self.pub_cmd.publish(String(data=json.dumps(
                     {"command": "SET_JOINT_TARGET", "joint": j,
                      "target_deg": rel})))

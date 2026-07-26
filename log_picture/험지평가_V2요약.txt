@@ -1,0 +1,8 @@
+Stage4 V2 험지 평가 요약 (run 2026-07-26_04-31-15, 최종 모델 model_8996.pt)
+================================================================
+학습: flat 2026-07-26_04-07-10/model_6997 웜스타트 → 험지 2000 iter (총 timestep 1.97e8, 29분)
+terrain_levels (Curriculum): 시작 1.61 (웜스타트 승계) → 피크 2.12 (중반) → 최종 2.0807
+  (참고: v1 험지 최종 3.1 — 단, v2는 서브지형 비율 변경(slope 0.20/stairs 0.40/flat 0.15)로 직접 비교 불가)
+최종 학습 메트릭: error_vel_xy 0.3672 / error_vel_yaw 0.9145
+종료 분포(최종 iter): time_out 0.728 / bad_orientation 0.178 / base_too_low 0.100 / base_contact 0.000
+영상: log_picture/28_V2험지.mp4 (9 env × 500스텝 = 10s, 1280x720, model_8996 확인)

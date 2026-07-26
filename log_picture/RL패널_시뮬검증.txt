@@ -1,0 +1,17 @@
+RL 패널 시뮬 폐루프 검증 — UI 동일 경로(TCP→live_controller)
+2026-07-26 23:14
+==================================================================
+[PASS] 초기 status — {'ok': True, 'mode': 'STAND', 'walk_t': 0.0, 'forward_m': 0.025, 'lean_ap': 0.8, 'lean_lat': 0.0, 'yaw': 0.0, 'pelvis_z'
+[PASS] rl_walk 시작 — {'ok': True, 'mode': 'RL', 'checkpoint': 'walk', 'cmd': [0.5, 0.0, 0.0], 'heading_hold': True}
+[PASS] 10s 전진 — 전진 1.843m, 요 -3.2°, 기울기 -3.0°
+[PASS] 헤딩 유지 — 요 -3.2°
+[PASS] rl_cmd 회전 전환 — {'ok': True, 'cmd': [0.5, 0.0, 0.4], 'heading_hold': False}
+[PASS] 회전 반응 — 요 27.7° (wz 0.4×5s ≈ 회전 명령 적분 114°의 일부)
+[PASS] rl_stop 소프트 정지 — {'ok': True, 'mode': 'RL_STOPPING', 'note': '명령 0 정착 1.5s 후 STAND 인계'}
+[PASS] 정지 후 서기 안정 — {'ok': True, 'mode': 'STAND', 'walk_t': 13.57, 'forward_m': 3.129, 'lean_ap': -0.4, 'lean_lat': 3.3, 'yaw': 35.4, 'pelvi
+[PASS] march 시작 — {'ok': True, 'mode': 'RL', 'checkpoint': 'march', 'cmd': [0.0, 0.0, 0.0], 'heading_hold': True}
+[PASS] march 유지(낙상 없음) — 전진 2.841m(느린 표류 정상), 기울기 6.0°
+[PASS] halt 동결(비상정지 경로) — {'ok': True, 'mode': 'HOLD', 'note': '목표 동결(피드백 미적용)'}
+[PASS] halt 후 상태 — {'ok': True, 'mode': 'HOLD', 'walk_t': 6.43, 'forward_m': 2.833, 'lean_ap': 5.9, 'lean_lat': -0.1, '
+==================================================================
+종합: ALL PASS

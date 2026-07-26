@@ -54,13 +54,28 @@ def _apply_12dof_hardware_map(config):
     config["joint_names"] = list(JOINT_NAMES_12)
     config["ak_motor_count"] = len(JOINT_NAMES_12)
     config["joint_limits_deg"] = {}
+    # 절대각 소프트 리밋(비대칭) 단일 원본 — config/joint_limits_12dof.json.
+    # (2026-07-26 확정: 종전 hardware_map ±180°는 사실상 무제한이라 보호 무력 —
+    #  RL 실측 엔벨로프+해부학 한계 기반 비대칭 리밋으로 교체. 파일 없으면 종전 폴백.)
+    try:
+        from robot_runtime.joint_limits import get_absolute_limits_deg
+        absolute_limits = get_absolute_limits_deg()
+    except Exception:
+        absolute_limits = {}
     for joint_name in JOINT_NAMES_12:
         joint_config = get_joint_config(joint_name)
         target_limit = float(joint_config["target_limit_deg"])
-        config["joint_limits_deg"][joint_name] = {
-            "min": -target_limit,
-            "max": target_limit,
-        }
+        lim = absolute_limits.get(joint_name)
+        if lim:
+            config["joint_limits_deg"][joint_name] = {
+                "min": float(lim["soft_min"]),
+                "max": float(lim["soft_max"]),
+            }
+        else:
+            config["joint_limits_deg"][joint_name] = {
+                "min": -target_limit,
+                "max": target_limit,
+            }
 
 
 def _validate_config(config):

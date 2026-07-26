@@ -1,0 +1,22 @@
+{
+  "_doc": {
+    "purpose": "12관절 절대각(deg) 제한 — 실물·시뮬·RL 공용 단일 원본. 부호/영점 = URDF 관절 규약(joint_direction 실측)과 동일.",
+    "provenance": "2026-07-26 확정. soft = RL 정책 5게이트(전진/제자리회전/후진/곡선/제자리걷기) 실측 엔벨로프 + 마진(5° 또는 스팬 15%) 후 해부학 한계 -1° 이내로 클립 (log_picture/관절가동범위_실측.txt). hard = 해부학·자기충돌 실측 한계 (config/sim_joint_limits.json, 2026-07-18).",
+    "semantics": "soft = 정상 작동 범위 — 초과 명령은 거부(정책 오류/조작 실수 신호). hard = 기구 보호 한계 — 초과는 무조건 거부. Stage8 노드의 기존 상대각(±target_limit_deg) 검사와 별개로, '절대각 = baseline + 상대명령'에 이 표를 추가 적용한다.",
+    "incident": "2026-07-26 cansend 생명령으로 모터 급동작 → 드라이버 전원선 파손. 소프트웨어 리밋은 노드 경유 명령만 보호 — 생 cansend는 구조적으로 우회되므로 수동 CAN 송신 금지 절차 병행."
+  },
+  "limits_deg": {
+    "left_hip_f_joint":    {"soft_min": -27.5, "soft_max": 36.0, "hard_min": -30.0,  "hard_max": 100.0},
+    "right_hip_f_joint":   {"soft_min": -38.0, "soft_max": 29.0, "hard_min": -100.0, "hard_max": 30.0},
+    "left_hip_a_joint":    {"soft_min": -14.5, "soft_max": 13.0, "hard_min": -35.0,  "hard_max": 13.9},
+    "right_hip_a_joint":   {"soft_min": -13.0, "soft_max": 12.5, "hard_min": -14.2,  "hard_max": 35.0},
+    "left_hip_r_joint":    {"soft_min": -24.0, "soft_max": 13.0, "hard_min": -30.0,  "hard_max": 30.0},
+    "right_hip_r_joint":   {"soft_min": -12.5, "soft_max": 22.5, "hard_min": -30.0,  "hard_max": 30.0},
+    "left_knee_joint":     {"soft_min": -83.5, "soft_max": 4.0,  "hard_min": -120.0, "hard_max": 5.0},
+    "right_knee_joint":    {"soft_min": -4.0,  "soft_max": 80.0, "hard_min": -5.0,   "hard_max": 120.0},
+    "left_ankle_f_joint":  {"soft_min": -22.0, "soft_max": 29.0, "hard_min": -45.0,  "hard_max": 30.0},
+    "right_ankle_f_joint": {"soft_min": -29.0, "soft_max": 18.5, "hard_min": -30.0,  "hard_max": 45.0},
+    "left_ankle_r_joint":  {"soft_min": -19.0, "soft_max": 18.0, "hard_min": -20.0,  "hard_max": 20.0},
+    "right_ankle_r_joint": {"soft_min": -19.0, "soft_max": 18.5, "hard_min": -20.0,  "hard_max": 20.0}
+  }
+}

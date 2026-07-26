@@ -65,9 +65,25 @@ class JointSpec:
         )
 
     def target_min_deg(self):
+        # 절대각 소프트 리밋(비대칭, joint_limits_12dof.json) 우선 —
+        # 파일 부재 시 종전 대칭 ±target_limit_deg 폴백 (2026-07-26)
+        try:
+            from robot_runtime.joint_limits import get_absolute_limits_deg
+            lim = get_absolute_limits_deg().get(self.joint_name)
+            if lim:
+                return float(lim["soft_min"])
+        except Exception:
+            pass
         return -abs(self.target_limit_deg)
 
     def target_max_deg(self):
+        try:
+            from robot_runtime.joint_limits import get_absolute_limits_deg
+            lim = get_absolute_limits_deg().get(self.joint_name)
+            if lim:
+                return float(lim["soft_max"])
+        except Exception:
+            pass
         return abs(self.target_limit_deg)
 
     def to_dict(self):

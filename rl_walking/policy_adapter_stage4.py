@@ -36,7 +36,7 @@ from rl_walking.deploy.policy_runner_stage4 import (
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-#: Stage4 R4 최종 채택 (2026-07-26_14-53-03/model_12994, 스탠스 22.6cm) — sim2sim 기본 대상
+#: Stage4 R4 최종 채택 (2026-07-26_14-53-03/model_12994) — sim2sim 전이 재검증 통과 (타이밍 desync 누명 해소) — sim2sim 기본 대상
 DEFAULT_V2_EXPORT = os.path.join(
     REPO, "logs", "rsl_rl", "biped12_stage4", "2026-07-26_14-53-03", "exported")
 

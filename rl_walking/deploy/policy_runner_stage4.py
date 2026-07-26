@@ -232,6 +232,24 @@ class PolicyRunnerStage4:
         """
         self.backend, self._net = _load_backend(model_path, backend)
         self._hist = {name: _TermHistory(dim) for name, dim in STAGE4_TERMS}
+        # 절대각 소프트 리밋 로드 (joint_limits_12dof.json — 표준lib 로더).
+        # 실패 시 클램프 비활성 (기존 동작 유지) — 실물 배포에서는 반드시 활성 확인.
+        try:
+            _root = os.path.dirname(os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__))))
+            if _root not in sys.path:
+                sys.path.insert(0, _root)
+            from robot_runtime.joint_limits import get_absolute_limits_deg
+            _lims = get_absolute_limits_deg()
+            self._limits_lo = np.array(
+                [math.radians(_lims[j]["soft_min"]) for j in JOINT_ORDER],
+                dtype=np.float32)
+            self._limits_hi = np.array(
+                [math.radians(_lims[j]["soft_max"]) for j in JOINT_ORDER],
+                dtype=np.float32)
+        except Exception:
+            self._limits_lo = None
+            self._limits_hi = None
         self.last_action = np.zeros(ACT_DIM, dtype=np.float32)
         self.last_obs: np.ndarray | None = None
         self._prev_emitted = None        # 슬루 기준점 — 첫 step()에서 qpos로 초기화
@@ -309,8 +327,12 @@ class PolicyRunnerStage4:
         if raw.shape != (ACT_DIM,):
             raise RuntimeError(f"정책 출력 shape 이상: {raw.shape} (기대 ({ACT_DIM},))")
         self.last_action = raw.copy()
-        # 아핀 → 슬루 (45차원판과 동일 수식 — policy_runner.py docstring 참조)
+        # 아핀 → 리밋 클램프 → 슬루 (클램프는 반드시 슬루 '앞': 슬루 뒤에 걸면
+        # 리밋 밖 자세에서 부팅 시 첫 명령이 리밋 경계로 점프 — 모터 튐 유형 사고.
+        # 앞에 걸면 어떤 시작 자세에서도 슬루 속도(4°/틱)로만 리밋 안으로 복귀.)
         target = DEFAULT_POSE_RAD + ACTION_SCALE * raw
+        if self._limits_lo is not None:
+            target = np.clip(target, self._limits_lo, self._limits_hi)
         if self._prev_emitted is None:
             self._prev_emitted = qpos.copy()
         emitted = self._prev_emitted + np.clip(

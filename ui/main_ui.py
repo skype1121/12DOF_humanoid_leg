@@ -1,6 +1,9 @@
 import argparse
 import json
+import os
+import queue
 import sys
+import threading
 import time
 import tkinter as tk
 from pathlib import Path
@@ -414,6 +417,7 @@ class HumanoidControlUI:
         side.configure(width=340)
         side.grid_propagate(False)
         side.rowconfigure(0, weight=1)
+        side.rowconfigure(1, weight=0)
 
         status = self._panel(side, "Stage8 상태")
         status.grid(row=0, column=0, sticky="ew", pady=(0, 10))
@@ -450,6 +454,177 @@ class HumanoidControlUI:
             ).grid(
                 row=row, column=1, sticky="w", padx=3, pady=2
             )
+
+        self._build_rl_panel(side)
+
+    # ------------------------------------------------------------------
+    # RL 보행 패널 (2026-07-26) — 시뮬 전용: Isaac Sim MCP(8766) 라이브 컨트롤러의
+    # rl_walk/rl_cmd/rl_stop/halt 를 조종한다. 실물 경로(Stage8)는 향후 젯슨
+    # 브리지에서 — 이 패널은 SIM 검증용이며 CAN에 아무것도 보내지 않는다.
+    # ------------------------------------------------------------------
+
+    def _build_rl_panel(self, side):
+        panel = self._panel(side, "RL 보행 (시뮬)")
+        panel.grid(row=1, column=0, sticky="ew")
+        panel.columnconfigure(1, weight=1)
+
+        tk.Label(panel, text="정책", bg=PANEL_COLOR, fg=MUTED_TEXT_COLOR,
+                 font=FONT_SMALL).grid(row=0, column=0, sticky="w", padx=3)
+        self.rl_ckpt = tk.StringVar(value="walk")
+        ckpt_box = ttk.Combobox(
+            panel, textvariable=self.rl_ckpt, state="readonly", width=10,
+            values=("walk", "march", "rough", "walk_r3"))
+        ckpt_box.grid(row=0, column=1, sticky="w", padx=3, pady=2)
+
+        self.rl_heading_hold = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            panel, text="헤딩 유지", variable=self.rl_heading_hold,
+            bg=PANEL_COLOR, fg=TEXT_COLOR, selectcolor=ROW_COLOR,
+            activebackground=PANEL_COLOR, font=FONT_SMALL,
+        ).grid(row=0, column=2, sticky="w", padx=3)
+
+        self.rl_cmd_vars = {}
+        for r, (key, label, lo, hi) in enumerate((
+                ("cmd_x", "전진 vx", -0.4, 0.8),
+                ("cmd_y", "측방 vy", -0.25, 0.25),
+                ("wz", "회전 wz", -1.0, 1.0)), start=1):
+            tk.Label(panel, text=label, bg=PANEL_COLOR, fg=MUTED_TEXT_COLOR,
+                     font=FONT_SMALL).grid(row=r, column=0, sticky="w", padx=3)
+            var = tk.DoubleVar(value=0.5 if key == "cmd_x" else 0.0)
+            self.rl_cmd_vars[key] = var
+            tk.Scale(
+                panel, from_=lo, to=hi, resolution=0.05, orient=tk.HORIZONTAL,
+                variable=var, bg=PANEL_COLOR, fg=TEXT_COLOR,
+                highlightthickness=0, troughcolor=ROW_COLOR, length=150,
+                command=lambda _v, k=key: self._rl_on_cmd_changed(k),
+            ).grid(row=r, column=1, columnspan=2, sticky="ew", padx=3)
+
+        btns = tk.Frame(panel, bg=PANEL_COLOR)
+        btns.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(4, 2))
+        self.rl_buttons = []
+        for col, (text, cmd) in enumerate((
+                ("RL 시작", self.rl_start),
+                ("정지(서기)", self.rl_stop),
+                ("즉시정지", self.rl_halt))):
+            b = self._button(btns, text, cmd, width=9)
+            b.grid(row=0, column=col, padx=2)
+            self.rl_buttons.append(b)
+
+        self.rl_status = tk.StringVar(value="미연결")
+        tk.Label(panel, textvariable=self.rl_status, bg=PANEL_COLOR,
+                 fg=TEXT_COLOR, font=FONT_SMALL, anchor="w", justify=tk.LEFT,
+                 wraplength=300).grid(
+            row=5, column=0, columnspan=3, sticky="ew", padx=3, pady=(2, 3))
+
+        self._rl_queue = queue.Queue()
+        self._rl_last_cmd_sent = 0.0
+        self._rl_poll_after_id = self.root.after(700, self._rl_poll)
+
+    # ---- Isaac MCP 소켓 (walk_ui.IsaacLink 패턴 축약판 — 워커 스레드 전송) ----
+
+    def _rl_send(self, payload, label=""):
+        def worker():
+            try:
+                import socket as _socket
+                sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+                sock.settimeout(8.0)
+                sock.connect(("localhost", int(os.environ.get("ISAAC_MCP_PORT", 8766))))
+                code = ("import sim_walking.live_controller as LC; "
+                        f"import json; print('RLUI:'+json.dumps(LC.command({payload!r}), ensure_ascii=False))")
+                req = json.dumps({"type": "simulation.execute_script",
+                                  "params": {"code": code}})
+                sock.sendall(req.encode())
+                chunks = b""
+                while True:
+                    part = sock.recv(1 << 16)
+                    if not part:
+                        break
+                    chunks += part
+                    try:
+                        resp = json.loads(chunks.decode())
+                        break
+                    except json.JSONDecodeError:
+                        continue
+                sock.close()
+                raw = json.dumps(resp, ensure_ascii=False)
+                marker = raw.find("RLUI:")
+                if marker >= 0:
+                    body = raw[marker + 5:]
+                    end = body.find("\\n")
+                    body = body[:end] if end >= 0 else body
+                    self._rl_queue.put((label, json.loads(body.replace('\\"', '"'))))
+                else:
+                    self._rl_queue.put((label, {"ok": False, "error": "응답 파싱 실패"}))
+            except Exception as ex:
+                self._rl_queue.put((label, {"ok": False, "error": f"{type(ex).__name__}: {ex}"}))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _rl_poll(self):
+        try:
+            while True:
+                label, resp = self._rl_queue.get_nowait()
+                self._rl_render(label, resp)
+        except queue.Empty:
+            pass
+        # 주기 상태 조회 (RL 패널은 시뮬 전용 — 부담 적은 700ms)
+        self._rl_send({"cmd": "status"}, label="status")
+        self._rl_poll_after_id = self.root.after(700, self._rl_poll)
+
+    def _rl_render(self, label, resp):
+        if not isinstance(resp, dict):
+            return
+        if not resp.get("ok"):
+            self.rl_status.set(f"오류: {resp.get('error', '?')[:120]}")
+            if label != "status":
+                self._log_event("WARN", f"RL {label} 실패: {resp.get('error', '?')}")
+            return
+        mode = resp.get("mode", "?")
+        parts = [f"모드 {mode}"]
+        if "forward_m" in resp:
+            parts.append(f"전진 {resp['forward_m']}m")
+        if "lean_ap" in resp:
+            parts.append(f"기울기 {resp['lean_ap']}°/{resp.get('lean_lat', '?')}°")
+        if mode == "RL":
+            parts.append(f"정책 {resp.get('rl_checkpoint', '?')}")
+            cmd = resp.get("rl_cmd")
+            if cmd:
+                parts.append(f"cmd({cmd[0]:.2f},{cmd[1]:.2f},{cmd[2]:.2f})")
+            if resp.get("heading_hold"):
+                parts.append("헤딩유지")
+        self.rl_status.set(" | ".join(str(p) for p in parts))
+        if label in ("rl_walk", "rl_stop", "halt"):
+            self._log_event("INFO", f"RL {label}: {resp}")
+
+    def _rl_on_cmd_changed(self, _key):
+        now = time.time()
+        if now - self._rl_last_cmd_sent < 0.15:   # 슬라이더 디바운스
+            return
+        self._rl_last_cmd_sent = now
+        self._rl_send({"cmd": "rl_cmd",
+                       "cmd_x": float(self.rl_cmd_vars["cmd_x"].get()),
+                       "cmd_y": float(self.rl_cmd_vars["cmd_y"].get()),
+                       "wz": float(self.rl_cmd_vars["wz"].get())})
+
+    def rl_start(self):
+        if self.estop_active:
+            self._log_event("SAFETY_BLOCK", "비상정지 중 — RL 시작 차단")
+            return
+        ck = self.rl_ckpt.get()
+        payload = {"cmd": "rl_walk", "checkpoint": ck,
+                   "cmd_x": float(self.rl_cmd_vars["cmd_x"].get()),
+                   "cmd_y": float(self.rl_cmd_vars["cmd_y"].get()),
+                   "wz": float(self.rl_cmd_vars["wz"].get()),
+                   "heading_hold": bool(self.rl_heading_hold.get())}
+        if ck == "march":
+            payload.update({"cmd_x": 0.0, "cmd_y": 0.0, "wz": 0.0})
+        self._rl_send(payload, label="rl_walk")
+        self._log_event("INFO", f"RL 시작 요청: {payload}")
+
+    def rl_stop(self):
+        self._rl_send({"cmd": "rl_stop"}, label="rl_stop")
+
+    def rl_halt(self):
+        self._rl_send({"cmd": "halt"}, label="halt")
 
     def _build_motor_status_grid(self, parent, row_index):
         motors = self._panel(parent, "모터 상태")
@@ -933,6 +1108,11 @@ class HumanoidControlUI:
         self.estop_active = True
         self.estop_status.set(STATE_ESTOP)
         self.stop_all()
+        # RL 시뮬 보행도 즉시 동결 (halt) — 안전 일관성 (2026-07-26)
+        try:
+            self.rl_halt()
+        except Exception:
+            pass
         self._log_event("SAFETY_BLOCK", f"비상정지 활성: {result['message']}")
         self._refresh_controls()
 
@@ -1682,7 +1862,8 @@ class HumanoidControlUI:
             except Exception:
                 pass
         self._pending_slider_after_by_joint.clear()
-        for after_id in (self._heartbeat_after_id, self._ros_spin_after_id):
+        for after_id in (self._heartbeat_after_id, self._ros_spin_after_id,
+                         getattr(self, "_rl_poll_after_id", None)):
             if after_id is not None:
                 try:
                     self.root.after_cancel(after_id)

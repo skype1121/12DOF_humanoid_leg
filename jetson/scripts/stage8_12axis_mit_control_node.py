@@ -24,6 +24,7 @@ from protocols.ak_mit_command import (  # noqa: E402
     pack_ak_mit_command,
 )
 from protocols.ak_mit_decoder import decode_ak_mit_feedback  # noqa: E402
+from robot_runtime.joint_limits import check_absolute_deg  # noqa: E402
 from robot_runtime.dof12_mapping import (  # noqa: E402
     JOINT_NAMES_12DOF,
     get_isaac_dof_index,
@@ -345,6 +346,14 @@ class Stage8TwelveAxisMitControlCore:
             return self._reject("hard_limit_exceeded")
         if abs(target_deg) > float(config["target_limit_deg"]):
             return self._reject("target_limited")
+
+        # 절대각 검사 (2026-07-26 신설): 종전 상대각 ±180° 검사는 사실상 무제한 —
+        # 절대각(baseline+상대) 기준 비대칭 소프트/하드 리밋을 추가 적용한다.
+        # 원본 config/joint_limits_12dof.json (RL 실측 엔벨로프 + 해부학·자기충돌 한계).
+        absolute_deg = self.baseline_deg_by_joint[joint] + target_deg
+        limit_verdict = check_absolute_deg(joint, absolute_deg)
+        if limit_verdict != "ok":
+            return self._reject(f"{limit_verdict}:{joint}:{absolute_deg:.1f}deg")
 
         self.desired_relative_deg_by_joint[joint] = target_deg
         self.accepted = True

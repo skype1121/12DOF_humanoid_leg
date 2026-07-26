@@ -157,6 +157,28 @@ gym.register(
 )
 
 gym.register(
+    id="Biped12-Velocity-Stage4V2-Slope-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        # 경사 보강판: slope 계열 실현 40% (내리막 시작 0.20 + 오르막 시작
+        # 0.20 신설) — 계단 상/하 2컬럼씩 v2와 동일 유지 (10% 양자화 설계)
+        "env_cfg_entry_point": "rl_walking.stage4_v2_env_cfg:Biped12Stage4V2SlopeEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Biped12-Velocity-Stage4V2-Slope-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.stage4_v2_env_cfg:Biped12Stage4V2SlopeEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+    },
+)
+
+gym.register(
     id="Biped12-Velocity-Rough-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

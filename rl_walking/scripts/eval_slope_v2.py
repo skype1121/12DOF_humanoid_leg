@@ -14,6 +14,7 @@ import cli_args  # isort: skip
 
 p = argparse.ArgumentParser()
 p.add_argument("--task", default="Biped12-Velocity-Stage4V2-Rough-Play-v0")
+p.add_argument("--num_envs", type=int, default=0, help="0=태스크 기본값(32)")
 p.add_argument("--steps", type=int, default=1000)
 p.add_argument("--difficulty", type=float, nargs=2, default=(0.5, 1.0))
 p.add_argument("--out", required=True)
@@ -45,6 +46,8 @@ T = a.task
 ac = load_cfg_from_registry(T, "rsl_rl_cfg_entry_point")
 ac = cli_args.update_rsl_rl_cfg(ac, a)
 ec = load_cfg_from_registry(T, "env_cfg_entry_point")
+if a.num_envs > 0:
+    ec.scene.num_envs = a.num_envs
 ec.episode_length_s = 60.0
 ec.seed = ac.seed
 ec.commands.base_velocity.resampling_time_range = (1000.0, 1000.0)

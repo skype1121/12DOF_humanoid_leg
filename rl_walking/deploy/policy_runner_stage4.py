@@ -114,6 +114,40 @@ def gait_clock_stage4(tick: int) -> np.ndarray:
     return np.array([np.sin(phase), np.cos(phase)], dtype=np.float32)
 
 
+class HeadingHold:
+    """상위 헤딩 폐루프 — IMU 요를 보고 wz 명령을 생성해 직진 드리프트를 상쇄.
+
+    정책은 개루프 재생 시 요 편향이 누적된다 (sim2sim 실측: 직진 20s에 −48.8°,
+    log_picture/sim2sim_R2.txt). 정책 재학습 대신 명령 계층에서 잡는 게 정석:
+    wz = clip(kp·wrap(ref − yaw), ±wz_limit). kp=1.0이면 드리프트율 0.043rad/s
+    기준 정상상태 오차 ≈ 2.4°.
+
+    실물에서는 iAHRS 요(rad)를, 시뮬 검증에서는 골반 쿼터니언 요를 넣는다.
+    wz_limit은 학습 명령 분포(±0.6) 이내로 제한 — 분포 밖 명령 방지.
+    회전 명령 구간에서는 update를 부르지 말고 set_ref로 목표 헤딩만 갱신할 것.
+    """
+
+    def __init__(self, kp: float = 1.0, wz_limit: float = 0.6, ref: float = 0.0):
+        self.kp = float(kp)
+        self.wz_limit = float(wz_limit)
+        self.ref = float(ref)
+
+    def set_ref(self, yaw: float) -> None:
+        """목표 헤딩 지정 (보행 시작 순간의 현재 요를 넣는 게 안전)."""
+        self.ref = float(yaw)
+
+    def update(self, yaw: float) -> float:
+        """현재 요(rad) → wz 명령(rad/s). 각도 랩어라운드(±π) 처리 포함."""
+        err = (self.ref - float(yaw) + math.pi) % (2.0 * math.pi) - math.pi
+        wz = self.kp * err
+        return max(-self.wz_limit, min(self.wz_limit, wz))
+
+
+def yaw_from_quat_wxyz(qw: float, qx: float, qy: float, qz: float) -> float:
+    """쿼터니언(w,x,y,z) → 요(rad). isaaclab euler_xyz_from_quat의 요 성분과 동일식."""
+    return math.atan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz))
+
+
 class _TermHistory:
     """isaaclab CircularBuffer(batch=1) 동작 재현 — 항별 (T, D) 링버퍼.
 

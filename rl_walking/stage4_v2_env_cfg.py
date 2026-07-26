@@ -24,6 +24,7 @@ from collections.abc import Sequence
 import torch
 
 import isaaclab.sim as sim_utils
+import isaaclab.terrains as terrain_gen
 from isaaclab.envs.mdp.commands import UniformVelocityCommand
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
@@ -260,6 +261,92 @@ class Biped12Stage4V2RoughEnvCfg(Biped12Stage4V2EnvCfg):
         self.events.push_robot.params["velocity_range"] = {
             "x": (-0.3, 0.3), "y": (-0.3, 0.3)
         }
+
+
+# 커리큘럼 지형은 '컬럼 단위(num_cols=10 → 10% 단위)'로 배정되므로 비율을
+# 10% 배수로 설계해 설정=실현을 보장한다 (적대 리뷰 발견: 15% 등 어중간한
+# 값은 양자화로 왜곡 — v3 최초안에서 stairs_up이 리줌 원본의 절반인 10%로
+# 떨어지는 문제 확인). cumsum 배정식은 terrain_generator._generate_curriculum_
+# terrains 참조. 라벨 주의: 피라미드("slope")는 정상 스폰이라 '내리막 시작',
+# 역피라미드("slope_inv")는 구덩이 스폰이라 '오르막 시작'이다 (리뷰 교정).
+_V3_SLOPE_PROPORTIONS = {
+    "flat": 0.10,
+    "random_rough": 0.10,
+    "stairs_down": 0.20,   # v2 실현 배치(2컬럼)와 동일 — 계단 퇴행 차단
+    "stairs_up": 0.20,     # v2 실현 배치(2컬럼)와 동일
+    "slope": 0.20,         # 내리막 시작 (피라미드 정상 스폰)
+    "curbs": 0.00,         # v2에서도 실현 0컬럼(죽은 설정) — 명시적 0
+    "slope_inv": 0.20,     # 오르막 시작 (역피라미드 구덩이 스폰) — 신설
+}
+
+
+def _make_v3_slope_terrains_cfg():
+    """v2 지형에 역피라미드 경사(slope_inv)를 신설 — 경사 계열 실현 40%.
+
+    목적: '다양한 각도의 경사 적응' — 각도는 난이도(0~1)×최대 0.35rad(20°),
+    접근 방향은 리셋 요 ±180°(env_cfg reset_base)로 이미 전방위 커버.
+    여기서는 내리막/오르막 '시작 상황'을 각 20%로 균형 노출한다.
+    실현 컬럼(10열): flat 1 | random_rough 1 | stairs_down 2 | stairs_up 2 |
+    slope 2 | slope_inv 2 — v2 대비 flat·rough가 1컬럼씩 줄고 오르막 경사 신설.
+    """
+    cfg = _make_v2_terrains_cfg()
+    cfg.sub_terrains["slope_inv"] = terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
+        proportion=0.20, slope_range=(0.0, 0.35), platform_width=2.0,
+        border_width=0.25,
+    )
+    for name, proportion in _V3_SLOPE_PROPORTIONS.items():
+        cfg.sub_terrains[name].proportion = proportion  # 키 오타면 즉시 KeyError
+    total = sum(t.proportion for t in cfg.sub_terrains.values())
+    assert abs(total - 1.0) < 1e-6, f"v3 서브지형 비율 합 {total} != 1.0"
+    # 컬럼 양자화 검증 — 설정 비율이 10열 배정과 정확히 일치해야 한다
+    props = [t.proportion for t in cfg.sub_terrains.values()]
+    cum, cols = [], []
+    acc = 0.0
+    for p in props:
+        acc += p
+        cum.append(acc)
+    for c in range(10):
+        v = c / 10 + 0.001
+        cols.append(next(i for i, s in enumerate(cum) if v < s))
+    realized = [cols.count(i) / 10 for i in range(len(props))]
+    assert all(abs(r - p) < 1e-9 for r, p in zip(realized, props)), (
+        f"컬럼 양자화 괴리: 설정 {props} vs 실현 {realized}")
+    return cfg
+
+
+@configclass
+class Biped12Stage4V2SlopeEnvCfg(Biped12Stage4V2RoughEnvCfg):
+    """경사 보강 학습판 — 험지 v2에서 지형 비율만 교체 (관측·보상 동일 → 리줌 호환)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.terrain.terrain_generator = _make_v3_slope_terrains_cfg()
+        self.scene.terrain.terrain_generator.curriculum = True
+
+
+@configclass
+class Biped12Stage4V2SlopeEnvCfg_PLAY(Biped12Stage4V2SlopeEnvCfg):
+    """경사 보강판 재생/평가 — rough PLAY와 동일 패턴."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 32
+        self.episode_length_s = 40.0
+        self.observations.policy.enable_corruption = False
+        self.events.base_external_force_torque = None
+        self.events.push_robot = None
+        self.scene.terrain.max_init_terrain_level = None
+        if self.scene.terrain.terrain_generator is not None:
+            self.scene.terrain.terrain_generator.num_rows = 5
+            self.scene.terrain.terrain_generator.num_cols = 5
+            self.scene.terrain.terrain_generator.curriculum = False
+        self.commands.base_velocity.rel_standing_envs = 0.0
+        self.commands.base_velocity.rel_spin_envs = 0.0
+        self.commands.base_velocity.rel_backward_envs = 0.0
+        self.commands.base_velocity.ranges.lin_vel_x = (0.35, 0.35)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
 
 
 @configclass

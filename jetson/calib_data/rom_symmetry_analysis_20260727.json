@@ -1,0 +1,22 @@
+{
+  "_meta": {
+    "date": "2026-07-27",
+    "method": "폭(span) 비교 — 모터 원점이 스탠드 자세에 앵커되기 전이므로 부호·오프셋 무관한 폭만 비교. 최종 관절각 리밋 갱신은 스탠드 스냅샷(원점 앵커) 후.",
+    "sources": {
+      "hw": "rom_sweep2_20260727.json (수동 ROM 스윕 2차, n≈98k/모터)",
+      "soft": "config/joint_limits_12dof.json (시행 리밋)",
+      "policy": "log_picture/관절가동범위_실측.txt (5게이트 실사용, 낙상 0)"
+    },
+    "symmetry_policy": "기구 좌우 대칭(승윤님 확인). conservative=좁은쪽(실측 확증치), mirrored=넓은쪽(대칭 가정 — 좁은쪽은 스윕 미완 추정). 판정은 conservative 기준(심투리얼 마진 우선).",
+    "verdict": "12관절 전부 [정책 실사용 ⊂ 소프트리밋 ⊂ 실물ROM] 폭 기준 성립. 최소 마진 = hip_a (소프트 대비 +6.9° — 단 좁은쪽 왼쪽이 스윕 미완 추정, 대칭 가정 시 +22.3°).",
+    "caveat_ankle_r": "모터 6·12(AK45-36)는 위치 스케일 미확정 — 폭 값이 AK70 스케일. 좌우 폭이 59.5/59.2로 일치해 상호 일관성은 확인. 스케일 확정 후 재환산 필요."
+  },
+  "pairs": {
+    "hip_f":   {"hw_width_L": 150.6, "hw_width_R": 139.4, "hw_conservative": 139.4, "soft_width_max": 67.0, "policy_width_max": 52.1, "margin_vs_soft": 72.4, "ok": true},
+    "hip_a":   {"hw_width_L": 34.4,  "hw_width_R": 49.8,  "hw_conservative": 34.4,  "soft_width_max": 27.5, "policy_width_max": 21.1, "margin_vs_soft": 6.9,  "ok": true, "note": "타이트 — 왼쪽 스윕 미완 추정(오른쪽 49.8, 기구 대칭). 대칭 가정 마진 +22.3"},
+    "hip_r":   {"hw_width_L": 171.4, "hw_width_R": 138.8, "hw_conservative": 138.8, "soft_width_max": 37.0, "policy_width_max": 26.7, "margin_vs_soft": 101.8, "ok": true},
+    "knee":    {"hw_width_L": 116.5, "hw_width_R": 132.0, "hw_conservative": 116.5, "soft_width_max": 87.5, "policy_width_max": 77.0, "margin_vs_soft": 29.0, "ok": true},
+    "ankle_f": {"hw_width_L": 71.7,  "hw_width_R": 90.8,  "hw_conservative": 71.7,  "soft_width_max": 51.0, "policy_width_max": 45.1, "margin_vs_soft": 20.7, "ok": true},
+    "ankle_r": {"hw_width_L": 59.5,  "hw_width_R": 59.2,  "hw_conservative": 59.2,  "soft_width_max": 37.5, "policy_width_max": 29.6, "margin_vs_soft": 21.7, "ok": true, "note": "AK45 스케일 미확정 — 참고치"}
+  }
+}

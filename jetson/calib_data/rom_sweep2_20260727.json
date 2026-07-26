@@ -1,0 +1,110 @@
+{
+ "1": {
+  "joint": "left_hip_f_joint",
+  "motor_id": 1,
+  "min_deg": -114.36643255596371,
+  "max_deg": 36.24973309012244,
+  "samples": 98768,
+  "miss": 3573,
+  "ak45_scale_unconfirmed": false
+ },
+ "2": {
+  "joint": "left_hip_a_joint",
+  "motor_id": 2,
+  "min_deg": -13.496659742629209,
+  "max_deg": 20.86244813658242,
+  "samples": 98769,
+  "miss": 3572,
+  "ak45_scale_unconfirmed": false
+ },
+ "3": {
+  "joint": "left_hip_r_joint",
+  "motor_id": 3,
+  "min_deg": -82.34601713417932,
+  "max_deg": 89.03424042364416,
+  "samples": 98769,
+  "miss": 3572,
+  "ak45_scale_unconfirmed": false
+ },
+ "4": {
+  "joint": "left_knee_joint",
+  "motor_id": 4,
+  "min_deg": -64.31404257924952,
+  "max_deg": 52.18344151502407,
+  "samples": 98769,
+  "miss": 3572,
+  "ak45_scale_unconfirmed": false
+ },
+ "5": {
+  "joint": "left_ankle_f_joint",
+  "motor_id": 5,
+  "min_deg": -30.610642865671693,
+  "max_deg": 41.12383045466708,
+  "samples": 98769,
+  "miss": 3572,
+  "ak45_scale_unconfirmed": false
+ },
+ "6": {
+  "joint": "left_ankle_r_joint",
+  "motor_id": 6,
+  "min_deg": -25.43054835716461,
+  "max_deg": 34.04218226582195,
+  "samples": 98769,
+  "miss": 3572,
+  "ak45_scale_unconfirmed": true
+ },
+ "7": {
+  "joint": "right_hip_f_joint",
+  "motor_id": 7,
+  "min_deg": 14.370937296807721,
+  "max_deg": 153.79635024941012,
+  "samples": 98769,
+  "miss": 3572,
+  "ak45_scale_unconfirmed": false
+ },
+ "8": {
+  "joint": "right_hip_a_joint",
+  "motor_id": 8,
+  "min_deg": -22.654717122648158,
+  "max_deg": 27.179103465521433,
+  "samples": 98769,
+  "miss": 3572,
+  "ak45_scale_unconfirmed": false
+ },
+ "9": {
+  "joint": "right_hip_r_joint",
+  "motor_id": 9,
+  "min_deg": -77.25335038109009,
+  "max_deg": 61.56006828358752,
+  "samples": 98769,
+  "miss": 3572,
+  "ak45_scale_unconfirmed": false
+ },
+ "10": {
+  "joint": "right_knee_joint",
+  "motor_id": 10,
+  "min_deg": -68.00786524565329,
+  "max_deg": 64.02990237414153,
+  "samples": 98768,
+  "miss": 3573,
+  "ak45_scale_unconfirmed": false
+ },
+ "11": {
+  "joint": "right_ankle_f_joint",
+  "motor_id": 11,
+  "min_deg": -47.877624560695395,
+  "max_deg": 42.89424250187836,
+  "samples": 98768,
+  "miss": 3573,
+  "ak45_scale_unconfirmed": false
+ },
+ "12": {
+  "joint": "right_ankle_r_joint",
+  "motor_id": 12,
+  "min_deg": -22.545432428375857,
+  "max_deg": 36.643157989502726,
+  "samples": 98769,
+  "miss": 3572,
+  "ak45_scale_unconfirmed": true
+ }
+}

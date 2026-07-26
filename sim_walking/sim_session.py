@@ -18,6 +18,36 @@ PELVIS_PATH = ROBOT_PATH + "/pelvis"
 FOOT_LINKS = {"left": ROBOT_PATH + "/left_ankle_r_joint",
               "right": ROBOT_PATH + "/right_ankle_r_joint"}
 
+# ── 씬 프로파일 (2026-07-27): 구자산 walk_scene(legacy) vs 신자산 v2(biped12) ──
+# biped12 = 학습 자산(12URDF0725, 10.49kg) 그대로 — base 링크가 학습 base 프레임
+# 자체라 어댑터 회전 불필요(단위행렬), 직립 시 로컬 +Z가 월드 +Z, 전진 = +X.
+# legacy pelvis는 임포트 90°X 회전 프레임(전진 -Y, 로컬 +Y가 up) — 기존 상수 유지.
+_R_PB_LEGACY = [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+SCENE_PROFILES = {
+    "legacy": {
+        "robot": "/World/newURDF12DOF", "art_sub": "", "base_link": "pelvis",
+        "R_PB": _R_PB_LEGACY, "up_local": "y",
+        "forward_axis": 1, "forward_sign": -1.0,   # 전진 = 월드 -Y
+        "fsm_ok": True,
+    },
+    "biped12": {
+        "robot": "/World/biped12", "art_sub": "/base", "base_link": "base",
+        "R_PB": [[1.0, 0, 0], [0, 1.0, 0], [0, 0, 1.0]], "up_local": "z",
+        "forward_axis": 0, "forward_sign": 1.0,    # 전진 = 월드 +X
+        "fsm_ok": False,   # FSM 보행·밸런스 피드백은 구자산 튜닝 — v2에선 차단
+    },
+}
+
+
+def detect_profile():
+    """열린 스테이지에서 로봇 프림을 찾아 프로파일 이름 반환."""
+    import omni.usd
+    stage = omni.usd.get_context().get_stage()
+    for name, prof in SCENE_PROFILES.items():
+        if stage.GetPrimAtPath(prof["robot"]).IsValid():
+            return name
+    raise RuntimeError("로봇 프림 없음 — walk_scene(.usd/v2) 이 열려 있나?")
+
 # 해부학적 동작 -> (관절, 부호) 매핑. joint_direction 실측 기준.
 # 값: 왼다리 부호, 오른다리 부호  (같은 해부학 동작을 낼 때)
 ANAT_SIGN = {
@@ -75,15 +105,23 @@ class Session:
         w.initialize_physics()
         _ = w.physics_sim_view  # lazy-create tensor view
 
-        art = SingleArticulation(ROBOT_PATH, name="sw_art")
+        prof_name = detect_profile()
+        prof = SCENE_PROFILES[prof_name]
+        robot_path = prof["robot"]
+        base_path = robot_path + "/" + prof["base_link"]
+        foot_links = {"left": robot_path + "/left_ankle_r_joint",
+                      "right": robot_path + "/right_ankle_r_joint"}
+
+        art = SingleArticulation(robot_path + prof.get("art_sub", ""),
+                                 name="sw_art")
         art.initialize()
-        pelvis = RigidPrim(PELVIS_PATH, name="sw_pelvis")
+        pelvis = RigidPrim(base_path, name="sw_pelvis")
         try:
             pelvis.initialize()
         except Exception:
             pass
         feet = {}
-        for side, path in FOOT_LINKS.items():
+        for side, path in foot_links.items():
             rp = RigidPrim(path, name=f"sw_foot_{side}")
             try:
                 rp.initialize()
@@ -92,6 +130,10 @@ class Session:
             feet[side] = rp
 
         s = cls(art, pelvis, feet, app)
+        s.profile_name = prof_name
+        s.profile = prof
+        s.R_PB = np.asarray(prof["R_PB"], float)
+        s.foot_links = foot_links
         cfg = json.load(open(os.path.join(REPO, "config", "sim_dynamics.json")))
         g = cfg["sim_gains"]["default"]
         s.set_gains(kp if kp is not None else g["kp"],
@@ -171,7 +213,16 @@ class Session:
         """
         _, q = self.pelvis.get_world_poses()
         w, x, y, z = np.asarray(q[0], float)
-        # R @ [0,1,0] (로컬 Y축의 월드 방향)
+        if getattr(self, "profile", {}).get("up_local", "y") == "z":
+            # biped12: R @ [0,0,1] (로컬 Z축의 월드 방향). 전진=+X →
+            # 전후 기울기는 up의 X 성분, 좌우는 Y 성분
+            upx = 2 * (x * z + w * y)
+            upy = 2 * (y * z - w * x)
+            upz = 1 - 2 * (x * x + y * y)
+            lean_ap = np.degrees(np.arctan2(upx, upz))
+            lean_lat = np.degrees(np.arctan2(upy, upz))
+            return float(lean_ap), float(lean_lat)
+        # legacy: R @ [0,1,0] (로컬 Y축의 월드 방향)
         upx = 2 * (x * y - w * z)
         upy = 1 - 2 * (x * x + z * z)
         upz = 2 * (y * z + w * x)

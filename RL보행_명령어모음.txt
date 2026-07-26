@@ -29,6 +29,19 @@ B.start()
   · RL 패널은 이 브리지와 무관하게 TCP로 동작 (안 켜도 RL은 됨)
 
 
+■ 0-2. RL 테스트 씬 (신형 URDF — 권장)
+───────────────────────────────────────────────────────────────────
+isaacsim_scene/walk_scene_v2.usd 를 열면 학습 자산(12URDF0725, 10.49kg)
+그대로 RL 테스트 가능 — File > Open 또는 Script Editor:
+
+import omni.usd
+omni.usd.get_context().open_stage("/home/ryu/humanoid_leg_test1/isaacsim_scene/walk_scene_v2.usd")
+
+  · ▶Play 후 RL 패널/브리지 그대로 사용 (씬 프로파일 자동감지)
+  · 구 walk_scene.usd = FSM 데모 전용 (v2에선 FSM 보행 차단됨)
+  · v2 실측: 전진 0.40m/s(구자산 0.30), march 표류 거의 0
+
+
 ■ 1. RL 보행 데모 (walk_scene에서 재생)  ★제일 자주 쓸 것
 ───────────────────────────────────────────────────────────────────
 cd /home/ryu/humanoid_leg_test1

@@ -39,6 +39,7 @@ class LiveWalkController:
         self.fb_cfg = cfg["feedback"]
         self.s = Session.attach(fresh_physics=True)
         self.fb = BalanceFeedback(self.s, **self.fb_cfg)
+        self._fsm_ok = getattr(self.s, "profile", {}).get("fsm_ok", True)
         self.mode = "STAND"          # STAND | WALK | HOLD | FALLEN
         self._hold_targets = None    # HOLD(즉시정지) 시점 목표 동결
         self.gait = None
@@ -65,12 +66,21 @@ class LiveWalkController:
 
     # ---------- 내부 ----------
     def _make_neutral(self):
+        if not self._fsm_ok:
+            # biped12(v2): FSM 중립자세는 구자산 튜닝 — 학습 기본자세 사용
+            from rl_walking.deploy.policy_runner import (
+                DEFAULT_POSE_RAD, JOINT_ORDER)
+            return {n: float(v) for n, v in zip(JOINT_ORDER, DEFAULT_POSE_RAD)}
         from .gait_static import StaticGait, StaticGaitParams
         return StaticGait(StaticGaitParams(**self.gait_cfg))._neutral_targets()
 
     def _pelvis_y(self):
+        """전진 좌표 (프로파일 부호 보정) — forward_m = 현재값 - y0."""
         p, _ = self.s.pelvis.get_world_poses()
-        return float(p[0][1])
+        prof = getattr(self.s, "profile", {}) or {}
+        ax = prof.get("forward_axis", 1)
+        sg = prof.get("forward_sign", -1.0)
+        return sg * float(p[0][ax])
 
     def _subscribe(self):
         # 물리 스텝 이벤트 우선 (2026-07-26): 렌더 업데이트 이벤트는 물리와
@@ -170,7 +180,8 @@ class LiveWalkController:
                     self.gait = None
                 tg = self.fb.apply(tg, lat_ref=ref)
             else:
-                tg = self.fb.apply(dict(self._neutral), lat_ref=0.0)
+                tg = (self.fb.apply(dict(self._neutral), lat_ref=0.0)
+                      if self._fsm_ok else dict(self._neutral))
             if self.push_left > 0:
                 self.push_left -= 1
                 try:
@@ -228,7 +239,8 @@ class LiveWalkController:
         # 자세 정돈 후 핸드오프 (rl_walk_demo_stage4와 동일 절차 — 스폰/FSM
         # 과도 상태에서 정책 인계 시 낙상: 2026-07-26 시뮬 검증 실측)
         self.s.zero(settle=60)
-        contacts = FootContacts(phys_dt=1.0 / FPS)
+        contacts = FootContacts(phys_dt=1.0 / FPS,
+                                foot_links=getattr(self.s, 'foot_links', None))
         contacts.initialize(self.s)
         pol = RLWalkPolicyStage4(
             contacts, checkpoint=ck, cmd=(0.0, 0.0, 0.0))
@@ -311,6 +323,9 @@ class LiveWalkController:
 
     def walk(self, steps=None, speed=1.0):
         from .gait_static import StaticGait, StaticGaitParams
+        if not self._fsm_ok:
+            return {"ok": False,
+                    "error": "FSM 보행은 구자산 walk_scene 전용 — RL 시작을 쓰세요"}
         if self.mode == "FALLEN":
             return {"ok": False, "error": "FALLEN — reset 필요"}
         gp = dict(self.gait_cfg)
@@ -381,7 +396,7 @@ class LiveWalkController:
         ap, lat = te["lean_ap"], te["lean_lat"]
         d = {
             "ok": True, "mode": self.mode, "walk_t": round(self.t, 2),
-            "forward_m": round(self.y0 - te["pelvis_y"], 3),
+            "forward_m": round(self._pelvis_y() - self.y0, 3),
             "lean_ap": round(ap, 1), "lean_lat": round(lat, 1),
             "yaw": round(te["yaw"], 1), "pelvis_z": round(te["pelvis_z"], 3),
             "err_count": self.err_count,
@@ -406,6 +421,8 @@ class LiveWalkController:
         self._unsubscribe()
         self.s = Session.attach(fresh_physics=True)
         self.fb = BalanceFeedback(self.s, **self.fb_cfg)
+        self._fsm_ok = getattr(self.s, "profile", {}).get("fsm_ok", True)
+        self._neutral = self._make_neutral()
         self.mode = "STAND"
         self.gait = None
         self.t = 0.0

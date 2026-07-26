@@ -51,11 +51,12 @@ class FootContacts:
     mode='heuristic'(발높이+수직속도)으로 자동 전환한다.
     """
 
-    def __init__(self, phys_dt=1.0 / 60.0):
+    def __init__(self, phys_dt=1.0 / 60.0, foot_links=None):
         import omni.usd
         from pxr import Usd
         from isaacsim.core.prims import RigidPrim
 
+        links = foot_links or FOOT_LINKS   # 미지정 시 구자산(legacy) 경로
         self.phys_dt = float(phys_dt)
         self.mode = "physx"
         self.fail_reason = None
@@ -66,7 +67,7 @@ class FootContacts:
         # 세션 레이어에 API를 기록 — walk_scene.usd 루트 레이어 오염 방지
         stage.SetEditTarget(Usd.EditTarget(stage.GetSessionLayer()))
         try:
-            for side, path in FOOT_LINKS.items():
+            for side, path in links.items():
                 self.views[side] = RigidPrim(
                     path, name=f"s4_contact_{side}",
                     track_contact_forces=True,
@@ -137,8 +138,9 @@ def read_signals(session):
     else:
         ang_w = np.asarray(vels[0][3:6], dtype=float)
     Rwp = _quat_to_rot(quat[0])
-    g_b = _R_PB @ (Rwp.T @ np.array([0.0, 0.0, -1.0]))
-    w_b = _R_PB @ (Rwp.T @ ang_w)
+    R_pb = getattr(s, "R_PB", _R_PB)   # 씬 프로파일 (biped12=단위행렬)
+    g_b = R_pb @ (Rwp.T @ np.array([0.0, 0.0, -1.0]))
+    w_b = R_pb @ (Rwp.T @ ang_w)
     jp = s.art.get_joint_positions()
     jv = s.art.get_joint_velocities()
     jp = np.asarray(jp[0] if getattr(jp, "ndim", 1) > 1 else jp, dtype=float)

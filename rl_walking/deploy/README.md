@@ -16,7 +16,7 @@
 - 의존성: `numpy` 필수, 추론은 `onnxruntime`(우선) 또는 `torch`(폴백) — 자동 선택.
   isaaclab 불필요 → 실물 PC/Jetson에서 단독 실행 가능.
 - 체크포인트: `logs/rsl_rl/biped12_flat/2026-07-25_21-59-19/exported/{policy.onnx, policy.pt}`
-  / Stage4: `logs/rsl_rl/biped12_stage4/2026-07-26_01-43-04/exported/{policy.onnx, policy.pt}`
+  / Stage4: `logs/rsl_rl/biped12_stage4/2026-07-26_14-53-03/exported/{policy.onnx, policy.pt}`
 - 호출 주기: **50Hz** (호출자가 보장 — 러너 내부에 타이머 없음. Stage4는 클록이
   tick×0.02s로 시간을 재구성하므로 주기 이탈 = 위상 이탈이라 더 엄격히 지킬 것)
 
@@ -79,7 +79,7 @@ PD(kp150/kd5, MIT 모드) 추종. 토크한계는 학습과 동일하게: AK70 1
 ```python
 from rl_walking.deploy.policy_runner_stage4 import PolicyRunnerStage4
 
-r = PolicyRunnerStage4()    # biped12_stage4/2026-07-26_01-43-04/exported 자동 로드
+r = PolicyRunnerStage4()    # biped12_stage4/2026-07-26_14-53-03/exported 자동 로드
 r.reset()                   # tick=0, 이력 비움, last_action=0, 슬루 기준점 재초기화
 q_cmd = r.step(gyro, gravity, cmd, qpos, qvel, contact2)   # → 목표관절각 12개 [rad]
 ```

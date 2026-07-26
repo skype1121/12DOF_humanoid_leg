@@ -1,6 +1,6 @@
-PolicyRunnerStage4 폐루프 검증 — 모델 /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-07-26_01-43-04/exported
+PolicyRunnerStage4 폐루프 검증 — 모델 /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-07-26_14-53-03/exported
 명령 (0.5, 0.0, 0.0), 15s, 관측 245차원(이력5·클록·접촉)
-전진 거리: 7.82 m (15s, 명령 0.5m/s)
+전진 거리: 6.55 m (15s, 명령 0.5m/s)
 러너 vs env 관측 245차원 최대 오차: 5.96e-08
 러너 vs env 목표각 최대 오차: 0.00e+00 rad
 낙상: 없음

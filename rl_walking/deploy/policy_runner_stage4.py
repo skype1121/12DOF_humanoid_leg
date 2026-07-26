@@ -1,6 +1,6 @@
 """RL 보행 정책 실행기 Stage4판 (실물/단독 PC용) — isaaclab 의존 없음.
 
-체크포인트: logs/rsl_rl/biped12_stage4/2026-07-26_01-43-04/exported/{policy.onnx, policy.pt}
+체크포인트: logs/rsl_rl/biped12_stage4/2026-07-26_14-53-03/exported/{policy.onnx, policy.pt}
 정책: 245차원 관측 → 12차원 raw 액션 MLP (50Hz 정책틱).
 기존 45차원판(policy_runner.PolicyRunner)은 그대로 두고 확장한 별도 클래스.
 
@@ -99,7 +99,7 @@ assert FRAME_DIM * HISTORY_LEN == OBS_DIM_STAGE4
 #: 기본 모델 경로 (exported/ — policy.onnx 우선, 없으면 policy.pt)
 DEFAULT_MODEL_DIR_STAGE4 = (
     "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/"
-    "2026-07-26_01-43-04/exported"
+    "2026-07-26_14-53-03/exported"
 )
 
 

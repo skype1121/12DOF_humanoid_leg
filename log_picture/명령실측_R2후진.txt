@@ -1,0 +1,11 @@
+Stage4 V2 명령추종 실측 — 후진 R2
+checkpoint: /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-07-26_12-15-16/model_8996.pt
+조건: 4 env × 30s, cmd=(-0.3, 0.0, 0.0) [vx,vy,wz]
+==================================================================
+낙상: 0회 / 4env
+접지 중 발 요슬립 |w_z| 평균: 0.351 rad/s (접촉샘플 6466)
+속도 추종 오차 |vx-cmd|: 평균 0.068 m/s
+케이던스: 4.08 걸음/s (양발 첫접촉 합산)
+좌우 접촉 역위상(피어슨): -0.848
+에어타임: 좌 0.192 s / 우 0.226 s — 비 L/R 0.85 (대칭비 1.18)
+접촉 궤적 저장: /home/ryu/humanoid_leg_test1/demo_output/cmd_traj_R2후진.npz

@@ -218,6 +218,190 @@ def capture_gravity(sec, label):
     return g_mean, len(samples)
 
 
+def record_gravity(sec, label, g1=None, autosave_path=None):
+    """RAW IMU를 sec초 연속 녹화 → [(t, 중력단위벡터, 자이로노름), ...].
+
+    tilt-rec 용: 무거운 로봇을 들고 캡처 타이밍을 맞출 수 없다는 실전 피드백
+    (2026-07-27)에 따라, 전 구간 녹화 후 최적 구간을 사후 선택한다.
+    g1 지정 시 5초마다 현재 기울임각을 출력 (원격 tail 모니터링용),
+    autosave_path 지정 시 10초마다 원본을 저장 (중도 종료 대비).
+    """
+    import rclpy
+    from rclpy.node import Node
+    from rclpy.qos import QoSProfile
+    from sensor_msgs.msg import Imu
+
+    rows = []
+    rejected = [0]
+    rclpy.init()
+    node = Node("imu_mount_calib_rec")
+
+    def cb(msg):
+        q = msg.orientation
+        n = math.sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w)
+        if abs(n - 1.0) > QUAT_NORM_TOL:
+            rejected[0] += 1
+            return
+        g = gravity_from_quat_xyzw(q.x / n, q.y / n, q.z / n, q.w / n)
+        av = msg.angular_velocity
+        rows.append((time.monotonic(), v_normalize(g),
+                     math.sqrt(av.x * av.x + av.y * av.y + av.z * av.z)))
+
+    node.create_subscription(Imu, IN_TOPIC, cb, QoSProfile(depth=QOS_DEPTH))
+    print(f"[{label}] {sec:.0f}초 연속 녹화 시작 — 아무 때나 기울여서 5초 이상"
+          " 버티세요. 여러 번 시도해도 됩니다.", flush=True)
+    g1u = v_normalize(g1) if g1 else None
+
+    def dump(path):
+        tmp = path + ".part"
+        with open(tmp, "w") as f:
+            json.dump([[round(r[0] - rows[0][0], 3),
+                        [round(v, 5) for v in r[1]], round(r[2], 4)]
+                       for r in rows], f)
+        os.replace(tmp, path)
+
+    t0 = time.monotonic()
+    deadline = t0 + sec
+    t_show = t0
+    t_save = t0
+    try:
+        while time.monotonic() < deadline:
+            rclpy.spin_once(node, timeout_sec=0.1)
+            now = time.monotonic()
+            if now - t_show >= 5.0 and rows:
+                t_show = now
+                msg = f"[{label}] {now - t0:4.0f}s… (샘플 {len(rows)})"
+                if g1u:
+                    recent = [r[1] for r in rows[-100:]]
+                    gm = v_normalize([sum(g[i] for g in recent) for i in range(3)])
+                    tilt = math.degrees(math.acos(max(-1.0, min(1.0, v_dot(gm, g1u)))))
+                    msg += f"  현재 기울임 {tilt:5.1f}°"
+                print(msg, flush=True)
+            if autosave_path and now - t_save >= 10.0 and rows:
+                t_save = now
+                try:
+                    dump(autosave_path)
+                except Exception:
+                    pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+        if autosave_path and rows:
+            try:
+                dump(autosave_path)
+            except Exception:
+                pass
+    if not rows:
+        raise RuntimeError(f"[{label}] 샘플 0개 — humanoid_imu 노드 실행 여부 확인")
+    if rejected[0]:
+        print(f"[경고] 쿼터니언 노름 이상 {rejected[0]}개 기각")
+    return rows
+
+
+#: tilt-rec 구간 선택 파라미터 — 사람이 들고 버티는 조건이라 정지 기준을 완화
+REC_WIN_S = 3.0          # 평가 구간 길이
+REC_STEP_S = 0.5         # 슬라이딩 간격
+REC_SPREAD_MAX_DEG = 1.5  # 구간 내 중력 방향 산포 허용
+REC_TILT_MIN_DEG = 8.0   # 방위각 신뢰 확보용 최소 기울임 (단발 5°보다 엄격)
+
+
+def best_tilt_windows(rows, g1, top_n=3):
+    """녹화에서 '안정 + 충분히 기울어진' 구간 상위 top_n 선택.
+
+    반환: [(t_start, g_mean, tilt_deg, spread_deg, gyro_max), ...] 산포 오름차순.
+    """
+    g1u = v_normalize(g1)
+    out = []
+    t_begin, t_end = rows[0][0], rows[-1][0]
+    t = t_begin
+    while t + REC_WIN_S <= t_end:
+        win = [r for r in rows if t <= r[0] < t + REC_WIN_S]
+        t += REC_STEP_S
+        if len(win) < 30:
+            continue
+        gm = v_normalize([sum(r[1][i] for r in win) for i in range(3)])
+        spread = max(math.degrees(math.acos(max(-1.0, min(1.0, v_dot(r[1], gm)))))
+                     for r in win)
+        if spread > REC_SPREAD_MAX_DEG:
+            continue
+        tilt = math.degrees(math.acos(max(-1.0, min(1.0, v_dot(g1u, gm)))))
+        if not (REC_TILT_MIN_DEG <= tilt <= TILT_MAX_DEG):
+            continue
+        out.append((win[0][0] - t_begin, gm, tilt, spread, max(r[2] for r in win)))
+    # 겹치는 구간 정리: 시작시각 2초 이내 이웃 중 산포 최소만 남김
+    out.sort(key=lambda w: w[0])
+    merged = []
+    for w in out:
+        if merged and w[0] - merged[-1][0] < 2.0:
+            if w[3] < merged[-1][3]:
+                merged[-1] = w
+        else:
+            merged.append(w)
+    merged.sort(key=lambda w: (w[3], -w[2]))
+    return merged[:top_n]
+
+
+def phase_tilt_rec(sec, state_path, out_path, date_str):
+    """Phase B(녹화판): 연속 녹화 → 최적 구간 자동 선택 → R 산출·저장.
+
+    상위 구간이 2개 이상이면 서로 다른 시도끼리 base_x 방위 일치를
+    교차검증한다 (5° 이상 어긋나면 경고 — 흔들림 평균 오염 신호).
+    """
+    if not os.path.isfile(state_path):
+        print(f"[오류] 상태 파일 없음: {state_path} — 먼저 --phase hang을 실행하세요.")
+        return 1
+    with open(state_path) as f:
+        g1 = [float(v) for v in json.load(f)["g_hang_imu"]]
+
+    # 원본은 녹화 중 10초마다 자동저장 — 중도 종료(명시 PID kill)해도 남는다
+    raw_path = out_path + ".raw.json"
+    rows = record_gravity(sec, "tilt-rec", g1=g1, autosave_path=raw_path)
+    print(f"[tilt-rec] 원본 녹화 저장: {raw_path} ({len(rows)}샘플)")
+    wins = best_tilt_windows(rows, g1)
+    if not wins:
+        print(f"[중단] 유효 구간 없음 — 조건: {REC_WIN_S:.0f}초 이상 산포 "
+              f"{REC_SPREAD_MAX_DEG}° 이내로 버티기 + 기울임 {REC_TILT_MIN_DEG:.0f}"
+              f"~{TILT_MAX_DEG:.0f}°. 더 깊게 기울이고 벽/몸에 받쳐 고정해 보세요.")
+        return 1
+    print(f"[tilt-rec] 유효 구간 {len(wins)}개:")
+    cands = []
+    for t_s, gm, tilt, spread, gmax in wins:
+        r, _ = compute_mount_rotation(g1, gm)
+        cands.append(r)
+        print(f"  t={t_s:5.1f}s  기울임 {tilt:5.2f}°  산포 {spread:4.2f}°  "
+              f"자이로max {gmax:.3f}  base_x=({r[0][0]:+.3f},{r[0][1]:+.3f},{r[0][2]:+.3f})")
+    if len(cands) >= 2:
+        dev = math.degrees(math.acos(max(-1.0, min(1.0, v_dot(cands[0][0], cands[1][0])))))
+        print(f"[교차검증] 상위 두 구간 base_x 사잇각 {dev:.2f}°"
+              + (" — 일치 (신뢰 가능)" if dev <= 5.0 else " — 불일치! 재녹화 권장"))
+        if dev > 5.0:
+            return 1
+
+    t_s, gm, tilt, spread, _ = wins[0]
+    r, tilt_deg = compute_mount_rotation(g1, gm)
+    g1_base = mat_vec(r, v_normalize(g1))
+    print("R_base_imu (최적 구간 기준):")
+    print(format_matrix(r))
+    print(f"채택 구간 t={t_s:.1f}s, 기울임 {tilt_deg:.2f}°, 산포 {spread:.2f}°")
+    print(f"새니티 R@g1 = ({g1_base[0]:+.5f}, {g1_base[1]:+.5f}, {g1_base[2]:+.5f})")
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w") as f:
+        json.dump({
+            "R_base_imu": r,
+            "method": "two_pose_gravity_hang_tiltrec",
+            "date": date_str,
+            "g_hang_imu": v_normalize(g1),
+            "g_tilt_imu": gm,
+            "tilt_deg": tilt_deg,
+            "window_spread_deg": spread,
+            "n_windows_valid": len(wins),
+        }, f, indent=2)
+    print(f"[tilt-rec] 보정 저장 완료: {out_path}")
+    print("[tilt-rec] 어댑터(imu_adapter_node.py) 재시작 시 자동 적용됩니다.")
+    return 0
+
+
 # ---------- 페이즈 ----------
 
 def phase_hang(sec, state_path, date_str):
@@ -376,11 +560,12 @@ def selftest():
 def main():
     ap = argparse.ArgumentParser(
         description="IMU 장착 회전(R_base_imu) 2자세 중력 보정 도구")
-    ap.add_argument("--phase", choices=("hang", "tilt", "check"),
+    ap.add_argument("--phase", choices=("hang", "tilt", "tilt-rec", "check"),
                     help="hang=수직 매달림 캡처, tilt=앞기울임 캡처+산출, "
+                         "tilt-rec=연속 녹화 후 최적 구간 자동 선택(무거운 로봇용), "
                          "check=보정 적용 확인")
     ap.add_argument("--sec", type=float, default=None,
-                    help="캡처 시간(초). 기본 hang/tilt=10, check=5")
+                    help="캡처 시간(초). 기본 hang/tilt=10, tilt-rec=75, check=5")
     ap.add_argument("--state", default=DEFAULT_STATE,
                     help=f"hang 결과(g1) 상태 JSON 경로 (기본 {DEFAULT_STATE})")
     ap.add_argument("--out", default=DEFAULT_OUT,
@@ -397,12 +582,15 @@ def main():
         ap.error("--phase 또는 --selftest 중 하나가 필요합니다")
 
     date_str = a.date or time.strftime("%Y-%m-%d %H:%M:%S")
-    sec = a.sec if a.sec is not None else (5.0 if a.phase == "check" else 10.0)
+    default_sec = {"check": 5.0, "tilt-rec": 75.0}.get(a.phase, 10.0)
+    sec = a.sec if a.sec is not None else default_sec
 
     if a.phase == "hang":
         return phase_hang(sec, a.state, date_str)
     if a.phase == "tilt":
         return phase_tilt(sec, a.state, a.out, date_str)
+    if a.phase == "tilt-rec":
+        return phase_tilt_rec(sec, a.state, a.out, date_str)
     return phase_check(sec, a.out)
 
 

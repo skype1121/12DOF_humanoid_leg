@@ -131,7 +131,7 @@
    "kd": 5.0,
    "enabled": true,
    "dry_run": false,
-   "stand_zero_deg": 4.95
+   "stand_zero_deg": 14.95
   },
   "right_hip_f_joint": {
    "joint_name": "right_hip_f_joint",
@@ -152,7 +152,7 @@
    "kd": 5.0,
    "enabled": true,
    "dry_run": false,
-   "stand_zero_deg": 44.71
+   "stand_zero_deg": 8.71
   },
   "right_hip_a_joint": {
    "joint_name": "right_hip_a_joint",
@@ -194,7 +194,7 @@
    "kd": 5.0,
    "enabled": true,
    "dry_run": false,
-   "stand_zero_deg": -1.52
+   "stand_zero_deg": 34.48
   },
   "right_knee_joint": {
    "joint_name": "right_knee_joint",
@@ -262,7 +262,7 @@
  },
  "_provenance": {
   "direction": "2026-07-27 실물 검증 (매달림 미소동작 12/12 + 20° 전수 라운드 + 발목롤 모서리 기준 재검): 홀수모터 +1/짝수 −1, 단 모터12=+1 — ankle_r URDF 좌우부호 예외(양쪽 +=외번)의 실물 재현. 발목롤 육안 관찰은 발등/발바닥 혼동 잦음 — 반드시 새끼발가락 모서리 상승/하강 기준으로. AK45(6·12) 위치 스케일 과대판독 의심 — 폰 각도기 실측 전 참고",
-  "stand_zero_deg": "stand_snapshot_v4_20260727: v3 캡처 후 좌힙 재교정(m1 −0.7°, m3 +1.6°)한 최종 직립 정지 캡처 (제로토크 20샘플 중앙값, 결측 0). 소프트웨어 영점 앵커 — 모터 인코더 원점(하드웨어)은 건드리지 않음. 변환식: joint_deg = direction × (motor_deg − stand_zero_deg). v2→v3→v4 대체 이력.",
+  "stand_zero_deg": "v5_frame_reanchor_20260730: v4 영점 유지 + 전원사이클 프레임 시프트 배수 보정만 적용 (m6 +1×10°→14.95, m7 −1×36°→8.71, m9 +1×36°→34.48). boot_pose_check --ref stand 판정: 나머지 9모터 k=0 잔차 ≤3.7°(매달림 재현 노이즈). 통째 재캡처 대신 배수 보정 선택 — 배수는 정확값이라 노이즈 0, 검증된 v4 앵커 보존. 원본 v4 = stand_snapshot_v4_20260727 (제로토크 20샘플 중앙값, 좌힙 재교정 포함). 변환식: joint_deg = direction × (motor_deg − stand_zero_deg). v2→v3→v4→v5 이력. 주의: stand_zero는 '그 전원사이클의 프레임' 종속 — 부팅마다 boot_pose_check로 재판정",
   "ak45_position_scale": "확정 1.0 (2026-07-27 폰 각도기 실측): 정강이 고정 상태 폰 20.9° vs 엔코더 20.7° (오차 0.8%). 위치 보정 불필요. 몸통 자유 상태 측정은 매달림 반작용으로 비율이 1.05~1.3으로 부풀어 보임 — 무효. 속도 디코드는 여전히 과대판독(범위 규약 상이 추정) — 도구에서 --vmax 상향으로 대응, 위치와 무관",
   "gains": "kp150/kd5 전 관절 통일 (2026-07-27, 승윤님 승인): 정책 학습 게인과 일치 (biped12_cfg kp150/kd5 ±20% DR, kd5=MIT 프로토콜 상한=실물 kd 상한 규칙). 종전 레거시 kp20~30/kd1.5~2는 저게인 수동조작용이었음 — stage8 라이브 경로에서만 소비됨"
  }

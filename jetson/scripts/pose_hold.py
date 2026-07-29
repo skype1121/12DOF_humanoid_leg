@@ -1,7 +1,8 @@
 """에어 스탠딩 — 매달린 로봇을 스탠드 자세로 동기 램프 후 유지 (2026-07-27 첫 12모터 동시 제어).
 
-전제: 로봇 매달림(발 비접촉), 부호 검증 완료, 스탠드 스냅샷(모터 프레임) 확보.
+전제: 로봇 매달림(발 비접촉), 부호 검증 완료, boot_pose_check로 프레임 확정된 하드웨어맵.
 타깃은 '모터 프레임 절대각'이라 direction/스케일 변환이 필요 없다 (자기 엔코더 기준 복귀).
+스탠드 영점은 하드웨어맵에서 로드, ROM 클램프는 영점 상대값 — 둘 다 프레임 시프트 안전.
 
 안전 설계:
   - 전 모터 현재각 실측 → 목표까지 50Hz 동기 선형 램프 (최대 5°/s, 최소 6초)
@@ -32,18 +33,30 @@ EXIT = bytes([0xFF] * 7 + [0xFD])
 STOP_FILE = "/tmp/pose_hold_stop"
 IDS = list(range(1, 13))
 
-#: 스탠드 스냅샷 v4 (stand_snapshot_v4_20260727 — v3 캡처 후 좌힙 재교정
-#: (m1 −0.7°, m3 +1.6°)한 최종 직립 정지 캡처. 공식 스탠드 영점 앵커 = 이 값.
-#: 이력: v1 폐기(골반 기움) → v2 → v3 → v4)
-STAND_DEG = {1: 31.99, 2: 2.20, 3: 8.69, 4: 14.22, 5: 34.28, 6: 4.95,
-             7: 44.71, 8: 8.82, 9: -1.52, 10: 21.87, 11: 5.61, 12: 8.29}
+#: 스탠드 영점은 하드웨어맵에서 로드 (하드코딩 금지 — 전원사이클 프레임 시프트 시
+#: 절대각이 통째로 이동함. 맵은 boot_pose_check가 프레임 확정 후 갱신하는 단일 진실).
+HW_MAP = "/home/mama/rl_calib/robot_12dof_hardware_map.json"
 
-#: 실측 ROM (rom_sweep2) — 목표 클램프 최후방어
-MEAS_ROM = {
-    1: (-114.4, 36.2), 2: (-13.5, 20.9), 3: (-82.3, 89.0), 4: (-64.3, 52.2),
-    5: (-30.6, 41.1), 6: (-25.4, 34.0), 7: (14.4, 153.8), 8: (-22.7, 27.2),
-    9: (-77.3, 61.6), 10: (-68.0, 64.0), 11: (-47.9, 42.9), 12: (-22.5, 36.6),
+#: 실측 ROM의 '스탠드 영점 상대값' (rom_sweep2 − stand_v4, 프레임 불변) — 클램프 최후방어.
+#: 모터 프레임 절대각 ROM 하드코딩은 시프트된 모터에서 목표를 엉뚱하게 밀어냄 (v5에서 실증).
+ROM_REL = {
+    1: (-146.4, 4.2), 2: (-15.7, 18.7), 3: (-91.0, 80.3), 4: (-78.5, 38.0),
+    5: (-64.9, 6.8), 6: (-30.4, 29.1), 7: (-30.3, 109.1), 8: (-31.5, 18.4),
+    9: (-75.8, 63.1), 10: (-89.9, 42.1), 11: (-53.5, 37.3), 12: (-30.8, 28.3),
 }
+
+
+def load_stand_zero():
+    try:
+        hw = json.load(open(HW_MAP))
+        zero = {int(j["motor_id"]): float(j["stand_zero_deg"])
+                for j in hw["joints"].values()}
+    except Exception as e:
+        raise SystemExit(f"[중단] 하드웨어맵 읽기 실패 {HW_MAP}: {e}")
+    missing = [m for m in IDS if m not in zero]
+    if missing:
+        raise SystemExit(f"[중단] 하드웨어맵에 모터 {missing} stand_zero 없음")
+    return zero
 
 DEV_ABORT_DEG = 15.0
 FB_TIMEOUT_S = 0.5
@@ -127,12 +140,22 @@ def main():
                 return 1
             p0[m] = statistics.median(reads)
 
-        base = STAND_DEG
+        zero = load_stand_zero()
+        base = dict(zero)
         if a.targets_json:
-            base = {int(k): float(v) for k, v in
-                    json.load(open(a.targets_json)).items()}
-        tgt = {m: min(max(base[m], MEAS_ROM[m][0] + 3), MEAS_ROM[m][1] - 3)
-               for m in IDS}
+            base.update({int(k): float(v) for k, v in
+                         json.load(open(a.targets_json)).items()})
+        tgt = {m: min(max(base[m], zero[m] + ROM_REL[m][0] + 3),
+                      zero[m] + ROM_REL[m][1] - 3) for m in IDS}
+        clamped = {m: base[m] - tgt[m] for m in IDS
+                   if abs(base[m] - tgt[m]) > 0.01}
+        if clamped:
+            print("[주의] ROM 클램프 발동: " + " ".join(
+                f"모터{m}:{d:+.1f}°" for m, d in clamped.items()), flush=True)
+            if any(abs(d) > 10.0 for d in clamped.values()):
+                print("[FAIL] 10° 초과 클램프 — 구프레임 타깃 의심. "
+                      "boot_pose_check로 프레임 확인 후 재실행", flush=True)
+                return 1
         dmax = max(abs(tgt[m] - p0[m]) for m in IDS)
         t_ramp = max(6.0, dmax / RAMP_RATE_DEG_S)
         print("모터별 이동량: " + " ".join(

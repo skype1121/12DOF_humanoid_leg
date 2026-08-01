@@ -51,6 +51,11 @@
     전원사이클 자체는 저널로 감지 불가 — 절차(사이클 후 재판정)가 원칙이고 이
     게이트는 백스톱. --force-frame 으로만 우회.
   - 하드웨어맵 결함(12관절 direction/stand_zero_deg 미비) 시 기동 자체 차단.
+  - 발진 가드(0802 공중 발진 사고 재발 방지): live 중 어느 관절이든 0.5s 창에
+    속도 부호반전 ≥6회+진폭 ≥2° (또는 |qvel|>12rad/s) → 자동 STOP_ALL·비활성.
+    이후 절차 = 줄 재인장 → release_all.py. estop 손명령은 발진 속도를 못 따라감.
+  - 블랙박스: live면 ~/logs/rl_bridge_*.jsonl 에 틱 단위 관측·타깃·이벤트 기록
+    (/tmp 금지 — 재부팅 소실 사고 재발 방지).
 
 드라이런 자가검증 (로봇·ROS 불필요):
   python3 jetson/scripts/rl_bridge_node.py --selftest
@@ -60,6 +65,7 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import math
 import os
@@ -364,6 +370,56 @@ def _selftest_policy():
 FRAME_JOURNAL = "/home/mama/rl_calib/last_pose_journal.json"
 FRAME_MAX_AGE_DEFAULT_S = 3600.0
 
+#: 발진 가드 파라미터 — 2026-08-02 공중 발진 사고("부들부들 떨다 튕김", 사람
+#: 전원컷으로 종료; estop은 ssh 왕복 지연으로 무력) 재발 방지. 보행 리듬
+#: (~1.4Hz = 0.5s당 부호반전 ~1.4회)과 명확히 분리되는 영역만 트리거한다.
+OSC_WINDOW_SEC = 0.5     #: 감시 창
+OSC_REVERSALS = 6        #: 창 내 속도 부호반전 임계 (≈6Hz 이상 진동)
+OSC_P2P_RAD = 0.035      #: 그리고 창 내 위치 진폭 ≥2° — 미세 노이즈 배제
+OSC_VEL_DEADBAND = 0.5   #: rad/s — 이하 속도의 부호는 무시 (양자화·유한차분 노이즈)
+OSC_VEL_HARD = 12.0      #: rad/s 즉시 트리거 (정상 보행 스윙 3~6 rad/s의 2배+)
+
+
+class OscGuard:
+    """관절 발진 감지 (순수 로직, ROS 비의존 — selftest 대상).
+
+    피드백 기반: 어느 관절이든 0.5s 창에서 속도 부호반전 ≥6회 그리고 위치
+    진폭 ≥2° 이면 발진으로 판정. |qvel| > 12 rad/s 는 즉시 트리거.
+    update(t, qpos, qvel) → None(정상) 또는 사유 문자열(트리거).
+    """
+
+    def __init__(self, joint_names):
+        self.names = list(joint_names)
+        self.last_sign = {j: 0 for j in self.names}
+        self.revs = {j: collections.deque() for j in self.names}
+        self.pos = {j: collections.deque() for j in self.names}
+
+    def update(self, t, qpos, qvel):
+        for i, j in enumerate(self.names):
+            v = float(qvel[i])
+            if abs(v) > OSC_VEL_HARD:
+                return f"과속 {j} {v:+.1f} rad/s (한계 {OSC_VEL_HARD})"
+            p = self.pos[j]
+            p.append((t, float(qpos[i])))
+            while p and t - p[0][0] > OSC_WINDOW_SEC:
+                p.popleft()
+            s = 0 if abs(v) < OSC_VEL_DEADBAND else (1 if v > 0 else -1)
+            if s == 0:
+                continue
+            if self.last_sign[j] != 0 and s != self.last_sign[j]:
+                r = self.revs[j]
+                r.append(t)
+                while r and t - r[0] > OSC_WINDOW_SEC:
+                    r.popleft()
+                if len(r) >= OSC_REVERSALS:
+                    vals = [q for _, q in p]
+                    p2p = max(vals) - min(vals)
+                    if p2p >= OSC_P2P_RAD:
+                        return (f"발진 {j}: {OSC_WINDOW_SEC}s 내 반전 {len(r)}회, "
+                                f"진폭 {math.degrees(p2p):.1f}°")
+            self.last_sign[j] = s
+        return None
+
 
 def frame_check_verdict(path=FRAME_JOURNAL, max_age_s=FRAME_MAX_AGE_DEFAULT_S,
                         now=None):
@@ -434,6 +490,33 @@ def _selftest_frame_gate():
     return f"판정 케이스 {len(cases)}/{len(cases)} 통과"
 
 
+def _selftest_osc_guard():
+    def run(freq_hz, amp_deg, dur_s):
+        g = OscGuard(["j"])
+        amp = math.radians(amp_deg)
+        w = 2 * math.pi * freq_hz
+        n = int(dur_s / TICK_SEC)
+        for k in range(n):
+            t = k * TICK_SEC
+            trig = g.update(t, [amp * math.sin(w * t)],
+                            [amp * w * math.cos(w * t)])
+            if trig:
+                return trig, t
+        return None, dur_s
+
+    trig, t = run(8.0, 3.0, 2.0)          # 발진 시나리오 (8Hz, ±3°)
+    assert trig and "발진" in trig and t <= 1.0, (trig, t)
+    trig2, _ = run(1.4, 20.0, 3.0)        # 정상 보행 리듬 — 미트리거
+    assert trig2 is None, trig2
+    trig3, _ = run(12.0, 0.15, 2.0)       # 미세 노이즈 (데드밴드 이하) — 미트리거
+    assert trig3 is None, trig3
+    g = OscGuard(["j"])                    # 과속 즉시 트리거
+    trig4 = g.update(0.0, [0.0], [15.0])
+    assert trig4 and "과속" in trig4, trig4
+    return (f"8Hz±3° {t:.2f}s 내 트리거 / 보행 1.4Hz·노이즈 미트리거 / "
+            f"과속 즉시 — 4케이스 통과")
+
+
 def run_selftest():
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 정책 500틱."""
     tests = [("하드웨어맵", _selftest_hwmap),
@@ -441,6 +524,7 @@ def run_selftest():
              ("수치 앵커", _selftest_anchors),
              ("게인 정책", _selftest_gains),
              ("프레임 게이트", _selftest_frame_gate),
+             ("발진 가드", _selftest_osc_guard),
              ("정책 500틱", _selftest_policy)]
     failed = 0
     for name, fn in tests:
@@ -522,6 +606,18 @@ def main():
             self.baseline = {}
             self.armed = False
             self.stopped_for_stale = False
+            self.osc = OscGuard(JOINT_ORDER)
+            self.osc_tripped = None
+            # 블랙박스: live면 무조건 ~/logs 에 틱 단위 jsonl 기록 (0802 사고 때
+            # /tmp 로그가 재부팅으로 소실 — 사후분석 불가 재발 방지)
+            self.bb = None
+            if self.live:
+                d = os.path.expanduser("~/logs")
+                os.makedirs(d, exist_ok=True)
+                path = os.path.join(
+                    d, time.strftime("rl_bridge_%Y%m%d_%H%M%S.jsonl"))
+                self.bb = open(path, "a", buffering=1)
+                self.get_logger().info(f"블랙박스 기록: {path}")
             self.create_subscription(String, JOINT_STATES_TOPIC, self._on_js, 10)
             self.create_subscription(String, STATUS_TOPIC, self._on_status, 10)
             self.create_subscription(String, IMU_TOPIC, self._on_imu, 50)
@@ -687,6 +783,22 @@ def main():
             gyro, quat = self.imu
             contact2 = [1.0 if self.foot[0] > CONTACT_FORCE_THRESHOLD_N else 0.0,
                         1.0 if self.foot[1] > CONTACT_FORCE_THRESHOLD_N else 0.0]
+            # 발진 가드 — 피드백 기반이라 정책 출력과 무관하게 몸의 발진을 감지.
+            # 트리거 시 STOP_ALL(동결 홀드) 후 비활성: 이후 절차 = 줄 재인장 →
+            # release_all.py (0802 프로토콜)
+            if self.live and self.osc_tripped is None:
+                why = self.osc.update(now, qpos, qvel)
+                if why:
+                    self.osc_tripped = why
+                    if self.bb:
+                        self.bb.write(json.dumps(
+                            {"timestamp": now, "event": "osc_guard",
+                             "reason": why}) + "\n")
+                    self._stop_all(f"osc_guard: {why}")
+                    self.core.active = False
+                    self.get_logger().error(
+                        f"발진 가드 트리거 — {why}. 줄 재인장 후 release_all 실행!")
+                    return
             targets_rad = self.core.tick(gyro, quat, qpos, qvel, contact2)
             # 출력 변환: 관절 프레임 rad → 모터 인코더 프레임 deg
             #   motor_target_deg = SZ + DIR × degrees(policy_target_rad)
@@ -700,8 +812,16 @@ def main():
                    "checkpoint": self.core.ckpt_name, "cmd": list(self.core.cmd),
                    # 프레임 명시: joint=URDF 관절 프레임 / motor=모터 인코더 프레임
                    "targets_deg_joint": targets_deg_joint,
-                   "targets_deg_motor": targets_deg_motor}
+                   "targets_deg_motor": targets_deg_motor,
+                   # 사후분석용 관측 원본 (0802 발진 사고 때 이 데이터가 없었음)
+                   "qpos_rad": [round(v, 5) for v in qpos],
+                   "qvel_rad_s": [round(v, 4) for v in qvel],
+                   "contact": contact2,
+                   "foot_n": [round(float(self.foot[0]), 2),
+                              round(float(self.foot[1]), 2)]}
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
+            if self.bb:
+                self.bb.write(json.dumps(dbg) + "\n")
             if not (self.live and self.armed):
                 return
             for j in JOINT_ORDER:
@@ -717,6 +837,10 @@ def main():
 
         def _stop_all(self, reason):
             self.get_logger().warning(f"STOP_ALL ({reason})")
+            if self.bb:
+                self.bb.write(json.dumps({"timestamp": time.time(),
+                                          "event": "stop_all",
+                                          "reason": reason}) + "\n")
             if self.live:
                 self.pub_cmd.publish(String(
                     data=json.dumps({"command": "STOP_ALL"})))

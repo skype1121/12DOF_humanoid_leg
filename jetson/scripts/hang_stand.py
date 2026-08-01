@@ -2,15 +2,21 @@
 
 절차 (승윤님 수동 하강 + 원격 파일 트리거):
   1. AIR_RAMP   : 현재각→스탠드(하드웨어맵 v5) 저게인 동기 램프 (kp20/kd1, 최대 5°/s)
-  2. AIR_HOLD   : 매달림 유지. 트림 프로브 — /tmp/ankle_trim_deg 에 8 쓰면 발목F
-                  (m5 +/m11 −)를 0.5°/s로 램프. 무부하에서 하드스톱에 닿으면 추종오차
-                  증분이 벌어짐 → 3틱 연속 초과 시 트림 동결+경고 (저토크라 무해).
-                  프로브 후 0으로 되돌릴 것 (0 복귀 시 베이스라인 리셋 — 재프로브 가능).
+  2. AIR_HOLD   : 매달림 유지. 트림 프로브 — 채널 3종 (모두 0.5°/s 램프):
+                  /tmp/ankle_trim_deg : + = 발등굽힘 (m5 +/m11 −)
+                  /tmp/hip_trim_deg   : + = 힙 신전 (m1 −/m7 +) — 발목과 같은 값이면
+                                        "다리 앞기울임+몸통 수직" = 골반 전방 이동
+                  /tmp/knee_trim_deg  : + = 무릎 굽힘 (m4 +/m10 −)
+                  부호 근거 = 웅크림 실측(pose_record_20260801_crouch).
+                  무부하에서 하드스톱에 닿으면 추종오차 증분이 벌어짐 → 3틱 연속
+                  초과 시 해당 채널 동결+경고 (저토크라 무해). 프로브 후 0으로
+                  되돌릴 것 (0 복귀 시 베이스라인 리셋 — 재프로브 가능).
   3. GAIN_RAMP  : /tmp/hang_gain 생성 시 kp20/kd1 → kp150/kd5 선형 램프 (8s).
                   전 모터 오차 3° 미만일 때만 수락 (아니면 파일 삭제+거부 사유 출력).
                   ※ 반드시 발이 땅에 닿기 전에. 완료 후 줄을 천천히 풀어 착지.
   4. 착지 선언  : 발이 닿으면 touch /tmp/hang_ground — 무부하 스톨가드 해제
-                  (접지 후엔 발목 오차가 정상이므로). 이후 트림 8→10° 라이브 조정.
+                  (접지 후엔 부하 오차가 정상이므로). 이후 3채널 트림 라이브 조정
+                  (하중 상태에서 손=힘센서 티트레이션, 0.25° 단위 권장).
                   오탐 동결은 touch /tmp/hang_trim_unfreeze 로 해제.
   5. 종료       : /tmp/hang_stand_stop → 소프트 릴리즈: 명령 동결 + 게인만 3s 램프다운
                   (줄 재인장 후 사용!). /tmp/hang_stand_kill → 즉시 릴리즈 (비상).
@@ -52,6 +58,8 @@ KILL_FILE = "/tmp/hang_stand_kill"
 GAIN_FILE = "/tmp/hang_gain"
 GROUND_FILE = "/tmp/hang_ground"
 TRIM_FILE = "/tmp/ankle_trim_deg"
+HIP_TRIM_FILE = "/tmp/hip_trim_deg"
+KNEE_TRIM_FILE = "/tmp/knee_trim_deg"
 UNFREEZE_FILE = "/tmp/hang_trim_unfreeze"
 HW_MAP = "/home/mama/rl_calib/robot_12dof_hardware_map.json"
 IDS = list(range(1, 13))
@@ -72,12 +80,20 @@ GAIN_RAMP_S = 8.0
 GAIN_GATE_DEG = 3.0
 SOFT_RELEASE_S = 3.0
 TRIM_RATE_DEG_S = 0.5
-TRIM_MIN, TRIM_MAX = -2.0, 12.0
 TRIM_STALL_AIR_DEG = 2.5
 TRIM_STALL_TICKS = 3
 FAULT_ABORT_N = 2
 TICK = 0.02
-L_ANK, R_ANK = 5, 11
+
+#: 트림 채널 — gain: 모터별 raw 부호 (좌우 부호 반대 규칙, 웅크림 실측
+#: pose_record_20260801_crouch 로 검증: 힙굴곡 m1+/m7−, 무릎굽힘 m4+/m10−).
+#: 트림은 ROM 클램프 대신 무부하 스톨가드로 보호 (발목과 동일 설계 —
+#: ROM_REL 힙 상한은 웅크림 실측 +10.9°와 모순되어 신뢰 불가).
+TRIM_CH = {
+    "a": {"file": TRIM_FILE, "gain": {5: 1.0, 11: -1.0}, "lo": -2.0, "hi": 12.0},
+    "h": {"file": HIP_TRIM_FILE, "gain": {1: -1.0, 7: 1.0}, "lo": -2.0, "hi": 6.0},
+    "k": {"file": KNEE_TRIM_FILE, "gain": {4: 1.0, 10: -1.0}, "lo": -1.0, "hi": 8.0},
+}
 
 SIG_STOP = []
 
@@ -151,11 +167,12 @@ def load_stand_zero():
     return zero
 
 
-def read_trim_req(cur_req):
+def read_trim_req(ch, cur_req):
+    cfg = TRIM_CH[ch]
     try:
-        with open(TRIM_FILE) as f:
+        with open(cfg["file"]) as f:
             v = float(f.read().strip())
-        return min(TRIM_MAX, max(TRIM_MIN, v))
+        return min(cfg["hi"], max(cfg["lo"], v))
     except Exception:
         return cur_req
 
@@ -168,7 +185,7 @@ def main():
     a = ap.parse_args()
 
     for f in (STOP_FILE, KILL_FILE, GAIN_FILE, GROUND_FILE, TRIM_FILE,
-              UNFREEZE_FILE):
+              HIP_TRIM_FILE, KNEE_TRIM_FILE, UNFREEZE_FILE):
         if os.path.exists(f):
             try:
                 os.remove(f)
@@ -244,11 +261,10 @@ def main():
         gain_t0 = None
         gain_skip_mtime = None      # 삭제 불가한 거부된 gain 파일 mtime (무시 목록)
         unfreeze_skip_mtime = None  # 삭제 불가한 unfreeze 파일 mtime (1회만 적용)
-        trim_req = 0.0
-        trim_cur = 0.0
-        trim_frozen = None
-        trim_base = None
-        stall_cnt = {L_ANK: 0, R_ANK: 0}
+        trim = {ch: {"req": 0.0, "cur": 0.0, "frozen": None, "fdir": 1,
+                     "base": None,
+                     "stall": {m: 0 for m in TRIM_CH[ch]["gain"]}}
+                for ch in TRIM_CH}
         grounded = False
         t0 = time.monotonic()
         t_show = t0
@@ -258,10 +274,10 @@ def main():
 
         def cmd_of(m, frac):
             c = p0[m] + frac * (tgt[m] - p0[m])
-            if m == L_ANK:
-                c += trim_cur
-            elif m == R_ANK:
-                c -= trim_cur
+            for ch, cfg in TRIM_CH.items():
+                g = cfg["gain"].get(m)
+                if g:
+                    c += g * trim[ch]["cur"]
             return c
 
         while True:
@@ -285,13 +301,14 @@ def main():
             if not grounded and os.path.exists(GROUND_FILE):
                 grounded = True
                 say("[착지 선언] 스톨가드 해제 — 트림 라이브 조정 가능")
-            if operational and not grounded and trim_req > 0.0 \
-                    and now - t_warn_ground > 30.0:
+            if operational and not grounded and now - t_warn_ground > 30.0 \
+                    and any(abs(t["cur"]) > 0.0 for t in trim.values()):
                 t_warn_ground = now
                 say("[안내] 착지했으면 touch /tmp/hang_ground — 선언 전엔 "
                     "스톨가드가 부하 오차를 하드스톱으로 오인할 수 있음")
 
-            if trim_frozen is not None and os.path.exists(UNFREEZE_FILE):
+            if any(t["frozen"] is not None for t in trim.values()) \
+                    and os.path.exists(UNFREEZE_FILE):
                 try:
                     mt = os.path.getmtime(UNFREEZE_FILE)
                 except OSError:
@@ -301,12 +318,15 @@ def main():
                         os.remove(UNFREEZE_FILE)
                     except OSError:
                         unfreeze_skip_mtime = mt
-                    trim_frozen = None
-                    # trim_cur>0 상태라 0크로싱 재캡처가 안 옴 — 즉시 재캡처해
-                    # 스톨가드를 재장전한 채로 트림 재상승 허용
-                    trim_base = {m: pos[m] - cmd_of(m, frac)
-                                 for m in (L_ANK, R_ANK)}
-                    stall_cnt = {L_ANK: 0, R_ANK: 0}
+                    # cur≠0 상태라 0크로싱 재캡처가 안 옴 — 즉시 재캡처해
+                    # 스톨가드를 재장전한 채로 트림 재조정 허용
+                    for ch, t in trim.items():
+                        if t["frozen"] is None:
+                            continue
+                        t["frozen"] = None
+                        t["base"] = {m: pos[m] - cmd_of(m, frac)
+                                     for m in TRIM_CH[ch]["gain"]}
+                        t["stall"] = {m: 0 for m in TRIM_CH[ch]["gain"]}
                     say("[동결 해제] 베이스라인 재캡처 — 트림 재조정 가능")
 
             if gain_t0 is None and frac >= 1.0 and os.path.exists(GAIN_FILE):
@@ -334,19 +354,28 @@ def main():
                 kd = KD_AIR + g * (KD_MAX - KD_AIR)
 
             if frac >= 1.0:
-                trim_req = read_trim_req(trim_req)
-                lim = trim_req if trim_frozen is None else min(trim_req, trim_frozen)
                 step = TRIM_RATE_DEG_S * dt
-                new_trim = min(trim_cur + step, lim) if trim_cur < lim \
-                    else max(trim_cur - step, lim)
-                if trim_base is None and new_trim > 0.0 >= trim_cur:
-                    # 0 상향 크로싱에서 베이스라인 캡처 (부동소수 정확일치 금지)
-                    trim_base = {m: pos[m] - cmd_of(m, frac)
-                                 for m in (L_ANK, R_ANK)}
-                    stall_cnt = {L_ANK: 0, R_ANK: 0}
-                elif trim_base is not None and new_trim <= 0.0:
-                    trim_base = None    # 0 복귀 — 다음 프로브에서 재캡처
-                trim_cur = new_trim
+                for ch, t in trim.items():
+                    t["req"] = read_trim_req(ch, t["req"])
+                    lim = t["req"]
+                    if t["frozen"] is not None:
+                        # 동결 당시 진행 방향(fdir) 쪽만 캡 — 0 방향 물러남은 허용
+                        lim = min(lim, t["frozen"]) if t["fdir"] > 0 \
+                            else max(lim, t["frozen"])
+                    cur = t["cur"]
+                    new = min(cur + step, lim) if cur < lim \
+                        else max(cur - step, lim)
+                    crossed = (new == 0.0) or (new * cur < 0.0)
+                    if crossed:
+                        t["base"] = None    # 0 복귀/부호 전환 — 베이스라인 리셋
+                        t["stall"] = {m: 0 for m in TRIM_CH[ch]["gain"]}
+                    if t["base"] is None and new != 0.0 \
+                            and (crossed or cur == 0.0):
+                        # 0 이탈/크로싱에서 베이스라인 캡처 (구 트림 기준 오차)
+                        t["base"] = {m: pos[m] - cmd_of(m, frac)
+                                     for m in TRIM_CH[ch]["gain"]}
+                        t["stall"] = {m: 0 for m in TRIM_CH[ch]["gain"]}
+                    t["cur"] = new
 
             for m in IDS:
                 try:
@@ -359,17 +388,23 @@ def main():
                 break
             drain(bus, pos, seen, fault, fault_cnt, fault_t)
 
-            if not grounded and trim_cur > 0.3 and trim_frozen is None \
-                    and trim_base is not None:
-                for m in (L_ANK, R_ANK):
-                    inc = abs((pos[m] - cmd_of(m, frac)) - trim_base[m])
-                    stall_cnt[m] = stall_cnt[m] + 1 if inc > TRIM_STALL_AIR_DEG else 0
-                    if stall_cnt[m] >= TRIM_STALL_TICKS:
-                        trim_frozen = max(0.0, trim_cur - 1.0)
-                        say(f"[프로브] 모터{m} 오차 증분 {inc:+.1f}° — 하드스톱 "
-                            f"의심, 트림 {trim_frozen:.1f}°로 동결 "
-                            f"(오탐이면 touch {UNFREEZE_FILE})")
-                        break
+            if not grounded:
+                for ch, t in trim.items():
+                    if t["frozen"] is not None or t["base"] is None \
+                            or abs(t["cur"]) <= 0.3:
+                        continue
+                    for m in TRIM_CH[ch]["gain"]:
+                        inc = abs((pos[m] - cmd_of(m, frac)) - t["base"][m])
+                        t["stall"][m] = t["stall"][m] + 1 \
+                            if inc > TRIM_STALL_AIR_DEG else 0
+                        if t["stall"][m] >= TRIM_STALL_TICKS:
+                            fz = t["cur"] - math.copysign(1.0, t["cur"])
+                            t["frozen"] = 0.0 if fz * t["cur"] < 0.0 else fz
+                            t["fdir"] = 1 if t["cur"] > 0.0 else -1
+                            say(f"[프로브] {ch}트림 모터{m} 오차 증분 {inc:+.1f}°"
+                                f" — 하드스톱 의심, {t['frozen']:+.1f}°로 동결 "
+                                f"(오탐이면 touch {UNFREEZE_FILE})")
+                            break
 
             hard_fault = [m for m, c in fault_cnt.items() if c >= FAULT_ABORT_N]
             if hard_fault:
@@ -407,7 +442,9 @@ def main():
                          "게인램프" if gain_t0 and kp < KP_MAX - 1e-6 else
                          "에어유지" if gain_t0 is None else
                          "하중유지" if grounded else "운용대기")
-                say(f"[{phase} {now - t0:5.1f}s] kp{kp:5.1f} 트림{trim_cur:4.1f}° "
+                say(f"[{phase} {now - t0:5.1f}s] kp{kp:5.1f} 트림 "
+                    f"a{trim['a']['cur']:.2f}/h{trim['h']['cur']:.2f}/"
+                    f"k{trim['k']['cur']:.2f}° "
                     f"| 최대오차 모터{worst} {errs[worst]:+.2f}° | 평균 "
                     f"{statistics.mean(abs(v) for v in errs.values()):.2f}°")
             time.sleep(max(0.0, TICK - (time.monotonic() - now)))

@@ -1,0 +1,14 @@
+{
+ "_provenance": "2026-08-02 트림0 자립 스탠딩 보정 (줄·손 무접촉, boot_pose_check 12/12 후)",
+ "method": "무부하(매달림 0727) 바이어스 L328/R62 카운트; 자립 스탠딩 20표본 평균 L3356/R3559; 체중 12.0kg*9.81=117.7N",
+ "newton_per_count": 0.01804,
+ "left_bias_counts": 328.0,
+ "right_bias_counts": 62.0,
+ "standing_check": {
+  "left_n": 54.6,
+  "right_n": 63.1,
+  "total_n": 117.7,
+  "lateral_split": "46/54% (당시 IMU 좌우 1.1도와 일치)"
+ },
+ "old_placeholder": 0.05
+}

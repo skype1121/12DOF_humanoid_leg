@@ -103,6 +103,11 @@ CHECKPOINTS = {
         REPO, "logs/rsl_rl/biped12_stage4/2026-07-26_14-53-03/exported"),
     "march": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-07-26_21-41-30/exported"),
+    # DRv2 (0802 보강학습, 컴플라이언스 정합): 컴플라이언스 조건 낙상 1.6% vs
+    # walk 85.9% — 실물(구조 컴플라이언스 실증) 배포 1순위. 표준조건 푸시 마진은
+    # walk가 우위(0.5m/s: 2% vs 28%) — 실물 강성 실측 후 v3에서 회수 예정.
+    "drv2": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-08-02_04-31-34/exported"),
 }
 
 # ---------------------------------------------------------------------------

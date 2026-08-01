@@ -10,8 +10,14 @@
   5. 관절 축을 검증 규약(ANAT_SIGN·sim_joint_limits.json 부호 기준)과 대조,
      반전돼 있으면 복원 + 리포트 (0725: left_hip_f가 +1,0,0으로 뒤집혀 나옴)
   6. base 링크 + 고정조인트(rpy π/2,0,π/2: SolidWorks Y-up → Isaac Z-up) 주입
+  7. (옵션) --payload-mass/--payload-xyz: CAD에 없는 실물 탑재물(젯슨·보드·배선
+     ≈1.51kg = 실물 12.0 − URDF 10.49)을 base 프레임 좌표(+X=앞, +Z=위)에 고정
+     링크로 주입. 배터리 3.3kg은 CAD 골반에 이미 포함(골반 CoM 뒤 3.5cm 실증) —
+     중복 주입 금지. payload 사용 시 --out을 별도 파일로 지정할 것 (기본 자산
+     biped12_base.urdf는 현행 정책의 학습 재현성 보존을 위해 불변 유지).
 
 실행: python3 rl_walking/scripts/make_base_urdf.py [--src <pkg>/urdf/xxx.urdf]
+     [--out <출력.urdf>] [--payload-mass 1.51 --payload-xyz "-0.15 0 0.10"]
 """
 import argparse
 import os
@@ -33,7 +39,16 @@ EXPECTED_AXES = {
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--src", default=DEFAULT_SRC)
+parser.add_argument("--out", default=OUT)
+parser.add_argument("--payload-mass", type=float, default=None,
+                    help="미모델 탑재물 질량 kg (예: 1.51). 없으면 주입 안 함")
+parser.add_argument("--payload-xyz", default="-0.15 0 0.10",
+                    help="payload CoM의 base 프레임 좌표 'x y z' m (+X=앞, +Z=위)")
 args = parser.parse_args()
+
+if args.payload_mass is not None and os.path.abspath(args.out) == OUT:
+    raise SystemExit("[중단] payload 주입본을 기본 자산(biped12_base.urdf)에 덮어쓰기 "
+                     "금지 — 현행 정책 학습 재현성 보존. --out 을 별도 파일로 지정")
 
 mesh_dir = os.path.abspath(os.path.join(os.path.dirname(args.src), "..", "meshes"))
 assert os.path.isdir(mesh_dir), f"메시 폴더 없음: {mesh_dir}"
@@ -94,6 +109,28 @@ base_joint = ET.fromstring(
 root.insert(0, base_joint)
 root.insert(0, base_link)
 
+# 7) (옵션) 미모델 탑재물 주입 — base 프레임(+X=앞) 고정 링크
+if args.payload_mass is not None:
+    m = args.payload_mass
+    assert 0.0 < m < 5.0, f"payload 질량 비정상: {m}"
+    px, py, pz = (float(v) for v in args.payload_xyz.split())
+    # 관성: 0.20×0.15×0.10 m 박스 근사 (전장 박스 스케일 — 자세동역학엔 CoM이 지배적)
+    a, b, c = 0.20, 0.15, 0.10
+    ixx, iyy, izz = (m / 12 * (b**2 + c**2), m / 12 * (a**2 + c**2),
+                     m / 12 * (a**2 + b**2))
+    payload_link = ET.fromstring(
+        f'<link name="payload"><inertial><origin xyz="0 0 0" rpy="0 0 0"/>'
+        f'<mass value="{m}"/><inertia ixx="{ixx:.6g}" ixy="0" ixz="0" '
+        f'iyy="{iyy:.6g}" iyz="0" izz="{izz:.6g}"/></inertial></link>')
+    payload_joint = ET.fromstring(
+        f'<joint name="base_to_payload" type="fixed">'
+        f'<origin xyz="{px} {py} {pz}" rpy="0 0 0"/>'
+        f'<parent link="base"/><child link="payload"/></joint>')
+    root.insert(2, payload_joint)
+    root.insert(2, payload_link)
+    report.append(f"★ payload 주입: {m:.2f} kg @ base ({px:+.3f}, {py:+.3f}, "
+                  f"{pz:+.3f}) — 실물 미모델 전장(젯슨·보드·배선) 근사")
+
 # 검증: 관절 12 + base_to_pelvis, 기대 관절명 전부 존재
 jnames = {j.get("name") for j in root.findall("joint")}
 missing = set(EXPECTED_AXES) - jnames
@@ -101,6 +138,6 @@ assert not missing, f"누락 관절: {missing}"
 report.append(f"관절 {len(jnames) - 1} + base_to_pelvis, 링크 {len(root.findall('link'))}")
 
 ET.indent(tree, space="  ")
-tree.write(OUT, encoding="utf-8", xml_declaration=True)
-report.append(f"출력: {OUT}")
+tree.write(args.out, encoding="utf-8", xml_declaration=True)
+report.append(f"출력: {args.out}")
 print("\n".join(report))

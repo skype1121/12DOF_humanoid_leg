@@ -20,6 +20,11 @@
                   오탐 동결은 touch /tmp/hang_trim_unfreeze 로 해제.
   5. 종료       : /tmp/hang_stand_stop → 소프트 릴리즈: 명령 동결 + 게인만 3s 램프다운
                   (줄 재인장 후 사용!). /tmp/hang_stand_kill → 즉시 릴리즈 (비상).
+                  /tmp/hang_stand_handoff → 핸드오프 종료: 릴리즈 없이 즉시 종료
+                  — AK 모터는 마지막 MIT 명령(현 자세·운용게인)을 계속 잡고 있으므로
+                  로봇이 선 채로 stage8+정책 스택에 무토크 공백 없이 인계됨
+                  (0802 프로토콜: 에어 라이브 금지 — 정책은 접지 스탠드에서 시작).
+                  인계 실패 시 회수는 release_all.py(줄 인장 후) 또는 hang_stand 재기동.
                   --hold 초과 시: 저게인이면 소프트 릴리즈, 운용게인(하중 가능성)이면
                   자동 릴리즈 없이 경고 반복 — 파일 트리거로만 종료.
 
@@ -55,6 +60,7 @@ ENTER = bytes([0xFF] * 7 + [0xFC])
 EXIT = bytes([0xFF] * 7 + [0xFD])
 STOP_FILE = "/tmp/hang_stand_stop"
 KILL_FILE = "/tmp/hang_stand_kill"
+HANDOFF_FILE = "/tmp/hang_stand_handoff"
 GAIN_FILE = "/tmp/hang_gain"
 GROUND_FILE = "/tmp/hang_ground"
 TRIM_FILE = "/tmp/ankle_trim_deg"
@@ -184,8 +190,8 @@ def main():
     ap.add_argument("--channel", default="can1")
     a = ap.parse_args()
 
-    for f in (STOP_FILE, KILL_FILE, GAIN_FILE, GROUND_FILE, TRIM_FILE,
-              HIP_TRIM_FILE, KNEE_TRIM_FILE, UNFREEZE_FILE):
+    for f in (STOP_FILE, KILL_FILE, HANDOFF_FILE, GAIN_FILE, GROUND_FILE,
+              TRIM_FILE, HIP_TRIM_FILE, KNEE_TRIM_FILE, UNFREEZE_FILE):
         if os.path.exists(f):
             try:
                 os.remove(f)
@@ -210,6 +216,7 @@ def main():
 
     abort = None
     soft_stop = False
+    handoff = False
     try:
         for m in IDS:
             tx(bus, m, ENTER)
@@ -428,6 +435,16 @@ def main():
             if abort or os.path.exists(KILL_FILE):
                 abort = abort or "비상 정지(kill)"
                 break
+            if os.path.exists(HANDOFF_FILE):
+                try:
+                    os.remove(HANDOFF_FILE)
+                except OSError:
+                    pass
+                if grounded and operational:
+                    handoff = True
+                    break
+                say("[핸드오프 거부] 접지+운용게인 상태에서만 인계 가능 — "
+                    "공중 정책 시작은 금지 (0802 발진 사고)")
             if os.path.exists(STOP_FILE) or SIG_STOP:
                 soft_stop = True
                 if SIG_STOP:
@@ -449,6 +466,11 @@ def main():
                     f"{statistics.mean(abs(v) for v in errs.values()):.2f}°")
             time.sleep(max(0.0, TICK - (time.monotonic() - now)))
 
+        if handoff:
+            say("[핸드오프] 릴리즈 생략 — 모터가 현 자세·운용게인을 그대로 잡고 "
+                "있습니다. 즉시 진행: stage8 폴링 → SET_BASELINE_FROM_CURRENT_ALL "
+                "→ ARM_ALL → 정책. 지연·실패 시 회수 = 줄 인장 후 release_all.py")
+            return 3
         if abort:
             say(f"[ABORT] {abort} — 즉시 릴리즈 (줄이 받습니다)")
             return 2
@@ -478,7 +500,8 @@ def main():
             say("[완료] 릴리즈")
         return 0
     finally:
-        release_all(bus)
+        if not handoff:
+            release_all(bus)
 
 
 if __name__ == "__main__":

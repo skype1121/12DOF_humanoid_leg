@@ -223,6 +223,43 @@ class Biped12Stage4DREnvCfg(Biped12Stage4FlatEnvCfg):
 
 
 @configclass
+class Biped12Stage4DRv2EnvCfg(Biped12Stage4DREnvCfg):
+    """Stage4-DRv2 — 실물 컴플라이언스 정합 (2026-08-02 실측 반영 보강학습용).
+
+    근거 (실기 2건):
+    ① 첫 자립 기립: 몸통 기울기 5.7°인데 12관절 로터 오차 전부 ≤0.7° —
+       로터 엔코더 사각의 직렬 컴플라이언스(감속기 백래시·프린트 구조 휨) 실증.
+    ② 첫 정책 라이브(공중): 수 초 내 발진("부들부들→튕김") — 유효강성이
+       표기 kp150보다 크게 낮은 실물에서 기존 DR(게인 0.8~1.2)은 부족.
+    ImplicitActuator에 직렬탄성(SEA) 모델이 없으므로 1차 근사 = 게인 스케일
+    하향 확대 + 위상지연(액션 지연) 확대 + 관절마찰(백래시 근사) 확대.
+    질량은 payload 실측 반영: 미모델 전장 1.51kg이 base 뒤(−X)·위 장착 —
+    CoM 랜덤화를 뒤쪽 비대칭으로 확장 (com_report.py 실측: 정합 CoM은
+    발목 뒤 1~4cm 대역).
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        # 유효강성 하향 확대: 0.8~1.2 → 0.4~1.1 (직렬 탄성 1차 근사 — 하한이 핵심)
+        self.events.actuator_gains.params[
+            "stiffness_distribution_params"] = (0.4, 1.1)
+        # 댐핑도 하향 포함: 저댐핑 발진 영역을 학습이 직접 겪게
+        self.events.actuator_gains.params[
+            "damping_distribution_params"] = (0.5, 1.2)
+        # 전장 실측: base 뒤·위 1.51kg — CoM 뒤(−X) 비대칭 브래키팅
+        self.events.base_com.params["com_range"] = {
+            "x": (-0.20, 0.05),
+            "y": (-0.03, 0.03),
+            "z": (0.0, 0.15),
+        }
+        # 컴플라이언스 = 추가 위상지연 → 액션 지연 0~2틱 (기존 0~1)
+        self.actions.joint_pos.max_delay_steps = 2
+        # 백래시 1차 근사: 관절 마찰 상한 확대
+        self.events.joint_friction.params[
+            "friction_distribution_params"] = (0.0, 0.15)
+
+
+@configclass
 class Biped12Stage4FlatEnvCfg_PLAY(Biped12Stage4FlatEnvCfg):
     """재생/평가용: 소수 env, 노이즈·외란 끔, 전진 명령 고정 (기존 PLAY 패턴)."""
 

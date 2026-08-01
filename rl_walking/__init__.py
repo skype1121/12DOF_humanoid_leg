@@ -92,6 +92,17 @@ gym.register(
 )
 
 gym.register(
+    id="Biped12-Velocity-Stage4-DRv2-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        # 0802 실측(직렬 컴플라이언스·전장 CoM) 반영 보강학습 — DR에서 --resume 권장
+        "env_cfg_entry_point": "rl_walking.stage4_env_cfg:Biped12Stage4DRv2EnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+    },
+)
+
+gym.register(
     id="Biped12-Velocity-Stage4-Play-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

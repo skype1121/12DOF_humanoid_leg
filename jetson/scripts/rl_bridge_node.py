@@ -44,6 +44,12 @@
   - 게인 게이트: 정책 라이브는 학습게인 kp150/kd5 일치가 전제 (kd5 = MIT 프로토콜
     상한 = 실물 kd 상한 규칙). 하드웨어맵 kp/kd 불일치 시 --live 기동 거부 —
     --force-gains 로만 우회 (맵 갱신은 사용자 결정 사항).
+  - 프레임 게이트: --live 는 boot_pose_check 저널(last_pose_journal.json)에
+    12모터 전부 '✓ 일치' 검증 관측이 있고 최고령 관측이 --frame-max-age(기본
+    60분) 이내일 때만 기동. 로터절대 엔코더는 전원사이클마다 36°/10° 배수로
+    어긋날 수 있으므로 (encoder aliasing) 미검증 프레임에 정책을 얹으면 안 됨.
+    전원사이클 자체는 저널로 감지 불가 — 절차(사이클 후 재판정)가 원칙이고 이
+    게이트는 백스톱. --force-frame 으로만 우회.
   - 하드웨어맵 결함(12관절 direction/stand_zero_deg 미비) 시 기동 자체 차단.
 
 드라이런 자가검증 (로봇·ROS 불필요):
@@ -273,28 +279,42 @@ def _selftest_roundtrip():
 
 
 def _selftest_anchors():
-    """(3) 수치 앵커: 정책 기본자세를 실제 변환 경로에 통과시켜 기존 산출물과 대조.
+    """(3) 수치 앵커: 정책 기본자세를 실제 변환 경로에 통과시켜 산출물과 대조.
 
-    기대값 = jetson/calib_data/sim_default_stand_targets_20260727.json (motor_id 키,
-    모터 인코더 프레임 deg). 허용오차 0.01°.
+    산출물 v2(프레임 불변): 비교는 '영점 상대값' (target − 생성당시 SZ) vs
+    (변환 결과 − 현재 SZ). 재앵커(전원사이클 배수 시프트 보정)로 SZ가 창 배수만큼
+    움직여도 상대값은 불변 — v5 재앵커에서 m7/m9 절대 비교가 깨진 사건의 재발 방지.
+    구형(절대각 dict) 산출물이면 절대 비교로 폴백. 허용오차 0.01°.
     """
     fm = load_frame_map()
     with open(ANCHOR_TARGETS_PATH, encoding="utf-8") as f:
-        anchors = json.load(f)
+        art = json.load(f)
+    legacy = "targets_deg" not in art
+    anchors = art if legacy else art["targets_deg"]
+    sz_gen = None if legacy else art["stand_zero_at_generation_deg"]
     for i, j in enumerate(JOINT_ORDER):
+        mid = str(fm.motor_id_by_joint[j])
         got = fm.joint_rad_to_motor_deg(j, float(DEFAULT_POSE_RAD[i]))
-        exp = float(anchors[str(fm.motor_id_by_joint[j])])
-        assert abs(got - exp) <= 0.01, (
-            f"{j}(모터{fm.motor_id_by_joint[j]}): 변환 {got:.4f}° vs "
-            f"산출물 {exp:.4f}° (허용 0.01°)")
-    # 확정 규약 문서의 4대 앵커 — 산출물 파일과 독립인 하드코딩 재확인
-    named = {"left_knee_joint": 20.22, "right_knee_joint": 15.87,
-             "left_ankle_f_joint": 35.68, "right_ankle_f_joint": 4.21}
-    for j, exp in named.items():
+        if legacy:
+            diff = got - float(anchors[mid])
+        else:
+            sz_now = fm.sz_by_joint[j]
+            diff = (got - sz_now) - (float(anchors[mid]) - float(sz_gen[mid]))
+        assert abs(diff) <= 0.01, (
+            f"{j}(모터{mid}): {'절대' if legacy else '영점 상대'} 편차 "
+            f"{diff:+.4f}° (허용 0.01°)")
+    # 확정 규약 4대 앵커 — 산출물 파일과 독립인 하드코딩 재확인 (영점 상대값:
+    # 무릎 ±6.00°, 발목F ±1.40° = 정책 기본자세의 물리적 정의라 재앵커 불변)
+    named_rel = {"left_knee_joint": +6.00, "right_knee_joint": -6.00,
+                 "left_ankle_f_joint": +1.40, "right_ankle_f_joint": -1.40}
+    for j, rel in named_rel.items():
         got = fm.joint_rad_to_motor_deg(
             j, float(DEFAULT_POSE_RAD[JOINT_ORDER.index(j)]))
-        assert abs(got - exp) <= 0.01, f"4대 앵커 {j}: {got:.4f}° vs {exp}°"
-    return "12/12 산출물 일치 + 4대 앵커(20.22/15.87/35.68/4.21) 일치 (±0.01°)"
+        got_rel = got - fm.sz_by_joint[j]
+        assert abs(got_rel - rel) <= 0.01, (
+            f"4대 앵커 {j}: 상대 {got_rel:+.4f}° vs {rel:+.2f}°")
+    fmt = "구형(절대)" if legacy else "v2(영점 상대)"
+    return f"12/12 산출물 일치[{fmt}] + 4대 앵커(무릎±6.00/발목F±1.40) 일치 (±0.01°)"
 
 
 def _selftest_gains():
@@ -340,12 +360,87 @@ def _selftest_policy():
             f"(50Hz 예산 20ms, 백엔드 {core.runner.backend})")
 
 
+#: boot_pose_check 검증 저널 (젯슨 경로) — 프레임 게이트의 근거 자료
+FRAME_JOURNAL = "/home/mama/rl_calib/last_pose_journal.json"
+FRAME_MAX_AGE_DEFAULT_S = 3600.0
+
+
+def frame_check_verdict(path=FRAME_JOURNAL, max_age_s=FRAME_MAX_AGE_DEFAULT_S,
+                        now=None):
+    """프레임 게이트 판정 — None=통과, str=거부 사유.
+
+    boot_pose_check 저널의 motor_ts(모터별 '✓ 일치' 검증 시각)를 근거로,
+    12모터 전부 검증 관측이 있고 최고령 관측이 max_age_s 이내면 통과.
+    저널에는 검증된 관측만 들어가므로 (시프트/폴트/불안정 배제) 존재+신선
+    = "최근에 프레임 12/12 판정을 통과했다"와 동치.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            j = json.load(f)
+    except FileNotFoundError:
+        return f"저널 없음({path}) — boot_pose_check --ref stand 먼저 실행"
+    except (json.JSONDecodeError, ValueError):
+        return f"저널 파손({path}) — boot_pose_check 재실행으로 재생성"
+    mts = (j.get("motor_ts") or {}) if isinstance(j, dict) else {}
+    missing = [m for m in range(1, 13) if str(m) not in mts]
+    if missing:
+        return f"모터 {missing} 프레임 미검증 — boot_pose_check 12/12 필요"
+    now = time.time() if now is None else now
+    try:
+        ages = {m: now - float(mts[str(m)]) for m in range(1, 13)}
+    except (TypeError, ValueError):
+        return "저널 motor_ts 형식 이상 — boot_pose_check 재실행으로 재생성"
+    worst = max(ages, key=lambda m: ages[m])
+    if ages[worst] > max_age_s:
+        return (f"프레임 검증 만료 — 모터{worst} 마지막 검증 "
+                f"{ages[worst] / 60:.0f}분 전 (허용 {max_age_s / 60:.0f}분). "
+                f"boot_pose_check 재실행 후 기동")
+    if min(ages.values()) < -60.0:
+        return "저널 타임스탬프가 미래 — 시계 이상 의심, 재판정 필요"
+    return None
+
+
+def _selftest_frame_gate():
+    import tempfile
+    now = 1_700_000_000.0
+    fresh = {str(m): now - 60.0 for m in range(1, 13)}
+
+    def write(d):
+        f = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+        json.dump(d, f)
+        f.close()
+        return f.name
+
+    cases = []
+    p = write({"ts": now, "pos_deg": {}, "motor_ts": fresh})
+    cases.append(("신선 12/12 통과",
+                  frame_check_verdict(p, 3600.0, now) is None))
+    stale = dict(fresh)
+    stale["7"] = now - 7200.0
+    p = write({"motor_ts": stale})
+    v = frame_check_verdict(p, 3600.0, now)
+    cases.append(("만료 거부", v is not None and "모터7" in v))
+    p = write({"motor_ts": {k: v for k, v in fresh.items() if k != "11"}})
+    v = frame_check_verdict(p, 3600.0, now)
+    cases.append(("결측 거부", v is not None and "11" in v))
+    v = frame_check_verdict("/nonexistent/journal.json", 3600.0, now)
+    cases.append(("저널 없음 거부", v is not None and "없음" in v))
+    p = write({"motor_ts": {**fresh, "3": "abc"}})
+    cases.append(("형식 이상 거부",
+                  frame_check_verdict(p, 3600.0, now) is not None))
+    bad = [n for n, ok in cases if not ok]
+    if bad:
+        raise AssertionError(f"프레임 게이트 케이스 실패: {bad}")
+    return f"판정 케이스 {len(cases)}/{len(cases)} 통과"
+
+
 def run_selftest():
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 정책 500틱."""
     tests = [("하드웨어맵", _selftest_hwmap),
              ("왕복 항등", _selftest_roundtrip),
              ("수치 앵커", _selftest_anchors),
              ("게인 정책", _selftest_gains),
+             ("프레임 게이트", _selftest_frame_gate),
              ("정책 500틱", _selftest_policy)]
     failed = 0
     for name, fn in tests:
@@ -368,6 +463,14 @@ def main():
                          "정책은 kp150/kd5 PD 추종을 전제로 학습됨 — 게인 불일치 시 "
                          "실물 거동이 학습 분포를 벗어난다. 원칙은 맵 갱신(사용자 결정)"
                          "이고, 이 플래그는 의도적 저게인 예비시험 전용 (기본 False)")
+    ap.add_argument("--force-frame", action="store_true",
+                    help="boot_pose_check 프레임 검증(저널 12/12·신선) 없이도 "
+                         "--live 허용. 로터절대 엔코더는 전원사이클마다 배수 "
+                         "시프트 가능 — 미검증 프레임 라이브는 원칙 위반. "
+                         "벤치(모터 무전원) 시험 전용 (기본 False)")
+    ap.add_argument("--frame-max-age", type=float,
+                    default=FRAME_MAX_AGE_DEFAULT_S,
+                    help="프레임 게이트 허용 최고령(초). 기본 3600")
     ap.add_argument("--checkpoint", default="walk", choices=list(CHECKPOINTS))
     args = ap.parse_args()
     if args.selftest:
@@ -388,6 +491,16 @@ def main():
         if bad:
             print(f"[경고] --force-gains: 게인 불일치 {len(bad)}/12 관절 상태로 "
                   "라이브 진행 — 학습 분포 밖 거동 주의", file=sys.stderr)
+        why = frame_check_verdict(max_age_s=args.frame_max_age)
+        if why and not args.force_frame:
+            print(f"[거부] --live 기동 불가: 프레임 게이트 — {why}\n"
+                  "       미검증 프레임 라이브는 배수 시프트를 그대로 명령하게 "
+                  "됨. boot_pose_check 통과 후 재시도하거나, 벤치 시험이면 "
+                  "--force-frame 을 명시할 것.", file=sys.stderr)
+            return 2
+        if why:
+            print(f"[경고] --force-frame: {why} 상태로 라이브 진행 — 프레임 "
+                  "미보증", file=sys.stderr)
 
     import rclpy
     from rclpy.node import Node

@@ -69,6 +69,12 @@ CONTROL_PERIOD_SEC = 0.02
 STATUS_PERIOD_SEC = 0.01
 MAX_TARGET_STEP_DEG_PER_TICK = 4.0
 FEEDBACK_TIMEOUT_SEC = 3.0
+#: 피드백 공백 무장해제 — armed 상태에서 피드백 두절이 이 시간을 넘으면 자동
+#: 무장해제+베이스라인 폐기 (0802 감사: 세션 중단 후 살아남은 armed 노드가
+#: 수 시간 뒤 모터 전원 인가 순간, 전원사이클로 프레임까지 어긋난 낡은
+#: 베이스라인으로 명령을 쏘는 사고 경로 차단. 정상 라이브는 피드백 공백이
+#: 3초를 넘지 않으므로 영향 없음. 재무장 = 재베이스라인 강제)
+STALE_DISARM_SEC = 60.0
 
 COMMAND_ARM_ALL = "ARM_ALL"
 COMMAND_DISARM_ALL = "DISARM_ALL"
@@ -218,6 +224,8 @@ class Stage8TwelveAxisMitControlCore:
         self.now_fn = now_fn
         self.armed = False
         self.baseline_deg_by_joint = {}
+        self.baseline_set_time = None
+        self.stale_since = None
         self.latest_actual_deg_by_joint = {}
         self.latest_feedback_by_joint = {}
         self.latest_feedback_time_by_joint = {}
@@ -330,7 +338,20 @@ class Stage8TwelveAxisMitControlCore:
 
         if REAL_CAN_WRITE_ENABLED and not self._feedback_is_fresh():
             self.running = False
+            # 피드백 공백 무장해제 가드 — 장기 두절(모터 전원 오프 등) 후
+            # 복귀 시 낡은 베이스라인으로 명령이 나가는 것을 원천 차단
+            now = self.now_fn()
+            if self.stale_since is None:
+                self.stale_since = now
+            elif now - self.stale_since > STALE_DISARM_SEC:
+                self.armed = False
+                self.baseline_deg_by_joint = {}
+                self.baseline_set_time = None
+                self.stale_since = None
+                self._warn("feedback_gap_auto_disarm")
+                return self.get_status()
             return self._reject("feedback_stale_real_blocked")
+        self.stale_since = None
 
         self.running = True
         moved = False
@@ -383,6 +404,7 @@ class Stage8TwelveAxisMitControlCore:
             joint: float(self.latest_actual_deg_by_joint[joint])
             for joint in available
         }
+        self.baseline_set_time = self.now_fn()
         for joint in JOINT_NAMES_12DOF:
             self.desired_relative_deg_by_joint[joint] = 0.0
             self.commanded_relative_deg_by_joint[joint] = 0.0

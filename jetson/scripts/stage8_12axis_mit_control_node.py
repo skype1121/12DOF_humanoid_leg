@@ -86,7 +86,10 @@ STALE_DISARM_SEC = 60.0
 #: 정상 경로로 무봉합 전환. armed 중에도 ENTER 폴링은 금지 (240ms마다 20ms
 #: 미세 무토크 공백을 만들던 원인).
 TAKEOVER_STATE_FILE = "/tmp/hang_handoff_state.json"
-TAKEOVER_STATE_MAX_AGE_SEC = 120.0
+#: 적대검수 0803: 120s → 10s. 정상 핸드오프 소비는 <1s — 넓은 창은 '삭제
+#: 실패 파일을 재기동 stage8이 재소비해 이동한 로봇을 옛 자세로 요격'하는
+#: 창만 넓힌다.
+TAKEOVER_STATE_MAX_AGE_SEC = 10.0
 #: --wait-takeover: 선기동 대기 모드 — 핸드오프 '전에' stage8을 띄워두면 상태
 #: 파일이 나타나는 즉시(한 틱 내) 인수 홀드를 시작한다. 대기 중에는 폴링 포함
 #: 어떤 CAN 송신도 하지 않음 (ENTER가 hang_stand의 홀드를 리셋하므로).
@@ -452,13 +455,15 @@ class Stage8TwelveAxisMitControlCore:
         now = self.now_fn()
         if self._takeover_start is None:
             self._takeover_start = now
-        elif now - self._takeover_start > 300.0:
-            # ARM 없이 5분 방치 — 좀비 홀드 방지 (모터 전원사이클 후 낡은 명령
-            # 재개 위험). 해제 시 모터는 마지막 명령을 물고 있으므로 급변 없음.
-            self.takeover_hold = None
-            self.last_takeover_event = "hold_timeout_cancel"
-            self._warn("takeover_hold_timeout_cancel")
-            return
+        elif (now - self._takeover_start > 300.0
+              and self.last_takeover_event != "hold_age_over_300s"):
+            # 적대검수 0803: 종전 '300s 타임아웃 캔슬'은 하중 지지 중 능동 침묵
+            # = 모터 타임아웃(~200-300ms 브레이크) 낙하 확정 경로였다 (캔슬
+            # 근거였던 '모터가 마지막 명령을 물고 있음'은 0802 실측으로 폐기).
+            # 홀드는 시간과 무관하게 유지 — 경고만 남긴다. 좀비 홀드(모터
+            # 전원사이클)는 아래 피드백 두절 가드가 담당.
+            self.last_takeover_event = "hold_age_over_300s"
+            self._warn("takeover_hold_age_over_300s")
         hold_age = now - self._takeover_start
         # 최종점검 S3: 홀드 중 피드백 가드 — 명령 프레임이 피드백을 겸하므로
         # 정상 홀드에선 매 틱 갱신된다. 두절(worst age > STALE_DISARM_SEC,
@@ -532,16 +537,36 @@ class Stage8TwelveAxisMitControlCore:
                 except Exception:
                     pass
             self.takeover_hold = self._load_takeover_state()
+            if self.takeover_hold is not None:
+                # 적대검수 0803: 대기 중 선오픈 소켓에는 hang_stand 스트리밍
+                # (~1200프레임/s, 수 분)이 쌓여 커널 RX 큐가 포화된다 — 인수
+                # 첫 틱부터 낡은 프레임 수천 개가 '신선한 피드백'으로 소비되는
+                # 것을 차단하기 위해 백로그를 전량 폐기하고 시작한다.
+                drained = 0
+                if self.can_bus is not None:
+                    try:
+                        while self.can_bus.recv(timeout=0.0) is not None:
+                            drained += 1
+                            if drained > 20000:
+                                break
+                    except Exception:  # noqa: BLE001 — 드레인 실패는 치명 아님
+                        pass
+                if drained:
+                    print(f"[takeover] 인수 전 RX 백로그 {drained}프레임 폐기",
+                          flush=True)
             if self.takeover_hold is None:
                 now = self.now_fn()
-                # 핸드셰이크 마커 — hang_stand 는 이 파일이 3s 이내 갱신일 때만
-                # 핸드오프를 발화한다 (수신자 없는 핸드오프 = 상태 파일만 남고
-                # 모터 자체 타임아웃 릴리즈). 매 틱 touch (~50Hz, tmpfs라 무해).
-                try:
-                    with open("/tmp/stage8_takeover_waiting", "w") as f:
-                        f.write(str(now))
-                except OSError:
-                    pass
+                # 핸드셰이크 마커 — hang_stand 는 이 파일이 신선할 때만 핸드
+                # 오프를 발화한다 (수신자 없는 핸드오프 = 상태 파일만 남고
+                # 모터 자체 타임아웃 릴리즈). 적대검수 0803: 버스 선오픈이
+                # '성공한 상태'에서만 touch — 송신 불능(채널 오설정·미개통)인
+                # 노드가 수신자 행세하는 것 차단.
+                if self.can_bus is not None:
+                    try:
+                        with open("/tmp/stage8_takeover_waiting", "w") as f:
+                            f.write(str(now))
+                    except OSError:
+                        pass
                 if self._wait_warn_time is None:
                     self._wait_warn_time = now
                 elif now - self._wait_warn_time > 30.0:
@@ -582,9 +607,16 @@ class Stage8TwelveAxisMitControlCore:
                 self._warn("feedback_gap_auto_disarm")
                 return self.get_status()
 
-        if REAL_CAN_WRITE_ENABLED and not self._feedback_is_fresh():
-            self.running = False
-            return self._reject("feedback_stale_real_blocked")
+        # 적대검수 0803: 종전 '전역 stale 3초 → 송신 전면 중단'은 하중 지지 중
+        # 침묵 = 모터 타임아웃(~200-300ms 브레이크) 낙하 확정 + 자기지속 래치
+        # (armed 중 피드백은 명령 응답이 유일한 소스라 무송신→무응답→영영
+        # stale). 인수홀드 경로와 동일한 시맨틱으로 통일: stale이면 램프를
+        # '동결'(desired 진행 금지)하되 마지막 commanded 목표는 계속 스트리밍
+        # — 모터 생존 유지 + 응답 복구 경로 확보. 완전 이탈은 위의 60s
+        # 최악나이 무장해제가 담당.
+        global_stale = REAL_CAN_WRITE_ENABLED and not self._feedback_is_fresh()
+        if global_stale:
+            self._warn("feedback_stale_freeze_hold")
 
         self.running = True
         moved = False
@@ -598,12 +630,16 @@ class Stage8TwelveAxisMitControlCore:
         for joint in JOINT_NAMES_12DOF:
             if joint not in self.baseline_deg_by_joint:
                 continue
-            if REAL_CAN_WRITE_ENABLED and not self._joint_feedback_is_fresh(joint):
+            joint_stale = (REAL_CAN_WRITE_ENABLED
+                           and not self._joint_feedback_is_fresh(joint))
+            if joint_stale:
                 self._warn(f"joint_feedback_stale:{joint}")
-                continue
-            desired = self.desired_relative_deg_by_joint[joint]
             current = self.commanded_relative_deg_by_joint[joint]
-            next_value = self._step_toward(current, desired)
+            if global_stale or joint_stale:
+                next_value = current   # 동결 — 진행 없이 현 목표 재송신
+            else:
+                desired = self.desired_relative_deg_by_joint[joint]
+                next_value = self._step_toward(current, desired)
             if next_value != current:
                 moved = True
             self.commanded_relative_deg_by_joint[joint] = next_value
@@ -667,6 +703,10 @@ class Stage8TwelveAxisMitControlCore:
             target_deg = float(payload.get("target_deg"))
         except (TypeError, ValueError):
             return self._reject("target_invalid")
+        if not math.isfinite(target_deg):
+            # 적대검수 0803: NaN은 모든 리밋 비교(<=, abs)를 False로 통과해
+            # 클램프·백스톱 전 계층을 무력화 — 파싱 직후 차단.
+            return self._reject("target_not_finite")
 
         config = get_joint_config(joint)
         if abs(target_deg) > float(config["hard_limit_deg"]):

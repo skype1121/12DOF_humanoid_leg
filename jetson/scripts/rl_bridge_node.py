@@ -719,6 +719,7 @@ def main():
             self.prev_qpos = None
             self.qpos_hold_ticks = [1] * 12
             self._spike_count = {}   # 관절별 연속 스파이크 카운트 (필터)
+            self._last_raw_val = {}  # 관절별 직전 수신 원시값 (새 샘플 판별)
             self.imu = None
             self.imu_ts = 0.0
             self.foot = None
@@ -814,15 +815,23 @@ def main():
                     # 스파이크 필터 (0802 march 데뷔 트립 교훈): 한 갱신에 30°+
                     # 점프는 물리 불가(모터 최대 ~20rad/s×20ms≈23°) — 쓰레기
                     # 프레임(명령 오귀속 등)이 과속 가드를 오발시키는 것을 차단.
-                    # 3연속 지속 시 진짜 이동으로 보고 수용(재동기).
+                    # 적대검수 0803: '3연속'은 status 메시지가 아니라 '새 피드백
+                    # 샘플' 기준이어야 한다 — status는 라이브 중 ~700Hz(명령
+                    # 수신마다 발행)라 같은 쓰레기 값이 ~14회 반복 노출돼 4ms
+                    # 만에 3연속을 오달성했다. 값이 직전 수신값과 다를 때만
+                    # 새 샘플로 계수한다.
                     prev = self.joint_deg.get(j)
                     if prev is not None and abs(val - prev) > 30.0:
-                        self._spike_count[j] = self._spike_count.get(j, 0) + 1
+                        last_raw = self._last_raw_val.get(j)
+                        if last_raw is None or val != last_raw:
+                            self._spike_count[j] = self._spike_count.get(j, 0) + 1
+                        self._last_raw_val[j] = val
                         if self._spike_count[j] < 3:
                             fresh += 1        # 직전값 유지 — 신선도는 인정
                             worst_age = max(worst_age, age)
                             continue
                     self._spike_count[j] = 0
+                    self._last_raw_val[j] = val
                     self.joint_deg[j] = val           # 모터 프레임 deg
                     fresh += 1
                     worst_age = max(worst_age, age)
@@ -939,6 +948,19 @@ def main():
             #   joint_rad = radians( DIR × (motor_deg − SZ) )
             qpos = [self.frames.motor_deg_to_joint_rad(j, self.joint_deg[j])
                     for j in JOINT_ORDER]
+            # 적대검수 0803: 비유한값(NaN/inf) 게이트 — NaN은 발진가드의 모든
+            # 비교(>, <)를 False로 통과해 가드를 완전 블라인드로 만든다.
+            # 어떤 입력이든 비유한이면 센서 고장으로 보고 즉시 동결 정지.
+            gyro, quat = self.imu
+            flat = list(qpos) + list(gyro) + list(quat) + [
+                float(self.foot[0]), float(self.foot[1])]
+            if not all(math.isfinite(v) for v in flat):
+                self._stop_all("nonfinite_observation")
+                self.core.active = False
+                self.get_logger().error(
+                    "비유한 관측(NaN/inf) — STOP_ALL + 정책 비활성. 센서 점검 후 "
+                    "march 재명령으로만 재개")
+                return
             # qvel: 관절 프레임 위치의 유한차분 (변환된 qpos 기반이라 프레임 자동
             # 상속). AK45(6·12) velocity 디코드 과대판독 때문에 피드백 속도값은
             # 어떤 관절에서도 소비하지 않는다.
@@ -952,7 +974,12 @@ def main():
                 qvel = []
                 for k, (a, b) in enumerate(zip(qpos, self.prev_qpos)):
                     if a == b:
-                        self.qpos_hold_ticks[k] += 1
+                        # 적대검수 0803: 캡 12틱(=라운드로빈 최장 240ms) — 캡
+                        # 없으면 '진짜 정지'가 홀드로 오인 누적돼, 이후 실제
+                        # 대점프의 qvel을 N분의 1로 희석해 과속 가드를 눈멀게
+                        # 한다.
+                        self.qpos_hold_ticks[k] = min(
+                            self.qpos_hold_ticks[k] + 1, 12)
                         qvel.append(0.0)
                     else:
                         qvel.append((a - b) / (TICK_SEC * self.qpos_hold_ticks[k]))

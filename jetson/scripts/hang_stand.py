@@ -194,7 +194,8 @@ def main():
     # 재소비되는 경로 차단 (최종점검 — ts 게이트 120s의 이중 방어)
     for f in (STOP_FILE, KILL_FILE, HANDOFF_FILE, GAIN_FILE, GROUND_FILE,
               TRIM_FILE, HIP_TRIM_FILE, KNEE_TRIM_FILE, UNFREEZE_FILE,
-              "/tmp/hang_handoff_state.json"):
+              "/tmp/hang_handoff_state.json",
+              "/tmp/hang_handoff_state.json.tmp"):
         if os.path.exists(f):
             try:
                 os.remove(f)
@@ -467,10 +468,13 @@ def main():
                     # + 최종점검 핸드셰이크: stage8 --wait-takeover 가 살아서
                     # 대기 중(마커 3s 이내 갱신)일 때만 — 수신자 없는 핸드오프는
                     # 상태 파일만 남기고 종료 → 모터 자체 타임아웃 릴리즈 사고.
+                    # 적대검수 0803: 창 3s → 0.5s. 마커는 50Hz로 갱신되므로
+                    # 0.5s면 25회분 여유 — 3s는 stage8 사망 후에도 최대 3초간
+                    # 핸드오프를 승인하는 창이었다 (모터 타임아웃 0.3s보다 김).
                     s8_waiting = False
                     try:
                         s8_waiting = (time.time() - os.path.getmtime(
-                            "/tmp/stage8_takeover_waiting")) < 3.0
+                            "/tmp/stage8_takeover_waiting")) < 0.5
                     except OSError:
                         pass
                     if grounded and kp >= KP_MAX - 1e-6 and s8_waiting:
@@ -515,14 +519,20 @@ def main():
                     json.dump(state, f)
                 os.replace(tmp, "/tmp/hang_handoff_state.json")
                 say("[핸드오프] 상태 파일 기록 → stage8 인수 홀드 준비 완료")
+                say("[핸드오프] 릴리즈 생략 — 모터가 현 자세·운용게인을 그대로 "
+                    "잡고 있습니다. 즉시 진행: stage8 기동(인수 홀드 자동) → "
+                    "SET_BASELINE_FROM_CURRENT_ALL → ARM_ALL → 정책. "
+                    "지연·실패 시 회수 = 줄 인장 후 release_all.py")
+                return 3
             except OSError as e:
-                say(f"[핸드오프] ⚠ 상태 파일 기록 실패({e}) — stage8이 구방식"
-                    "(폴링)으로 인수하면 하중 시 처짐 위험. 착지 전이면 무해")
-            say("[핸드오프] 릴리즈 생략 — 모터가 현 자세·운용게인을 그대로 잡고 "
-                "있습니다. 즉시 진행: stage8 기동(인수 홀드 자동) → "
-                "SET_BASELINE_FROM_CURRENT_ALL → ARM_ALL → 정책. "
-                "지연·실패 시 회수 = 줄 인장 후 release_all.py")
-            return 3
+                # 적대검수 0803: 기록 실패인 채 종료하면 --wait-takeover
+                # stage8은 영원히 침묵(상태파일 없이는 송신 0) → 모터 자체
+                # 타임아웃(~0.3s 브레이크) 하중 낙하 확정. 핸드오프를 취소하고
+                # 접지 소프트 릴리즈 경로로 전환한다 (줄 인장 후 재시도).
+                say(f"[핸드오프] ⚠ 상태 파일 기록 실패({e}) — 핸드오프 취소, "
+                    "접지 소프트 램프다운 경로로 전환. 줄 확인!")
+                abort = f"핸드오프 상태파일 기록 실패({e})"
+                handoff = False
         if abort:
             if grounded and not os.path.exists(KILL_FILE):
                 # 착지(줄 느슨) 상태의 가드 abort는 즉시 무토크가 오히려 위험

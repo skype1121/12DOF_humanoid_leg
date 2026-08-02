@@ -112,6 +112,10 @@ CHECKPOINTS = {
     # 실물 제자리걸음 배포 1순위 (구 march와 동일 주의: 명령 0 = 정지 아닌 스텝)
     "march_drv2": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-08-02_12-22-59/exported"),
+    # march_v3 (0802 채터 제거: action_rate 6배): 유의반전율 0.613→0.051, 슬루
+    # 포화 스텝 54.7%→0.000%, 컴플라이언스 낙상 0%, 직립 2.8° — 실물 데뷔 1순위
+    "march_v3": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-08-02_19-30-03/exported"),
 }
 
 # ---------------------------------------------------------------------------

@@ -327,12 +327,15 @@ class PolicyRunnerStage4:
         if raw.shape != (ACT_DIM,):
             raise RuntimeError(f"정책 출력 shape 이상: {raw.shape} (기대 ({ACT_DIM},))")
         self.last_action = raw.copy()
-        # 아핀 → 리밋 클램프 → 슬루 (클램프는 반드시 슬루 '앞': 슬루 뒤에 걸면
-        # 리밋 밖 자세에서 부팅 시 첫 명령이 리밋 경계로 점프 — 모터 튐 유형 사고.
-        # 앞에 걸면 어떤 시작 자세에서도 슬루 속도(4°/틱)로만 리밋 안으로 복귀.)
+        # 아핀 → 슬루. ⚠ 타깃 클램프 금지 (2026-08-02 회귀 수정 — 0726 밤
+        # 22c0385가 soft 리밋 클램프를 여기 추가했으나 폐루프 재검증 없이 배포됨):
+        # 학습 env(SlewJointPositionAction)는 타깃을 클램프하지 않는다. 정책 타깃은
+        # '위치'가 아니라 슬루가 방향·속도로 해석하는 지시값 (실측: 정상 보행 중
+        # 무릎 타깃 -158°~+206° 등 리밋 밖이 일상) — 클램프하면 학습과 1:1이
+        # 깨져 실물 발진 사고의 근원이 됐다 (폐루프 검증 목표각 오차 3.6°).
+        # 위치 안전 울타리는 Stage8 노드의 절대각(soft/hard) 검사가 '방출 명령'
+        # 기준으로 담당한다 — cansend 사고 후속 보호는 그 계층에서 유지됨.
         target = DEFAULT_POSE_RAD + ACTION_SCALE * raw
-        if self._limits_lo is not None:
-            target = np.clip(target, self._limits_lo, self._limits_hi)
         if self._prev_emitted is None:
             self._prev_emitted = qpos.copy()
         emitted = self._prev_emitted + np.clip(

@@ -1,6 +1,8 @@
 # march 실물 실행 카드 (v3, 2026-08-03 — 1차 데뷔 실측 반영)
 
-정책: 차기 = `march_v5` (측정 기반 재정합판 — 평가 게이트 통과 후 등록; 클록 1.1Hz라 브리지 CKPT_GAIT_FREQ 등록 필수).
+정책: **`march_v5b`** (0803 측정 기반 재정합판 — 게이트·하네스 통과, 젯슨 배포 완료).
+브리지 기동: `--live --checkpoint march_v5b` (클록 1.1Hz는 CKPT_GAIT_FREQ로 자동 적용).
+march 명령: `{"cmd": "march"}` + 브리지 기동 플래그가 march_v5b — debug 토픽에서 checkpoint=march_v5b 확인 필수.
 로봇 상태 전제: 에어 행잉, 모터 전원 ON, 젯슨 ON, can1 UP.
 
 ## v3 개정 요지 (0802 데뷔 1차 실측)

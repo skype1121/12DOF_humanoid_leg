@@ -527,3 +527,34 @@ class Biped12Stage4V2MarchDRv5EnvCfg(Biped12Stage4V2MarchDRv4EnvCfg):
             weight=-0.01,
             params={"sensor_cfg": _FEET_SENSOR_CFG},
         )
+
+
+@configclass
+class Biped12Stage4V2StandEnvCfg(Biped12Stage4V2MarchDRv5EnvCfg):
+    """스탠드 전용 정책 — '조용히 서서 능동 균형' (0803 실물 관찰 반영 신규).
+
+    실물 관찰: 정지 = stage8 동결 홀드(kp150 조각상) → "아슬아슬, 안정적으로
+    서있는 느낌이 아님". 균형은 강성이 아니라 제어에서 나온다 — 명령 0에서
+    발을 떼지 않고 스탠스 무릎 굴곡(굽혀 눌러주기)로 서서 푸시를 흡수하는
+    전용 정책을 학습한다. 관측 245 계약 동일(클록은 v5와 같은 1.1Hz로 흐르지만
+    정책이 무시하도록 학습) — 배포 스택 무변경 투입 가능.
+
+    v5 대비 오버라이드: 전 env 명령 0, gait_phase 클록 보상 제거 → 양발 접촉
+    보상으로 대체(스텝 금지 방향), march_anchor 강화, 푸시는 v5 그대로(회복
+    훈련이 핵심 목적).
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.base_velocity.rel_standing_envs = 1.0
+        self.commands.base_velocity.rel_spin_envs = 0.0
+        self.commands.base_velocity.rel_backward_envs = 0.0
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        # 클록 리듬 스텝 대신 양발 접촉 유지 보상 (always_walk 해제 = 명령 0
+        # → stand_reward 경로)
+        self.rewards.gait_phase.params["always_walk"] = False
+        # 제자리 앵커 강화 (스탠드는 드리프트 자체가 실패)
+        self.rewards.march_anchor.weight = -2.0
+        self.rewards.march_anchor.params["dead_zone"] = 0.15

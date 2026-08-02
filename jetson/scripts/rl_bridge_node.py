@@ -126,13 +126,18 @@ CHECKPOINTS = {
     # 1순위 — 검증 사다리(스탠드 확인→march 수 초→연장) 엄수.
     "march_v5b": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-08-03_03-18-21/exported"),
+    # stand_v3 (0803 신규 종목: 조용히 서서 능동 균형 — stage8 조각상 홀드
+    # 대체): 측정 DR 하 낙상 3.1%·직립 7.2°·양발접촉 98.3%·가드재생 0트립.
+    # 검증 사다리 1단 정책 ("stand" 명령 기본).
+    "stand_v3": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-08-03_06-12-07/exported"),
 }
 
 #: 체크포인트별 게이트 클록 주파수 [Hz] — 학습 클록과 반드시 일치 (불일치 =
 #: 위상 어긋난 관측 → 보행 파괴). 미등록 = 1.4 (기존 가족 전체의 계약).
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
-CKPT_GAIT_FREQ = {"march_v5b": 1.1}
+CKPT_GAIT_FREQ = {"march_v5b": 1.1, "stand_v3": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 
 # ---------------------------------------------------------------------------
@@ -905,12 +910,20 @@ def main():
                 # 가족 기반으로 구조화). 이름이 march*면 march 가족, 아니면 walk
                 # 가족. 명령과 가족이 어긋나면 각 가족의 검증된 최신판으로.
                 march_family = {k for k in CHECKPOINTS if k.startswith("march")}
-                if c == "march":
+                stand_family = {k for k in CHECKPOINTS if k.startswith("stand")}
+                if c == "stand":
+                    # 0803 부활: stand_v3 전용 정책 등록 (능동 균형 서기 —
+                    # 낙상 3.1%·가드재생 0트립·양발접촉 98.3%). 검증 사다리의
+                    # 1단: march 전에 stand 제로샷 확인.
+                    ck = args.checkpoint if args.checkpoint in stand_family \
+                        else "stand_v3"
+                elif c == "march":
                     ck = args.checkpoint if args.checkpoint in march_family \
-                        else "march_v3"
+                        else "march_v5b"
                 else:
                     ck = args.checkpoint \
-                        if args.checkpoint in (set(CHECKPOINTS) - march_family) \
+                        if args.checkpoint in (
+                            set(CHECKPOINTS) - march_family - stand_family) \
                         else "drv2"
                 # 라이브 (재)시작 = 가드·미분 상태 전부 리셋 (적대리뷰 A1·A2:
                 # 종전엔 osc_tripped 래치로 재개 시 가드 영구 사망 + prev_qpos

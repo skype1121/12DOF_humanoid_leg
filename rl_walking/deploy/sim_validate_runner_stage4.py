@@ -18,6 +18,13 @@ from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--secs", type=float, default=15.0)
+parser.add_argument("--model-dir", type=str, default=None,
+                    help="exported/ 경로 (기본: walk 기본 모델)")
+parser.add_argument("--task", type=str, default="Biped12-Velocity-Stage4-Play-v0")
+parser.add_argument("--gait-freq", type=float, default=1.4,
+                    help="러너 클록 주파수 [Hz] — 체크포인트 학습 클록과 일치 필수 (v5=1.1)")
+parser.add_argument("--march", action="store_true",
+                    help="march 검증 모드: 명령 0, 전진 판정 생략")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
@@ -41,20 +48,27 @@ from rl_walking.deploy.policy_runner_stage4 import (
 )
 from rl_walking.stage4_env_cfg import Biped12Stage4FlatEnvCfg_PLAY
 
-OUT = "/home/ryu/humanoid_leg_test1/log_picture/실행기_폐루프검증_stage4.txt"
-CMD = (0.5, 0.0, 0.0)
+_suffix = "_march" if args_cli.march else ""
+OUT = ("/home/ryu/humanoid_leg_test1/log_picture/"
+       f"실행기_폐루프검증_stage4{_suffix}.txt")
+CMD = (0.0, 0.0, 0.0) if args_cli.march else (0.5, 0.0, 0.0)
+MODEL_DIR = args_cli.model_dir or DEFAULT_MODEL_DIR_STAGE4
 
-env_cfg = Biped12Stage4FlatEnvCfg_PLAY()
+if args_cli.task == "Biped12-Velocity-Stage4-Play-v0":
+    env_cfg = Biped12Stage4FlatEnvCfg_PLAY()
+else:
+    from isaaclab_tasks.utils import load_cfg_from_registry
+    env_cfg = load_cfg_from_registry(args_cli.task, "env_cfg_entry_point")
 env_cfg.scene.num_envs = 1
 env_cfg.episode_length_s = 60.0
 env_cfg.events.reset_base.params["pose_range"]["yaw"] = (0.0, 0.0)
 
-env = gym.make("Biped12-Velocity-Stage4-Play-v0", cfg=env_cfg)
+env = gym.make(args_cli.task, cfg=env_cfg)
 uenv = env.unwrapped
 robot = uenv.scene["robot"]
 act_term = uenv.action_manager.get_term("joint_pos")
 
-runner = PolicyRunnerStage4(DEFAULT_MODEL_DIR_STAGE4)
+runner = PolicyRunnerStage4(MODEL_DIR, gait_freq=args_cli.gait_freq)
 
 # 러너 관절순서 == env 관절순서 확인 (이름 기준)
 assert list(JOINT_ORDER) == list(robot.data.joint_names), \
@@ -69,7 +83,8 @@ feet_cfg = SceneEntityCfg(
 )
 feet_cfg.resolve(uenv.scene)
 
-rep = [f"PolicyRunnerStage4 폐루프 검증 — 모델 {DEFAULT_MODEL_DIR_STAGE4}",
+rep = [f"PolicyRunnerStage4 폐루프 검증 — 모델 {MODEL_DIR} "
+       f"(task={args_cli.task}, clock={args_cli.gait_freq}Hz)",
        f"명령 {CMD}, {args_cli.secs:.0f}s, 관측 {OBS_DIM_STAGE4}차원(이력5·클록·접촉)"]
 obs_dict, _ = env.reset()
 assert obs_dict["policy"].shape[1] == OBS_DIM_STAGE4, \

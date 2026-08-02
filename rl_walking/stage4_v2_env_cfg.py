@@ -593,3 +593,10 @@ class Biped12Stage4V2StandEnvCfg(Biped12Stage4V2MarchDRv5EnvCfg):
         # 제자리 앵커 강화 (스탠드는 드리프트 자체가 실패)
         self.rewards.march_anchor.weight = -2.0
         self.rewards.march_anchor.params["dead_zone"] = 0.15
+        # v3 (0803): stand_v2 평가 기울기 18.7° 불합격 — '기울어 서기' 평형 차단.
+        # ① 직립 보상 강화 (march -3 → -8: 스탠드는 직립이 제1 목표)
+        self.rewards.flat_orientation_l2.weight = -8.0
+        # ② CoM 랜덤화를 실측 대역으로 축소 — DRv5의 x −0.20~0.05는 보행
+        #    강건성용 극단 포함이라 스탠드에선 '기울어 서기'를 정답으로 만든다.
+        #    payload 실측(com_report: 정합 CoM 발목 뒤 1~4cm) 중심.
+        self.events.base_com.params["com_range"]["x"] = (-0.08, 0.03)

@@ -87,6 +87,12 @@ STALE_DISARM_SEC = 60.0
 #: 미세 무토크 공백을 만들던 원인).
 TAKEOVER_STATE_FILE = "/tmp/hang_handoff_state.json"
 TAKEOVER_STATE_MAX_AGE_SEC = 120.0
+#: --wait-takeover: 선기동 대기 모드 — 핸드오프 '전에' stage8을 띄워두면 상태
+#: 파일이 나타나는 즉시(한 틱 내) 인수 홀드를 시작한다. 대기 중에는 폴링 포함
+#: 어떤 CAN 송신도 하지 않음 (ENTER가 hang_stand의 홀드를 리셋하므로).
+#: 이로써 '핸드오프 → 프로세스 기동 4~8초' 무토크 공백(모터 자체 타임아웃
+#: 릴리즈 → 하중 시 즉시 붕괴)이 ~20ms로 줄어든다.
+WAIT_TAKEOVER = False
 
 COMMAND_ARM_ALL = "ARM_ALL"
 COMMAND_DISARM_ALL = "DISARM_ALL"
@@ -239,6 +245,8 @@ class Stage8TwelveAxisMitControlCore:
         self.baseline_set_time = None
         self.takeover_hold = self._load_takeover_state()
         self._takeover_start = None
+        self._waiting_takeover = bool(WAIT_TAKEOVER) and self.takeover_hold is None
+        self._wait_warn_time = None
         self.latest_actual_deg_by_joint = {}
         self.latest_feedback_by_joint = {}
         self.latest_feedback_time_by_joint = {}
@@ -407,6 +415,19 @@ class Stage8TwelveAxisMitControlCore:
 
     def control_tick(self):
         self.executed = False
+        # 선기동 대기: 상태 파일이 나타날 때까지 CAN 완전 침묵 (송신 0 —
+        # hang_stand가 아직 버스를 소유·홀드 중이므로 ENTER 폴링도 금지)
+        if self._waiting_takeover:
+            self.takeover_hold = self._load_takeover_state()
+            if self.takeover_hold is None:
+                now = self.now_fn()
+                if self._wait_warn_time is None:
+                    self._wait_warn_time = now
+                elif now - self._wait_warn_time > 30.0:
+                    self._wait_warn_time = now
+                    self._warn("wait_takeover_still_waiting")
+                return self.get_status()
+            self._waiting_takeover = False
         self._ensure_readonly_can_bus()
         # ENTER 폴링은 '홀드 중인 모터를 리셋'하므로 (0802 실측) 인수 홀드
         # 또는 armed 송신 중에는 금지 — 두 경로 모두 명령 프레임이 피드백을 겸함
@@ -1093,7 +1114,7 @@ def load_ros2():
 
 
 def main():
-    global CAN_CHANNEL
+    global CAN_CHANNEL, WAIT_TAKEOVER
 
     parser = argparse.ArgumentParser(
         description="Stage8 12-axis AK MIT real-control node")
@@ -1101,6 +1122,11 @@ def main():
         "--can-channel", default=CAN_CHANNEL,
         help="SocketCAN 채널 (기본 can0 — 메인 PC 호환). 젯슨 라이브 버스는 can1 "
              "이므로 젯슨 배포 시 --can-channel can1 로 기동할 것")
+    parser.add_argument(
+        "--wait-takeover", action="store_true",
+        help="선기동 대기: 핸드오프 상태 파일이 나타날 때까지 CAN 무송신 대기 "
+             "후 즉시 인수 홀드 (무토크 공백 ~20ms화). hang_stand 핸드오프 전에 "
+             "이 플래그로 먼저 기동해둘 것")
     # ROS2 런치가 붙이는 --ros-args 등 미지 인자는 무시 (parse_known_args)
     args, _unknown = parser.parse_known_args()
     if re.fullmatch(r"can[0-9]+", str(args.can_channel)) is None:
@@ -1108,6 +1134,7 @@ def main():
               "(can0/can1/... 형식만 허용)")
         return 1
     CAN_CHANNEL = str(args.can_channel)
+    WAIT_TAKEOVER = bool(args.wait_takeover)
 
     rclpy, String, error = load_ros2()
     if rclpy is None:

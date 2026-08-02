@@ -318,6 +318,14 @@ class Stage8TwelveAxisMitControlCore:
                     "baseline_stale_for_arm:SET_BASELINE_FROM_CURRENT_ALL 먼저")
             self.armed = True
             self.takeover_hold = None   # 인수 홀드 종료 — armed 경로가 이어받음
+            # 슬루 기준점을 '현재 실측'으로 초기화 (적대 시뮬 검증: 종전 0 고정은
+            # 캡처 후 자세가 변했으면 첫 명령이 베이스라인 자세로 점프 —
+            # kp150×6° ≈ 15.7Nm급 순간 인장. 러너의 qpos 초기화와 대칭)
+            for joint in self.baseline_deg_by_joint:
+                actual = self.latest_actual_deg_by_joint.get(joint)
+                if actual is not None:
+                    rel = float(actual) - self.baseline_deg_by_joint[joint]
+                    self.commanded_relative_deg_by_joint[joint] = rel
             self.accepted = True
             return self.get_status()
 

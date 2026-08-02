@@ -14,6 +14,7 @@ Current deployment uses the main PC, ROS2 topics, and SocketCAN (default
 import argparse
 import json
 import math
+import os
 import re
 import subprocess
 import sys
@@ -75,6 +76,17 @@ FEEDBACK_TIMEOUT_SEC = 3.0
 #: 베이스라인으로 명령을 쏘는 사고 경로 차단. 정상 라이브는 피드백 공백이
 #: 3초를 넘지 않으므로 영향 없음. 재무장 = 재베이스라인 강제)
 STALE_DISARM_SEC = 60.0
+
+#: 인수 홀드 — hang_stand 핸드오프가 남긴 마지막 명령(각도·게인) 상태 파일.
+#: ⚠ 실측 확정(0802): AK 모터는 MIT ENTER(=FC 폴링 프레임)를 다시 받으면 물고
+#: 있던 명령을 리셋하고 무토크가 된다 — 종전 "폴링 후 베이스라인" 인수는 폴링
+#: 순간 모터가 하나씩 풀려 하중에 무릎이 처지는 사고를 냈음 (벤치: kp30 홀드가
+#: ENTER 1발에 1초 내 낙하). 인수 홀드 = 기동 첫 틱부터 상태 파일의 명령을
+#: 그대로 스트리밍 (명령 프레임이 피드백도 반환 → ENTER 폴링 불필요). ARM 시
+#: 정상 경로로 무봉합 전환. armed 중에도 ENTER 폴링은 금지 (240ms마다 20ms
+#: 미세 무토크 공백을 만들던 원인).
+TAKEOVER_STATE_FILE = "/tmp/hang_handoff_state.json"
+TAKEOVER_STATE_MAX_AGE_SEC = 120.0
 
 COMMAND_ARM_ALL = "ARM_ALL"
 COMMAND_DISARM_ALL = "DISARM_ALL"
@@ -225,6 +237,8 @@ class Stage8TwelveAxisMitControlCore:
         self.armed = False
         self.baseline_deg_by_joint = {}
         self.baseline_set_time = None
+        self.takeover_hold = self._load_takeover_state()
+        self._takeover_start = None
         self.latest_actual_deg_by_joint = {}
         self.latest_feedback_by_joint = {}
         self.latest_feedback_time_by_joint = {}
@@ -303,12 +317,14 @@ class Stage8TwelveAxisMitControlCore:
                 return self._reject(
                     "baseline_stale_for_arm:SET_BASELINE_FROM_CURRENT_ALL 먼저")
             self.armed = True
+            self.takeover_hold = None   # 인수 홀드 종료 — armed 경로가 이어받음
             self.accepted = True
             return self.get_status()
 
         if command == COMMAND_DISARM_ALL:
             self.armed = False
             self.running = False
+            self.takeover_hold = None   # 운영자 의도 = 릴리즈 경로 (release_all)
             self.accepted = True
             return self.get_status()
 
@@ -333,10 +349,63 @@ class Stage8TwelveAxisMitControlCore:
 
         return self._reject("unsupported_command")
 
+    def _load_takeover_state(self):
+        """hang_stand 핸드오프 상태 파일 로드 (1회 소비). {joint: (deg, kp, kd)}."""
+        try:
+            with open(TAKEOVER_STATE_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            os.remove(TAKEOVER_STATE_FILE)
+        except (OSError, json.JSONDecodeError):
+            return None
+        try:
+            if self.now_fn() - float(data["ts"]) > TAKEOVER_STATE_MAX_AGE_SEC:
+                return None
+            hold = {}
+            for mid_s, v in data["motors"].items():
+                joint = JOINT_BY_CAN_ID[int(mid_s)]
+                deg = float(v["deg"])
+                kp = min(500.0, max(0.0, float(v["kp"])))
+                kd = min(5.0, max(0.0, float(v["kd"])))
+                if not math.isfinite(deg) or abs(deg) > 180.0:
+                    return None
+                hold[joint] = (deg, kp, kd)
+            if len(hold) != len(JOINT_NAMES_12DOF):
+                return None
+            return hold
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def _takeover_hold_tick(self):
+        """인수 홀드 스트리밍 — 비무장 구간에서 hang_stand의 마지막 명령을 유지.
+
+        명령 프레임이 피드백을 반환하므로 별도 ENTER 폴링 불필요 (ENTER는 홀드
+        명령을 리셋하는 실측 거동이 있어 금지). ARM 시 정상 경로로 전환.
+        """
+        if not REAL_CAN_WRITE_ENABLED or self.takeover_hold is None:
+            return
+        if self._takeover_start is None:
+            self._takeover_start = self.now_fn()
+        elif self.now_fn() - self._takeover_start > 300.0:
+            # ARM 없이 5분 방치 — 좀비 홀드 방지 (모터 전원사이클 후 낡은 명령
+            # 재개 위험). 해제 시 모터는 마지막 명령을 물고 있으므로 급변 없음.
+            self.takeover_hold = None
+            self._warn("takeover_hold_timeout_cancel")
+            return
+        for joint, (deg, kp, kd) in self.takeover_hold.items():
+            frame = pack_ak_mit_command(
+                math.radians(deg), v_des_rad_s=V_DES_DEFAULT,
+                kp=kp, kd=kd, tau_ff=TAU_FF_DEFAULT)
+            self._maybe_write_frame(CAN_ID_BY_JOINT[joint], frame)
+
     def control_tick(self):
         self.executed = False
         self._ensure_readonly_can_bus()
-        self._request_next_readonly_feedback()
+        # ENTER 폴링은 '홀드 중인 모터를 리셋'하므로 (0802 실측) 인수 홀드
+        # 또는 armed 송신 중에는 금지 — 두 경로 모두 명령 프레임이 피드백을 겸함
+        if self.takeover_hold is not None:
+            self._takeover_hold_tick()
+        elif not self.armed:
+            self._request_next_readonly_feedback()
         self._poll_can_feedback()
         if not self.armed or not self._has_any_baseline():
             return self.get_status()

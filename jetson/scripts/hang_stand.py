@@ -488,9 +488,24 @@ def main():
             time.sleep(max(0.0, TICK - (time.monotonic() - now)))
 
         if handoff:
+            # 인수 홀드 상태 파일 — stage8이 첫 틱부터 같은 명령을 스트리밍해
+            # 무토크 공백 제로로 이어받게 함 (ENTER 폴링의 명령 리셋 실측 대응)
+            try:
+                state = {"ts": time.time(), "motors": {
+                    str(m): {"deg": cmd_of(m, frac), "kp": kp, "kd": kd}
+                    for m in IDS}}
+                tmp = "/tmp/hang_handoff_state.json.tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(state, f)
+                os.replace(tmp, "/tmp/hang_handoff_state.json")
+                say("[핸드오프] 상태 파일 기록 → stage8 인수 홀드 준비 완료")
+            except OSError as e:
+                say(f"[핸드오프] ⚠ 상태 파일 기록 실패({e}) — stage8이 구방식"
+                    "(폴링)으로 인수하면 하중 시 처짐 위험. 착지 전이면 무해")
             say("[핸드오프] 릴리즈 생략 — 모터가 현 자세·운용게인을 그대로 잡고 "
-                "있습니다. 즉시 진행: stage8 폴링 → SET_BASELINE_FROM_CURRENT_ALL "
-                "→ ARM_ALL → 정책. 지연·실패 시 회수 = 줄 인장 후 release_all.py")
+                "있습니다. 즉시 진행: stage8 기동(인수 홀드 자동) → "
+                "SET_BASELINE_FROM_CURRENT_ALL → ARM_ALL → 정책. "
+                "지연·실패 시 회수 = 줄 인장 후 release_all.py")
             return 3
         if abort:
             if grounded and not os.path.exists(KILL_FILE):

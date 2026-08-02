@@ -52,12 +52,16 @@ python3 jetson/scripts/stage8_cmd.py ARM_ALL                         # 인수홀
 ```
 - ARM은 12/12 베이스라인 + 30s 신선도 필수 (부분 무장 구조적 거부).
 
-## 4. 브리지 라이브 + 정책 투입
+## 4. 브리지 라이브 + 정책 투입 (검증 사다리 순서 엄수)
 ```bash
-python3 jetson/scripts/rl_bridge_node.py --live --checkpoint march_v3
-# 별도 터미널 — 검증 전송 (-w 1: 구독자 확인 후 1회 발행):
-ros2 topic pub --once -w 1 /rl_bridge/cmd std_msgs/String "data: '{\"mode\": \"march\"}'"
-# 직후 /rl_bridge/debug 에서 checkpoint=march_v3·live·armed 확인
+python3 jetson/scripts/rl_bridge_node.py --live --checkpoint march_v5b --frame-max-age <필요시>
+# ── 사다리 1단: stand 제로샷 (능동 균형 서기 — 수 초 관찰) ──
+ros2 topic pub --once -w 1 /humanoid/rl_bridge_command std_msgs/String "data: '{\"cmd\": \"stand\"}'"
+#   → debug 토픽 checkpoint=stand_v3 확인. 조각상 홀드보다 안정적으로 서면 통과.
+#   → estop으로 동결 후 다음 단계.
+# ── 사다리 2단: march 수 초 ──
+ros2 topic pub --once -w 1 /humanoid/rl_bridge_command std_msgs/String "data: '{\"cmd\": \"march\"}'"
+#   → checkpoint=march_v5b 확인. 5초 내 estop → 자세·괴리 로그 점검 → 이상 없으면 연장.
 ```
 - 사람은 줄 옆 스탠바이. 발진가드 v2가 0.2~0.7s 내 자동 STOP_ALL (march 보행 오트립 0 검증).
 - 센서 공백 시 자동 STOP_ALL + 정책 비활성 — **자동 재개 없음**, 원인 확인 후 march 재명령.

@@ -500,18 +500,21 @@ class Biped12Stage4V2MarchDRv5EnvCfg(Biped12Stage4V2MarchDRv4EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        # ① 루프 지연 (실측 4~8틱의 보수적 커버)
+        # ① 루프 지연 (실측 4~8틱): v5b에서 2~6틱 중심화 — 0~1틱 학습은 실물에
+        #    없는 조건이라 낭비 + 지연 없는 env가 지연 env의 학습 신호를 희석.
         self.actions.joint_pos.max_delay_steps = 6
+        self.actions.joint_pos.min_delay_steps = 2
         # ② 유효 강성 하한 확대 (실측 무릎 0.27·발목 0.17)
         self.events.actuator_gains.params[
             "stiffness_distribution_params"] = (0.2, 1.1)
         # ③ 클록 1.1Hz — 관측·보상 동일 갱신 (위상 정의 공유 필수)
         self.observations.policy.gait_clock.params["freq"] = 1.1
         self.rewards.gait_phase.params["freq"] = 1.1
-        # ④ 스탠스 무릎 굴곡 밴드
+        # ④ 스탠스 무릎 굴곡 밴드 (v5b: 1.0→2.5 — v5 평가에서 중앙 −2°로
+        #    미달성, 직립·앵커 항에 밀렸음)
         self.rewards.knee_stance_flexion = RewTerm(
             func=mdp_stage4.knee_stance_flexion,
-            weight=1.0,
+            weight=2.5,
             params={
                 "sensor_cfg": _FEET_SENSOR_CFG,
                 "asset_cfg": SceneEntityCfg(
@@ -521,12 +524,44 @@ class Biped12Stage4V2MarchDRv5EnvCfg(Biped12Stage4V2MarchDRv4EnvCfg):
                 ),
             },
         )
+        # ⑥ v5b: 지연 하 채터 재발(반전 0.41) 대응 — action_rate 추가 증강.
+        #    지연 환경에선 고주파 액션의 비용이 낮아 보여 채터가 되살아난다.
+        self.rewards.action_rate_l2.weight = -0.20
         # ⑤ 착지 충격 벌점 (300N 착지 = -1.2/틱 대역)
         self.rewards.feet_impact = RewTerm(
             func=mdp_stage4.feet_impact_force,
             weight=-0.01,
             params={"sensor_cfg": _FEET_SENSOR_CFG},
         )
+
+
+@configclass
+class Biped12Stage4V2MarchDRv5EnvCfg_PLAY(Biped12Stage4V2MarchDRv5EnvCfg):
+    """v5 재생/평가 — 표준 조건(DR 고정·외란 없음·전 env 명령 0), 클록 1.1Hz 유지."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 32
+        self.episode_length_s = 40.0
+        self.observations.policy.enable_corruption = False
+        self.events.base_external_force_torque = None
+        self.events.push_robot = None
+        self.commands.base_velocity.rel_standing_envs = 1.0
+        self.commands.base_velocity.rel_spin_envs = 0.0
+        self.commands.base_velocity.rel_backward_envs = 0.0
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+        # DR·지연·마찰을 표준 공칭으로 고정 (v5의 DR 오버라이드 되돌림)
+        self.events.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
+        self.events.actuator_gains.params["damping_distribution_params"] = (1.0, 1.0)
+        self.events.physics_material.params["static_friction_range"] = (0.8, 0.8)
+        self.events.physics_material.params["dynamic_friction_range"] = (0.6, 0.6)
+        self.events.physics_material.params["restitution_range"] = (0.0, 0.0)
+        self.actions.joint_pos.max_delay_steps = 0
+        self.events.reset_base.params["pose_range"]["roll"] = (0.0, 0.0)
+        self.events.reset_base.params["pose_range"]["pitch"] = (0.0, 0.0)
 
 
 @configclass

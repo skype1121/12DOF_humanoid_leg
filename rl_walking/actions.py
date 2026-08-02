@@ -36,14 +36,16 @@ class SlewJointPositionAction(JointPositionAction):
         self._prev_target = torch.zeros(self.num_envs, self.action_dim, device=self.device)
         # 리셋 직후 env는 현재 관절위치에서 슬루를 시작해야 함
         self._needs_init = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
-        # 액션 지연 링버퍼 + env별 지연량
+        # 액션 지연 링버퍼 + env별 지연량 (min~max 균등 — 0803 실측 중심화)
         self._max_delay = int(cfg.max_delay_steps)
+        self._min_delay = min(int(cfg.min_delay_steps), self._max_delay)
         if self._max_delay > 0:
             self._buf = torch.zeros(
                 self._max_delay + 1, self.num_envs, self.action_dim, device=self.device
             )
             self._delay = torch.randint(
-                0, self._max_delay + 1, (self.num_envs,), device=self.device
+                self._min_delay, self._max_delay + 1, (self.num_envs,),
+                device=self.device
             )
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
@@ -51,7 +53,8 @@ class SlewJointPositionAction(JointPositionAction):
         if env_ids is None:
             self._needs_init[:] = True
             if self._max_delay > 0:
-                self._delay = torch.randint_like(self._delay, 0, self._max_delay + 1)
+                self._delay = torch.randint_like(
+                    self._delay, self._min_delay, self._max_delay + 1)
         else:
             self._needs_init[env_ids] = True
             if self._max_delay > 0:
@@ -59,7 +62,8 @@ class SlewJointPositionAction(JointPositionAction):
                     env_ids, device=self.device
                 )
                 self._delay[ids] = torch.randint(
-                    0, self._max_delay + 1, (len(ids),), device=self.device
+                    self._min_delay, self._max_delay + 1, (len(ids),),
+                    device=self.device
                 )
 
     def process_actions(self, actions: torch.Tensor):
@@ -97,3 +101,5 @@ class SlewJointPositionActionCfg(JointPositionActionCfg):
     max_delta_per_step: float = 0.06981317007977318
     # 액션 지연 랜덤화 상한 [정책틱] — 0이면 비활성 (stage3에서 1로)
     max_delay_steps: int = 0
+    # 지연 하한 [정책틱] — 0803 실측(루프 4~8틱) 중심화용. max보다 크면 max로 클램프.
+    min_delay_steps: int = 0

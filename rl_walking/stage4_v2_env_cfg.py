@@ -427,3 +427,18 @@ class Biped12Stage4V2RoughEnvCfg_PLAY(Biped12Stage4V2RoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+
+
+@configclass
+class Biped12Stage4V2MarchDRv2EnvCfg(Biped12Stage4V2MarchEnvCfg):
+    """march + 0802 컴플라이언스 정합 (walk DRv2와 동일 오버라이드).
+
+    근거: 구 march(14993)도 구식 DR(게인 0.8~1.2) 출신 — 실물(직렬 컴플라이언스
+    실증)에 얹기 전 컴플라이언스 조건 검증·재학습용. walk 판정 전례: 구정책
+    컴플라이언스 낙상 85.9% vs DRv2 1.6%.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from rl_walking.stage4_env_cfg import apply_compliance_drv2
+        apply_compliance_drv2(self)

@@ -188,6 +188,17 @@ gym.register(
 )
 
 gym.register(
+    id="Biped12-Velocity-Stage4V2-March-DRv2-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        # march + 0802 컴플라이언스 정합 — 구 march(14993)에서 --resume 권장
+        "env_cfg_entry_point": "rl_walking.stage4_v2_env_cfg:Biped12Stage4V2MarchDRv2EnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+    },
+)
+
+gym.register(
     id="Biped12-Velocity-Stage4V2-March-Play-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

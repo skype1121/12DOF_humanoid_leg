@@ -222,6 +222,26 @@ class Biped12Stage4DREnvCfg(Biped12Stage4FlatEnvCfg):
         self.events.joint_friction.params["friction_distribution_params"] = (0.0, 0.1)
 
 
+def apply_compliance_drv2(cfg):
+    """0802 실측 컴플라이언스 정합 오버라이드 — walk/march 공용.
+
+    (직렬 컴플라이언스 실증 + 공중 발진 + CoM 전장 실측 반영. 상세 근거는
+    Biped12Stage4DRv2EnvCfg docstring 참조.)
+    """
+    cfg.events.actuator_gains.params[
+        "stiffness_distribution_params"] = (0.4, 1.1)
+    cfg.events.actuator_gains.params[
+        "damping_distribution_params"] = (0.5, 1.2)
+    cfg.events.base_com.params["com_range"] = {
+        "x": (-0.20, 0.05),
+        "y": (-0.03, 0.03),
+        "z": (0.0, 0.15),
+    }
+    cfg.actions.joint_pos.max_delay_steps = 2
+    cfg.events.joint_friction.params[
+        "friction_distribution_params"] = (0.0, 0.15)
+
+
 @configclass
 class Biped12Stage4DRv2EnvCfg(Biped12Stage4DREnvCfg):
     """Stage4-DRv2 — 실물 컴플라이언스 정합 (2026-08-02 실측 반영 보강학습용).
@@ -240,23 +260,7 @@ class Biped12Stage4DRv2EnvCfg(Biped12Stage4DREnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        # 유효강성 하향 확대: 0.8~1.2 → 0.4~1.1 (직렬 탄성 1차 근사 — 하한이 핵심)
-        self.events.actuator_gains.params[
-            "stiffness_distribution_params"] = (0.4, 1.1)
-        # 댐핑도 하향 포함: 저댐핑 발진 영역을 학습이 직접 겪게
-        self.events.actuator_gains.params[
-            "damping_distribution_params"] = (0.5, 1.2)
-        # 전장 실측: base 뒤·위 1.51kg — CoM 뒤(−X) 비대칭 브래키팅
-        self.events.base_com.params["com_range"] = {
-            "x": (-0.20, 0.05),
-            "y": (-0.03, 0.03),
-            "z": (0.0, 0.15),
-        }
-        # 컴플라이언스 = 추가 위상지연 → 액션 지연 0~2틱 (기존 0~1)
-        self.actions.joint_pos.max_delay_steps = 2
-        # 백래시 1차 근사: 관절 마찰 상한 확대
-        self.events.joint_friction.params[
-            "friction_distribution_params"] = (0.0, 0.15)
+        apply_compliance_drv2(self)
 
 
 @configclass

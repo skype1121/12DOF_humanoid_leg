@@ -17,10 +17,16 @@ declare -A NODES=(
   [foot_adapter]="python3 /home/mama/rl_calib/foot_force_adapter_node.py"
 )
 
-kill_verified() {  # $1=pid $2=서명(cmdline 부분문자열)
-  local pid=$1 sig=$2
+kill_verified() {  # $1=pid $2=서명(실행파일 basename) — argv[0..1] 위치 정밀 매칭
+  # (부분문자열 매칭은 'bash -c "...서명..."' 부모 셸 오인 종료 — stack_down에서
+  #  실전 발견된 버그 클래스. 실제 노드는 argv[0] 또는 argv[1]이 서명 그 자체)
+  local pid=$1 sig=$2 arg match=0
+  [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] && return 0
   [ -r "/proc/$pid/cmdline" ] || return 0
-  if tr '\0' ' ' < "/proc/$pid/cmdline" | grep -qF "$sig"; then
+  while IFS= read -r arg; do
+    [ "$(basename "$arg")" = "$sig" ] && match=1
+  done < <(tr '\0' '\n' < "/proc/$pid/cmdline" | head -2)
+  if [ "$match" = 1 ]; then
     kill "$pid" 2>/dev/null && echo "  종료: PID $pid ($sig)"
   fi
 }

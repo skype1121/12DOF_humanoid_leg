@@ -14,9 +14,18 @@ SIGS=(
 found=0
 for sig in "${SIGS[@]}"; do
   for pid in $(pgrep -f "$sig" 2>/dev/null); do
-    [ "$pid" = "$$" ] && continue
+    [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] && continue
     [ -r "/proc/$pid/cmdline" ] || continue
-    if tr '\0' ' ' < "/proc/$pid/cmdline" | grep -qF "$sig"; then
+    # 정밀 매칭: argv[0..1]에서만 시그니처 확인 — 'bash -c "...stage8..."' 같은
+    # 부모 셸(긴 문자열 인자에만 포함)을 오인 종료하는 버그 방지 (0802 실전 발견:
+    # 자기 ssh 부모를 죽여 exit 255). 실제 노드는 'python3 /경로/시그니처.py'라
+    # argv[1]의 basename이 정확히 일치한다.
+    argv01=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | head -2)
+    match=0
+    while IFS= read -r arg; do
+      [ "$(basename "$arg")" = "$sig" ] && match=1
+    done <<< "$argv01"
+    if [ "$match" = 1 ]; then
       kill "$pid" 2>/dev/null && { echo "종료: PID $pid ($sig)"; found=1; }
     fi
   done

@@ -103,14 +103,16 @@ DEFAULT_MODEL_DIR_STAGE4 = (
 )
 
 
-def gait_clock_stage4(tick: int) -> np.ndarray:
-    """게이트 클록 [sin φ, cos φ], φ = 2π·1.4·(tick·0.02) [rad] — float32.
+def gait_clock_stage4(tick: int, freq: float = GAIT_FREQ_HZ) -> np.ndarray:
+    """게이트 클록 [sin φ, cos φ], φ = 2π·freq·(tick·0.02) [rad] — float32.
 
     mdp_stage4._gait_phase와 동일 공식·동일 float32 연산 순서:
-    t = fl32(tick)·fl32(0.02), φ = fl32(2π·1.4)·t (torch 스칼라 승격 규칙 재현).
+    t = fl32(tick)·fl32(0.02), φ = fl32(2π·freq)·t (torch 스칼라 승격 규칙 재현).
+    freq는 체크포인트별 학습 클록과 일치해야 함 (v5부터 1.1Hz — 기본 1.4Hz는
+    기존 체크포인트 전부의 계약이므로 불변).
     """
     t = np.float32(tick) * np.float32(POLICY_DT)
-    phase = np.float32(2.0 * math.pi * GAIT_FREQ_HZ) * t
+    phase = np.float32(2.0 * math.pi * freq) * t
     return np.array([np.sin(phase), np.cos(phase)], dtype=np.float32)
 
 
@@ -226,10 +228,14 @@ class PolicyRunnerStage4:
     step() 직후 self.last_obs에 이번 틱 245차원 관측이 남는다 (시뮬 검증용).
     """
 
-    def __init__(self, model_path=DEFAULT_MODEL_DIR_STAGE4, backend: str = "auto"):
+    def __init__(self, model_path=DEFAULT_MODEL_DIR_STAGE4, backend: str = "auto",
+                 gait_freq: float = GAIT_FREQ_HZ):
         """model_path: exported/ 디렉토리 또는 .onnx/.pt 파일 경로 (callable=스텁).
         backend: 'auto'(onnx 우선→torch 폴백) | 'onnx' | 'torch'.
+        gait_freq: 클록 주파수 [Hz] — 반드시 체크포인트의 학습 클록과 일치
+        (v5=1.1, 그 외=1.4). 불일치 = 위상 어긋난 관측 → 보행 파괴.
         """
+        self.gait_freq = float(gait_freq)
         self.backend, self._net = _load_backend(model_path, backend)
         self._hist = {name: _TermHistory(dim) for name, dim in STAGE4_TERMS}
         # 절대각 소프트 리밋 로드 (joint_limits_12dof.json — 표준lib 로더).
@@ -294,7 +300,7 @@ class PolicyRunnerStage4:
             "joint_pos": vec(qpos_rad, 12, "qpos_rad") - DEFAULT_POSE_RAD,
             "joint_vel": vec(qvel_rad_s, 12, "qvel_rad_s"),
             "actions": self.last_action,
-            "gait_clock": gait_clock_stage4(self._tick),
+            "gait_clock": gait_clock_stage4(self._tick, self.gait_freq),
             "feet_contact": self._contact2(contact2),
         }
         for name, _dim in STAGE4_TERMS:

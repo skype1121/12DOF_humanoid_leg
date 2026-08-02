@@ -119,6 +119,13 @@ CHECKPOINTS = {
         REPO, "logs/rsl_rl/biped12_stage4/2026-08-02_19-30-03/exported"),
 }
 
+#: 체크포인트별 게이트 클록 주파수 [Hz] — 학습 클록과 반드시 일치 (불일치 =
+#: 위상 어긋난 관측 → 보행 파괴). 미등록 = 1.4 (기존 가족 전체의 계약).
+#: v5(0803 측정 기반 재정합, 클록 1.1Hz)부터 이 표로 관리 — 등록 시 평가
+#: 게이트 통과 필수.
+CKPT_GAIT_FREQ = {}
+CKPT_GAIT_FREQ_DEFAULT = 1.4
+
 # ---------------------------------------------------------------------------
 # 프레임 변환 (2026-07-27 실측 캘리브레이션 확정)
 # ---------------------------------------------------------------------------
@@ -241,7 +248,9 @@ class BridgeCore:
     """
 
     def __init__(self, checkpoint="walk"):
-        self.runner = PolicyRunnerStage4(CHECKPOINTS[checkpoint])
+        self.runner = PolicyRunnerStage4(
+            CHECKPOINTS[checkpoint],
+            gait_freq=CKPT_GAIT_FREQ.get(checkpoint, CKPT_GAIT_FREQ_DEFAULT))
         self.ckpt_name = checkpoint
         self.hh = HeadingHold(kp=1.0, wz_limit=0.6)
         self.hh_ref_set = False
@@ -251,7 +260,9 @@ class BridgeCore:
 
     def reset(self, checkpoint=None):
         if checkpoint and checkpoint != self.ckpt_name:
-            self.runner = PolicyRunnerStage4(CHECKPOINTS[checkpoint])
+            self.runner = PolicyRunnerStage4(
+                CHECKPOINTS[checkpoint],
+                gait_freq=CKPT_GAIT_FREQ.get(checkpoint, CKPT_GAIT_FREQ_DEFAULT))
             self.ckpt_name = checkpoint
         self.runner.reset()
         self.hh_ref_set = False

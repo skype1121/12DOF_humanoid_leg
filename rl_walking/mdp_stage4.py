@@ -173,3 +173,55 @@ def foot_yaw_slip(
     asset = env.scene[asset_cfg.name]
     foot_yaw_vel = torch.abs(asset.data.body_ang_vel_w[:, asset_cfg.body_ids, 2])  # (N, 발)
     return (foot_yaw_vel * in_contact).sum(dim=1).clamp_max(cap)
+
+
+def knee_stance_flexion(
+    env,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    band_rad: tuple = (0.14, 0.35),
+    force_threshold: float = 5.0,
+) -> torch.Tensor:
+    """지지발 무릎 굴곡 밴드 보상 (0803 실물 1차 지시 반영). 값 0~1.
+
+    실물 관찰: 뻣뻣한 직립 스탠스는 '아슬아슬'(충격 흡수 불능) + march_v3는
+    무릎을 과신전 스톱에 눌러 기대는 니락 전략까지 학습(스탠스 3.4% 틱).
+    처방: 접촉 중인 다리의 무릎 굴곡을 8~20°(0.14~0.35rad) 밴드로 유도 —
+    "약간 굽혀 안정적으로 눌러주는" 스탠스. 굴곡 부호는 좌우 반대
+    (왼무릎 −=굴곡, 오른무릎 +=굴곡)이므로 부호 보정 후 공통 밴드 적용.
+    밴드 밖은 0.15rad당 1씩 선형 감쇠 (과신전=음수 굴곡도 자연히 벌점 방향).
+    asset_cfg.joint_ids = [left_knee, right_knee] (preserve_order=True).
+    """
+    sensor = env.scene.sensors[sensor_cfg.name]
+    forces = sensor.data.net_forces_w[:, sensor_cfg.body_ids, :]  # (N, 2, 3) [L, R]
+    in_contact = (torch.norm(forces, dim=-1) > force_threshold).to(torch.float32)
+    asset = env.scene[asset_cfg.name]
+    knee = asset.data.joint_pos[:, asset_cfg.joint_ids]  # (N, 2) [L, R]
+    flex = torch.stack([-knee[:, 0], knee[:, 1]], dim=1)  # 굴곡 + 로 통일
+    lo, hi = band_rad
+    dist = torch.clamp(lo - flex, min=0.0) + torch.clamp(flex - hi, min=0.0)
+    per_leg = torch.clamp(1.0 - dist / 0.15, min=0.0)  # 밴드 안=1, 밖 선형 감쇠
+    # 접촉 중인 다리만 평가 (스윙 다리는 자유) — 접촉 없으면 중립 0.5
+    n_contact = in_contact.sum(dim=1)
+    reward = (per_leg * in_contact).sum(dim=1) / n_contact.clamp(min=1.0)
+    return torch.where(n_contact > 0, reward, torch.full_like(reward, 0.5))
+
+
+def feet_impact_force(
+    env,
+    sensor_cfg: SceneEntityCfg,
+    max_force_n: float = 180.0,
+    cap: float = 400.0,
+) -> torch.Tensor:
+    """착지 충격 벌점 (0803 실물 1차 '쿵' 반영) — 초과 수직 접촉력 합 [N].
+
+    실물 관찰: march_v3 착지가 "쿵하고 너무 쌔게" — 시뮬보다 단단한 실바닥에서
+    충격이 요·병진 교란으로 전이(첫 스텝 요 비틀림 낙하의 후보 기여).
+    체중 118N(12kg) 기준 1.5배(180N) 초과분을 선형 벌점. cap은 방폭 관례.
+    weight 예: -0.01 → 300N 착지 시 -1.2/틱 (부드러운 착지로 케이던스 이내
+    해결 가능한 대역).
+    """
+    sensor = env.scene.sensors[sensor_cfg.name]
+    fz = sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2]  # (N, 발) 수직
+    excess = (fz - max_force_n).clamp(min=0.0)
+    return excess.sum(dim=1).clamp_max(cap)

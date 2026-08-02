@@ -479,3 +479,51 @@ class Biped12Stage4V2MarchDRv4EnvCfg(Biped12Stage4V2MarchDRv3EnvCfg):
         }
         self.events.reset_base.params["pose_range"]["roll"] = (-0.07, 0.07)
         self.events.reset_base.params["pose_range"]["pitch"] = (-0.07, 0.07)
+
+
+@configclass
+class Biped12Stage4V2MarchDRv5EnvCfg(Biped12Stage4V2MarchDRv4EnvCfg):
+    """march-DRv5 — 0803 '측정 기반' 재정합 (무한 튜닝 탈피 선언판).
+
+    0802 실물 첫 march 블랙박스(61틱)의 sysid + 리플레이 대조 실측을 DR 중심에
+    반영. 추측으로 범위를 '넓힌' v4와 달리 v5는 측정으로 '조준'한다:
+    ① 루프 지연: 실측 명령→관측 왕복 80~160ms(4~8틱). 종전 DR 0~2틱은 실물의
+       절반도 못 커버 — max_delay_steps 6으로 확대 (관측 지연 근사 포함).
+    ② 유효 강성: 실측 추종비 무릎 0.27·발목 0.17~0.60 — 종전 하한 0.4는 낙관.
+       하한 0.2로 확대 (상한 유지 — 파이프라인 개선 시에도 유효하도록).
+    ③ 케이던스: 클록 1.4→1.1Hz (2.2걸음/s) — "천천히 안정적으로" (0803 지시).
+       배포 러너의 클록 주파수도 체크포인트별로 일치시켜야 함 (계약 변경!).
+    ④ 스탠스 무릎 굴곡 밴드 8~20° 보상 — "약간 굽혀 눌러주는" 스탠스 (0803
+       지시), 니락(과신전 스톱 기대기) 전략 구조적 대체.
+    ⑤ 착지 충격 벌점 — "쿵" 억제 (초과 수직접촉력 180N+ 선형).
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        # ① 루프 지연 (실측 4~8틱의 보수적 커버)
+        self.actions.joint_pos.max_delay_steps = 6
+        # ② 유효 강성 하한 확대 (실측 무릎 0.27·발목 0.17)
+        self.events.actuator_gains.params[
+            "stiffness_distribution_params"] = (0.2, 1.1)
+        # ③ 클록 1.1Hz — 관측·보상 동일 갱신 (위상 정의 공유 필수)
+        self.observations.policy.gait_clock.params["freq"] = 1.1
+        self.rewards.gait_phase.params["freq"] = 1.1
+        # ④ 스탠스 무릎 굴곡 밴드
+        self.rewards.knee_stance_flexion = RewTerm(
+            func=mdp_stage4.knee_stance_flexion,
+            weight=1.0,
+            params={
+                "sensor_cfg": _FEET_SENSOR_CFG,
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=["left_knee_joint", "right_knee_joint"],
+                    preserve_order=True,
+                ),
+            },
+        )
+        # ⑤ 착지 충격 벌점 (300N 착지 = -1.2/틱 대역)
+        self.rewards.feet_impact = RewTerm(
+            func=mdp_stage4.feet_impact_force,
+            weight=-0.01,
+            params={"sensor_cfg": _FEET_SENSOR_CFG},
+        )

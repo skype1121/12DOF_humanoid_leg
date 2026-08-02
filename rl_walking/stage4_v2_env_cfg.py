@@ -442,3 +442,12 @@ class Biped12Stage4V2MarchDRv2EnvCfg(Biped12Stage4V2MarchEnvCfg):
         super().__post_init__()
         from rl_walking.stage4_env_cfg import apply_compliance_drv2
         apply_compliance_drv2(self)
+
+
+@configclass
+class Biped12Stage4V2MarchDRv3EnvCfg(Biped12Stage4V2MarchDRv2EnvCfg):
+    """march-DRv3 — march-DRv2 + 액션 채터 제거 (stage4 DRv3와 동일 처방)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.action_rate_l2.weight = -0.12

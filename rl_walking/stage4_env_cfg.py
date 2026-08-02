@@ -264,6 +264,22 @@ class Biped12Stage4DRv2EnvCfg(Biped12Stage4DREnvCfg):
 
 
 @configclass
+class Biped12Stage4DRv3EnvCfg(Biped12Stage4DRv2EnvCfg):
+    """DRv3 — DRv2 + 액션 채터 제거 (0802 실물 발진 3원인 중 정책 채터 대응).
+
+    실측 근거: 이 정책 가족은 액션 방향반전율 0.64~0.67(매틱=1.0), 힙 회전에
+    25Hz(나이퀴스트) 채터 고주파 에너지 95% — 시뮬 플랜트는 흡수하지만 실물은
+    2° 발진으로 발현(가드 트립 ×2). 채터의 틱당 변화량은 보행 리듬의 수 배라
+    action_rate 페널티 강화(−0.02→−0.12)가 채터를 선택적으로 때린다.
+    검증 게이트: 반전율 <0.3, >10Hz 에너지 <10%, 컴플라이언스 낙상률 유지.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.action_rate_l2.weight = -0.12
+
+
+@configclass
 class Biped12Stage4FlatEnvCfg_PLAY(Biped12Stage4FlatEnvCfg):
     """재생/평가용: 소수 env, 노이즈·외란 끔, 전진 명령 고정 (기존 PLAY 패턴)."""
 

@@ -265,6 +265,7 @@ class Stage8TwelveAxisMitControlCore:
         self.last_command = None
         self.last_reject_reason = None
         self.soft_clamp_counts = {}   # 관절별 soft 경계 클램프 누적 (status 노출)
+        self.feedback_jump_drops = {}  # 관절별 점프 필터 드롭 (연속 카운트)
         self.can_bus = None
         self.can_bus_open_attempted = False
         self.can_status = "UNKNOWN"
@@ -465,6 +466,8 @@ class Stage8TwelveAxisMitControlCore:
         # 홀드 중단 (전원 복귀 시 낡은 명령이 요격하는 사고 방지).
         worst = None
         mismatch = None
+        worst_dev = 0.0
+        worst_dev_joint = None
         for joint in self.takeover_hold:
             age = self._joint_feedback_age_sec(joint)
             if age is None:
@@ -474,20 +477,38 @@ class Stage8TwelveAxisMitControlCore:
             if self._joint_feedback_is_fresh(joint):
                 actual = self.latest_actual_deg_by_joint.get(joint)
                 deg = self.takeover_hold[joint][0]
-                if actual is not None and abs(float(actual) - deg) > 20.0:
-                    mismatch = f"{joint}:{float(actual) - deg:+.1f}deg"
+                if actual is not None:
+                    dev = float(actual) - deg
+                    if abs(dev) > abs(worst_dev):
+                        worst_dev = dev
+                        worst_dev_joint = joint
+                    if abs(dev) > 20.0:
+                        mismatch = f"{joint}:{dev:+.1f}deg"
         if worst is not None and worst > STALE_DISARM_SEC:
             self.takeover_hold = None
             self.last_takeover_event = "hold_feedback_gap_cancel"
             self._warn("takeover_hold_feedback_gap_cancel")
             return
-        # 실측-홀드 괴리 가드: 낡은/불일치 상태 파일이 현재 자세와 20° 이상
-        # 어긋난 홀드를 계속 당기는 경로 차단 (첫 피드백 도착 ~20ms 내 발동).
+        # 실측-홀드 괴리 = 경고만, 캔슬 금지 (0802 밤 붕괴 2건 교훈).
+        # 근거: ①상태 파일은 기록 후 수십 ms 내 소비돼 '낡은 파일 대괴리'가
+        # 실경로에 없음(절대각·백스톱은 로더가 검증) ②캔슬→침묵→모터 자체
+        # 타임아웃(~200-300ms 실측, 브레이크 모드)→하중 낙하로 사고를 '키움'
+        # (candump 실측: 인수 공백 303ms 낙하를 kp150이 급제동한 것이 '발작').
+        # 어떤 괴리에서도 버티는 것이 정답 — 회수는 운용자(줄 인장→stack_down
+        # →release_all)의 몫.
         if mismatch is not None:
-            self.takeover_hold = None
-            self.last_takeover_event = f"hold_mismatch_cancel:{mismatch}"
-            self._warn("takeover_hold_mismatch_cancel")
-            return
+            if self.last_takeover_event != f"hold_disturbance:{mismatch}":
+                self.last_takeover_event = f"hold_disturbance:{mismatch}"
+                self._warn("takeover_hold_disturbance")
+                print(f"[takeover] 괴리 감지 — 홀드 유지하며 버팀: {mismatch}",
+                      flush=True)
+        # 관측성: 매초 최대 괴리 로그 (다음 사고 분석용 — stage8 블랙박스 부재
+        # 보완)
+        if now - getattr(self, "_hold_log_t", 0.0) >= 1.0:
+            self._hold_log_t = now
+            print(f"[takeover] hold {hold_age:.0f}s 최대괴리 "
+                  f"{worst_dev:+.2f}° ({worst_dev_joint if worst_dev else '-'})",
+                  flush=True)
         self._ever_streamed = True
         for joint, (deg, kp, kd) in self.takeover_hold.items():
             frame = pack_ak_mit_command(
@@ -500,6 +521,16 @@ class Stage8TwelveAxisMitControlCore:
         # 선기동 대기: 상태 파일이 나타날 때까지 CAN 완전 침묵 (송신 0 —
         # hang_stand가 아직 버스를 소유·홀드 중이므로 ENTER 폴링도 금지)
         if self._waiting_takeover:
+            # 0802 붕괴#2 candump 실측: 인수 공백 303ms 중 모터 자체 명령
+            # 타임아웃(~200-300ms)이 걸려 하중 낙하 → kp150 급제동 '발작'.
+            # 공백의 대부분은 첫 송신 시점의 python-can 임포트+버스 오픈 비용
+            # — 대기 중에 미리 열어둔다 (소켓 바인드는 수동적, 송신 0 유지).
+            if self.can_bus is None:
+                try:
+                    import can as _can
+                    self._get_or_open_can_bus(_can)
+                except Exception:
+                    pass
             self.takeover_hold = self._load_takeover_state()
             if self.takeover_hold is None:
                 now = self.now_fn()
@@ -879,16 +910,34 @@ class Stage8TwelveAxisMitControlCore:
             self.can_rx_ignored_count += 1
             return False
 
-        joint = JOINT_BY_CAN_ID.get(int(feedback.motor_id))
-        if joint is None:
-            joint = JOINT_BY_CAN_ID.get(int(message.arbitration_id))
-        if joint is None:
-            self.can_decode_error = f"unknown_feedback_motor_id:{feedback.motor_id}"
+        # 프레임 형상 검증 (0802 march 데뷔 트립 교훈): 진짜 응답은
+        # data[0]==arbitration_id∈1..12. 종전 arbitration_id 폴백은 '명령
+        # 프레임'(data[0]=위치 상위바이트 0x7F~)까지 피드백으로 삼켜 ±수백°
+        # 쓰레기 관절각을 만들었다 (candump 전수조사: 진짜 모터 피드백 54.6만
+        # 프레임 중 쓰레기 0 — 쓰레기 41.5만 전부 폴백 오귀속).
+        mid = int(feedback.motor_id)
+        if mid != int(message.arbitration_id) or mid not in JOINT_BY_CAN_ID:
             self.can_rx_ignored_count += 1
+            self.can_decode_error = (
+                f"frame_shape_reject:arb{int(message.arbitration_id)}:d0_{mid}")
             return False
+        joint = JOINT_BY_CAN_ID[mid]
 
         now = self.now_fn()
-        self.latest_actual_deg_by_joint[joint] = float(feedback.position_deg)
+        # 점프 필터: 직전 피드백이 신선(0.5s 내)한데 한 프레임에 60°+ 점프는
+        # 물리 불가 — 드롭하고 카운트. 10연속이면 재동기 수용 (전원사이클 등).
+        new_pos = float(feedback.position_deg)
+        prev_pos = self.latest_actual_deg_by_joint.get(joint)
+        prev_ts = self.latest_feedback_time_by_joint.get(joint)
+        if (prev_pos is not None and prev_ts is not None
+                and now - prev_ts < 0.5 and abs(new_pos - prev_pos) > 60.0):
+            n = self.feedback_jump_drops.get(joint, 0) + 1
+            self.feedback_jump_drops[joint] = n
+            if n < 10:
+                self.can_rx_ignored_count += 1
+                return False
+        self.feedback_jump_drops[joint] = 0
+        self.latest_actual_deg_by_joint[joint] = new_pos
         self.latest_feedback_by_joint[joint] = feedback
         self.latest_feedback_time_by_joint[joint] = now
         self.latest_feedback_time = now

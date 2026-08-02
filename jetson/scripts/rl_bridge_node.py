@@ -707,6 +707,7 @@ def main():
             self.joint_ts = 0.0
             self.prev_qpos = None
             self.qpos_hold_ticks = [1] * 12
+            self._spike_count = {}   # 관절별 연속 스파이크 카운트 (필터)
             self.imu = None
             self.imu_ts = 0.0
             self.foot = None
@@ -799,6 +800,18 @@ def main():
                 except (ValueError, TypeError):
                     continue   # 피드백 없음(None 등) — 이 관절은 이번 미갱신
                 if age < STATUS_FEEDBACK_FRESH_SEC:
+                    # 스파이크 필터 (0802 march 데뷔 트립 교훈): 한 갱신에 30°+
+                    # 점프는 물리 불가(모터 최대 ~20rad/s×20ms≈23°) — 쓰레기
+                    # 프레임(명령 오귀속 등)이 과속 가드를 오발시키는 것을 차단.
+                    # 3연속 지속 시 진짜 이동으로 보고 수용(재동기).
+                    prev = self.joint_deg.get(j)
+                    if prev is not None and abs(val - prev) > 30.0:
+                        self._spike_count[j] = self._spike_count.get(j, 0) + 1
+                        if self._spike_count[j] < 3:
+                            fresh += 1        # 직전값 유지 — 신선도는 인정
+                            worst_age = max(worst_age, age)
+                            continue
+                    self._spike_count[j] = 0
                     self.joint_deg[j] = val           # 모터 프레임 deg
                     fresh += 1
                     worst_age = max(worst_age, age)
@@ -970,7 +983,11 @@ def main():
                    "qvel_rad_s": [round(v, 4) for v in qvel],
                    "contact": contact2,
                    "foot_n": [round(float(self.foot[0]), 2),
-                              round(float(self.foot[1]), 2)]}
+                              round(float(self.foot[1]), 2)],
+                   # 자세 사후분석용 (0802 첫 march: 줄 걸림 vs 자체 기울어짐
+                   # 구분에 IMU 부재가 병목이었음)
+                   "quat_wxyz": [round(float(v), 5) for v in quat],
+                   "gyro_rad_s": [round(float(v), 4) for v in gyro]}
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
             if not (self.live and self.armed):

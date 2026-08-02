@@ -451,3 +451,31 @@ class Biped12Stage4V2MarchDRv3EnvCfg(Biped12Stage4V2MarchDRv2EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.action_rate_l2.weight = -0.12
+
+
+@configclass
+class Biped12Stage4V2MarchDRv4EnvCfg(Biped12Stage4V2MarchDRv3EnvCfg):
+    """march-DRv4 — 0802 march_v3 실물 데뷔 1차 실측 반영.
+
+    실측 실패 모드 (영상 프레임 + 블랙박스 + 발압력 교차 검증): 첫 스텝에서
+    몸통이 요(yaw)로 비틀리며 앞-왼쪽으로 낙하 (줄은 느슨했음 — 자체 실패).
+    발하중 108N→30N 붕괴는 결과. 학습 공백 3종을 정조준:
+    ① 발-바닥 마찰 랜덤화 — march 가족은 마찰 0.8/0.6 '고정' 학습이라 실물
+       실험실 바닥(미지 마찰)의 요 슬립을 한 번도 경험 못 함. 요 비틀림 직격.
+    ② 푸시 외란에 요 성분 추가 + 간격 단축 — 착지 '쿵' 임팩트(시뮬보다 단단한
+       실바닥)가 만드는 요·병진 교란의 회복 훈련.
+    ③ 초기 자세 기울기 — 실물은 기울기 ~2.8°에서 정책이 켜짐 (시뮬은 항상
+       수직 시작). 첫 틱 분포 밖 문제 제거.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.physics_material.params["static_friction_range"] = (0.3, 1.2)
+        self.events.physics_material.params["dynamic_friction_range"] = (0.25, 1.0)
+        self.events.physics_material.params["restitution_range"] = (0.0, 0.1)
+        self.events.push_robot.interval_range_s = (3.0, 6.0)
+        self.events.push_robot.params["velocity_range"] = {
+            "x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-0.6, 0.6),
+        }
+        self.events.reset_base.params["pose_range"]["roll"] = (-0.07, 0.07)
+        self.events.reset_base.params["pose_range"]["pitch"] = (-0.07, 0.07)

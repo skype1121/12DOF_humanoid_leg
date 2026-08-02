@@ -101,6 +101,7 @@ COMMAND_ARM_ALL = "ARM_ALL"
 COMMAND_DISARM_ALL = "DISARM_ALL"
 COMMAND_SET_BASELINE_ALL = "SET_BASELINE_FROM_CURRENT_ALL"
 COMMAND_SET_JOINT_TARGET = "SET_JOINT_TARGET"
+COMMAND_SET_JOINT_TARGETS = "SET_JOINT_TARGETS"   # 배치판 (지연 수술 0803)
 COMMAND_STOP_ALL = "STOP_ALL"
 COMMAND_CHECK_CAN = "CHECK_CAN"
 COMMAND_RECONNECT_CAN = "RECONNECT_CAN"
@@ -392,6 +393,9 @@ class Stage8TwelveAxisMitControlCore:
 
         if command == COMMAND_SET_JOINT_TARGET:
             return self._set_joint_target(payload)
+
+        if command == COMMAND_SET_JOINT_TARGETS:
+            return self._set_joint_targets_batch(payload)
 
         return self._reject("unsupported_command")
 
@@ -689,30 +693,62 @@ class Stage8TwelveAxisMitControlCore:
             return self._reject("multi_joint_payload_rejected")
 
         joint = str(payload.get("joint", "")).strip()
+        why = self._validate_and_stage_target(joint, payload.get("target_deg"))
+        if why is not None:
+            return self._reject(why)
+        self.accepted = True
+        return self.get_status()
+
+    def _set_joint_targets_batch(self, payload):
+        """배치 타깃 (지연 수술 0803): 브리지가 틱당 12개 메시지 대신 1개.
+
+        종전 12msg/틱 = 600msg/s의 DDS·콜백·GIL 부하가 젯슨 제어 루프 지터
+        (=실측 루프 지연의 소프트웨어 몫)에 기여. 검증은 단건 경로와 완전
+        동일(_validate_and_stage_target 공용). 일부 관절 거부 시 해당 관절만
+        미갱신하고 사유를 모아 보고 — 수용된 관절은 정상 진행 (관절별 독립
+        스트리밍 시맨틱 유지).
+        """
+        if not self.armed:
+            return self._reject("not_armed")
+        targets = payload.get("targets")
+        if not isinstance(targets, dict) or not targets:
+            return self._reject("targets_invalid")
+        rejected = []
+        for joint, deg in targets.items():
+            why = self._validate_and_stage_target(str(joint).strip(), deg)
+            if why is not None:
+                rejected.append(why)
+        if rejected:
+            self.last_reject_reason = "batch_partial:" + ";".join(rejected[:4])
+        self.accepted = len(rejected) < len(targets)
+        return self.get_status()
+
+    def _validate_and_stage_target(self, joint, raw_target):
+        """단건 타깃 검증+스테이징 — 성공 시 None, 실패 시 거부 사유 문자열."""
         if joint not in JOINT_NAMES_12DOF:
-            return self._reject("unknown_joint")
+            return "unknown_joint"
         if joint not in ALLOWED_JOINTS:
-            return self._reject(f"joint_not_allowed:{joint}")
+            return f"joint_not_allowed:{joint}"
         if joint not in self.baseline_deg_by_joint:
             self.baseline_missing_joints = self._baseline_missing_joints()
-            return self._reject(f"baseline_missing:{joint}")
+            return f"baseline_missing:{joint}"
         if REAL_CAN_WRITE_ENABLED and not self._joint_feedback_is_fresh(joint):
-            return self._reject(f"joint_feedback_stale:{joint}")
+            return f"joint_feedback_stale:{joint}"
 
         try:
-            target_deg = float(payload.get("target_deg"))
+            target_deg = float(raw_target)
         except (TypeError, ValueError):
-            return self._reject("target_invalid")
+            return "target_invalid"
         if not math.isfinite(target_deg):
             # 적대검수 0803: NaN은 모든 리밋 비교(<=, abs)를 False로 통과해
             # 클램프·백스톱 전 계층을 무력화 — 파싱 직후 차단.
-            return self._reject("target_not_finite")
+            return "target_not_finite"
 
         config = get_joint_config(joint)
         if abs(target_deg) > float(config["hard_limit_deg"]):
-            return self._reject("hard_limit_exceeded")
+            return "hard_limit_exceeded"
         if abs(target_deg) > float(config["target_limit_deg"]):
-            return self._reject("target_limited")
+            return "target_limited"
 
         # 절대각 검사 (2026-07-26 신설, 2026-07-27 프레임 수정): 종전 상대각 ±180°
         # 검사는 사실상 무제한 — 절대각(baseline+상대) 기준 비대칭 소프트/하드
@@ -741,9 +777,8 @@ class Stage8TwelveAxisMitControlCore:
             clamped = min(max(joint_abs_deg, lim["soft_min"]), lim["soft_max"])
             excess = abs(joint_abs_deg - clamped)
             if excess > 25.0:
-                return self._reject(
-                    f"limit_runaway:{joint}:joint{joint_abs_deg:.1f}deg"
-                    f"(경계+{excess:.1f}deg, motor{absolute_deg:.1f}deg)")
+                return (f"limit_runaway:{joint}:joint{joint_abs_deg:.1f}deg"
+                        f"(경계+{excess:.1f}deg, motor{absolute_deg:.1f}deg)")
             self.soft_clamp_counts[joint] = self.soft_clamp_counts.get(joint, 0) + 1
             absolute_deg = (STAND_ZERO_DEG_BY_JOINT[joint]
                             + DIRECTION_BY_JOINT[joint] * clamped)     # 모터 프레임 역변환
@@ -755,14 +790,12 @@ class Stage8TwelveAxisMitControlCore:
         dev = abs(absolute_deg - STAND_ZERO_DEG_BY_JOINT[joint])
         dev_limit = MOTOR_DEV_BACKSTOP_DEG_BY_JOINT[joint]
         if dev > dev_limit:
-            return self._reject(
-                f"motor_dev_backstop:{joint}:|motor{absolute_deg:.1f}deg-"
-                f"SZ{STAND_ZERO_DEG_BY_JOINT[joint]:.1f}deg|="
-                f"{dev:.1f}deg > {dev_limit:.1f}deg")
+            return (f"motor_dev_backstop:{joint}:|motor{absolute_deg:.1f}deg-"
+                    f"SZ{STAND_ZERO_DEG_BY_JOINT[joint]:.1f}deg|="
+                    f"{dev:.1f}deg > {dev_limit:.1f}deg")
 
         self.desired_relative_deg_by_joint[joint] = target_deg
-        self.accepted = True
-        return self.get_status()
+        return None
 
     def _baseline_is_set(self):
         return all(joint in self.baseline_deg_by_joint for joint in JOINT_NAMES_12DOF)
@@ -1288,6 +1321,7 @@ class Stage8TwelveAxisMitControlNode:
         self.String = string_type
         self.node = rclpy_module.create_node("stage8_12axis_mit_control_node")
         self.core = Stage8TwelveAxisMitControlCore()
+        self._last_cmd_status_pub = 0.0
         self.status_publisher = self.node.create_publisher(string_type, STATUS_TOPIC, 10)
         self.command_subscription = self.node.create_subscription(
             string_type,
@@ -1306,7 +1340,14 @@ class Stage8TwelveAxisMitControlNode:
 
     def _on_command_message(self, message):
         self.core.handle_command_data(message.data)
-        self.publish_status()
+        # 지연 수술 0803: 종전 '명령마다 status 발행'은 라이브 브리지(12명령/틱)
+        # 에서 ~700Hz JSON 직렬화 폭풍이었다 (전체 status ~수 KB — 젯슨 CPU 잠식
+        # = 제어 루프 지터 = 실측 루프 지연의 소프트웨어 몫). 5ms 캡 —
+        # stage8_cmd 검증 왕복은 100Hz 주기 발행이 어차피 10ms 내 보장.
+        now = time.time()
+        if now - self._last_cmd_status_pub >= 0.005:
+            self._last_cmd_status_pub = now
+            self.publish_status()
 
     def _on_joint_states_message(self, message):
         self.core.handle_joint_states_data(message.data)

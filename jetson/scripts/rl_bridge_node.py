@@ -1030,16 +1030,20 @@ def main():
             self._bb_write(dbg)
             if not (self.live and self.armed):
                 return
+            # 지연 수술 0803: 배치 명령 1건/틱 (종전 12건/틱 = 600msg/s의
+            # DDS·콜백 부하가 젯슨 제어 지터에 기여). 검증은 stage8 쪽에서
+            # 단건 경로와 동일하게 관절별 수행.
+            targets = {}
             for j in JOINT_ORDER:
                 base = self.baseline.get(j)
                 if base is None:
                     continue   # baseline 미설정 관절은 노드가 어차피 거부
                 # Stage8 절대각 = baseline + rel = motor_target 그대로 복원
                 # (baseline이 어떤 자세로 캡처됐든 상쇄되어 무관)
-                rel = targets_deg_motor[j] - base
+                targets[j] = targets_deg_motor[j] - base
+            if targets:
                 self.pub_cmd.publish(String(data=json.dumps(
-                    {"command": "SET_JOINT_TARGET", "joint": j,
-                     "target_deg": rel})))
+                    {"command": "SET_JOINT_TARGETS", "targets": targets})))
 
         def _bb_write(self, obj):
             """블랙박스 기록 — 실패(디스크 만충 등)해도 안전동작을 못 막게 격리.

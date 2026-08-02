@@ -785,13 +785,17 @@ def main():
                         self.get_logger().warn(f"walk 명령 vx/vy/wz 파싱 실패 — 무시: {d}")
                         return
                 # 체크포인트 선택은 기동 플래그(--checkpoint)를 존중 (적대리뷰 A4:
-                # 종전 하드코딩은 drv2 등록을 도달불가로 만들어 '배제한 구정책'이
-                # 무언 교체 실행되는 사고 경로였음). march 명령은 march 계열로 매핑.
+                # 종전 하드코딩은 신규 체크포인트를 도달불가로 만들어 '배제한
+                # 구정책'이 무언 교체 실행되는 사고 경로였음 — march_v3에서 재발해
+                # 가족 기반으로 구조화). 이름이 march*면 march 가족, 아니면 walk
+                # 가족. 명령과 가족이 어긋나면 각 가족의 검증된 최신판으로.
+                march_family = {k for k in CHECKPOINTS if k.startswith("march")}
                 if c == "march":
-                    ck = "march_drv2" if args.checkpoint in ("drv2", "march_drv2") \
-                        else "march"
+                    ck = args.checkpoint if args.checkpoint in march_family \
+                        else "march_v3"
                 else:
-                    ck = args.checkpoint if args.checkpoint in ("walk", "drv2") \
+                    ck = args.checkpoint \
+                        if args.checkpoint in (set(CHECKPOINTS) - march_family) \
                         else "drv2"
                 # 라이브 (재)시작 = 가드·미분 상태 전부 리셋 (적대리뷰 A1·A2:
                 # 종전엔 osc_tripped 래치로 재개 시 가드 영구 사망 + prev_qpos

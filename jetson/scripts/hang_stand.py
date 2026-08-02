@@ -190,8 +190,11 @@ def main():
     ap.add_argument("--channel", default="can1")
     a = ap.parse_args()
 
+    # hang_handoff_state.json: 이전 세션의 낡은 핸드오프 잔재가 stage8에
+    # 재소비되는 경로 차단 (최종점검 — ts 게이트 120s의 이중 방어)
     for f in (STOP_FILE, KILL_FILE, HANDOFF_FILE, GAIN_FILE, GROUND_FILE,
-              TRIM_FILE, HIP_TRIM_FILE, KNEE_TRIM_FILE, UNFREEZE_FILE):
+              TRIM_FILE, HIP_TRIM_FILE, KNEE_TRIM_FILE, UNFREEZE_FILE,
+              "/tmp/hang_handoff_state.json"):
         if os.path.exists(f):
             try:
                 os.remove(f)
@@ -461,11 +464,24 @@ def main():
                         handoff_skip_mtime = mt
                     # 운용게인 '완료'(kp=KP_MAX)에서만 인계 — 램프 중 kp21~149
                     # 인계 시 가드 없는 저게인 홀드로 주저앉음 (적대리뷰)
-                    if grounded and kp >= KP_MAX - 1e-6:
+                    # + 최종점검 핸드셰이크: stage8 --wait-takeover 가 살아서
+                    # 대기 중(마커 3s 이내 갱신)일 때만 — 수신자 없는 핸드오프는
+                    # 상태 파일만 남기고 종료 → 모터 자체 타임아웃 릴리즈 사고.
+                    s8_waiting = False
+                    try:
+                        s8_waiting = (time.time() - os.path.getmtime(
+                            "/tmp/stage8_takeover_waiting")) < 3.0
+                    except OSError:
+                        pass
+                    if grounded and kp >= KP_MAX - 1e-6 and s8_waiting:
                         handoff = True
                         break
-                    say("[핸드오프 거부] 접지+운용게인(kp150 도달) 상태에서만 "
-                        "인계 가능 — 공중/램프중 인계 금지 (0802 발진 사고)")
+                    if not s8_waiting:
+                        say("[핸드오프 거부] stage8 선기동 대기 미검출 — 먼저 "
+                            "stage8을 --wait-takeover로 띄운 뒤 다시 시도")
+                    else:
+                        say("[핸드오프 거부] 접지+운용게인(kp150 도달) 상태에서만 "
+                            "인계 가능 — 공중/램프중 인계 금지 (0802 발진 사고)")
             if os.path.exists(STOP_FILE) or SIG_STOP:
                 soft_stop = True
                 if SIG_STOP:

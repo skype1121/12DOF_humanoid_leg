@@ -1,7 +1,8 @@
 """RL 브리지 노드 — 정책 실행기 → Stage8 세트포인트 (실물 이식용, 2026-07-27).
 
 구조 (전부 기검증 조각의 조립):
-  센서 구독 → PolicyRunnerStage4(관측245 조립·비트일치 검증본·리밋 클램프 내장)
+  센서 구독 → PolicyRunnerStage4(관측245 조립·비트일치 검증본·클램프 없음 —
+  0802 발진 수사: 타깃 클램프는 학습 1:1 파괴로 금지, 안전은 stage8 리밋이 담당)
   → 50Hz 틱마다 12관절 목표각 → Stage8 SET_JOINT_TARGET ×12 발행
   (12×50Hz = 600msg/s — 목 벤치 검증 여유 PASS. 노드 측 게이트/슬루/절대각
   리밋 검사 그대로 통과하므로 브리지가 뚫려도 노드가 막는다.)
@@ -384,52 +385,111 @@ FRAME_JOURNAL = "/home/mama/rl_calib/last_pose_journal.json"
 FRAME_MAX_AGE_DEFAULT_S = 3600.0
 
 #: 발진 가드 파라미터 — 2026-08-02 공중 발진 사고("부들부들 떨다 튕김", 사람
-#: 전원컷으로 종료; estop은 ssh 왕복 지연으로 무력) 재발 방지. 보행 리듬
-#: (~1.4Hz = 0.5s당 부호반전 ~1.4회)과 명확히 분리되는 영역만 트리거한다.
-OSC_WINDOW_SEC = 0.5     #: 감시 창
-OSC_REVERSALS = 6        #: 창 내 속도 부호반전 임계 (≈6Hz 이상 진동)
-OSC_P2P_RAD = 0.035      #: 그리고 창 내 위치 진폭 ≥2° — 미세 노이즈 배제
-OSC_VEL_DEADBAND = 0.5   #: rad/s — 이하 속도의 부호는 무시 (양자화·유한차분 노이즈)
+#: 전원컷으로 종료; estop은 ssh 왕복 지연으로 무력) 재발 방지.
+#:
+#: v2 (최종 점검 후 재조정): 구버전(반전6회+2°)은 march_v3 '컴플라이언스'
+#: 시뮬 궤적 재생에서 30초에 85회 오트립 — 실물 보행을 상시 차단할 파라미터
+#: 였다. 데이터 기반 재튜닝: 합성 발진 클래스(주기-2 채터 0.7°/틱~,
+#: 6/8/12/16Hz 사인) 전부 포착 + march_v3 play·compliant 30초 오트립 0 +
+#: 실물 발진 파형 포착을 동시에 만족하는 3중 모드.
+#: 커버리지 경계(문서화): 4Hz 미만 대진폭 요동은 보행 3고조파(1.4Hz×3)와
+#: 겹쳐 가드 범위 밖 — 운용자 estop·줄 인장 영역.
 OSC_VEL_HARD = 12.0      #: rad/s 즉시 트리거 (정상 보행 스윙 3~6 rad/s의 2배+)
+OSC_VEL_DEADBAND = 0.5   #: rad/s — 이하 속도의 부호는 무시 (양자화·유한차분 노이즈)
+#: 모드1 '채터': 인접 틱 속도 교대(양쪽 |v|≥CH_VMIN) ≥8회/0.5s — 주기-2
+#: 포화 발진(2차 사고 클래스, 스텝 0.7°/틱부터)을 0.2s 내 포착.
+OSC_CH_WINDOW = 0.5
+OSC_CH_COUNT = 8
+OSC_CH_VMIN = 0.55       #: rad/s (0.7°/틱 주기-2 = ±0.61 rad/s)
+#: 모드2 '중주파': 속도 부호이벤트 반전(스텝>MF_STEP) ≥9회/0.5s + 진폭≥2.5°
+#: — 8~25Hz 성장형 발진(1차 사고 클래스).
+OSC_MF_WINDOW = 0.5
+OSC_MF_COUNT = 9
+OSC_MF_P2P = math.radians(2.5)
+OSC_MF_STEP = math.radians(0.7)   #: 반전 카운트 최소 스텝 — 보행 지터 배제
+#: 모드3 '저주파 대진폭': 반전 ≥6회/0.6s + 진폭≥5° + 스텝>1.5° — 6Hz대
+#: 대진폭 리밋사이클.
+OSC_LF_WINDOW = 0.6
+OSC_LF_COUNT = 6
+OSC_LF_P2P = math.radians(5.0)
+OSC_LF_STEP = math.radians(1.5)
 
 
 class OscGuard:
-    """관절 발진 감지 (순수 로직, ROS 비의존 — selftest 대상).
+    """관절 발진 감지 v2 — 3중 모드 (순수 로직, ROS 비의존 — selftest 대상).
 
-    피드백 기반: 어느 관절이든 0.5s 창에서 속도 부호반전 ≥6회 그리고 위치
-    진폭 ≥2° 이면 발진으로 판정. |qvel| > 12 rad/s 는 즉시 트리거.
+    피드백 기반: 정책 출력과 무관하게 몸의 발진을 감지한다.
+      과속:  |qvel| > 12 rad/s 즉시.
+      채터:  인접 틱 속도 교대(양쪽 |v|≥0.55) ≥8회/0.5s — 주기-2 포화 발진.
+      중주파: 부호이벤트 반전(스텝>0.7°) ≥9회/0.5s + 진폭≥2.5° — 8~25Hz 성장형.
+      저주파: 반전(스텝>1.5°) ≥6회/0.6s + 진폭≥5° — 6Hz대 대진폭.
+    march_v3 play·compliant 시뮬 30초 재생 오트립 0 검증됨 (2026-08-02).
     update(t, qpos, qvel) → None(정상) 또는 사유 문자열(트리거).
     """
 
     def __init__(self, joint_names):
         self.names = list(joint_names)
+        self.prev_v = {j: 0.0 for j in self.names}
+        self.alt = {j: collections.deque() for j in self.names}
         self.last_sign = {j: 0 for j in self.names}
-        self.revs = {j: collections.deque() for j in self.names}
+        self.rev_mf = {j: collections.deque() for j in self.names}
+        self.rev_lf = {j: collections.deque() for j in self.names}
         self.pos = {j: collections.deque() for j in self.names}
+        self.prev_q = {j: None for j in self.names}
+        self._wmax = max(OSC_CH_WINDOW, OSC_MF_WINDOW, OSC_LF_WINDOW)
 
     def update(self, t, qpos, qvel):
         for i, j in enumerate(self.names):
             v = float(qvel[i])
+            q = float(qpos[i])
             if abs(v) > OSC_VEL_HARD:
                 return f"과속 {j} {v:+.1f} rad/s (한계 {OSC_VEL_HARD})"
+            # 모드1 채터: 인접 틱 속도 교대
+            pv = self.prev_v[j]
+            if abs(v) >= OSC_CH_VMIN and abs(pv) >= OSC_CH_VMIN and v * pv < 0:
+                a = self.alt[j]
+                a.append(t)
+                while a and t - a[0] > OSC_CH_WINDOW:
+                    a.popleft()
+                if len(a) >= OSC_CH_COUNT:
+                    return (f"채터 {j}: {OSC_CH_WINDOW}s 내 인접틱 속도교대 "
+                            f"{len(a)}회 (|v|≥{OSC_CH_VMIN})")
+            self.prev_v[j] = v
+            # 위치 창 (중·저주파 진폭 판정용)
             p = self.pos[j]
-            p.append((t, float(qpos[i])))
-            while p and t - p[0][0] > OSC_WINDOW_SEC:
+            p.append((t, q))
+            while p and t - p[0][0] > self._wmax:
                 p.popleft()
+            step = abs(q - self.prev_q[j]) if self.prev_q[j] is not None else 0.0
+            self.prev_q[j] = q
             s = 0 if abs(v) < OSC_VEL_DEADBAND else (1 if v > 0 else -1)
             if s == 0:
                 continue
             if self.last_sign[j] != 0 and s != self.last_sign[j]:
-                r = self.revs[j]
-                r.append(t)
-                while r and t - r[0] > OSC_WINDOW_SEC:
-                    r.popleft()
-                if len(r) >= OSC_REVERSALS:
-                    vals = [q for _, q in p]
-                    p2p = max(vals) - min(vals)
-                    if p2p >= OSC_P2P_RAD:
-                        return (f"발진 {j}: {OSC_WINDOW_SEC}s 내 반전 {len(r)}회, "
-                                f"진폭 {math.degrees(p2p):.1f}°")
+                # 모드2 중주파
+                if step > OSC_MF_STEP:
+                    r = self.rev_mf[j]
+                    r.append(t)
+                    while r and t - r[0] > OSC_MF_WINDOW:
+                        r.popleft()
+                    if len(r) >= OSC_MF_COUNT:
+                        vals = [x for ts_, x in p if t - ts_ <= OSC_MF_WINDOW]
+                        p2p = max(vals) - min(vals)
+                        if p2p >= OSC_MF_P2P:
+                            return (f"발진 {j}: {OSC_MF_WINDOW}s 내 반전 "
+                                    f"{len(r)}회, 진폭 {math.degrees(p2p):.1f}°")
+                # 모드3 저주파 대진폭
+                if step > OSC_LF_STEP:
+                    r = self.rev_lf[j]
+                    r.append(t)
+                    while r and t - r[0] > OSC_LF_WINDOW:
+                        r.popleft()
+                    if len(r) >= OSC_LF_COUNT:
+                        vals = [x for _, x in p]
+                        p2p = max(vals) - min(vals)
+                        if p2p >= OSC_LF_P2P:
+                            return (f"저주파발진 {j}: {OSC_LF_WINDOW}s 내 반전 "
+                                    f"{len(r)}회, 진폭 {math.degrees(p2p):.1f}°")
             self.last_sign[j] = s
         return None
 
@@ -522,30 +582,42 @@ def _selftest_frame_gate():
 
 
 def _selftest_osc_guard():
-    def run(freq_hz, amp_deg, dur_s):
+    def run_seq(qseq, dur_limit=None):
+        """위치 시퀀스를 브리지와 동일한 유한차분 qvel로 재생."""
         g = OscGuard(["j"])
-        amp = math.radians(amp_deg)
-        w = 2 * math.pi * freq_hz
-        n = int(dur_s / TICK_SEC)
-        for k in range(n):
+        prev = None
+        for k, q in enumerate(qseq):
             t = k * TICK_SEC
-            trig = g.update(t, [amp * math.sin(w * t)],
-                            [amp * w * math.cos(w * t)])
+            v = 0.0 if prev is None else (q - prev) / TICK_SEC
+            prev = q
+            trig = g.update(t, [q], [v])
             if trig:
                 return trig, t
-        return None, dur_s
+        return None, len(qseq) * TICK_SEC
 
-    trig, t = run(8.0, 3.0, 2.0)          # 발진 시나리오 (8Hz, ±3°)
+    def sine(freq_hz, amp_deg, dur_s):
+        amp = math.radians(amp_deg)
+        w = 2 * math.pi * freq_hz
+        return [amp * math.sin(w * k * TICK_SEC)
+                for k in range(int(dur_s / TICK_SEC))]
+
+    # 채터 (주기-2, 0.9°/틱 — 2차 사고 클래스): 0.5s 내 트리거
+    q, step = [0.0], math.radians(0.9)
+    for k in range(1, 100):
+        q.append(q[-1] + (step if k % 2 else -step))
+    trig0, t0 = run_seq(q)
+    assert trig0 and "채터" in trig0 and t0 <= 0.5, (trig0, t0)
+    trig, t = run_seq(sine(8.0, 3.0, 2.0))      # 8Hz±3° (1차 사고 클래스)
     assert trig and "발진" in trig and t <= 1.0, (trig, t)
-    trig2, _ = run(1.4, 20.0, 3.0)        # 정상 보행 리듬 — 미트리거
+    trig2, _ = run_seq(sine(1.4, 20.0, 3.0))    # 정상 보행 리듬 — 미트리거
     assert trig2 is None, trig2
-    trig3, _ = run(12.0, 0.15, 2.0)       # 미세 노이즈 (데드밴드 이하) — 미트리거
+    trig3, _ = run_seq(sine(12.0, 0.15, 2.0))   # 미세 노이즈 — 미트리거
     assert trig3 is None, trig3
-    g = OscGuard(["j"])                    # 과속 즉시 트리거
+    g = OscGuard(["j"])                          # 과속 즉시 트리거
     trig4 = g.update(0.0, [0.0], [15.0])
     assert trig4 and "과속" in trig4, trig4
-    return (f"8Hz±3° {t:.2f}s 내 트리거 / 보행 1.4Hz·노이즈 미트리거 / "
-            f"과속 즉시 — 4케이스 통과")
+    return (f"주기2채터 {t0:.2f}s / 8Hz±3° {t:.2f}s 트리거 / 보행·노이즈 "
+            f"미트리거 / 과속 즉시 — 5케이스 통과")
 
 
 def run_selftest():
@@ -634,6 +706,7 @@ def main():
             self.joint_deg = {}         # {관절: '모터 인코더 프레임' deg} — 변환 전 원본
             self.joint_ts = 0.0
             self.prev_qpos = None
+            self.qpos_hold_ticks = [1] * 12
             self.imu = None
             self.imu_ts = 0.0
             self.foot = None
@@ -824,6 +897,14 @@ def main():
                 if not self.stopped_for_stale:
                     self._stop_all("sensor_stale")
                     self.stopped_for_stale = True
+                    # 최종점검: 종전엔 신선도 복귀 시 정책이 무인 자동재개 —
+                    # 공백 원인(버스 이상 등) 미확인 상태의 재개는 위험.
+                    # 비활성화하고 운용자의 march 재명령(=가드·상태 전체 리셋
+                    # 경로)을 요구한다.
+                    self.core.active = False
+                    self.get_logger().error(
+                        "센서 공백 → STOP_ALL + 정책 비활성. 원인 확인 후 "
+                        "march 재명령으로만 재개")
                 # 공백 복귀 첫 틱의 유한차분 qvel 폭주 방지 (적대리뷰 A2):
                 # 동결된 prev_qpos로 (공백 동안 이동량)/TICK을 계산하면 가드
                 # 오탐 트립 또는 분포 밖 관측이 정책에 유입됨
@@ -839,8 +920,19 @@ def main():
             # 어떤 관절에서도 소비하지 않는다.
             if self.prev_qpos is None:
                 qvel = [0.0] * 12
+                self.qpos_hold_ticks = [1] * 12
             else:
-                qvel = [(a - b) / TICK_SEC for a, b in zip(qpos, self.prev_qpos)]
+                # 최종점검: 라운드로빈 폴링으로 관절값이 수 틱 동안 안 변하다
+                # 한 번에 갱신되면 Δq/TICK이 실제 속도의 N배로 뻥튀기 —
+                # 관절별 '값이 머문 틱 수'로 나눠 보정한다.
+                qvel = []
+                for k, (a, b) in enumerate(zip(qpos, self.prev_qpos)):
+                    if a == b:
+                        self.qpos_hold_ticks[k] += 1
+                        qvel.append(0.0)
+                    else:
+                        qvel.append((a - b) / (TICK_SEC * self.qpos_hold_ticks[k]))
+                        self.qpos_hold_ticks[k] = 1
             self.prev_qpos = qpos
             gyro, quat = self.imu
             contact2 = [1.0 if self.foot[0] > CONTACT_FORCE_THRESHOLD_N else 0.0,

@@ -243,6 +243,13 @@ class Stage8TwelveAxisMitControlCore:
         self.armed = False
         self.baseline_deg_by_joint = {}
         self.baseline_set_time = None
+        self.warnings = []
+        self.errors = []
+        self.last_takeover_event = None   # 인수홀드 수명 이벤트 (명령 처리로 소거 안 됨)
+        #: 스트리밍 이력 래치 — 한 번이라도 홀드/armed 명령 프레임을 보냈으면
+        #: 이후 ENTER 폴링을 영구 금지 (0802 실측: ENTER=홀드 리셋 → 하중 하
+        #: 능동 릴리즈). 이 상태에서 재무장하려면 노드 재기동(=명시 프로토콜).
+        self._ever_streamed = False
         self.takeover_hold = self._load_takeover_state()
         self._takeover_start = None
         self._waiting_takeover = bool(WAIT_TAKEOVER) and self.takeover_hold is None
@@ -257,8 +264,7 @@ class Stage8TwelveAxisMitControlCore:
         self.command_seq = 0
         self.last_command = None
         self.last_reject_reason = None
-        self.warnings = []
-        self.errors = []
+        self.soft_clamp_counts = {}   # 관절별 soft 경계 클램프 누적 (status 노출)
         self.can_bus = None
         self.can_bus_open_attempted = False
         self.can_status = "UNKNOWN"
@@ -324,7 +330,15 @@ class Stage8TwelveAxisMitControlCore:
                     self.now_fn() - self.baseline_set_time > 30.0):
                 return self._reject(
                     "baseline_stale_for_arm:SET_BASELINE_FROM_CURRENT_ALL 먼저")
+            # 최종점검 S6: 부분 베이스라인 ARM 금지 — 빠진 관절은 명령이 조용히
+            # 건너뛰어져 일부만 움직이는 비대칭 발사가 됨. 12/12 전수 요구.
+            if not self._baseline_is_set():
+                return self._reject(
+                    "baseline_incomplete_for_arm:"
+                    + ",".join(self._baseline_missing_joints()))
             self.armed = True
+            if self.takeover_hold is not None:
+                self.last_takeover_event = "armed_handover"
             self.takeover_hold = None   # 인수 홀드 종료 — armed 경로가 이어받음
             # 슬루 기준점을 '현재 실측'으로 초기화 (적대 시뮬 검증: 종전 0 고정은
             # 캡처 후 자세가 변했으면 첫 명령이 베이스라인 자세로 점프 —
@@ -340,7 +354,12 @@ class Stage8TwelveAxisMitControlCore:
         if command == COMMAND_DISARM_ALL:
             self.armed = False
             self.running = False
+            if self.takeover_hold is not None:
+                self.last_takeover_event = "disarm_cancel"
             self.takeover_hold = None   # 운영자 의도 = 릴리즈 경로 (release_all)
+            # 주의: 스트리밍 이력이 있으면 ENTER 폴링은 재개되지 않는다
+            # (_ever_streamed — 폴링=능동 릴리즈). 모터는 마지막 명령을 물고
+            # 있으므로 이후 절차 = stack_down → release_all.
             self.accepted = True
             return self.get_status()
 
@@ -354,10 +373,17 @@ class Stage8TwelveAxisMitControlCore:
             self.accepted = True
             return self.get_status()
 
-        if command == COMMAND_CHECK_CAN:
-            return self._check_can_status()
-
-        if command == COMMAND_RECONNECT_CAN:
+        if command in (COMMAND_CHECK_CAN, COMMAND_RECONNECT_CAN):
+            # 최종점검 S4: CHECK_CAN은 전모터 ENTER 일제사(=홀드 리셋),
+            # RECONNECT_CAN은 ip link down/up(=버스 절단) — 대기/홀드/무장/
+            # 스트리밍 이력 상태에서는 침묵·홀드 계약을 파괴하므로 거부.
+            if (self._waiting_takeover or self.takeover_hold is not None
+                    or self.armed or self._ever_streamed):
+                return self._reject(
+                    f"bus_owner_active:{command} 금지 (대기/홀드/무장 중 — "
+                    "진단은 stack_down 후)")
+            if command == COMMAND_CHECK_CAN:
+                return self._check_can_status()
             return self._reconnect_can()
 
         if command == COMMAND_SET_JOINT_TARGET:
@@ -370,11 +396,17 @@ class Stage8TwelveAxisMitControlCore:
         try:
             with open(TAKEOVER_STATE_FILE, encoding="utf-8") as f:
                 data = json.load(f)
-            os.remove(TAKEOVER_STATE_FILE)
         except (OSError, json.JSONDecodeError):
             return None
+        # 소비 표시는 읽기와 분리 (최종점검 S9): 삭제 실패(권한 등)해도 로드는
+        # 진행하되 흔적을 남긴다 — ts 게이트(120s)가 낡은 재소비를 막는다.
+        try:
+            os.remove(TAKEOVER_STATE_FILE)
+        except OSError:
+            self.last_takeover_event = "state_file_remove_failed"
         try:
             if self.now_fn() - float(data["ts"]) > TAKEOVER_STATE_MAX_AGE_SEC:
+                self.last_takeover_event = "state_file_too_old"
                 return None
             hold = {}
             for mid_s, v in data["motors"].items():
@@ -383,12 +415,29 @@ class Stage8TwelveAxisMitControlCore:
                 kp = min(500.0, max(0.0, float(v["kp"])))
                 kd = min(5.0, max(0.0, float(v["kd"])))
                 if not math.isfinite(deg) or abs(deg) > 180.0:
+                    self.last_takeover_event = f"state_file_deg_invalid:{joint}"
+                    return None
+                # 최종점검 S2: 홀드 각도에도 리밋 표를 적용 — 파손·위조 파일이
+                # 기구 한계 밖 홀드를 첫 틱부터 스트리밍하는 경로 차단.
+                # deg=모터 절대각 → 관절 프레임 변환 후 soft 검사 + 모터 백스톱.
+                joint_deg = DIRECTION_BY_JOINT[joint] * (
+                    deg - STAND_ZERO_DEG_BY_JOINT[joint])
+                if check_absolute_deg(joint, joint_deg) != "ok":
+                    self.last_takeover_event = (
+                        f"state_file_limit:{joint}:joint{joint_deg:.1f}deg")
+                    return None
+                dev = abs(deg - STAND_ZERO_DEG_BY_JOINT[joint])
+                if dev > MOTOR_DEV_BACKSTOP_DEG_BY_JOINT[joint]:
+                    self.last_takeover_event = (
+                        f"state_file_backstop:{joint}:{dev:.1f}deg")
                     return None
                 hold[joint] = (deg, kp, kd)
             if len(hold) != len(JOINT_NAMES_12DOF):
+                self.last_takeover_event = f"state_file_incomplete:{len(hold)}/12"
                 return None
             return hold
         except (KeyError, TypeError, ValueError):
+            self.last_takeover_event = "state_file_parse_error"
             return None
 
     def _takeover_hold_tick(self):
@@ -399,14 +448,47 @@ class Stage8TwelveAxisMitControlCore:
         """
         if not REAL_CAN_WRITE_ENABLED or self.takeover_hold is None:
             return
+        now = self.now_fn()
         if self._takeover_start is None:
-            self._takeover_start = self.now_fn()
-        elif self.now_fn() - self._takeover_start > 300.0:
+            self._takeover_start = now
+        elif now - self._takeover_start > 300.0:
             # ARM 없이 5분 방치 — 좀비 홀드 방지 (모터 전원사이클 후 낡은 명령
             # 재개 위험). 해제 시 모터는 마지막 명령을 물고 있으므로 급변 없음.
             self.takeover_hold = None
+            self.last_takeover_event = "hold_timeout_cancel"
             self._warn("takeover_hold_timeout_cancel")
             return
+        hold_age = now - self._takeover_start
+        # 최종점검 S3: 홀드 중 피드백 가드 — 명령 프레임이 피드백을 겸하므로
+        # 정상 홀드에선 매 틱 갱신된다. 두절(worst age > STALE_DISARM_SEC,
+        # 기동 유예 5s 후 무피드백 포함) = 모터 전원 오프/버스 사망 신호 →
+        # 홀드 중단 (전원 복귀 시 낡은 명령이 요격하는 사고 방지).
+        worst = None
+        mismatch = None
+        for joint in self.takeover_hold:
+            age = self._joint_feedback_age_sec(joint)
+            if age is None:
+                worst = float("inf") if hold_age > 5.0 else worst
+                continue
+            worst = age if worst is None else max(worst, age)
+            if self._joint_feedback_is_fresh(joint):
+                actual = self.latest_actual_deg_by_joint.get(joint)
+                deg = self.takeover_hold[joint][0]
+                if actual is not None and abs(float(actual) - deg) > 20.0:
+                    mismatch = f"{joint}:{float(actual) - deg:+.1f}deg"
+        if worst is not None and worst > STALE_DISARM_SEC:
+            self.takeover_hold = None
+            self.last_takeover_event = "hold_feedback_gap_cancel"
+            self._warn("takeover_hold_feedback_gap_cancel")
+            return
+        # 실측-홀드 괴리 가드: 낡은/불일치 상태 파일이 현재 자세와 20° 이상
+        # 어긋난 홀드를 계속 당기는 경로 차단 (첫 피드백 도착 ~20ms 내 발동).
+        if mismatch is not None:
+            self.takeover_hold = None
+            self.last_takeover_event = f"hold_mismatch_cancel:{mismatch}"
+            self._warn("takeover_hold_mismatch_cancel")
+            return
+        self._ever_streamed = True
         for joint, (deg, kp, kd) in self.takeover_hold.items():
             frame = pack_ak_mit_command(
                 math.radians(deg), v_des_rad_s=V_DES_DEFAULT,
@@ -421,6 +503,14 @@ class Stage8TwelveAxisMitControlCore:
             self.takeover_hold = self._load_takeover_state()
             if self.takeover_hold is None:
                 now = self.now_fn()
+                # 핸드셰이크 마커 — hang_stand 는 이 파일이 3s 이내 갱신일 때만
+                # 핸드오프를 발화한다 (수신자 없는 핸드오프 = 상태 파일만 남고
+                # 모터 자체 타임아웃 릴리즈). 매 틱 touch (~50Hz, tmpfs라 무해).
+                try:
+                    with open("/tmp/stage8_takeover_waiting", "w") as f:
+                        f.write(str(now))
+                except OSError:
+                    pass
                 if self._wait_warn_time is None:
                     self._wait_warn_time = now
                 elif now - self._wait_warn_time > 30.0:
@@ -430,10 +520,12 @@ class Stage8TwelveAxisMitControlCore:
             self._waiting_takeover = False
         self._ensure_readonly_can_bus()
         # ENTER 폴링은 '홀드 중인 모터를 리셋'하므로 (0802 실측) 인수 홀드
-        # 또는 armed 송신 중에는 금지 — 두 경로 모두 명령 프레임이 피드백을 겸함
+        # 또는 armed 송신 중에는 금지 — 두 경로 모두 명령 프레임이 피드백을 겸함.
+        # 최종점검 S1: 스트리밍 이력이 있으면(홀드 해제·DISARM 후 포함) 폴링을
+        # 영구 금지 — 종전엔 홀드 이탈 즉시 폴링 재개 = 하중 하 능동 릴리즈였음.
         if self.takeover_hold is not None:
             self._takeover_hold_tick()
-        elif not self.armed:
+        elif not self.armed and not self._ever_streamed:
             self._request_next_readonly_feedback()
         self._poll_can_feedback()
         if not self.armed or not self._has_any_baseline():
@@ -466,6 +558,8 @@ class Stage8TwelveAxisMitControlCore:
         self.running = True
         moved = False
         self.last_preview_by_joint = {}
+        if REAL_CAN_WRITE_ENABLED:
+            self._ever_streamed = True   # armed 송신 개시 — 이후 ENTER 폴링 영구 금지
 
         if not self._feedback_is_fresh() and not REAL_CAN_WRITE_ENABLED:
             self._warn("feedback_stale_dry_run")
@@ -561,9 +655,29 @@ class Stage8TwelveAxisMitControlCore:
             absolute_deg - STAND_ZERO_DEG_BY_JOINT[joint])             # 관절 프레임
         limit_verdict = check_absolute_deg(joint, joint_abs_deg)
         if limit_verdict != "ok":
-            return self._reject(
-                f"{limit_verdict}:{joint}:joint{joint_abs_deg:.1f}deg"
-                f"(motor{absolute_deg:.1f}deg)")
+            # 최종점검(0802): soft 초과는 거부가 아니라 '경계 클램프'로 전환.
+            # 근거 — march_v3 는 시뮬에서 무릎을 과신전 스톱에 눌러 기대는
+            # 니락 전략을 학습(스탠스 3.4% 틱, 타깃은 스톱 너머 최대 +20°).
+            # 거부하면 무릎 명령의 상당수가 조용히 무시돼 시뮬과 다른 폐루프,
+            # 통과시키면 실물 기구 스톱을 kp150 으로 압박. 시뮬도 스톱에서
+            # 물리적으로 포화됐으므로 soft 경계(스톱 1° 안쪽) 클램프가 시뮬
+            # 물리와 정합. 클램프는 status 카운터로 노출 — 조용한 개입 금지.
+            # 단 경계 초과 25° 이상은 폭주 신호로 보고 거부한다.
+            # (러너의 구 클램프 사고와 다른 클래스: 그건 엔벨로프 한복판 왜곡,
+            # 이건 물리 스톱 위치의 포화 재현. soft 표는 배포 정책 실측
+            # 엔벨로프 ∪ 구 게이트 표로 재생성돼 정상 보행에선 발동하지 않는다.)
+            lim = get_absolute_limits_deg()[joint]
+            clamped = min(max(joint_abs_deg, lim["soft_min"]), lim["soft_max"])
+            excess = abs(joint_abs_deg - clamped)
+            if excess > 25.0:
+                return self._reject(
+                    f"limit_runaway:{joint}:joint{joint_abs_deg:.1f}deg"
+                    f"(경계+{excess:.1f}deg, motor{absolute_deg:.1f}deg)")
+            self.soft_clamp_counts[joint] = self.soft_clamp_counts.get(joint, 0) + 1
+            absolute_deg = (STAND_ZERO_DEG_BY_JOINT[joint]
+                            + DIRECTION_BY_JOINT[joint] * clamped)     # 모터 프레임 역변환
+            target_deg = absolute_deg - self.baseline_deg_by_joint[joint]
+            joint_abs_deg = clamped
 
         # 모터 프레임 백스톱: stand_zero 로부터의 편차가 하드리밋 폭+여유를
         # 넘으면 거부 — DIR 부호와 무관한 2차 방어선 (프레임 근거는 상수 정의부).
@@ -962,6 +1076,20 @@ class Stage8TwelveAxisMitControlCore:
             self.errors.append(reason)
         return self.get_status()
 
+    def _takeover_status(self):
+        """인수홀드 수명 상태 — status 노출 (최종점검 S5·S7: 무음 이탈 금지)."""
+        holding = self.takeover_hold is not None
+        return {
+            "waiting": self._waiting_takeover,
+            "holding": holding,
+            "hold_joint_count": len(self.takeover_hold) if holding else 0,
+            "hold_age_sec": (self.now_fn() - self._takeover_start
+                             if holding and self._takeover_start is not None
+                             else None),
+            "ever_streamed": self._ever_streamed,
+            "last_event": self.last_takeover_event,
+        }
+
     def _warn(self, reason):
         if reason not in self.warnings:
             self.warnings.append(reason)
@@ -1045,6 +1173,9 @@ class Stage8TwelveAxisMitControlCore:
             "command_seq": self.command_seq,
             "last_command": self.last_command,
             "last_reject_reason": self.last_reject_reason,
+            "soft_clamp_counts": dict(self.soft_clamp_counts),
+            "soft_clamp_total": sum(self.soft_clamp_counts.values()),
+            "takeover": self._takeover_status(),
             "warnings": list(self.warnings),
             "errors": list(self.errors),
             "mapping_valid": self.mapping_valid,

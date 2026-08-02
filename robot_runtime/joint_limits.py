@@ -1,7 +1,8 @@
 """12관절 절대각 제한 공용 로더 — config/joint_limits_12dof.json 단일 원본.
 
 표준 라이브러리만 사용 (젯슨 노드·UI·RL 러너·시뮬 컨트롤러 공용).
-semantics: soft = 정상 작동 범위(초과 거부), hard = 기구 보호 한계(무조건 거부).
+semantics(v2 0802): soft = 정상 작동 범위 — stage8이 경계로 클램프 후 실행
+(status 카운터 노출), hard = 기구 보호 한계(무조건 거부).
 """
 from __future__ import annotations
 

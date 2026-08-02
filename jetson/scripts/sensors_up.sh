@@ -5,9 +5,11 @@
 # 종료 정책: PID파일 우선, 없으면 pgrep 후보를 /proc cmdline 정확 대조로 검증
 # 후에만 개별 kill (명시 PID 원칙 — 패턴 일괄 킬 금지).
 # 검증: hz 도구는 데몬 캐시 꼬임으로 거짓 경고 이력 — echo 실데이터로만 판정.
-set -u
+# ⚠ set -u는 ROS 소싱 '뒤'에 — colcon/ament setup은 nounset 비호환이라
+# 앞에 두면 스크립트 전체가 즉사함 (적대리뷰 실증: AMENT_TRACE_SETUP_FILES)
 source /opt/ros/humble/setup.bash
 source ~/humanoid_ws/install/setup.bash
+set -u
 mkdir -p ~/logs ~/run
 
 declare -A NODES=(
@@ -44,7 +46,16 @@ for name in "${!NODES[@]}"; do
     kill_verified "$pid" "$sig"
   done
 done
-sleep 1
+# 종료 대기 (고정 sleep은 미종료 인스턴스와 이중 발행 위험 — 폴링+KILL 승급)
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  alive=0
+  for name in "${!NODES[@]}"; do
+    sig=$(basename "${NODES[$name]##* }")
+    pgrep -f "$sig" > /dev/null 2>&1 && alive=1
+  done
+  [ "$alive" = 0 ] && break
+  sleep 0.5
+done
 
 for name in imu_node pressure; do
   nohup ${NODES[$name]} > ~/logs/"$name".log 2>&1 < /dev/null &

@@ -32,7 +32,7 @@ for sig in "${SIGS[@]}"; do
 done
 [ "$found" = 0 ] && echo "[stack_down] 잔여 스택 없음 — 깨끗함"
 sleep 1
-LEFT=$(ps -C python3 -o pid,args --no-headers 2>/dev/null | grep -E "stage8|rl_bridge|hang_" | head -3)
+LEFT=$(ps -C python3 -o pid,args --no-headers 2>/dev/null | grep -E "stage8_12axis_mit_control_node|rl_bridge_node|hang_stand\.py|hang_leg_swing|wiggle_watch" | head -3)
 if [ -n "$LEFT" ]; then
   echo "[stack_down] ⚠ 잔존:"; echo "$LEFT"
   exit 1

@@ -452,9 +452,17 @@ def frame_check_verdict(path=FRAME_JOURNAL, max_age_s=FRAME_MAX_AGE_DEFAULT_S,
         return f"모터 {missing} 프레임 미검증 — boot_pose_check 12/12 필요"
     now = time.time() if now is None else now
     try:
+        run_ts = float(j.get("ts"))
         ages = {m: now - float(mts[str(m)]) for m in range(1, 13)}
     except (TypeError, ValueError):
-        return "저널 motor_ts 형식 이상 — boot_pose_check 재실행으로 재생성"
+        return "저널 ts/motor_ts 형식 이상 — boot_pose_check 재실행으로 재생성"
+    # 최신 판정에서의 전수 검증 요구 (적대리뷰 A5): 저널은 '✓ 일치' 모터만 병합
+    # 갱신하므로, 최근 판정에서 어긋난 모터는 옛 ts를 유지한 채 신선해 보일 수
+    # 있음. 모든 모터가 '마지막 실행'(j.ts)에서 검증됐을 것을 요구해 차단.
+    stale_run = [m for m in range(1, 13) if float(mts[str(m)]) < run_ts - 1.0]
+    if stale_run:
+        return (f"모터 {stale_run} 가 최신 판정에서 미검증 (직전 실행에서 시프트/"
+                f"무응답 의심) — boot_pose_check 12/12 재통과 필요")
     worst = max(ages, key=lambda m: ages[m])
     if ages[worst] > max_age_s:
         return (f"프레임 검증 만료 — 모터{worst} 마지막 검증 "
@@ -477,22 +485,32 @@ def _selftest_frame_gate():
         return f.name
 
     cases = []
-    p = write({"ts": now, "pos_deg": {}, "motor_ts": fresh})
+    p = write({"ts": now - 60.0, "pos_deg": {}, "motor_ts": fresh})
     cases.append(("신선 12/12 통과",
                   frame_check_verdict(p, 3600.0, now) is None))
     stale = dict(fresh)
     stale["7"] = now - 7200.0
-    p = write({"motor_ts": stale})
+    p = write({"ts": now - 7200.0, "motor_ts": stale})
     v = frame_check_verdict(p, 3600.0, now)
     cases.append(("만료 거부", v is not None and "모터7" in v))
-    p = write({"motor_ts": {k: v for k, v in fresh.items() if k != "11"}})
+    p = write({"ts": now - 60.0,
+               "motor_ts": {k: v for k, v in fresh.items() if k != "11"}})
     v = frame_check_verdict(p, 3600.0, now)
     cases.append(("결측 거부", v is not None and "11" in v))
     v = frame_check_verdict("/nonexistent/journal.json", 3600.0, now)
     cases.append(("저널 없음 거부", v is not None and "없음" in v))
-    p = write({"motor_ts": {**fresh, "3": "abc"}})
+    p = write({"ts": now - 60.0, "motor_ts": {**fresh, "3": "abc"}})
     cases.append(("형식 이상 거부",
                   frame_check_verdict(p, 3600.0, now) is not None))
+    # A5 재현: 최신 판정(ts=now-60)에서 m6만 미검증(옛 ts 유지, 아직 60분 이내)
+    merged = dict(fresh)
+    merged["6"] = now - 1800.0
+    p = write({"ts": now - 60.0, "motor_ts": merged})
+    v = frame_check_verdict(p, 3600.0, now)
+    cases.append(("최신판정 미검증 거부", v is not None and "6" in v and "최신" in v))
+    # ts 자체가 없는 구형 저널 → 형식 이상 거부
+    p = write({"motor_ts": fresh})
+    cases.append(("ts 결측 거부", frame_check_verdict(p, 3600.0, now) is not None))
     bad = [n for n, ok in cases if not ok]
     if bad:
         raise AssertionError(f"프레임 게이트 케이스 실패: {bad}")
@@ -584,6 +602,10 @@ def main():
         if bad:
             print(f"[경고] --force-gains: 게인 불일치 {len(bad)}/12 관절 상태로 "
                   "라이브 진행 — 학습 분포 밖 거동 주의", file=sys.stderr)
+        if not (math.isfinite(args.frame_max_age) and args.frame_max_age > 0):
+            print(f"[거부] --frame-max-age 비정상: {args.frame_max_age}",
+                  file=sys.stderr)
+            return 2
         why = frame_check_verdict(max_age_s=args.frame_max_age)
         if why and not args.force_frame:
             print(f"[거부] --live 기동 불가: 프레임 게이트 — {why}\n"
@@ -735,6 +757,11 @@ def main():
                 d = json.loads(msg.data)
             except json.JSONDecodeError:
                 return
+            if not isinstance(d, dict):
+                # 비-dict 유효 JSON("estop" 등)이 콜백을 죽여 라이브 중 브리지
+                # 사망(STOP_ALL 없이)하는 경로 차단 (적대리뷰 A6)
+                self.get_logger().warn(f"명령이 JSON 객체가 아님 — 무시: {msg.data[:60]}")
+                return
             c = d.get("cmd", "")
             if c == "estop":
                 self._stop_all("estop")
@@ -753,13 +780,27 @@ def main():
                     except (ValueError, TypeError):
                         self.get_logger().warn(f"walk 명령 vx/vy/wz 파싱 실패 — 무시: {d}")
                         return
-                ck = "march" if c == "march" else "walk"
+                # 체크포인트 선택은 기동 플래그(--checkpoint)를 존중 (적대리뷰 A4:
+                # 종전 하드코딩은 drv2 등록을 도달불가로 만들어 '배제한 구정책'이
+                # 무언 교체 실행되는 사고 경로였음). march 명령은 march 계열로 매핑.
+                if c == "march":
+                    ck = "march_drv2" if args.checkpoint in ("drv2", "march_drv2") \
+                        else "march"
+                else:
+                    ck = args.checkpoint if args.checkpoint in ("walk", "drv2") \
+                        else "drv2"
+                # 라이브 (재)시작 = 가드·미분 상태 전부 리셋 (적대리뷰 A1·A2:
+                # 종전엔 osc_tripped 래치로 재개 시 가드 영구 사망 + prev_qpos
+                # 동결로 복귀 첫 틱 qvel 폭주)
+                self.osc = OscGuard(JOINT_ORDER)
+                self.osc_tripped = None
+                self.prev_qpos = None
                 self.core.reset(checkpoint=ck)
                 self.core.cmd = cmd
                 self.core.heading_hold = bool(d.get("heading_hold", True))
                 self.core.active = True
                 self.stopped_for_stale = False
-                self.get_logger().info(f"RL {c} 시작 cmd={self.core.cmd}")
+                self.get_logger().info(f"RL {c} 시작 ckpt={ck} cmd={self.core.cmd}")
 
         # ---- 50Hz 틱 ----
         def _tick(self):
@@ -775,6 +816,10 @@ def main():
                 if not self.stopped_for_stale:
                     self._stop_all("sensor_stale")
                     self.stopped_for_stale = True
+                # 공백 복귀 첫 틱의 유한차분 qvel 폭주 방지 (적대리뷰 A2):
+                # 동결된 prev_qpos로 (공백 동안 이동량)/TICK을 계산하면 가드
+                # 오탐 트립 또는 분포 밖 관측이 정책에 유입됨
+                self.prev_qpos = None
                 return
             self.stopped_for_stale = False
             # 입력 변환: joint_deg(모터 인코더 프레임 deg) → 관절 프레임 rad
@@ -799,10 +844,8 @@ def main():
                 why = self.osc.update(now, qpos, qvel)
                 if why:
                     self.osc_tripped = why
-                    if self.bb:
-                        self.bb.write(json.dumps(
-                            {"timestamp": now, "event": "osc_guard",
-                             "reason": why}) + "\n")
+                    self._bb_write({"timestamp": now, "event": "osc_guard",
+                                    "reason": why})
                     self._stop_all(f"osc_guard: {why}")
                     self.core.active = False
                     self.get_logger().error(
@@ -829,8 +872,7 @@ def main():
                    "foot_n": [round(float(self.foot[0]), 2),
                               round(float(self.foot[1]), 2)]}
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
-            if self.bb:
-                self.bb.write(json.dumps(dbg) + "\n")
+            self._bb_write(dbg)
             if not (self.live and self.armed):
                 return
             for j in JOINT_ORDER:
@@ -844,21 +886,43 @@ def main():
                     {"command": "SET_JOINT_TARGET", "joint": j,
                      "target_deg": rel})))
 
+        def _bb_write(self, obj):
+            """블랙박스 기록 — 실패(디스크 만충 등)해도 안전동작을 못 막게 격리.
+
+            (적대리뷰 A3: 종전엔 write 예외가 STOP_ALL 발행 전에 콜백을 죽여
+            안전동작 유실 + 노드 사망 경로였음)
+            """
+            if not self.bb:
+                return
+            try:
+                self.bb.write(json.dumps(obj) + "\n")
+            except OSError:
+                try:
+                    self.bb.close()
+                except OSError:
+                    pass
+                self.bb = None
+                self.get_logger().error("블랙박스 기록 실패 — 기록 중단 (제어는 계속)")
+
         def _stop_all(self, reason):
             self.get_logger().warning(f"STOP_ALL ({reason})")
-            if self.bb:
-                self.bb.write(json.dumps({"timestamp": time.time(),
-                                          "event": "stop_all",
-                                          "reason": reason}) + "\n")
+            # 안전동작 먼저, 기록은 다음 (적대리뷰 A3: 순서 역전 금지)
             if self.live:
                 self.pub_cmd.publish(String(
                     data=json.dumps({"command": "STOP_ALL"})))
+            self._bb_write({"timestamp": time.time(), "event": "stop_all",
+                            "reason": reason})
 
     rclpy.init()
     node = RlBridgeNode()
     try:
         rclpy.spin(node)
     finally:
+        if getattr(node, "bb", None):
+            try:
+                node.bb.close()
+            except OSError:
+                pass
         node.destroy_node()
         rclpy.shutdown()
     return 0

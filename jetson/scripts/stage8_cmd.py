@@ -69,20 +69,46 @@ def main():
             return 1
         rclpy.spin_once(node, timeout_sec=0.1)
 
+    # 명령 '이전' 상태와 '효과'를 구분: command_seq가 발행 전 값보다 커진
+    # 상태에서만 술어를 판정 (적대리뷰: 이미 12/12인 세션에서 재앵커용 재실행
+    # 시 유실돼도 낡은 상태로 [OK]가 나오던 결함)
+    t0 = time.monotonic()
+    while not latest and time.monotonic() - t0 < 3.0:
+        rclpy.spin_once(node, timeout_sec=0.1)
+    seq0 = int(latest.get("command_seq", -1)) if latest else -1
+
     payload = String(data=json.dumps({"command": COMMANDS[mode]}))
     for attempt in range(1, 4):
         pub.publish(payload)
         deadline = time.monotonic() + 2.0
         while time.monotonic() < deadline:
             rclpy.spin_once(node, timeout_sec=0.1)
+            if not latest:
+                continue
+            if int(latest.get("command_seq", -1)) <= seq0:
+                continue   # 아직 명령 처리 전 스냅샷 — 판정 보류
+            if latest.get("last_reject_reason"):
+                # 명령이 처리됐으나 거부됨 — 낡은 상태가 술어를 만족해도
+                # (예: 재앵커 시 구 베이스라인 12/12) OK로 오판하지 않게 선차단
+                print(f"[거부됨] {COMMANDS[mode]} — reject: "
+                      f"{latest.get('last_reject_reason')}")
+                node.destroy_node()
+                rclpy.shutdown()
+                return 1
             ok, detail = verified(mode, latest)
-            if ok and latest:
-                print(f"[OK] {COMMANDS[mode]} — {detail} (시도 {attempt})")
+            if ok:
+                print(f"[OK] {COMMANDS[mode]} — {detail} (시도 {attempt}, "
+                      f"seq {seq0}→{latest.get('command_seq')})")
                 node.destroy_node()
                 rclpy.shutdown()
                 return 0
-        print(f"[재시도 {attempt}] {COMMANDS[mode]} — 최근 상태: "
-              f"{verified(mode, latest)[1] if latest else '상태 미수신'}")
+            print(f"[거부됨] {COMMANDS[mode]} — {detail} | reject: "
+                  f"{latest.get('last_reject_reason')}")
+            node.destroy_node()
+            rclpy.shutdown()
+            return 1
+        print(f"[재시도 {attempt}] {COMMANDS[mode]} — 상태 seq 미진행 "
+              f"(명령 유실 추정)")
     print(f"[FAIL] {COMMANDS[mode]} 3회 실패 — stage8 로그 확인")
     node.destroy_node()
     rclpy.shutdown()

@@ -5,7 +5,7 @@
    "raw_ads1115":[8], "voltages":[8]}
 출력: /humanoid/foot_force (std_msgs/String, 입력과 동일 레이트):
   {"timestamp", "left_n", "right_n", "left_raw_sum", "right_raw_sum",
-   "calibrated": false}
+   "calibrated": true}
 
 변환: left_n = NEWTON_PER_COUNT × max(0, sum(left 카운트) − LEFT_BIAS_COUNTS),
 우측 동일. "calibrated": true = 실측 보정 완료 (2026-08-02 자립 스탠딩 보정).

@@ -225,7 +225,6 @@ class Stage8TwelveAxisMitControlCore:
         self.armed = False
         self.baseline_deg_by_joint = {}
         self.baseline_set_time = None
-        self.stale_since = None
         self.latest_actual_deg_by_joint = {}
         self.latest_feedback_by_joint = {}
         self.latest_feedback_time_by_joint = {}
@@ -297,6 +296,12 @@ class Stage8TwelveAxisMitControlCore:
         self.executed = False
 
         if command == COMMAND_ARM_ALL:
+            # 재무장 = 신선한 베이스라인 강제 (적대리뷰 B2: 종전엔 DISARM으로
+            # 가드를 피해 살아남은 옛 베이스라인에 ARM만 다시 걸면 그대로 발사)
+            if self.baseline_set_time is None or (
+                    self.now_fn() - self.baseline_set_time > 30.0):
+                return self._reject(
+                    "baseline_stale_for_arm:SET_BASELINE_FROM_CURRENT_ALL 먼저")
             self.armed = True
             self.accepted = True
             return self.get_status()
@@ -336,22 +341,29 @@ class Stage8TwelveAxisMitControlCore:
         if not self.armed or not self._has_any_baseline():
             return self.get_status()
 
-        if REAL_CAN_WRITE_ENABLED and not self._feedback_is_fresh():
-            self.running = False
-            # 피드백 공백 무장해제 가드 — 장기 두절(모터 전원 오프 등) 후
-            # 복귀 시 낡은 베이스라인으로 명령이 나가는 것을 원천 차단
-            now = self.now_fn()
-            if self.stale_since is None:
-                self.stale_since = now
-            elif now - self.stale_since > STALE_DISARM_SEC:
+        # 피드백 공백 무장해제 가드 — 장기 두절(모터 전원 오프·분기 사망) 후
+        # 복귀 시 낡은(프레임 시프트 가능) 베이스라인으로 명령이 나가는 것을
+        # 원천 차단. 판정은 '관절별 최악 나이' 기준 (적대리뷰 B1: 전역 신선도는
+        # 모터 1개만 살아 있어도 갱신되어 11개 두절을 영영 못 잡음).
+        if REAL_CAN_WRITE_ENABLED:
+            worst_age = None
+            for joint in self.baseline_deg_by_joint:
+                age = self._joint_feedback_age_sec(joint)
+                if age is None:
+                    worst_age = float("inf")
+                    break
+                worst_age = age if worst_age is None else max(worst_age, age)
+            if worst_age is not None and worst_age > STALE_DISARM_SEC:
                 self.armed = False
+                self.running = False
                 self.baseline_deg_by_joint = {}
                 self.baseline_set_time = None
-                self.stale_since = None
                 self._warn("feedback_gap_auto_disarm")
                 return self.get_status()
+
+        if REAL_CAN_WRITE_ENABLED and not self._feedback_is_fresh():
+            self.running = False
             return self._reject("feedback_stale_real_blocked")
-        self.stale_since = None
 
         self.running = True
         moved = False

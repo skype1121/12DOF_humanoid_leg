@@ -25,6 +25,7 @@ import argparse
 import json
 import math
 import os
+import signal
 import statistics
 import sys
 import time
@@ -51,7 +52,11 @@ AMP_RAMP_S = 5.0
 AMP_DEFAULT, AMP_MIN, AMP_MAX = 10.0, 0.0, 18.0
 FREQ_DEFAULT, FREQ_MIN, FREQ_MAX = 0.5, 0.2, 0.8
 KNEE_RATIO = 1.2
-DEV_ABORT_DEG = 20.0
+#: 이탈 가드 — 고정 20°는 힙 최대진폭 18°보다 커서 걸림을 구조적으로 못 잡았음
+#: (적대리뷰) → 진폭 연동: max(5°, 0.7×현재진폭). 걸림(오차≈진폭)은 잡고
+#: 정상 추종지연(수 °)은 통과
+DEV_ABORT_BASE_DEG = 5.0
+DEV_ABORT_AMP_RATIO = 0.7
 FB_TIMEOUT_S = 0.5
 FAULT_ABORT_N = 2
 TICK = 0.02
@@ -68,6 +73,13 @@ def say(*a, **k):
         print(*a, **k)
     except OSError:
         pass
+
+
+SIG = []
+
+
+def on_signal(signum, frame):
+    SIG.append(signum)
 
 
 def read_param(path, cur, lo, hi):
@@ -127,6 +139,10 @@ def main():
     a = ap.parse_args()
     if a.selftest:
         return selftest()
+    # SSH 단절(SIGHUP)·Ctrl-C에도 소프트 경로 보장 — 무처리 시 프로세스 즉사로
+    # finally 미실행 → 모터가 스윙 자세를 kp30으로 문 채 방치 (적대리뷰)
+    for s_ in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(s_, on_signal)
 
     for f in (STOP_FILE, KILL_FILE, AMP_FILE, FREQ_FILE):
         if os.path.exists(f):
@@ -286,8 +302,10 @@ def main():
                 except Exception:
                     pass
 
+            dev_limit = max(DEV_ABORT_BASE_DEG,
+                            DEV_ABORT_AMP_RATIO * amp_cur * KNEE_RATIO)
             for m in IDS:
-                if abs(pos[m] - cmd_now[m]) > DEV_ABORT_DEG:
+                if abs(pos[m] - cmd_now[m]) > dev_limit:
                     abort = f"모터{m} 이탈 {pos[m] - cmd_now[m]:+.1f}°"
                     break
                 if now - seen[m] > FB_TIMEOUT_S:
@@ -295,9 +313,15 @@ def main():
                     break
             if any(c >= FAULT_ABORT_N for c in fault_cnt.values()):
                 abort = "모터 폴트 2회"
-            if abort or os.path.exists(KILL_FILE):
-                abort = abort or "비상 정지(kill)"
+            if abort or os.path.exists(KILL_FILE) or len(SIG) >= 2:
+                abort = abort or "비상 정지(kill/시그널 2회)"
                 break
+            if SIG and not soft:
+                if not swinging:
+                    say(f"[legswing] 시그널 {SIG[0]} (에어램프 중) — 소프트 릴리즈")
+                    break
+                soft = True
+                say(f"[legswing] 시그널 {SIG[0]} — 진폭 램프다운 후 소프트 릴리즈")
             if os.path.exists(STOP_FILE) and not soft:
                 try:
                     os.remove(STOP_FILE)

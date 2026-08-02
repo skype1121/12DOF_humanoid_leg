@@ -19,7 +19,17 @@
 set -e
 mkdir -p ~/logs
 LOG=~/logs/takeover_$(date +%Y%m%d_%H%M%S).candump
-candump -L can1 > "$LOG" 2>/dev/null &
-echo $! > /tmp/candump.pid
-echo "[takeover_capture] 녹화 시작: $LOG"
+if [ -f /tmp/candump.pid ] && kill -0 "$(cat /tmp/candump.pid)" 2>/dev/null; then
+  echo "[takeover_capture] 이미 녹화 중 (PID $(cat /tmp/candump.pid)) — 먼저 종료하세요"
+  exit 1
+fi
+candump -L can1 > "$LOG" 2> "$LOG.err" &
+CPID=$!
+echo $CPID > /tmp/candump.pid
+sleep 0.5
+if ! kill -0 $CPID 2>/dev/null; then
+  echo "[takeover_capture] FAIL — candump 즉사 (can1 상태 확인): $(head -1 "$LOG.err" 2>/dev/null)"
+  exit 1
+fi
+echo "[takeover_capture] 녹화 시작: $LOG (PID $CPID)"
 echo "[takeover_capture] 종료: kill \$(cat /tmp/candump.pid)"

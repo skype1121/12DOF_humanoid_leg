@@ -268,6 +268,8 @@ def main():
         gain_t0 = None
         gain_skip_mtime = None      # 삭제 불가한 거부된 gain 파일 mtime (무시 목록)
         unfreeze_skip_mtime = None  # 삭제 불가한 unfreeze 파일 mtime (1회만 적용)
+        handoff_skip_mtime = None   # 삭제 불가한 handoff 파일 mtime (재발화 금지)
+        gain_done_recaptured = False  # 게인램프 완료 시 트림 베이스라인 1회 재캡처
         trim = {ch: {"req": 0.0, "cur": 0.0, "frozen": None, "fdir": 1,
                      "base": None,
                      "stall": {m: 0 for m in TRIM_CH[ch]["gain"]}}
@@ -359,6 +361,16 @@ def main():
                 g = min(1.0, (now - gain_t0) / GAIN_RAMP_S)
                 kp = KP_AIR + g * (KP_MAX - KP_AIR)
                 kd = KD_AIR + g * (KD_MAX - KD_AIR)
+                if g >= 1.0 and not gain_done_recaptured:
+                    # 게인램프 완료 시 활성 트림 채널 베이스라인 재캡처 —
+                    # kp20에서 잡은 베이스라인 오차가 kp150 수렴으로 줄어들며
+                    # 증분 오탐 동결을 일으키는 것 방지 (적대리뷰)
+                    gain_done_recaptured = True
+                    for ch, t in trim.items():
+                        if t["base"] is not None:
+                            t["base"] = {m: pos[m] - cmd_of(m, frac)
+                                         for m in TRIM_CH[ch]["gain"]}
+                            t["stall"] = {m: 0 for m in TRIM_CH[ch]["gain"]}
 
             if frac >= 1.0:
                 step = TRIM_RATE_DEG_S * dt
@@ -437,14 +449,23 @@ def main():
                 break
             if os.path.exists(HANDOFF_FILE):
                 try:
-                    os.remove(HANDOFF_FILE)
+                    mt = os.path.getmtime(HANDOFF_FILE)
                 except OSError:
-                    pass
-                if grounded and operational:
-                    handoff = True
-                    break
-                say("[핸드오프 거부] 접지+운용게인 상태에서만 인계 가능 — "
-                    "공중 정책 시작은 금지 (0802 발진 사고)")
+                    mt = None
+                if handoff_skip_mtime is None or mt != handoff_skip_mtime:
+                    try:
+                        os.remove(HANDOFF_FILE)
+                    except OSError:
+                        # 삭제 불가(sudo touch 등) — 같은 mtime은 재발화 금지
+                        # (적대리뷰: 묵은 트리거가 조건 성립 순간 무단 인계)
+                        handoff_skip_mtime = mt
+                    # 운용게인 '완료'(kp=KP_MAX)에서만 인계 — 램프 중 kp21~149
+                    # 인계 시 가드 없는 저게인 홀드로 주저앉음 (적대리뷰)
+                    if grounded and kp >= KP_MAX - 1e-6:
+                        handoff = True
+                        break
+                    say("[핸드오프 거부] 접지+운용게인(kp150 도달) 상태에서만 "
+                        "인계 가능 — 공중/램프중 인계 금지 (0802 발진 사고)")
             if os.path.exists(STOP_FILE) or SIG_STOP:
                 soft_stop = True
                 if SIG_STOP:
@@ -472,7 +493,28 @@ def main():
                 "→ ARM_ALL → 정책. 지연·실패 시 회수 = 줄 인장 후 release_all.py")
             return 3
         if abort:
-            say(f"[ABORT] {abort} — 즉시 릴리즈 (줄이 받습니다)")
+            if grounded and not os.path.exists(KILL_FILE):
+                # 착지(줄 느슨) 상태의 가드 abort는 즉시 무토크가 오히려 위험
+                # (12kg 붕괴→자유낙하 회생→SMPS 트립, 적대리뷰) — 명령 동결 +
+                # 2s 게인 램프다운을 최선노력으로 시도 (버스 사망이면 send가
+                # 조용히 실패해 사실상 즉시 릴리즈와 동일)
+                say(f"[ABORT] {abort} — 접지 상태: 소프트 램프다운 시도 후 릴리즈")
+                frozen = {m: cmd_of(m, frac) for m in IDS}
+                g0 = time.monotonic()
+                while time.monotonic() - g0 < 2.0:
+                    if os.path.exists(KILL_FILE) or len(SIG_STOP) >= 2:
+                        break
+                    g = 1.0 - (time.monotonic() - g0) / 2.0
+                    for m in IDS:
+                        try:
+                            tx(bus, m, pack_ak_mit_command(
+                                math.radians(frozen[m]), 0.0,
+                                max(2.0, kp * g), max(0.3, kd * g), 0.0))
+                        except Exception:
+                            pass
+                    time.sleep(TICK)
+            else:
+                say(f"[ABORT] {abort} — 즉시 릴리즈 (줄이 받습니다)")
             return 2
         if soft_stop:
             # 명령 동결 + 게인만 램프다운: 위치오차 성분 토크가 스텝 소실 없이

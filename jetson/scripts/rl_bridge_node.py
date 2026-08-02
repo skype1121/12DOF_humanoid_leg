@@ -108,6 +108,10 @@ CHECKPOINTS = {
     # walk가 우위(0.5m/s: 2% vs 28%) — 실물 강성 실측 후 v3에서 회수 예정.
     "drv2": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-08-02_04-31-34/exported"),
+    # march-DRv2 (0802): 컴플라이언스 낙상 4.7% vs 구 march 46.9%, 표준 0% —
+    # 실물 제자리걸음 배포 1순위 (구 march와 동일 주의: 명령 0 = 정지 아닌 스텝)
+    "march_drv2": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-08-02_12-22-59/exported"),
 }
 
 # ---------------------------------------------------------------------------

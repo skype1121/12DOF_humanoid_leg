@@ -685,3 +685,23 @@ class Biped12Stage4V2StandV5EnvCfg(Biped12Stage4V2StandEnvCfg):
         # ⑤ 발진 벌점 + 인수 자세 커버
         self.rewards.action_rate_l2.weight = -0.20
         self.events.reset_robot_joints.params["position_range"] = (-0.1, 0.1)
+
+
+@configclass
+class Biped12Stage4V2StandV6EnvCfg(Biped12Stage4V2StandV5EnvCfg):
+    """stand_v6 — 4차 실기(0803 밤) 판정 반영: 전방 과보상 편향 교정.
+
+    실기 실측: stand_v5는 하중 자립 90%(발력 106N/117.7N) 달성했으나 상시
+    '앞으로 밀기' 편향 — v3의 후방 밀림이 전방으로 반전 = payload 학습 대역
+    (+1.0~2.0kg, CoM x −0.10~−0.02)이 실효 뒤쏠림보다 과대해 과보상을 학습.
+    이진 탐색 조임: payload 질량·CoM 대역을 실측 중심으로 절반 축소.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.add_base_mass.params["mass_distribution_params"] = (1.2, 1.6)
+        self.events.base_com.params["com_range"] = {
+            "x": (-0.08, -0.03),
+            "y": (-0.02, 0.02),
+            "z": (0.05, 0.12),
+        }

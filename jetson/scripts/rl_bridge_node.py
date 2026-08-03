@@ -435,6 +435,19 @@ def blend_alpha(elapsed_s, dur_s=BLEND_S):
     a = min(1.0, max(0.0, elapsed_s / dur_s))
     return a * a * (3.0 - 2.0 * a)
 
+
+#: stand 계열 타깃 저역필터 (0803 발진 분석: 지연 80~100ms 루프에서 5~9Hz
+#: 정책 주도 리밋사이클 — 발진 대역 루프게인 컷. 서기 보정은 <2Hz라 손실 미미.
+#: EMA 1차: beta=0.27 ≈ 차단 2.5Hz@50Hz. march/walk에는 미적용 (보행 리듬 보존).
+STAND_LPF_BETA = 0.27
+
+
+def lpf_step(state, x, beta=STAND_LPF_BETA):
+    """EMA 1차 저역필터 한 스텝 — state None이면 x로 초기화 (점프 없음)."""
+    if state is None:
+        return list(x)
+    return [s + beta * (v - s) for s, v in zip(state, x)]
+
 #: 모드1 '채터': 인접 틱 속도 교대(양쪽 |v|≥CH_VMIN) ≥8회/0.5s — 주기-2
 #: 포화 발진(2차 사고 클래스, 스텝 0.7°/틱부터)을 0.2s 내 포착.
 OSC_CH_WINDOW = 0.5
@@ -620,6 +633,34 @@ def _selftest_frame_gate():
     return f"판정 케이스 {len(cases)}/{len(cases)} 통과"
 
 
+def _selftest_stand_lpf():
+    import cmath
+    # 초기화 = 무점프
+    s = lpf_step(None, [1.0] * 12)
+    assert s == [1.0] * 12
+    # 주파수 응답: 5Hz 강감쇠 / 0.5Hz 근통과 (50Hz 샘플링, 정착 후 진폭 측정)
+    def gain(freq):
+        st = None
+        out = []
+        for k in range(400):
+            t = k / 50.0
+            x = math.sin(2 * math.pi * freq * t)
+            st = lpf_step(st, [x])
+            out.append(st[0])
+        tail = out[200:]
+        return max(abs(v) for v in tail)
+    g5, g05 = gain(5.0), gain(0.5)
+    assert g5 < 0.5, g5          # 발진 대역 절반 이하
+    assert g05 > 0.9, g05        # 균형 보정 대역 보존
+    # 수렴: 스텝 입력 1.0 → 20틱 후 0.95 이상
+    st = lpf_step(None, [0.0])
+    for _ in range(20):
+        st = lpf_step(st, [1.0])
+    assert st[0] > 0.95, st[0]
+    return (f"EMA beta={STAND_LPF_BETA}: 5Hz 이득 {g5:.2f}<0.5 / "
+            f"0.5Hz {g05:.2f}>0.9 / 무점프 초기화·수렴 OK")
+
+
 def _selftest_blend():
     a0, a_mid, a1 = blend_alpha(0.0), blend_alpha(BLEND_S / 2), blend_alpha(BLEND_S)
     assert a0 == 0.0 and a1 == 1.0, (a0, a1)
@@ -682,6 +723,7 @@ def run_selftest():
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 정책 500틱."""
     tests = [("하드웨어맵", _selftest_hwmap),
              ("온셋 블렌딩", _selftest_blend),
+             ("stand LPF", _selftest_stand_lpf),
              ("왕복 항등", _selftest_roundtrip),
              ("수치 앵커", _selftest_anchors),
              ("게인 정책", _selftest_gains),
@@ -781,6 +823,7 @@ def main():
             self.blend_from = None
             self.nocontact_t0 = None
             self.stage8_cmd_rel = {}
+            self.tgt_filt = None
             # 블랙박스: live면 무조건 ~/logs 에 틱 단위 jsonl 기록 (0802 사고 때
             # /tmp 로그가 재부팅으로 소실 — 사후분석 불가 재발 방지)
             self.bb = None
@@ -980,9 +1023,16 @@ def main():
                 self.blend_t0 = None
                 self.blend_from = None
                 self.nocontact_t0 = None
+                self.tgt_filt = None
                 self.core.reset(checkpoint=ck)
                 self.core.cmd = cmd
-                self.core.heading_hold = bool(d.get("heading_hold", True))
+                # stand 계열은 heading_hold 강제 OFF (0803 발진 분석: stand_v3
+                # 학습 명령은 전 에피소드 (0,0,0) — HeadingHold의 wz≠0 주입은
+                # 학습에 없던 입력 채널이자 요 요동과 상관된 추가 피드백 루프)
+                if ck in stand_family:
+                    self.core.heading_hold = False
+                else:
+                    self.core.heading_hold = bool(d.get("heading_hold", True))
                 self.core.active = True
                 self.stopped_for_stale = False
                 self.get_logger().info(f"RL {c} 시작 ckpt={ck} cmd={self.core.cmd}")
@@ -1087,6 +1137,9 @@ def main():
                         f"발진 가드 트리거 — {why}. 줄 재인장 후 release_all 실행!")
                     return
             targets_rad = self.core.tick(gyro, quat, qpos, qvel, contact2)
+            if self.core.ckpt_name.startswith("stand"):
+                self.tgt_filt = lpf_step(self.tgt_filt, targets_rad)
+                targets_rad = self.tgt_filt
             # 출력 변환: 관절 프레임 rad → 모터 인코더 프레임 deg
             #   motor_target_deg = SZ + DIR × degrees(policy_target_rad)
             targets_deg_joint = {}   # URDF 관절 프레임 (진단 표기용)

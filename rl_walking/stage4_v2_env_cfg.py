@@ -636,3 +636,52 @@ class Biped12Stage4V2StandDRv6EnvCfg(Biped12Stage4V2StandEnvCfg):
         self.observations.policy.joint_vel.params = {"zero_prob": 0.5}
         # ⑤ 리셋 자세 분포 확대: 인수 불일치 커버 (±0.08 → ±0.2 rad ≈ ±11.5°)
         self.events.reset_robot_joints.params["position_range"] = (-0.1, 0.1)
+
+
+@configclass
+class Biped12Stage4V2StandV5EnvCfg(Biped12Stage4V2StandEnvCfg):
+    """stand_v5 — 0803 3차 실기(5초 자립 후 뒤 넘어짐→창발 보호스텝 104초) 반영.
+
+    실기 판정: 발진(5~9Hz)은 브리지 완화 5종으로 정복 — 남은 병목은 질량 기하
+    (실측 CoM 발목 뒤 1~4cm, 미모델 전장 1.51kg 뒤·위)와 스텝 금지 보상.
+    설계 5지렛대:
+    ① 몸의 진실: 전장 payload를 실측 대역으로 명시 (mass +1.0~2.0kg,
+       base CoM x −0.10~−0.02(뒤 확정)·z +0.05~0.15(위)) — "혹시"가 아니라
+       "확실히 뒤로 쏠린 몸"을 전제로 발목 전략·전경사 자세를 학습.
+    ② 스텝 회복 합법화: 3차 실기의 창발 보호스텝이 생존 전략이었음 —
+       양발 접촉 보상 절반, 앵커 완화(위기 스텝 허용, 복귀는 유지).
+    ③ 관측 현실화 저용량: DRv6 베이크 1~3 폭발 부검 — 고용량 관측 부식이
+       난동→물리폭발 유발. 계단 0.17°·발목 디더 0.46°·qvel 드롭 25%로 감량
+       (실물 분포 방향은 유지, 워밍스타트가 적응 가능한 선).
+    ④ 지연 하한 실측 정합: 3~6틱 (상단은 DRv5 검증 대역 유지).
+    ⑤ 발진 벌점 강화: action_rate −0.12 → −0.20 (지연 루프 감쇠를 액션
+       형성으로 확보 — qvel 관측은 실물에서 못 믿음이 실측됨).
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        # ① 몸의 진실 — 전장 payload 실측 대역
+        self.events.add_base_mass.params["mass_distribution_params"] = (1.0, 2.0)
+        self.events.base_com.params["com_range"] = {
+            "x": (-0.10, -0.02),
+            "y": (-0.02, 0.02),
+            "z": (0.05, 0.15),
+        }
+        # ② 스텝 회복 합법화
+        self.rewards.gait_phase.weight *= 0.5
+        self.rewards.march_anchor.weight = -1.0
+        self.rewards.march_anchor.params["dead_zone"] = 0.3
+        # ③ 관측 현실화 (저용량)
+        self.observations.policy.joint_pos.func = \
+            mdp_stage4.joint_pos_rel_staircase
+        self.observations.policy.joint_pos.params = {
+            "quant_step_rad": 0.003, "ankle_dither_rad": 0.008}
+        self.observations.policy.joint_vel.func = \
+            mdp_stage4.joint_vel_rel_dropout
+        self.observations.policy.joint_vel.params = {"zero_prob": 0.25}
+        # ④ 지연 실측 정합 (하한만 상향 — 상단은 검증 대역)
+        self.actions.joint_pos.min_delay_steps = 3
+        self.actions.joint_pos.max_delay_steps = 6
+        # ⑤ 발진 벌점 + 인수 자세 커버
+        self.rewards.action_rate_l2.weight = -0.20
+        self.events.reset_robot_joints.params["position_range"] = (-0.1, 0.1)

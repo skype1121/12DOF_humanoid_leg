@@ -824,6 +824,8 @@ def main():
             self.nocontact_t0 = None
             self.stage8_cmd_rel = {}
             self.tgt_filt = None
+            self.osc_tgt = OscGuard(JOINT_ORDER)
+            self.prev_tgt = None
             # 블랙박스: live면 무조건 ~/logs 에 틱 단위 jsonl 기록 (0802 사고 때
             # /tmp 로그가 재부팅으로 소실 — 사후분석 불가 재발 방지)
             self.bb = None
@@ -1024,6 +1026,8 @@ def main():
                 self.blend_from = None
                 self.nocontact_t0 = None
                 self.tgt_filt = None
+                self.osc_tgt = OscGuard(JOINT_ORDER)
+                self.prev_tgt = None
                 self.core.reset(checkpoint=ck)
                 self.core.cmd = cmd
                 # stand 계열은 heading_hold 강제 OFF (0803 발진 분석: stand_v3
@@ -1140,6 +1144,27 @@ def main():
             if self.core.ckpt_name.startswith("stand"):
                 self.tgt_filt = lpf_step(self.tgt_filt, targets_rad)
                 targets_rad = self.tgt_filt
+            # 타깃 측 발진 가드 (0803 분석: 두 발진 모두 타깃이 몸을 80~100ms
+            # 선행 — 정책 출력 감시가 절반 진폭·0.3~1.2s 조기 컷. 러너 슬루
+            # 4°/틱=3.5rad/s 상한이라 정상 타깃은 과속 트립 불가)
+            if self.live and self.osc_tripped is None:
+                tvel = ([0.0] * 12 if self.prev_tgt is None else
+                        [(x - p) / TICK_SEC
+                         for x, p in zip(targets_rad, self.prev_tgt)])
+                self.prev_tgt = list(targets_rad)
+                why_t = self.osc_tgt.update(now, targets_rad, tvel)
+                if why_t:
+                    self.osc_tripped = why_t
+                    self._bb_write({"timestamp": now, "event": "osc_guard_tgt",
+                                    "reason": why_t})
+                    self._stop_all(f"osc_guard_tgt: {why_t}")
+                    self.core.active = False
+                    self.get_logger().error(
+                        f"타깃 발진 가드 — 정책 출력 발진 {why_t}. "
+                        "줄 재인장 후 release_all!")
+                    return
+            else:
+                self.prev_tgt = list(targets_rad)
             # 출력 변환: 관절 프레임 rad → 모터 인코더 프레임 deg
             #   motor_target_deg = SZ + DIR × degrees(policy_target_rad)
             targets_deg_joint = {}   # URDF 관절 프레임 (진단 표기용)

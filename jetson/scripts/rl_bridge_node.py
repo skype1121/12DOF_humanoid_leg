@@ -136,13 +136,18 @@ CHECKPOINTS = {
     # 낙상 동률 4.7%, 위치 유지 +0.06m vs v3 -0.30m 뒤밀림. 실물 4차 1순위.
     "stand_v5": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-08-03_18-44-48/exported"),
+    # stand_v6 (0804 인양본 55900: payload 대역 실측 중심 절반 축소 — 4차 실기
+    # 전방 과보상 편향 교정): 낙상 1.6%(역대 최저)·직립 3.71°·양발 97.4%·토크
+    # 1.72Nm. 베이크 후반 폭발 전염으로 최종본 대신 붕괴 전 최고점 인양.
+    "stand_v6": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-08-03_21-33-24/exported"),
 }
 
 #: 체크포인트별 게이트 클록 주파수 [Hz] — 학습 클록과 반드시 일치 (불일치 =
 #: 위상 어긋난 관측 → 보행 파괴). 미등록 = 1.4 (기존 가족 전체의 계약).
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
-CKPT_GAIT_FREQ = {"march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1}
+CKPT_GAIT_FREQ = {"march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 
 # ---------------------------------------------------------------------------
@@ -1014,7 +1019,7 @@ def main():
                     # 낙상 3.1%·가드재생 0트립·양발접촉 98.3%). 검증 사다리의
                     # 1단: march 전에 stand 제로샷 확인.
                     ck = args.checkpoint if args.checkpoint in stand_family \
-                        else "stand_v5"
+                        else "stand_v6"
                 elif c == "march":
                     ck = args.checkpoint if args.checkpoint in march_family \
                         else "march_v5b"

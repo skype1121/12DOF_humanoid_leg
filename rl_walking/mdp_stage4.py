@@ -225,3 +225,63 @@ def feet_impact_force(
     fz = sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2]  # (N, 발) 수직
     excess = (fz - max_force_n).clamp(min=0.0)
     return excess.sum(dim=1).clamp_max(cap)
+
+
+# ---------------------------------------------------------------------------
+# 실물 관측 현실화 (DRv6, 2026-08-03 stand_v3 발진 2건 블랙박스·버스 전수 분석)
+# ---------------------------------------------------------------------------
+
+_ANKLE_F_IDS_CACHE: dict = {}
+
+
+def _ankle_f_ids(env, asset_name: str):
+    """asset 관절 배열에서 ankle_f 인덱스 (env 인스턴스별 1회 계산)."""
+    key = (id(env), asset_name)
+    if key not in _ANKLE_F_IDS_CACHE:
+        names = env.scene[asset_name].joint_names
+        _ANKLE_F_IDS_CACHE[key] = [
+            i for i, n in enumerate(names) if "ankle_f" in n]
+    return _ANKLE_F_IDS_CACHE[key]
+
+
+def joint_pos_rel_staircase(
+    env,
+    quant_step_rad: float = 0.012,
+    ankle_dither_rad: float = 0.0175,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """관절각 관측의 실물 계단·디더 재현 — joint_pos_rel 대체.
+
+    실측 근거(0803 블랙박스): 로터 엔코더 관측은 연속이 아니라
+    freeze-then-jump — 정지 시 틱의 48~71%가 홀드, 갱신 시 스텝 p90 0.8~2°
+    (양자화 0.7°≈0.012rad로 근사). 발목F는 감속기 백래시+프린트 컴플라이언스로
+    ±1°(0.0175rad) 저주파 디더가 상시 관측됨 (힙의 10배). 시뮬의 매끈한
+    실관절각만 본 정책은 이 분포에서 잔여 오차를 실신호로 오인해 과반응
+    (5~9Hz 정책 주도 발진의 관측측 기여) — 정책이 이를 무시하도록 학습 분포에
+    주입한다. 형상·순서 불변(symmetry 미러 계약 유지).
+    """
+    q = mdp.joint_pos_rel(env, asset_cfg)
+    q = torch.round(q / quant_step_rad) * quant_step_rad
+    ids = _ankle_f_ids(env, asset_cfg.name)
+    if ids and ankle_dither_rad > 0.0:
+        dither = (torch.rand(q.shape[0], len(ids), device=q.device)
+                  * 2.0 - 1.0) * ankle_dither_rad
+        q[:, ids] = q[:, ids] + dither
+    return q
+
+
+def joint_vel_rel_dropout(
+    env,
+    zero_prob: float = 0.5,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """관절속도 관측의 실물 절단 재현 — joint_vel_rel 대체.
+
+    실측 근거(0803): 배포 qvel은 홀드된 관측의 유한차분이라 정지 시 틱의
+    48~71%가 정확히 0 (감쇠 신호 누더기). iid 마스킹은 홀드 런의 시간 상관을
+    못 담는 1차 근사지만, 정책이 속도 관측 의존(D 게인)을 낮추게 하는 데는
+    유효. 실물 이식에서 감쇠는 관측 아닌 액션 형성으로 확보해야 함을 학습.
+    """
+    v = mdp.joint_vel_rel(env, asset_cfg)
+    mask = (torch.rand_like(v) >= zero_prob).to(v.dtype)
+    return v * mask

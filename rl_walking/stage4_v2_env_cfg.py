@@ -600,3 +600,36 @@ class Biped12Stage4V2StandEnvCfg(Biped12Stage4V2MarchDRv5EnvCfg):
         #    강건성용 극단 포함이라 스탠드에선 '기울어 서기'를 정답으로 만든다.
         #    payload 실측(com_report: 정합 CoM 발목 뒤 1~4cm) 중심.
         self.events.base_com.params["com_range"]["x"] = (-0.08, 0.03)
+
+
+@configclass
+class Biped12Stage4V2StandDRv6EnvCfg(Biped12Stage4V2StandEnvCfg):
+    """stand DRv6 — 0803 실물 발진 2건의 실측 갭 반영 재학습판 (stand_v4 후보).
+
+    실기 근거 (stand_v3 제로샷 2회 블랙박스·candump 전수 분석):
+    ① 총 루프지연 실측 4~5틱 + 기계 위상 — 학습 DR(2~6틱) 상단 미달 대역에서
+       5~9Hz 정책 주도 리밋사이클 (타깃이 실측을 80~100ms 선행, 진폭비 1.3~1.5)
+    ② 관측 계단: freeze-then-jump (정지 홀드율 48~71%, 최장 200ms, 점프 0.8~2°)
+    ③ qvel 관측 절단: 정지 시 48~71%가 정확히 0 — 감쇠 신호 무력
+    ④ 발목F ±1° 백래시 디더 (힙의 10배)
+    ⑤ 인수(takeover) 자세가 리셋 분포(±4.6°) 밖 — 실측 최대 24.7°
+    미모델 잔여(문서화): 배포 타깃 LPF 2.5Hz·러너 슬루 4°/틱은 학습 액션 경로에
+    없음(둘 다 진폭 축소 = 안정 방향 편차), 홀드 런의 시간 상관(iid 근사).
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        # ① 지연 DR을 실측 대역으로 상향 (2~6 → 3~8틱)
+        self.actions.joint_pos.min_delay_steps = 3
+        self.actions.joint_pos.max_delay_steps = 8
+        # ②④ 관절각 관측: 양자화 계단 + 발목F 디더
+        self.observations.policy.joint_pos.func = \
+            mdp_stage4.joint_pos_rel_staircase
+        self.observations.policy.joint_pos.params = {
+            "quant_step_rad": 0.012, "ankle_dither_rad": 0.0175}
+        # ③ 관절속도 관측: 드롭아웃 (감쇠를 관측이 아닌 액션 형성으로)
+        self.observations.policy.joint_vel.func = \
+            mdp_stage4.joint_vel_rel_dropout
+        self.observations.policy.joint_vel.params = {"zero_prob": 0.5}
+        # ⑤ 리셋 자세 분포 확대: 인수 불일치 커버 (±0.08 → ±0.2 rad ≈ ±11.5°)
+        self.events.reset_robot_joints.params["position_range"] = (-0.2, 0.2)

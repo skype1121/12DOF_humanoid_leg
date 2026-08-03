@@ -131,13 +131,18 @@ CHECKPOINTS = {
     # 검증 사다리 1단 정책 ("stand" 명령 기본).
     "stand_v3": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-08-03_06-12-07/exported"),
+    # stand_v5 (0803 3차 실기 판정 반영: payload 실측 명시+스텝 회복 합법화+
+    # 저용량 관측 현실화): 공정 비교(v5 조건) — 직립 3.54° vs v3 8.72°(2.5배),
+    # 낙상 동률 4.7%, 위치 유지 +0.06m vs v3 -0.30m 뒤밀림. 실물 4차 1순위.
+    "stand_v5": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-08-03_18-44-48/exported"),
 }
 
 #: 체크포인트별 게이트 클록 주파수 [Hz] — 학습 클록과 반드시 일치 (불일치 =
 #: 위상 어긋난 관측 → 보행 파괴). 미등록 = 1.4 (기존 가족 전체의 계약).
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
-CKPT_GAIT_FREQ = {"march_v5b": 1.1, "stand_v3": 1.1}
+CKPT_GAIT_FREQ = {"march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 
 # ---------------------------------------------------------------------------
@@ -1007,7 +1012,7 @@ def main():
                     # 낙상 3.1%·가드재생 0트립·양발접촉 98.3%). 검증 사다리의
                     # 1단: march 전에 stand 제로샷 확인.
                     ck = args.checkpoint if args.checkpoint in stand_family \
-                        else "stand_v3"
+                        else "stand_v5"
                 elif c == "march":
                     ck = args.checkpoint if args.checkpoint in march_family \
                         else "march_v5b"

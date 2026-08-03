@@ -1,0 +1,39 @@
+정책 평가 — checkpoint: /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-08-03_07-00-00/model_50988.pt
+조건: 64 env × 30s, cmd_x=0.0 m/s (요 0)
+==================================================================
+낙상: 0회 / 64env — 낙상률 0.0% (무낙상 env 64/64)
+전진 거리: 평균 2.09 m (기대 0.0), min 0.28 / max 5.22
+속도 추종 오차 |v-cmd|: 평균 0.086 m/s
+직립도: 평균 기울기 4.80°, p95 최대 9.60° (FSM 데모 피크 ~15-18° 참고)
+골반 높이 평균: 0.645 m (직립 0.649)
+게이트: 단일지지 73.7% / 양발지지 26.2% / 공중 0.1%
+걸음: 평균 에어타임 0.202 s, 케이던스 3.45 걸음/s (207spm; 사람 보행 ~1.5-2.0걸음/s)
+토크: 평균 |tau| 3.28 Nm (한계 25)
+관절속도 최대: 전체 7.23 rad/s | 발목롤 3.43 rad/s (AK45-36 한계 5.0 — 준수 OK)
+액션 레이트 평균: 0.0492 (슬루 여유 지표)
+궤적 저장: /home/ryu/humanoid_leg_test1/demo_output/rl_eval_trajmarch_v5c_play.npz (env0 전체 스텝)
+Loading user config located at: '/home/ryu/isaacsim/isaac-sim-5.1.0/kit/data/Kit/Isaac-Sim/5.1/user.config.json'
+[Info] [carb] Logging to file: /home/ryu/isaacsim/isaac-sim-5.1.0/kit/logs/Kit/Isaac-Sim/5.1/kit_20260803_090358.log
+2026-08-03T00:03:58Z [310ms] [Warning] [omni.usd_config.extension] Enable omni.materialx.libs extension to use MaterialX
+2026-08-03T00:03:59Z [621ms] [Warning] [carb] Acquiring non optional plugin interface which is not listed as dependency: [omni::physx::IPhysxBenchmarks v1.0] (plugin: <default plugin>), by client: omni.physics.physx.plugin. Add it to CARB_PLUGIN_IMPL_DEPS() macro of a client.
+2026-08-03T00:03:59Z [760ms] [Warning] [omni.isaac.dynamic_control] omni.isaac.dynamic_control is deprecated as of Isaac Sim 4.5. No action is needed from end-users.
+
+|---------------------------------------------------------------------------------------------|
+| Driver Version: 580.159.04    | Graphics API: Vulkan
+|=============================================================================================|
+| GPU | Name                             | Active | LDA | GPU Memory | Vendor-ID | LUID       |
+|     |                                  |        |     |            | Device-ID | UUID       |
+|     |                                  |        |     |            | Bus-ID    |            |
+|---------------------------------------------------------------------------------------------|
+| 0   | NVIDIA GeForce RTX 5080          | Yes: 0 |     | 16303   MB | 10de      | 0          |
+|     |                                  |        |     |            | 2c02      | 965e7aeb.. |
+|     |                                  |        |     |            | 1         |            |
+|=============================================================================================|
+| OS: 22.04.5 LTS (Jammy Jellyfish) ubuntu, Version: 22.04.5, Kernel: 6.8.0-136-generic
+| XServer Vendor: The X.Org Foundation, XServer Version: 12101004 (1.21.1.4)
+| Processor: AMD Ryzen 9 7900X 12-Core Processor
+| Cores: 12 | Logical Cores: 24
+|---------------------------------------------------------------------------------------------|
+| Total Memory (MB): 63875 | Free Memory: 57175
+| Total Page/Swap (MB): 8191 | Free Page/Swap: 8191
+|---------------------------------------------------------------------------------------------|

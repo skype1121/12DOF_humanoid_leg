@@ -622,9 +622,9 @@ class Biped12Stage4V2StandDRv6EnvCfg(Biped12Stage4V2StandEnvCfg):
         # ① 지연 DR을 실측 대역으로 상향 (2~6 → 3~7틱).
         #    1차 베이크(0803 16:50 런) 실측: 상한 8틱은 kp150 저댐핑에서 시뮬
         #    자체가 발진→물리폭발 (보상 -30만 스파이크, 종반 낙상 97%) — 실물
-        #    불안정의 시뮬 재현. 상한 7틱으로 실측 4~5틱+여유 커버.
+        #    불안정의 시뮬 재현. 베이크2에서 7틱도 폭발 재발 → 상한 6틱(DRv5 검증 대역)+하한 3틱 상향만 유지.
         self.actions.joint_pos.min_delay_steps = 3
-        self.actions.joint_pos.max_delay_steps = 7
+        self.actions.joint_pos.max_delay_steps = 6
         # ②④ 관절각 관측: 양자화 계단 + 발목F 디더
         self.observations.policy.joint_pos.func = \
             mdp_stage4.joint_pos_rel_staircase
@@ -635,4 +635,4 @@ class Biped12Stage4V2StandDRv6EnvCfg(Biped12Stage4V2StandEnvCfg):
             mdp_stage4.joint_vel_rel_dropout
         self.observations.policy.joint_vel.params = {"zero_prob": 0.5}
         # ⑤ 리셋 자세 분포 확대: 인수 불일치 커버 (±0.08 → ±0.2 rad ≈ ±11.5°)
-        self.events.reset_robot_joints.params["position_range"] = (-0.15, 0.15)
+        self.events.reset_robot_joints.params["position_range"] = (-0.1, 0.1)

@@ -421,6 +421,20 @@ FRAME_MAX_AGE_DEFAULT_S = 3600.0
 #: 겹쳐 가드 범위 밖 — 운용자 estop·줄 인장 영역.
 OSC_VEL_HARD = 12.0      #: rad/s 즉시 트리거 (정상 보행 스윙 3~6 rad/s의 2배+)
 OSC_VEL_DEADBAND = 0.5   #: rad/s — 이하 속도의 부호는 무시 (양자화·유한차분 노이즈)
+
+#: 온셋 블렌딩 (0803 stand_v3 2차: 진입 0.8s에 힙 타깃 24° 휘두름 → 9Hz 링잉
+#: 기폭. 현재 실측 자세→정책 타깃 크로스페이드로 진입 과도 제거)
+BLEND_S = 1.5
+#: 리프트 가드 (0803 실측: 재인장으로 들리자 접촉 [0,0] → 정책 공중 발버둥.
+#: 서기/제자리걸음 문맥에서 양발 무접촉 지속 = 들림·완전 공중 → 동결이 안전)
+LIFT_STOP_S = 0.4
+
+
+def blend_alpha(elapsed_s, dur_s=BLEND_S):
+    """온셋 블렌딩 가중치 — 스무스스텝 0→1 (양 끝 기울기 0, 단조증가)."""
+    a = min(1.0, max(0.0, elapsed_s / dur_s))
+    return a * a * (3.0 - 2.0 * a)
+
 #: 모드1 '채터': 인접 틱 속도 교대(양쪽 |v|≥CH_VMIN) ≥8회/0.5s — 주기-2
 #: 포화 발진(2차 사고 클래스, 스텝 0.7°/틱부터)을 0.2s 내 포착.
 OSC_CH_WINDOW = 0.5
@@ -606,6 +620,25 @@ def _selftest_frame_gate():
     return f"판정 케이스 {len(cases)}/{len(cases)} 통과"
 
 
+def _selftest_blend():
+    a0, a_mid, a1 = blend_alpha(0.0), blend_alpha(BLEND_S / 2), blend_alpha(BLEND_S)
+    assert a0 == 0.0 and a1 == 1.0, (a0, a1)
+    assert abs(a_mid - 0.5) < 1e-9, a_mid
+    assert blend_alpha(BLEND_S * 2) == 1.0            # 과경과 클램프
+    assert blend_alpha(-1.0) == 0.0                   # 음수 클램프
+    prev = -1.0
+    for k in range(0, 151):
+        a = blend_alpha(k * 0.01)
+        assert a >= prev, (k, a, prev)                # 단조증가
+        prev = a
+    assert blend_alpha(0.02) < 0.002                  # 양 끝 기울기 0 (부드러운 출발)
+    assert 1.0 - blend_alpha(BLEND_S - 0.02) < 0.002
+    frm, tgt = 10.0, 20.0
+    mix = frm * (1 - a_mid) + tgt * a_mid
+    assert abs(mix - 15.0) < 1e-9
+    return f"스무스스텝 0→1 단조·클램프·끝기울기0·혼합 정확 (BLEND_S={BLEND_S}s)"
+
+
 def _selftest_osc_guard():
     def run_seq(qseq, dur_limit=None):
         """위치 시퀀스를 브리지와 동일한 유한차분 qvel로 재생."""
@@ -648,6 +681,7 @@ def _selftest_osc_guard():
 def run_selftest():
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 정책 500틱."""
     tests = [("하드웨어맵", _selftest_hwmap),
+             ("온셋 블렌딩", _selftest_blend),
              ("왕복 항등", _selftest_roundtrip),
              ("수치 앵커", _selftest_anchors),
              ("게인 정책", _selftest_gains),
@@ -743,6 +777,10 @@ def main():
             self.stopped_for_stale = False
             self.osc = OscGuard(JOINT_ORDER)
             self.osc_tripped = None
+            self.blend_t0 = None
+            self.blend_from = None
+            self.nocontact_t0 = None
+            self.stage8_cmd_rel = {}
             # 블랙박스: live면 무조건 ~/logs 에 틱 단위 jsonl 기록 (0802 사고 때
             # /tmp 로그가 재부팅으로 소실 — 사후분석 불가 재발 방지)
             self.bb = None
@@ -818,6 +856,14 @@ def main():
                 if b is not None:
                     try:
                         self.baseline[j] = float(b)   # 모터 프레임 deg
+                    except (ValueError, TypeError):
+                        pass
+                cr = info.get("commanded_relative_deg")
+                if cr is not None:
+                    try:
+                        # 블렌드 시작점용: stage8가 실제 스트리밍 중인 명령
+                        # (baseline+rel) — 실측 시작 대비 토크 연속 인수 (리뷰 F2)
+                        self.stage8_cmd_rel[j] = float(cr)
                     except (ValueError, TypeError):
                         pass
                 try:
@@ -931,6 +977,9 @@ def main():
                 self.osc = OscGuard(JOINT_ORDER)
                 self.osc_tripped = None
                 self.prev_qpos = None
+                self.blend_t0 = None
+                self.blend_from = None
+                self.nocontact_t0 = None
                 self.core.reset(checkpoint=ck)
                 self.core.cmd = cmd
                 self.core.heading_hold = bool(d.get("heading_hold", True))
@@ -1010,6 +1059,19 @@ def main():
             gyro, quat = self.imu
             contact2 = [1.0 if self.foot[0] > CONTACT_FORCE_THRESHOLD_N else 0.0,
                         1.0 if self.foot[1] > CONTACT_FORCE_THRESHOLD_N else 0.0]
+            # 리프트 가드 — 양발 무접촉 LIFT_STOP_S 지속 시 동결 (발버둥 차단)
+            if self.live and contact2[0] == 0.0 and contact2[1] == 0.0:
+                if self.nocontact_t0 is None:
+                    self.nocontact_t0 = now
+                elif now - self.nocontact_t0 >= LIFT_STOP_S:
+                    self._bb_write({"timestamp": now, "event": "lift_guard"})
+                    self._stop_all(f"lift_guard: 양발 무접촉 {LIFT_STOP_S}s 지속")
+                    self.core.active = False
+                    self.get_logger().error(
+                        "리프트 가드 — 양발 무접촉 지속, 동결 홀드. 줄·발 확인!")
+                    return
+            else:
+                self.nocontact_t0 = None
             # 발진 가드 — 피드백 기반이라 정책 출력과 무관하게 몸의 발진을 감지.
             # 트리거 시 STOP_ALL(동결 홀드) 후 비활성: 이후 절차 = 줄 재인장 →
             # release_all.py (0802 프로토콜)
@@ -1033,6 +1095,26 @@ def main():
                 targets_deg_joint[j] = math.degrees(float(v))
                 targets_deg_motor[j] = self.frames.joint_rad_to_motor_deg(
                     j, float(v))
+            # 온셋 블렌딩: 실측 현재각(모터 프레임) → 정책 타깃 크로스페이드.
+            # targets_deg_joint(진단)는 정책 원출력 유지, targets_deg_motor
+            # (실명령·블랙박스)만 블렌딩 — 명령 vs 실측 사후분석 정합.
+            if self.blend_t0 is None:
+                self.blend_t0 = now
+                # 시작점 = stage8가 스트리밍 중인 명령(baseline+rel) — 실측으로
+                # 잡으면 추종오차만큼 토크가 풀려 하중 관절이 ~1° 침하 (리뷰 F2).
+                # 명령값 미보유 관절만 실측 폴백.
+                self.blend_from = {}
+                for j in JOINT_ORDER:
+                    base = self.baseline.get(j)
+                    rel = self.stage8_cmd_rel.get(j)
+                    self.blend_from[j] = (base + rel
+                                          if base is not None and rel is not None
+                                          else self.joint_deg[j])
+            alpha = blend_alpha(now - self.blend_t0)
+            if alpha < 1.0:
+                for j in JOINT_ORDER:
+                    targets_deg_motor[j] = (self.blend_from[j] * (1.0 - alpha)
+                                            + targets_deg_motor[j] * alpha)
             dbg = {"timestamp": now, "live": self.live, "armed": self.armed,
                    "checkpoint": self.core.ckpt_name, "cmd": list(self.core.cmd),
                    # 프레임 명시: joint=URDF 관절 프레임 / motor=모터 인코더 프레임
@@ -1042,6 +1124,7 @@ def main():
                    "qpos_rad": [round(v, 5) for v in qpos],
                    "qvel_rad_s": [round(v, 4) for v in qvel],
                    "contact": contact2,
+                   "blend_alpha": round(alpha, 3),
                    "foot_n": [round(float(self.foot[0]), 2),
                               round(float(self.foot[1]), 2)],
                    # 자세 사후분석용 (0802 첫 march: 줄 걸림 vs 자체 기울어짐
@@ -1051,6 +1134,12 @@ def main():
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
             if not (self.live and self.armed):
+                if self.live:
+                    # 리뷰 F1: 실송출이 없는 동안 블렌드 클록 정지 — armed 공백
+                    # 뒤 재개 첫 실명령이 무블렌드 풀스텝이 되는 경로 차단.
+                    # 스트리밍 재개 첫 틱에 그 시점 명령/실측에서 재블렌드.
+                    self.blend_t0 = None
+                    self.blend_from = None
                 return
             # 지연 수술 0803: 배치 명령 1건/틱 (종전 12건/틱 = 600msg/s의
             # DDS·콜백 부하가 젯슨 제어 지터에 기여). 검증은 stage8 쪽에서

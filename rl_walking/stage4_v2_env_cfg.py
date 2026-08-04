@@ -705,3 +705,22 @@ class Biped12Stage4V2StandV6EnvCfg(Biped12Stage4V2StandV5EnvCfg):
             "y": (-0.02, 0.02),
             "z": (0.05, 0.12),
         }
+
+
+@configclass
+class Biped12Stage4V2StandV7EnvCfg(Biped12Stage4V2StandV6EnvCfg):
+    """stand_v7 — 무개입 낙하 실측(0804) 반영: payload '위치' 가정 제거.
+
+    무오염 파형 확정: v6b는 균형 잡힌 실물(트림0 자립 3회 실증) 위에서 1초부터
+    전방 기울임을 단조 누적 (+1.6→+19°, 발진·외란 없음) = '뒤로 쏠린 몸' 가정
+    (payload 뒤 배치 학습)이 낳은 순수 편향. 질량 결손 1.5kg은 실재하므로
+    유지하되, 위치를 중앙 대역으로 — 몸이 균형임을 전제로 학습한다.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.base_com.params["com_range"] = {
+            "x": (-0.03, 0.02),
+            "y": (-0.02, 0.02),
+            "z": (0.05, 0.12),
+        }

@@ -86,6 +86,10 @@ from rl_walking.deploy.policy_runner import (  # noqa: E402
 RATE_HZ = 50.0
 TICK_SEC = 1.0 / RATE_HZ
 SENSOR_STALE_SEC = 0.2
+#: 발압력 전용 신선 한계 — 10Hz(100ms 주기) 센서라 0.2s 게이트는 1펄스
+#: 결손에 트립(0804 5차 스텝테스트 무효화 실증). 0.35s = 3주기 결손까지
+#: 허용 — 접촉 이진 관측 350ms 지연은 동적 스텝에서도 허용 범위.
+FOOT_STALE_SEC = 0.35
 #: 드라이런(비-live) 관절 신선 한계 — Stage8 비무장 시 CAN 피드백이 12모터
 #: 라운드로빈(~240ms/바퀴)이라 0.2s 게이트로는 영원히 stale. live 무장 시엔
 #: 명령마다 피드백이 와서(50Hz) 0.2s 엄격 게이트가 그대로 적용된다.
@@ -1061,7 +1065,7 @@ def main():
             joint_stale = SENSOR_STALE_SEC if self.live else JOINT_STALE_DRYRUN_SEC
             fresh = (now - self.joint_ts < joint_stale
                      and now - self.imu_ts < SENSOR_STALE_SEC
-                     and now - self.foot_ts < SENSOR_STALE_SEC
+                     and now - self.foot_ts < FOOT_STALE_SEC
                      and len(self.joint_deg) == 12)
             if not fresh:
                 if not self.stopped_for_stale:

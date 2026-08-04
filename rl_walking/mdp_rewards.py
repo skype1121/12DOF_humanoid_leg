@@ -84,3 +84,17 @@ def feet_air_time_symmetry_norm(env, sensor_cfg: SceneEntityCfg, command_name: s
     ratio = torch.abs(air[:, 0] - air[:, 1]) / (air[:, 0] + air[:, 1] + eps)
     cmd = torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1)
     return ratio * (cmd > 0.1).float()
+
+
+def action_rate_l2_capped(env, cap: float = 50.0):
+    """action_rate_l2의 방폭판 — 0804 stand_v6 베이크 붕괴 부검 확정 진범.
+
+    물리폭발 → 관측 발산 → 정책 출력 발산 → ||Δa||² 벌점이 에피소드당
+    -1,245만까지 폭주(다른 항 전부 -0.03 수준) → 어드밴티지 오염 → 전염 붕괴.
+    방폭 3중 방어(관측·물리 항 캡)에서 유일하게 빠져 있던 항. 정상 보행의
+    ||Δa||²는 ~0.05-0.5 수준이라 cap 50은 학습 신호 무손실.
+    """
+    v = torch.sum(
+        torch.square(env.action_manager.action - env.action_manager.prev_action),
+        dim=1)
+    return v.clamp_max(cap)

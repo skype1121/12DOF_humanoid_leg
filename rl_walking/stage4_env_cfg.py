@@ -184,6 +184,8 @@ class Biped12Stage4FlatEnvCfg(Biped12FlatEnvCfg):
         self.rewards.ang_vel_xy_l2.func = custom.ang_vel_xy_l2_capped
         self.rewards.lin_vel_z_l2.func = custom.lin_vel_z_l2_capped
         self.rewards.feet_contact_forces.func = custom.contact_forces_capped
+        # 0804 추가: stand_v6 붕괴 부검 — action_rate가 방폭 캡의 마지막 구멍
+        self.rewards.action_rate_l2.func = custom.action_rate_l2_capped
         self.scene.robot.spawn.articulation_props.solver_position_iteration_count = 12
         self.scene.robot.spawn.articulation_props.solver_velocity_iteration_count = 2
 

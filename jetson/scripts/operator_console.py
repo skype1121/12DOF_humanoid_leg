@@ -68,6 +68,10 @@ def now():
 SESSION_DIR = os.path.join(LOGDIR, "sessions")
 SAMPLE_HZ = 20.0
 IDLE_ROTATE_SEC = 1800.0     # 30분 조용하면 다음 조작은 새 세션으로 본다
+#: 이만큼 '실제 활동'이 없으면 세션을 자동으로 닫는다. 없으면 테스트로 버튼
+#: 한 번 누른 세션이 영원히 열린 채 유휴 상태를 20Hz로 기록한다(0808 실측:
+#: 37분·13MB·시간당 21MB). 진짜 실기 기록이 유휴 데이터에 파묻힌다.
+IDLE_CLOSE_SEC = 600.0
 
 
 class SessionLog:
@@ -76,16 +80,21 @@ class SessionLog:
         self.name = None
         self.dir = None
         self.f = None
+        self.manual = False
         self.t0 = None
         self.last = 0.0
+        self.last_active = 0.0      # 마지막 '실제 활동' 시각
         self.n_sample = 0
         self.n_event = 0
 
-    def ensure(self, reason=""):
+    def ensure(self, reason="", manual=False):
         """세션이 없거나 오래 쉬었으면 새로 연다. 조작 시점 = 모터 전원 이후."""
         with self.lock:
             if self.f is not None and (now() - self.last) < IDLE_ROTATE_SEC:
+                if manual:
+                    self.manual = True      # 수동 선언은 뒤늦게도 존중한다
                 return self.name
+            self.manual = manual
             self._close_locked()
             stamp = time.strftime("%Y%m%d_%H%M%S")
             self.name = f"session_{stamp}"
@@ -94,6 +103,7 @@ class SessionLog:
             self.f = open(os.path.join(self.dir, "timeline.jsonl"), "a")
             self.t0 = now()
             self.last = self.t0
+            self.last_active = self.t0
             self.n_sample = self.n_event = 0
             self._write({"kind": "session_start", "reason": reason,
                          "wall": time.strftime("%Y-%m-%d %H:%M:%S")})
@@ -119,6 +129,7 @@ class SessionLog:
             kw["kind"] = kind
             self._write(kw)
             self.n_event += 1
+            self.last_active = now()      # 조작은 언제나 '활동'
 
     def sample(self, view):
         """텔레메트리 1샘플 — 화면에 뜨는 판정 지표를 그대로 남긴다."""
@@ -126,6 +137,11 @@ class SessionLog:
             if self.f is None:
                 return
             imu = view.get("imu") or {}
+            # '실제 활동' = 스택이 살아 있거나(stage8 상태 수신), 정책이 돌거나,
+            # 로봇이 하중을 받고 있을 때. 매달린 채 방치된 상태는 활동이 아니다.
+            if (view["fresh"].get("status") or view["bridge"].get("live")
+                    or view["foot"]["pct"] > 20.0):
+                self.last_active = now()
             self._write({
                 "kind": "s",
                 "pct": view["foot"]["pct"],
@@ -175,10 +191,22 @@ class SessionLog:
             print(f"[세션] 종료 {name}")
             return name
 
+    def maybe_autoclose(self):
+        """유휴 자동 닫힘 — 단, 사람이 직접 시작한 세션은 건드리지 않는다."""
+        with self.lock:
+            if self.f is None or self.manual:
+                return
+            idle = now() - self.last_active
+            if idle > IDLE_CLOSE_SEC:
+                self.close(f"유휴 {int(idle/60)}분 자동 종료")
+
     def status(self):
         with self.lock:
             return {"name": self.name, "active": self.f is not None,
+                    "manual": bool(self.manual),
                     "dur": (round(now() - self.t0, 1) if self.t0 else None),
+                    "idle": (round(now() - self.last_active, 1)
+                             if self.f is not None else None),
                     "samples": self.n_sample, "events": self.n_event,
                     "dir": self.dir}
 
@@ -547,9 +575,12 @@ ACTIONS = {
     "release":    (lambda p: RUN.start("release", [
         sys.executable, os.path.join(CALIB, "release_all.py")]), "릴리즈"),
     "analyze":    (lambda p: act_analyze(), "최신 로그 판정"),
-    # 세션
-    "session_end": (lambda p: (True, f"세션 종료: {SESSION.close('수동') or '없음'}"),
-                    "세션 종료"),
+    # 세션 — 자동 개시/종료가 있지만 사람이 명시로 잡을 수 있어야 한다
+    "session_start": (lambda p: (True, f"기록 시작: "
+                                 f"{SESSION.ensure('수동 시작', manual=True)}"),
+                      "기록 시작"),
+    "session_end": (lambda p: (True, f"기록 중지: {SESSION.close('수동') or '없음'}"),
+                    "기록 중지"),
 }
 STOPPABLE = {"stage8", "hang_stand", "bridge"}
 
@@ -589,6 +620,8 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 </style></head><body>
 <header><h1>실기 운영 콘솔</h1><span id=conn class=pill>연결 중…</span>
 <span id=sess class="pill dim">세션 —</span>
+<button data-a=session_start style="padding:7px 12px;font-size:12px;margin:0">● 기록 시작</button>
+<button data-a=session_end style="padding:7px 12px;font-size:12px;margin:0">■ 기록 중지</button>
 <button id=estop>■ 비상정지</button></header>
 <main>
 <section class=full><h2>판정 지표</h2><div class=tiles>
@@ -682,8 +715,10 @@ async function poll(){
   $('#conn').className='pill '+(s.ros?'ok':'bad');
   const S=s.session||{};
   $('#sess').textContent=S.active
-    ?('● '+S.name+'  '+Math.floor(S.dur/60)+'분 '+S.samples+'샘플')
-    :'세션 대기 (조작하면 시작)';
+    ?('● '+S.name.replace('session_','')+'  '+Math.floor(S.dur/60)+'분 '
+      +S.samples+'샘플'+(S.manual?' (수동)':'')
+      +(S.idle>60?'  유휴 '+Math.floor(S.idle/60)+'분':''))
+    :'기록 대기 (조작하면 자동 시작)';
   $('#sess').className='pill '+(S.active?'ok':'dim');
   const f=s.foot,fr=s.fresh;
   $('#pct').textContent=fr.foot?f.pct.toFixed(0)+'%':'—';
@@ -767,7 +802,7 @@ class Handler(BaseHTTPRequestHandler):
                                  "message": f"허용되지 않은 액션: {name}"}))
         fn, label = entry
         # 조작이 일어난 시점 = 모터 전원 이후. 여기서 세션을 연다.
-        if name != "session_end":
+        if name not in ("session_end", "session_start"):
             SESSION.ensure(reason=label)
         SESSION.event("action_start", action=name, label=label)
         try:
@@ -827,10 +862,23 @@ def selftest():
         for want in ("session_start", "selftest_marker", "s"):
             if want not in kinds:
                 fails.append(f"타임라인에 {want} 없음")
+        # 유휴 자동 닫힘: 자동 개시 세션은 닫히고, 수동 세션은 유지되어야 한다
+        SESSION.last_active = now() - (IDLE_CLOSE_SEC + 60)
+        SESSION.maybe_autoclose()
+        if SESSION.status()["active"]:
+            fails.append("자동 개시 세션이 유휴에도 안 닫힘")
+        d2 = SESSION.ensure("selftest-manual", manual=True)
+        SESSION.last_active = now() - (IDLE_CLOSE_SEC + 60)
+        SESSION.maybe_autoclose()
+        if not SESSION.status()["active"]:
+            fails.append("수동 세션이 자동으로 닫힘 — 사람의 선언을 무시함")
+        dir2 = SESSION.status()["dir"]
         SESSION.close("selftest")
         if SESSION.status()["active"]:
             fails.append("close 후에도 active")
         shutil.rmtree(st["dir"], ignore_errors=True)
+        shutil.rmtree(dir2, ignore_errors=True)
+        print(f"  (유휴 자동닫힘·수동 유지 확인: {d2})")
         print(f"  (세션 레코더 확인: {name} — 기록·종료 정상, 테스트 폴더 삭제)")
     except Exception as exc:
         fails.append(f"세션 레코더 예외: {exc}")
@@ -858,6 +906,7 @@ def main():
             try:
                 if SESSION.status()["active"]:
                     SESSION.sample(TEL.view())
+                    SESSION.maybe_autoclose()
             except Exception:
                 pass
     threading.Thread(target=sampler, daemon=True).start()

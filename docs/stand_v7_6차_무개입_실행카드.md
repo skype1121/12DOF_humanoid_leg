@@ -34,15 +34,22 @@
 - 판정은 **발력 총합 %** 1순위 (체중 117.7N 대비). IMU 스냅샷 1장으로
   "섰다"고 판정했다가 오판한 사고가 있었다 — 스냅샷 금지.
 
+## ⚠ 젯슨 스크립트 경로 — 두 디렉토리로 갈려 있다 (0808 실측 확인)
+| 스크립트 | 위치 |
+|---|---|
+| `boot_pose_check.py` `sensors_up.sh` `stack_down.sh` `release_all.py` `stage8_cmd.py` `wiggle_watch.py` `can_up.sh` | **`~/rl_calib/`** (여기에만 있음) |
+| `rl_bridge_node.py` `stage8_12axis_mit_control_node.py` `analyze_fall.py` | **`~/humanoid_repo/jetson/scripts/`** (여기에만 있음) |
+| `hang_stand.py` | 양쪽 동일 (md5 4b7a59a1) — 아무거나 |
+
+`cd ~/humanoid_repo` 후 전부 실행하려 하면 절반이 "파일 없음"으로 막힌다.
+
 ## 0. 전원·게이트 (하나라도 실패 시 진행 금지)
 ```bash
-# 젯슨 부팅 후 1회
-bash ~/humanoid_repo/jetson/scripts/can_up.sh
-cd ~/humanoid_repo
+bash ~/rl_calib/can_up.sh                       # 젯슨 부팅 후 1회 (sudo 필요)
 (candump -ta can1 > /tmp/live_candump_$(date +%H%M).log 2>&1 &)   # 0단계
-python3 jetson/scripts/boot_pose_check.py --ref stand   # 12/12 (필수·60분 유효)
-bash  jetson/scripts/sensors_up.sh
-python3 jetson/scripts/rl_bridge_node.py --selftest      # ALL PASS
+python3 ~/rl_calib/boot_pose_check.py --ref stand   # 12/12 (필수·60분 유효)
+bash ~/rl_calib/sensors_up.sh                      # IMU·발압력 (멱등)
+python3 ~/humanoid_repo/jetson/scripts/rl_bridge_node.py --selftest   # ALL PASS
 ```
 - **boot_pose_check는 매 전원사이클 필수** — AK 로터절대 엔코더가 36°/10°
   배수로 시프트한다. m6는 사이클마다 코인플립.
@@ -55,13 +62,14 @@ python3 jetson/scripts/rl_bridge_node.py --selftest      # ALL PASS
 ## 1~3. 기립 → 핸드오프 → 무장
 `docs/march_v3_실행카드.md` 1~3단계와 동일. 요약:
 ```bash
-python3 jetson/scripts/stage8_12axis_mit_control_node.py --can-channel can1 --wait-takeover
-python3 jetson/scripts/hang_stand.py          # 별도 터미널, 에어램프→kp150/kd5
+python3 ~/humanoid_repo/jetson/scripts/stage8_12axis_mit_control_node.py \
+        --can-channel can1 --wait-takeover
+python3 ~/rl_calib/hang_stand.py              # 별도 터미널, 에어램프→kp150/kd5
 # ── 착지: 매달린 발끝의 연직선을 조준, 평평하게, 천천히 ──
 touch /tmp/hang_ground
 touch /tmp/hang_stand_handoff                 # 접지+운용게인에서만
-python3 jetson/scripts/stage8_cmd.py SET_BASELINE_FROM_CURRENT_ALL   # 12/12
-python3 jetson/scripts/stage8_cmd.py ARM_ALL                         # 30초 내
+python3 ~/rl_calib/stage8_cmd.py SET_BASELINE_FROM_CURRENT_ALL   # 12/12
+python3 ~/rl_calib/stage8_cmd.py ARM_ALL                         # 30초 내
 ```
 
 ### 착지가 세션 성패를 지배한다
@@ -72,7 +80,7 @@ python3 jetson/scripts/stage8_cmd.py ARM_ALL                         # 30초 내
 
 ## 4. 정책 투입 → 무개입 관찰
 ```bash
-python3 jetson/scripts/rl_bridge_node.py --live --checkpoint stand_v7
+python3 ~/humanoid_repo/jetson/scripts/rl_bridge_node.py --live --checkpoint stand_v7
 # 브리지가 실제로 떴는지 확인한 뒤에 발사 (-w 1 pub은 구독자 없으면 무한 대기)
 ros2 topic pub --once -w 1 /humanoid/rl_bridge_command std_msgs/String \
   "data: '{\"cmd\": \"stand\"}'"
@@ -84,10 +92,9 @@ ros2 topic pub --once -w 1 /humanoid/rl_bridge_command std_msgs/String \
 
 ## 5. 판정 — 블랙박스 자동 분석
 ```bash
-python3 jetson/scripts/analyze_fall.py ~/logs/rl_bridge_<최신>.jsonl
-# 5차 v6b 기준선과 나란히 (경로 확정)
+cd ~/humanoid_repo
 python3 jetson/scripts/analyze_fall.py ~/logs/rl_bridge_<최신>.jsonl \
-    --compare ~/logs/rl_bridge_20260804_130927.jsonl
+    --compare ~/logs/rl_bridge_20260804_130927.jsonl   # 5차 v6b 기준선
 ```
 등급 기준 (스크립트가 자동 산출):
 
@@ -101,8 +108,8 @@ python3 jetson/scripts/analyze_fall.py ~/logs/rl_bridge_<최신>.jsonl \
 ## 6. 종료·회수 (순서 엄수)
 ```bash
 # ① 줄 재인장 (사람)  ② 스택 종료  ③ 그 다음에만 릴리즈
-bash jetson/scripts/stack_down.sh
-python3 jetson/scripts/release_all.py
+bash ~/rl_calib/stack_down.sh
+python3 ~/rl_calib/release_all.py
 ```
 - **release_all을 stage8 armed 스트리밍과 동시 실행 금지** (버스 명령 충돌).
 - 굽힌 관절 즉시 릴리즈 금지 — 자유낙하 회생으로 SMPS OVP 래치 사망 사례.

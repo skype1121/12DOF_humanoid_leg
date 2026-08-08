@@ -724,3 +724,73 @@ class Biped12Stage4V2StandV7EnvCfg(Biped12Stage4V2StandV6EnvCfg):
             "y": (-0.02, 0.02),
             "z": (0.05, 0.12),
         }
+
+
+def _make_flat_only_terrains_cfg():
+    """전부 평지 — 서기 학습에 경사·계단은 '기울어 서기'를 정답으로 만든다.
+
+    v2 지형은 최대 19° 경사(slope_range 0.35rad)와 계단을 20%씩 섞는다. 보행
+    강건성에는 옳지만, 서기 정책에게는 '지면이 기울어 있을 수 있다'가 전제로
+    깔려 평지 실물에서 불필요한 기울임을 낳는다. 실물 시험장은 평평한 바닥이다.
+    """
+    cfg = copy.deepcopy(BIPED12_TERRAINS_CFG)
+    for name in cfg.sub_terrains:
+        cfg.sub_terrains[name].proportion = 0.0
+    cfg.sub_terrains["flat"].proportion = 1.0
+    return cfg
+
+
+@configclass
+class Biped12Stage4V2StandV8EnvCfg(Biped12Stage4V2StandV7EnvCfg):
+    """stand_v8 — '가만히 서 있기'가 성립하는 환경으로 교정 (2026-08-08).
+
+    **왜 v5~v7이 전부 같은 방식으로 실패했는가.**
+    실물은 전 관절 0°에서 stage8 고정 홀드만으로 발력 96%·몇 분씩 선다.
+    능동 균형이 필요 없는 몸이다. 그런데 학습 환경은 정반대로,
+    **'서 있기만 하기'가 성립할 수 없도록 설계돼 있었다** — env_cfg.py 의
+    push_robot 주석이 그렇게 명시한다. 8~12초마다 ±0.3m/s 푸시, 매 리셋마다
+    전 관절 ±4.6°+관절속도 ±0.3rad/s, 최대 19° 경사 타일.
+    그 환경에서 최적 전략은 '끊임없이 능동 보정하기'이고, 그 전략을 정적으로
+    안정한 실물에 넣으면 **밀어내는 것이 당연한 귀결**이다.
+    (5차 v6b 실측: 발력 96%로 혼자 서 있다가 정책 권한 alpha 0.84에서 하중
+    이탈 시작, 1.4초 만에 −1.8→+19.2° 단조 전방. 발진도 스텝도 없었다.)
+
+    v7까지 다섯 세대가 바꾼 축은 payload/CoM 랜덤화뿐이었고, DR 스윕에서
+    실물 거동(+4.06°/s)을 재현한 env 는 128개 중 0개, 역산 CoM 은 +417mm 로
+    물리적으로 불가능 — **CoM 가설은 기각됐다.** 바꿀 축은 외란 설계다.
+
+    v7 대비 변경 (측정 기반 DR — 지연·강성·컴플라이언스·payload 대역은 유지):
+      ① push_robot 제거 — 실물 판정은 무개입 낙하다. 외란 복원력은 서기가
+         성립한 다음 세대에서 되돌린다.
+      ② 초기 관절 교란 ±4.6°→±1.1°, 관절속도 ±0.3→±0.05 rad/s.
+         실물 핸드오프는 잘 정의된 자세에서 시작한다.
+      ③ 리셋 몸통 기울임 ±4°→±1.1° (착지 재현성 실측 ~2°).
+      ④ 지형 전부 평지 — 실물 시험장은 평평한 바닥이다.
+
+    판정: eval_drift_dr.py 로 **DR 켠 채** 전방 추세를 본다(Play 성적으로
+    승격하지 않는다 — 그 잣대가 다섯 세대를 잘못 고른 원인이었다).
+    합격 기준은 '낙상률'이 아니라 **실물 거동을 재현하지 않는가**이다.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        # ① 푸시 제거 — '서 있기'가 유효 전략이 되게 한다
+        self.events.push_robot = None
+        # ② 초기 관절 교란을 실물 수준으로
+        self.events.reset_robot_joints.params["position_range"] = (-0.02, 0.02)
+        self.events.reset_robot_joints.params["velocity_range"] = (-0.05, 0.05)
+        # ③ 리셋 몸통 기울임 축소
+        for _k in ("roll", "pitch"):
+            if _k in self.events.reset_base.params["pose_range"]:
+                self.events.reset_base.params["pose_range"][_k] = (-0.02, 0.02)
+        # ④ 평지 고정 (커리큘럼은 올릴 난이도가 없으므로 끈다)
+        self.scene.terrain.terrain_generator = _make_flat_only_terrains_cfg()
+        self.scene.terrain.terrain_generator.curriculum = False
+        # ⑤ 무릎 굽힌 '스탠바이' 스탠스를 실제로 달성시킨다 (승윤님 지시).
+        #    사람도 무릎을 편 차렷보다 살짝 굽힌 스탠바이가 안정적이다 —
+        #    편 무릎은 하드스톱에 기대는 자세라 양방향 제어 권한이 없다
+        #    (march_v3에서 '니락' 전략을 실제로 학습한 전례가 있다).
+        #    밴드 보상은 v5b부터 있었으나 직립·앵커 항에 밀려 미달했으므로
+        #    가중을 올리고 밴드를 스탠바이 대역(8~16°)으로 좁힌다.
+        self.rewards.knee_stance_flexion.weight = 5.0
+        self.rewards.knee_stance_flexion.params["band_rad"] = (0.14, 0.28)

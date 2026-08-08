@@ -22,8 +22,9 @@ import sys
 BODY_WEIGHT_N = 117.7      # 실물 12kg × 9.81
 LOAD_STANDING = 85.0       # 이 % 이상이면 하중을 정책이 받고 있다고 본다
 LOAD_LOST = 50.0           # 이 % 아래로 떨어지면 줄/사람에게 넘어간 것
-LEAN_FALLEN = 15.0         # |전방기울임| 이 값 초과 = 자립 종료로 간주
+LEAN_FALL_DELTA = 15.0     # 시작 자세 대비 이만큼 더 기울면 자립 종료
 EARLY_WINDOW_S = 3.0       # "1초부터 단조 누적" 을 잡아내는 초기 창
+MIN_GRADE_S = 1.5          # 이보다 짧은 구간은 등급을 매기지 않는다
 
 # v6b 5차 무개입 낙하 실측 (비교 기준선)
 V6B_BASELINE = {"slope": 6.0, "lean_end": 19.0, "standing_s": 2.0}
@@ -149,19 +150,52 @@ def analyze(path):
 
     dur = rows[-1]["t"]
 
-    # 실효 자립 = 발력을 잃거나(줄로 넘어감) 크게 기울 때까지.
-    # 두 조건 모두 t0 직후 블렌딩 구간(alpha<1)에서는 판정하지 않는다.
+    # 기준 자세 = 블렌딩 완료 직후 0.3s 평균. 착지 기하 탓에 시작부터 기울어
+    # 있는 경우가 흔한데(0803 실기: 시작 −16°), 절대각으로 자립을 판정하면
+    # 발력 92%로 멀쩡히 서 있는 시행이 "자립 0초"가 된다. 자립 여부는
+    # **발력**이 1순위이고, 각도는 **시작 대비 변화량**으로만 본다.
+    settled = [r for r in rows if r["alpha"] >= 0.99]
+    if settled:
+        base_win = [r["fwd"] for r in settled if r["t"] <= settled[0]["t"] + 0.3]
+        fwd0 = sum(base_win) / len(base_win)
+    else:
+        fwd0 = rows[0]["fwd"]
+
+    # 실효 자립 = 발력을 잃거나(줄로 넘어감) 시작 대비 크게 기울 때까지.
+    # 블렌딩 구간(alpha<1)은 정책 권한이 부분적이라 판정에서 제외한다.
+    # **조건은 반드시 지속되어야 한다** — 10Hz 발압력의 1펄스 결손 하나가
+    # 스텝테스트를 통째로 무효화한 전례가 있다. 순간값으로 끊으면 15초를
+    # 버틴 시행이 0.4초로 찍힌다.
+    # 핵심: **낙상은 되돌아오지 않는다.** 회복한 딥은 낙상이 아니다.
+    # (0803 실기: 인수 0.8초에 발력이 17%로 꺼졌다가 회복해 15초를 섰다.
+    #  순간값·지속조건 어느 쪽으로 봐도 그 시행은 "0.4초 자립"으로 오독된다.)
+    def terminal_fall(pred, hold_s):
+        """pred가 로그 끝까지 회복 없이 이어진 구간의 시작. 없으면 None."""
+        t_bad = None
+        for r in settled:
+            if pred(r):
+                if t_bad is None:
+                    t_bad = r["t"]
+            else:
+                t_bad = None          # 회복했다 = 딥이었다
+        if t_bad is None or settled[-1]["t"] - t_bad < hold_s:
+            return None               # 끝자락 순간값은 낙상으로 세지 않는다
+        return t_bad
+
     standing_s = dur
     stand_reason = "끝까지 유지"
-    for r in rows:
-        if r["alpha"] < 0.99:
-            continue
-        if r["load"] < LOAD_LOST:
-            standing_s, stand_reason = r["t"], f"발력 {LOAD_LOST:.0f}% 미만"
-            break
-        if abs(r["fwd"]) > LEAN_FALLEN:
-            standing_s, stand_reason = r["t"], f"기울임 {LEAN_FALLEN:.0f}° 초과"
-            break
+    t_load = terminal_fall(lambda r: r["load"] < LOAD_LOST, 0.30)
+    t_lean = terminal_fall(
+        lambda r: abs(r["fwd"] - fwd0) > LEAN_FALL_DELTA, 0.20)
+    if t_load is not None and (t_lean is None or t_load <= t_lean):
+        standing_s, stand_reason = t_load, f"발력 {LOAD_LOST:.0f}% 미만 (미회복)"
+    elif t_lean is not None:
+        standing_s, stand_reason = (
+            t_lean, f"시작 대비 {LEAN_FALL_DELTA:.0f}° 초과 기울임 (미회복)")
+
+    # 회복한 딥은 낙상이 아니지만 그 자체로 진단 가치가 있다 (인수 전이 손실).
+    dips = [r for r in settled
+            if r["load"] < LOAD_LOST and r["t"] < standing_s]
 
     early = [r for r in rows if r["t"] <= EARLY_WINDOW_S]
     slope, _, r2 = linfit([r["t"] for r in early], [r["fwd"] for r in early])
@@ -179,8 +213,14 @@ def analyze(path):
         "ckpt": armed[0].get("checkpoint", "?"),
         "dur": dur, "hz": (len(rows) - 1) / dur if dur > 0 else 0.0,
         "standing_s": standing_s, "stand_reason": stand_reason,
+        "settled_s": (settled[-1]["t"] - settled[0]["t"]) if settled else 0.0,
+        "dip_n": len(dips), "dip_t": dips[0]["t"] if dips else None,
+        "dip_min": min((r["load"] for r in dips), default=None),
+        "guard_events": [e.get("event") for e in events
+                         if e.get("event") in ("osc_guard", "osc_guard_tgt",
+                                               "lift_guard")],
         "slope": slope, "slope_r2": r2, "mono": mono, "nbins": nbins,
-        "fwd_start": rows[0]["fwd"], "fwd_end": rows[-1]["fwd"],
+        "fwd0": fwd0, "fwd_start": rows[0]["fwd"], "fwd_end": rows[-1]["fwd"],
         "fwd_max": max(fwds), "fwd_min": min(fwds),
         "lat_absmax": max(abs(r["lat"]) for r in rows),
         "load_mean": (sum(loads) / len(loads)) if loads else 0.0,
@@ -193,8 +233,30 @@ def analyze(path):
 
 
 def verdict(a):
-    """6차 핵심 질문에 대한 등급 — 'v6b의 전방 단조 밀기가 사라졌는가'."""
+    """6차 핵심 질문에 대한 등급 + 가드 단서 (가드로 끝난 시행은 무조건 단서)."""
+    grade, headline, action = _grade(a)
+    if grade in ("A", "B") and a["guard_events"]:
+        action += (f"  ※ 단, 이 시행은 가드"
+                   f"({'/'.join(sorted(set(a['guard_events'])))})로 끝났습니다 — "
+                   f"발진 원인을 규명하기 전에는 다음 단계로 넘어가지 마세요.")
+    return grade, headline, action
+
+
+def _grade(a):
+    """등급 산출 본체."""
     slope, mono, stand = a["slope"], a["mono"], a["standing_s"]
+    # 등급을 매길 자격이 있는 시행인지 먼저 본다. 0.8초짜리 가드 종료 로그에
+    # 3빈 회귀로 "전방 단조 밀기"를 선언하면 그건 판정이 아니라 착각이다.
+    if a["settled_s"] < MIN_GRADE_S:
+        return ("—", f"판정 불가 — 블렌딩 후 유효 구간이 {a['settled_s']:.1f}s "
+                f"뿐입니다 (최소 {MIN_GRADE_S:.1f}s)",
+                "시행이 너무 일찍 끝났습니다. 무엇이 끝냈는지(가드·착지·"
+                "인장)를 해결하고 다시 받으세요.")
+    if a["guard_events"] and stand < 2.5:
+        return ("—", f"판정 불가 — 가드({'/'.join(sorted(set(a['guard_events'])))})"
+                f"가 {stand:.1f}s에 시행을 끊었습니다",
+                "균형이 아니라 가드가 결말을 정했습니다. 가드 트립 원인을 "
+                "먼저 규명해야 v7 판정이 성립합니다.")
     # 전방 단조 누적 = v6b 병증. 단조비율만 쓰면 "1초 평탄 후 램프" 같은
     # 실제 파형에서 앞 빈들이 비증가로 세어져 놓친다 — 직선성(R²)을 병기.
     pushing = slope > 2.0 and (mono >= 0.65 or a["slope_r2"] >= 0.7)
@@ -227,6 +289,9 @@ def report(a):
     print(f"■ 발력 총합: 평균 {a['load_mean']:.0f}% / 최소 {a['load_min']:.0f}%"
           f" / 최대 {a['load_max']:.0f}%  (체중 {BODY_WEIGHT_N:.0f}N 기준)")
     print("   (자립 구간 기준 — 낙상 후 구간 제외)")
+    if a["dip_t"] is not None:
+        print(f"   ※ 회복된 발력 딥: {a['dip_t']:.1f}s에 최저 {a['dip_min']:.0f}% "
+              f"({a['dip_n']}틱) — 낙상은 아니나 인수 전이 손실 신호")
     if a["load_mean"] >= LOAD_STANDING:
         print("   → 정책이 하중을 받고 있었습니다 (줄에 매달린 상태 아님).")
     elif a["load_mean"] >= LOAD_LOST:
@@ -239,6 +304,10 @@ def report(a):
     print(f"■ 전방 기울임: 시작 {a['fwd_start']:+.1f}° → 종료 "
           f"{a['fwd_end']:+.1f}°  (최대 {a['fwd_max']:+.1f}° / 최소 "
           f"{a['fwd_min']:+.1f}°)   좌우 최대 |{a['lat_absmax']:.1f}|°")
+    print(f"   기준 자세(블렌딩 후) {a['fwd0']:+.1f}° → 순변화 "
+          f"{a['fwd_end'] - a['fwd0']:+.1f}°"
+          + ("   ※ 시작부터 크게 기울어 있었습니다 — 착지 기하를 의심하세요"
+             if abs(a["fwd0"]) > 8.0 else ""))
     print(f"■ 초기 {EARLY_WINDOW_S:.0f}s 추세: {a['slope']:+.2f}°/s "
           f"(R²={a['slope_r2']:.2f}), 단조증가 {a['mono']*100:.0f}% "
           f"({a['nbins']}빈)")

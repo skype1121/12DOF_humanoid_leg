@@ -26,6 +26,7 @@ import json
 import math
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -58,10 +59,138 @@ def now():
 
 
 # ---------------------------------------------------------------------------
+# 세션 레코더 — 모터 전원 이후 전 구간을 하나의 타임라인으로 남긴다
+# ---------------------------------------------------------------------------
+#: 브리지 블랙박스는 정책이 돌 때만 기록한다. 그래서 게이트·기립·**착지**
+#: 구간이 통째로 비어 있었다. 0808 분석에서 "착지 기하가 세션 성패를
+#: 지배한다"가 확인됐는데 정작 그 구간 데이터가 없어 매번 기억으로
+#: 재구성해야 했다. 이 레코더가 그 공백을 메운다.
+SESSION_DIR = os.path.join(LOGDIR, "sessions")
+SAMPLE_HZ = 20.0
+IDLE_ROTATE_SEC = 1800.0     # 30분 조용하면 다음 조작은 새 세션으로 본다
+
+
+class SessionLog:
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.name = None
+        self.dir = None
+        self.f = None
+        self.t0 = None
+        self.last = 0.0
+        self.n_sample = 0
+        self.n_event = 0
+
+    def ensure(self, reason=""):
+        """세션이 없거나 오래 쉬었으면 새로 연다. 조작 시점 = 모터 전원 이후."""
+        with self.lock:
+            if self.f is not None and (now() - self.last) < IDLE_ROTATE_SEC:
+                return self.name
+            self._close_locked()
+            stamp = time.strftime("%Y%m%d_%H%M%S")
+            self.name = f"session_{stamp}"
+            self.dir = os.path.join(SESSION_DIR, self.name)
+            os.makedirs(self.dir, exist_ok=True)
+            self.f = open(os.path.join(self.dir, "timeline.jsonl"), "a")
+            self.t0 = now()
+            self.last = self.t0
+            self.n_sample = self.n_event = 0
+            self._write({"kind": "session_start", "reason": reason,
+                         "wall": time.strftime("%Y-%m-%d %H:%M:%S")})
+            print(f"[세션] 시작 {self.name} ({reason})")
+            return self.name
+
+    def _write(self, obj):
+        if self.f is None:
+            return
+        obj["t"] = round(now() - self.t0, 3)
+        obj["ts"] = round(now(), 3)
+        try:
+            self.f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+            self.f.flush()
+            self.last = now()
+        except OSError:
+            self.f = None
+
+    def event(self, kind, **kw):
+        with self.lock:
+            if self.f is None:
+                return
+            kw["kind"] = kind
+            self._write(kw)
+            self.n_event += 1
+
+    def sample(self, view):
+        """텔레메트리 1샘플 — 화면에 뜨는 판정 지표를 그대로 남긴다."""
+        with self.lock:
+            if self.f is None:
+                return
+            imu = view.get("imu") or {}
+            self._write({
+                "kind": "s",
+                "pct": view["foot"]["pct"],
+                "fn": [view["foot"]["left_n"], view["foot"]["right_n"]],
+                "fwd": imu.get("fwd"), "lat": imu.get("lat"),
+                "tilt": imu.get("tilt"), "gyro": imu.get("gyro"),
+                "quat": imu.get("quat"),
+                "armed": view["stage8"]["armed"],
+                "base": view["stage8"]["baseline"],
+                "live": view["bridge"]["live"],
+                "ckpt": view["bridge"]["checkpoint"],
+                "blend": view["bridge"]["blend"],
+                "contact": view["bridge"]["contact"],
+                "fresh": [int(view["fresh"]["imu"]), int(view["fresh"]["foot"]),
+                          int(view["fresh"]["status"])],
+            })
+            self.n_sample += 1
+
+    def open_proc_log(self, key):
+        """프로세스 출력을 세션 폴더에 파일로도 남긴다 (링버퍼는 잘린다)."""
+        with self.lock:
+            if self.dir is None:
+                return None
+            try:
+                return open(os.path.join(
+                    self.dir, f"{key}_{time.strftime('%H%M%S')}.log"), "a")
+            except OSError:
+                return None
+
+    def _close_locked(self):
+        if self.f is not None:
+            self._write({"kind": "session_end", "samples": self.n_sample,
+                         "events": self.n_event})
+            try:
+                self.f.close()
+            except OSError:
+                pass
+            self.f = None
+
+    def close(self, reason=""):
+        with self.lock:
+            if self.f is None:
+                return None
+            name = self.name
+            self.event("session_close", reason=reason)
+            self._close_locked()
+            print(f"[세션] 종료 {name}")
+            return name
+
+    def status(self):
+        with self.lock:
+            return {"name": self.name, "active": self.f is not None,
+                    "dur": (round(now() - self.t0, 1) if self.t0 else None),
+                    "samples": self.n_sample, "events": self.n_event,
+                    "dir": self.dir}
+
+
+SESSION = SessionLog()
+
+
+# ---------------------------------------------------------------------------
 # 프로세스 관리 — 콘솔이 띄운 것만 콘솔이 내린다
 # ---------------------------------------------------------------------------
 class Proc:
-    """장기 실행 프로세스 하나. 출력은 링버퍼로 보관해 웹에서 tail 한다."""
+    """장기 실행 프로세스 하나. 출력은 링버퍼(웹 tail)와 세션 파일 양쪽에."""
 
     def __init__(self, key, argv, cwd=None, env=None):
         self.key = key
@@ -69,6 +198,7 @@ class Proc:
         self.lines = collections.deque(maxlen=300)
         self.started = now()
         self.rc = None
+        self.logf = SESSION.open_proc_log(key)
         self.p = subprocess.Popen(
             argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, bufsize=1,
@@ -78,11 +208,27 @@ class Proc:
     def _pump(self):
         try:
             for line in self.p.stdout:
-                self.lines.append(line.rstrip("\n")[:400])
+                s = line.rstrip("\n")[:400]
+                self.lines.append(s)
+                if self.logf:                       # 링버퍼는 300줄에서 잘린다 —
+                    try:                            # 판정 근거는 파일에 남겨야 한다
+                        self.logf.write(f"{time.strftime('%H:%M:%S')} {s}\n")
+                        self.logf.flush()
+                    except OSError:
+                        self.logf = None
         except Exception:
             pass
         self.rc = self.p.wait()
         self.lines.append(f"[종료] 반환코드 {self.rc}")
+        SESSION.event("proc_exit", key=self.key, rc=self.rc,
+                      dur=round(now() - self.started, 1))
+        if self.logf:
+            try:
+                self.logf.write(f"[종료] 반환코드 {self.rc}\n")
+                self.logf.close()
+            except OSError:
+                pass
+            self.logf = None
 
     @property
     def alive(self):
@@ -395,6 +541,9 @@ ACTIONS = {
     "release":    (lambda p: RUN.start("release", [
         sys.executable, os.path.join(CALIB, "release_all.py")]), "릴리즈"),
     "analyze":    (lambda p: act_analyze(), "최신 로그 판정"),
+    # 세션
+    "session_end": (lambda p: (True, f"세션 종료: {SESSION.close('수동') or '없음'}"),
+                    "세션 종료"),
 }
 STOPPABLE = {"stage8", "hang_stand", "bridge"}
 
@@ -433,6 +582,7 @@ max-height:230px;overflow:auto;font-size:11.5px;margin:8px 0 0;white-space:pre-w
 border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;display:none;z-index:20}
 </style></head><body>
 <header><h1>실기 운영 콘솔</h1><span id=conn class=pill>연결 중…</span>
+<span id=sess class="pill dim">세션 —</span>
 <button id=estop>■ 비상정지</button></header>
 <main>
 <section class=full><h2>판정 지표</h2><div class=tiles>
@@ -488,6 +638,7 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <button data-a=stack_down>스택 종료</button>
 <button data-a=release class=warn>릴리즈</button>
 <button data-a=analyze>최신 로그 판정</button>
+<button data-a=session_end>세션 종료</button>
 <pre id=log_tail>—</pre></section>
 </main><div id=toast></div>
 <script>
@@ -516,6 +667,11 @@ async function poll(){
  try{const s=await (await fetch('/api/state')).json();
   $('#conn').textContent=s.ros?'ROS 연결됨':'ROS 없음';
   $('#conn').className='pill '+(s.ros?'ok':'bad');
+  const S=s.session||{};
+  $('#sess').textContent=S.active
+    ?('● '+S.name+'  '+Math.floor(S.dur/60)+'분 '+S.samples+'샘플')
+    :'세션 대기 (조작하면 시작)';
+  $('#sess').className='pill '+(S.active?'ok':'dim');
   const f=s.foot,fr=s.fresh;
   $('#pct').textContent=fr.foot?f.pct.toFixed(0)+'%':'—';
   $('#pct').className='v '+(fr.foot?cls(f.pct,85,50):'dim');
@@ -578,6 +734,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/state":
             st = TEL.view()
             st["procs"] = RUN.snapshot()
+            st["session"] = SESSION.status()
             return self._send(200, json.dumps(st))
         return self._send(404, json.dumps({"ok": False, "message": "not found"}))
 
@@ -596,10 +753,16 @@ class Handler(BaseHTTPRequestHandler):
                 403, json.dumps({"ok": False,
                                  "message": f"허용되지 않은 액션: {name}"}))
         fn, label = entry
+        # 조작이 일어난 시점 = 모터 전원 이후. 여기서 세션을 연다.
+        if name != "session_end":
+            SESSION.ensure(reason=label)
+        SESSION.event("action_start", action=name, label=label)
         try:
             ok, msg = fn(payload)
         except Exception as exc:                     # 액션 실패가 콘솔을 죽이지 않게
             ok, msg = False, f"{label} 실패: {exc}"
+        SESSION.event("action", action=name, label=label, ok=bool(ok),
+                      message=msg)
         print(f"[{time.strftime('%H:%M:%S')}] {label}: {msg}")
         return self._send(200, json.dumps({"ok": bool(ok), "message": msg}))
 
@@ -632,6 +795,32 @@ def selftest():
     got = round(100.0 * (58.85 + 58.85) / BODY_WEIGHT_N, 1)
     if got != 100.0:
         fails.append(f"발력 백분율 산식 오류: {got}")
+    # ⑦ 세션 레코더 — 닫힌 상태에서 호출해도 예외가 없어야 하고(콘솔이 죽으면
+    #    안 된다), 열면 타임라인에 실제로 기록되어야 한다
+    try:
+        SESSION.event("x")           # 세션 없음 — 조용히 무시되어야
+        SESSION.sample(TEL.view())
+        if SESSION.status()["active"]:
+            fails.append("세션이 열리지 않았는데 active")
+        name = SESSION.ensure("selftest")
+        SESSION.event("selftest_marker", v=1)
+        SESSION.sample(TEL.view())
+        st = SESSION.status()
+        if not st["active"] or st["events"] < 1 or st["samples"] < 1:
+            fails.append(f"세션 기록 누락: {st}")
+        tl = os.path.join(st["dir"], "timeline.jsonl")
+        with open(tl) as f:
+            kinds = [json.loads(l).get("kind") for l in f if l.strip()]
+        for want in ("session_start", "selftest_marker", "s"):
+            if want not in kinds:
+                fails.append(f"타임라인에 {want} 없음")
+        SESSION.close("selftest")
+        if SESSION.status()["active"]:
+            fails.append("close 후에도 active")
+        shutil.rmtree(st["dir"], ignore_errors=True)
+        print(f"  (세션 레코더 확인: {name} — 기록·종료 정상, 테스트 폴더 삭제)")
+    except Exception as exc:
+        fails.append(f"세션 레코더 예외: {exc}")
     for f in fails:
         print(f"[FAIL] {f}")
     print("selftest: " + ("ALL PASS" if not fails else f"{len(fails)}건 실패"))
@@ -647,6 +836,19 @@ def main():
     if a.selftest:
         return selftest()
     TEL.start()
+
+    def sampler():
+        """세션이 열려 있는 동안 판정 지표를 SAMPLE_HZ 로 남긴다."""
+        period = 1.0 / SAMPLE_HZ
+        while True:
+            time.sleep(period)
+            try:
+                if SESSION.status()["active"]:
+                    SESSION.sample(TEL.view())
+            except Exception:
+                pass
+    threading.Thread(target=sampler, daemon=True).start()
+
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     srv.daemon_threads = True
     # rclpy.init() 이 SIGTERM/SIGINT 핸들러를 가로채 kill 이 먹지 않는다
@@ -656,6 +858,7 @@ def main():
     def _bye(signum, _frame):
         print(f"\n신호 {signum} — 콘솔 종료 (띄운 프로세스는 그대로 둡니다: "
               f"모터는 마지막 명령을 홀드).")
+        SESSION.close(f"콘솔 종료(신호 {signum})")   # 기록을 잘린 채 남기지 않는다
         threading.Thread(target=srv.shutdown, daemon=True).start()
     for s in (signal.SIGTERM, signal.SIGINT):
         signal.signal(s, _bye)

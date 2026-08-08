@@ -1,0 +1,28 @@
+[Unit]
+# 실기 운영 콘솔 — 젯슨 부팅 시 항상 떠 있게 한다.
+# 수동 기동(nohup)이면 젯슨 재부팅 때마다 사라져서, 정작 실기 시작할 때
+# "콘솔이 안 열린다"로 시간을 버린다. 콘솔은 스스로 아무 동작도 하지
+# 않으므로(자동 실행 없음·구독과 페이지 서빙만) 상시 기동이 안전하다.
+Description=Humanoid 실기 운영 콘솔 (web operator console)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mama
+Group=mama
+WorkingDirectory=/home/mama/humanoid_repo
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/home/mama
+# ROS 2 humble 환경을 얻기 위해 로그인 셸로 감싼다 (setup.bash 소싱 필요)
+ExecStart=/bin/bash -lc 'source /opt/ros/humble/setup.bash && exec python3 /home/mama/humanoid_repo/jetson/scripts/operator_console.py --port 8800'
+Restart=always
+RestartSec=3
+# 콘솔이 죽어도 콘솔이 띄운 자식(stage8·브리지)은 살려둔다 —
+# 모터는 마지막 MIT 명령을 홀드하므로, 부모 재시작이 로봇을 놓게 하면 안 된다.
+KillMode=process
+StandardOutput=append:/home/mama/logs/operator_console.log
+StandardError=append:/home/mama/logs/operator_console.log
+
+[Install]
+WantedBy=multi-user.target

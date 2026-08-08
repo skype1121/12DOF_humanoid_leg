@@ -285,3 +285,37 @@ def joint_vel_rel_dropout(
     v = mdp.joint_vel_rel(env, asset_cfg)
     mask = (torch.rand_like(v) >= zero_prob).to(v.dtype)
     return v * mask
+
+
+def feet_swing_clearance(
+    env,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg,
+    target_m: float = 0.045,
+    sole_offset_m: float = 0.0525,
+    force_threshold: float = 5.0,
+) -> torch.Tensor:
+    """스윙 발 들기 높이 보상 (0808 실물 관찰 '바닥을 긁는다' 반영). 값 0~1.
+
+    실물 관찰: march 보행에서 발이 바닥을 긁는 느낌이 강하다.
+    코드를 보니 원인이 명확했다 — **발 높이를 보상하는 항이 어디에도 없었다.**
+    보행은 feet_air_time(공중 시간)과 게이트 클록으로만 만들어지므로, 정책에게는
+    '떠 있기'만 충족하고 최소한으로 들어 스치듯 지나가는 것이 보상상 최적이다.
+
+    실측(march_v5b, 32env×15s, cmd 0.3): 스윙 사이클 1221회의 최고점 중앙값
+    23.3mm, **p10 7.5mm, 최소 1.1mm, 20mm 미만이 41.6%**. 실물 바닥의 미세
+    요철이나 발이 완전히 수평이 아닌 순간에 닿는다.
+
+    처방: 스윙 중(비접촉)인 발의 발바닥 높이를 target_m 까지 선형 보상하고
+    거기서 포화시킨다(과도한 들기는 보상하지 않는다 — 에너지·안정성 손해).
+    sole_offset_m = 발목 롤축→발바닥 52.5mm (STL 실측 0808).
+    """
+    sensor = env.scene.sensors[sensor_cfg.name]
+    forces = sensor.data.net_forces_w[:, sensor_cfg.body_ids, :]
+    in_contact = torch.norm(forces, dim=-1) > force_threshold        # (N, 발)
+    asset = env.scene[asset_cfg.name]
+    h = (asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+         - env.scene.env_origins[:, 2].unsqueeze(1) - sole_offset_m)
+    r = (h / target_m).clamp(0.0, 1.0)
+    r = torch.where(in_contact, torch.zeros_like(r), r)
+    return r.mean(dim=1)

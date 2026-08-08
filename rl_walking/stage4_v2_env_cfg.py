@@ -794,3 +794,46 @@ class Biped12Stage4V2StandV8EnvCfg(Biped12Stage4V2StandV7EnvCfg):
         #    가중을 올리고 밴드를 스탠바이 대역(8~16°)으로 좁힌다.
         self.rewards.knee_stance_flexion.weight = 5.0
         self.rewards.knee_stance_flexion.params["band_rad"] = (0.14, 0.28)
+
+
+@configclass
+class Biped12Stage4V2MarchV6EnvCfg(Biped12Stage4V2MarchDRv5EnvCfg):
+    """march_v6 — '바닥을 긁는다'(0808 실물 관찰) 교정: 발 들기 + 느린 걸음.
+
+    **원인은 보상 설계의 공백이었다.** 보행은 feet_air_time(공중 시간, 문턱
+    0.4s)과 게이트 클록으로만 만들어지고, **발 높이를 보상하는 항이 어디에도
+    없었다.** 정책에게는 '떠 있기'만 충족하고 최소로 들어 스치듯 지나가는 것이
+    보상상 최적이다.
+
+    실측(march_v5b, 32env×15s, cmd 0.3, 스윙 1221회): 스윙 최고점 중앙 23.3mm,
+    **p10 7.5mm · 최소 1.1mm · 20mm 미만이 41.6%**. 실물 바닥의 미세 요철이나
+    발이 완전 수평이 아닌 순간에 닿는다 — 긁히는 것이 당연하다.
+
+    처방 두 가지:
+      ① feet_swing_clearance 보상 신설 — 스윙 발바닥을 45mm까지 선형 보상 후
+         포화(과도한 들기는 에너지·안정성 손해라 보상하지 않는다).
+      ② 게이트 클록 1.1 → 0.85Hz — 승윤님 관찰 "좀 천천히 걸어야겠다".
+         한 스윙에 쓸 시간이 29% 늘어 같은 높이를 더 여유롭게 만든다.
+         **배포 시 CKPT_GAIT_FREQ["march_v6"]=0.85 등록 필수** — 클록 불일치는
+         위상 어긋난 관측이 되어 보행을 파괴한다.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        # ① 발 들기 보상 (스윙 중에만, 45mm 포화)
+        self.rewards.feet_clearance = RewTerm(
+            func=mdp_stage4.feet_swing_clearance,
+            weight=2.0,
+            params={
+                "sensor_cfg": _FEET_SENSOR_CFG,
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=["left_ankle_r_joint", "right_ankle_r_joint"],
+                    preserve_order=True,
+                ),
+                "target_m": 0.045,
+            },
+        )
+        # ② 느린 걸음 — 관측·보상 클록을 반드시 함께 바꾼다(위상 정의 공유)
+        self.observations.policy.gait_clock.params["freq"] = 0.85
+        self.rewards.gait_phase.params["freq"] = 0.85

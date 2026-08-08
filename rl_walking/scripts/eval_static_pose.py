@@ -30,6 +30,10 @@ parser.add_argument("--num_envs", type=int, default=64)
 parser.add_argument("--pose", default="policy_v7",
                     choices=("policy_v7", "zero", "knee_only", "ankle_only"))
 parser.add_argument("--out_tag", type=str, default="")
+parser.add_argument("--flat", action="store_true",
+                    help="지형을 평면으로 고정 (경사 타일 제거)")
+parser.add_argument("--trace", action="store_true",
+                    help="시간별 골반높이·관절추종오차·발접촉력 파형 출력")
 parser.add_argument("--nominal", action="store_true",
                     help="게인 정격·지연0 — 실물 stage8 홀드에 가까운 조건")
 parser.add_argument("--policy", action="store_true",
@@ -102,14 +106,38 @@ if args_cli.nominal:
     if getattr(env_cfg.events, "joint_friction", None) is not None:
         env_cfg.events.joint_friction.params[
             "friction_distribution_params"] = (0.0, 0.0)
+    # CoM·질량 랜덤화도 끈다. 이게 남아 있으면 '시뮬이 정적으로 못 선다'가
+    # 아니라 'CoM 뽑기에 따라 못 선다'를 재는 것이 된다 — 전혀 다른 명제다.
+    if getattr(env_cfg.events, "base_com", None) is not None:
+        env_cfg.events.base_com.params["com_range"] = {
+            "x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
+    for _t in ("add_base_mass", "base_mass", "randomize_rigid_body_mass",
+               "payload"):
+        _e = getattr(env_cfg.events, _t, None)
+        if _e is not None and "mass_distribution_params" in getattr(_e, "params", {}):
+            _e.params["mass_distribution_params"] = (0.0, 0.0)
+    if getattr(env_cfg.events, "physics_material", None) is not None:
+        _p = env_cfg.events.physics_material.params
+        _p["static_friction_range"] = (0.8, 0.8)
+        _p["dynamic_friction_range"] = (0.6, 0.6)
+if args_cli.flat:
+    # 이 환경들은 최대 19° 경사 타일을 생성한다(stage4_v2_env_cfg _make_v2_terrains_cfg).
+    # 수동 로봇은 경사에서 당연히 넘어가므로, '평지 정적 안정성'을 물으려면
+    # 지형을 평면으로 못박아야 한다 — 결정론인데 일부만 넘어진 원인이 이것이었다.
+    env_cfg.scene.terrain.terrain_type = "plane"
+    env_cfg.scene.terrain.terrain_generator = None
 env_cfg.events.push_robot = None
 for k in ("roll", "pitch"):
     if k in env_cfg.events.reset_base.params["pose_range"]:
         env_cfg.events.reset_base.params["pose_range"][k] = (0.0, 0.0)
-# 관절 리셋은 **건드리지 않는다**. position_range 의 의미가 term 마다 다르고
-# (scale 이면 1.0=기본, offset 이면 1.0=+57°), 오해해서 (1.0,1.0)을 주면 전
-# 관절이 1rad 어긋난 채 스폰해 즉시 붕괴한다 — 0808 실측으로 대조군이
-# 100% 낙상해 잡았다.
+# 관절 리셋: 이 환경은 reset_joints_by_**offset** 으로 전 관절에 ±0.08rad
+# (±4.6°)와 관절속도 ±0.3rad/s 를 준다(env_cfg.py:230). 정적 안정성을 물으려면
+# 이 초기 교란을 0으로 만들어야 한다 — 안 그러면 매 env가 다른 교란에서
+# 출발해 '정적으로 서는가'가 아니라 '무작위 교란에서 회복하는가'를 재게 된다.
+# (offset 규약이므로 0.0 = 교란 없음. scale 규약의 1.0 과 혼동 금지.)
+if args_cli.nominal and getattr(env_cfg.events, "reset_robot_joints", None):
+    env_cfg.events.reset_robot_joints.params["position_range"] = (0.0, 0.0)
+    env_cfg.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
 env_cfg.episode_length_s = 60.0
 
 env = gym.make(args_cli.task, cfg=env_cfg)
@@ -143,9 +171,23 @@ if args_cli.policy:
     policy = runner.get_inference_policy(device=dev)
     print(f"[대조군] 정책 사용: {ckpt}")
 
+cs = uenv.scene.sensors.get("contact_forces")
+feet_ids = None
+if cs is not None:
+    try:
+        feet_ids = [cs.body_names.index(n) for n in
+                    ("left_ankle_r_joint", "right_ankle_r_joint")]
+    except ValueError:
+        feet_ids = None
+# 목표 관절각(rad) — 추종 오차를 재려면 명령값이 필요하다
+tgt_rad = torch.tensor(
+    [math.radians(pose.get(n, 0.0)) for n in jn], device=dev)
+
 obs = env.get_observations()
 pg_log, alive = [], torch.ones(N, dtype=torch.bool, device=dev)
 death = torch.full((N,), args_cli.steps, dtype=torch.long, device=dev)
+trace = []
+term_hits = {}
 for i in range(args_cli.steps):
     with torch.inference_mode():
         if policy is not None:
@@ -153,7 +195,27 @@ for i in range(args_cli.steps):
         else:
             env.step(act)
     pg_log.append(robot.data.projected_gravity_b.clone().cpu().numpy())
+    if args_cli.trace:
+        h = robot.data.root_pos_w[:, 2] - uenv.scene.env_origins[:, 2]
+        jerr = (robot.data.joint_pos - tgt_rad).abs()
+        fz = (cs.data.net_forces_w[:, feet_ids, 2].sum(dim=1)
+              if feet_ids is not None else torch.zeros_like(h))
+        trace.append([
+            float(h.mean()), float(h.min()),
+            float(torch.rad2deg(jerr).mean()), float(torch.rad2deg(jerr).max()),
+            float(fz.mean()), float(alive.float().mean()),
+        ])
     term = uenv.termination_manager.terminated
+    # **어느 종료항이 트립했는지** 센다. '낙상 83%'가 진짜 낙상인지
+    # 종료 판정 아티팩트인지는 이걸 봐야만 갈린다.
+    for _tn in uenv.termination_manager.active_terms:
+        if _tn == "time_out":
+            continue
+        try:
+            _d = uenv.termination_manager.get_term(_tn)
+        except Exception:
+            continue
+        term_hits[_tn] = term_hits.get(_tn, 0) + int((alive & _d).sum())
     death[alive & term] = i
     alive &= ~term
 
@@ -186,6 +248,8 @@ P("자세(관절 프레임 deg): " + ", ".join(
     if abs(v) > 0.05) or "(전 관절 0)")
 P("")
 P(f"■ 낙상: {fell}/{N} ({100.0*fell/N:.1f}%)")
+P("■ 종료 사유별: " + (", ".join(f"{k} {v}" for k, v in sorted(
+    term_hits.items(), key=lambda kv: -kv[1]) if v) or "없음"))
 P(f"■ 초기 3s 전방 추세: 평균 {np.nanmean(slopes):+.2f}°/s, "
   f"최대 {np.nanmax(slopes):+.2f}°/s")
 P(f"■ 종료 시 전방 기울임: 평균 {fwd[-1].mean():+.1f}°, "
@@ -197,6 +261,13 @@ if fell == 0:
 else:
     P("→ 이 고정 자세는 시뮬에서도 서지 못한다(정책의 능동 균형이 필요).")
     P("   실물 고정 자세 시험은 판별력이 없다 — 실험 설계를 바꿔야 한다.")
+if args_cli.trace and trace:
+    P("")
+    P("  t(s)  골반h(m) 최저h  관절오차° 최대°   발접촉N   생존율")
+    for k in range(0, len(trace), max(1, len(trace)//18)):
+        r = trace[k]
+        P(f"  {k*dt:5.2f} {r[0]:8.3f}{r[1]:7.3f}{r[2]:9.2f}{r[3]:7.2f}"
+          f"{r[4]:10.1f}{r[5]*100:8.0f}%")
 P("=" * 70)
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 with open(OUT, "w") as f:

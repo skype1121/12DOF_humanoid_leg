@@ -339,3 +339,66 @@ def joint_vel_over_limit(
     asset = env.scene[asset_cfg.name]
     v = asset.data.joint_vel[:, asset_cfg.joint_ids].abs()
     return (v - limit_rad_s).clamp(min=0.0).sum(dim=1).clamp_max(cap)
+
+
+# ---------------------------------------------------------------------------
+# 캘리브레이션 상수 편향 랜덤화 (0809 — 실기 보류 사유를 학습으로 해소)
+# ---------------------------------------------------------------------------
+#: 실측: stand_v8 은 영점 오차 3°에서 낙상 43.8%(28/64), 최대 기울임 32.1°.
+#: 원인은 관측 노이즈가 전부 Unoise(매 스텝 제로평균)뿐이고 **에피소드 내내
+#: 유지되는 상수 편향**을 학습한 적이 없기 때문. 제로평균 노이즈는 걸러내는
+#: 법을 가르치지 치우친 기준에 적응하는 법을 가르치지 않는다.
+#: 실물 영점은 매달림 육안 정렬로 잡았고 기구학 검증 이력이 없다 —
+#: boot_pose_check 허용오차가 AK70에서 8°라 3° 오차는 게이트를 통과한다.
+
+
+def resample_calib_bias(
+    env,
+    env_ids,
+    joint_bias_rad: tuple = (-0.052, 0.052),   # ±3°
+    imu_tilt_rad: tuple = (-0.052, 0.052),     # ±3°
+):
+    """에피소드마다 관측 상수 편향을 새로 뽑는다 (mode="reset" 이벤트).
+
+    관절 편향은 관절마다 독립 — 실물 영점 오차도 관절마다 다르다.
+    IMU 편향은 몸통 하나에 대한 장착 기울기이므로 env당 스칼라.
+    """
+    n_j = env.scene["robot"].data.joint_pos.shape[1]
+    if not hasattr(env, "_calib_joint_bias"):
+        env._calib_joint_bias = torch.zeros(env.num_envs, n_j, device=env.device)
+        env._calib_imu_tilt = torch.zeros(env.num_envs, device=env.device)
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    env._calib_joint_bias[ids] = torch.empty(
+        len(ids), n_j, device=env.device).uniform_(*joint_bias_rad)
+    env._calib_imu_tilt[ids] = torch.empty(
+        len(ids), device=env.device).uniform_(*imu_tilt_rad)
+
+
+def joint_pos_rel_biased(
+    env,
+    quant_step_rad: float = 0.012,
+    ankle_dither_rad: float = 0.0175,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """관절각 관측 + 에피소드 상수 편향 (영점 오차 모사).
+
+    Stand 계열은 joint_pos_rel_staircase(실물 계단·디더 재현)를 쓰므로 그것을
+    **감싼다** — 파라미터 계약을 유지하고 관측 현실화를 잃지 않기 위해서다.
+    """
+    q = joint_pos_rel_staircase(env, quant_step_rad, ankle_dither_rad, asset_cfg)
+    b = getattr(env, "_calib_joint_bias", None)
+    return q if b is None else q + b[:, : q.shape[1]]
+
+
+def projected_gravity_biased(env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
+    """중력벡터 관측 + 에피소드 상수 피치 회전 (IMU 장착 오차 모사)."""
+    g = mdp.projected_gravity(env, asset_cfg)
+    th = getattr(env, "_calib_imu_tilt", None)
+    if th is None:
+        return g
+    c, s = torch.cos(th), torch.sin(th)
+    out = g.clone()
+    gx, gz = g[:, 0], g[:, 2]
+    out[:, 0] = gx * c - gz * s
+    out[:, 2] = gx * s + gz * c
+    return out

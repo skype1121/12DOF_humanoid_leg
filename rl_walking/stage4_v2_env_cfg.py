@@ -890,3 +890,38 @@ class Biped12Stage4V2MarchV6cEnvCfg(Biped12Stage4V2MarchV6bEnvCfg):
                 "limit_rad_s": 4.5,   # 한계 5.0에 10% 마진
             },
         )
+
+
+@configclass
+class Biped12Stage4V2StandV9EnvCfg(Biped12Stage4V2StandV8EnvCfg):
+    """stand_v9 — 캘리브레이션 상수 편향에 적응하는 서기 (실기 보류 해소).
+
+    v8 실측(64env×8s): 영점 오차 2°에서 낙상 4/64, **3°에서 28/64(43.8%)·
+    최대 기울임 32.1°.** IMU 오차는 3°에서 4/64로 훨씬 관대하다.
+    원인은 관측 노이즈가 전부 Unoise(매 스텝 제로평균)뿐이고 **에피소드 내내
+    유지되는 상수 편향을 학습한 적이 없기 때문**이다.
+
+    더 위험한 것: boot_pose_check 자세 허용오차가 AK70 관절에서 8°(TOL)라
+    **44% 낙상을 일으키는 3° 영점 오차가 게이트를 '일치'로 통과한다.**
+    실물 영점은 매달림 육안 정렬로 잡았고 기구학 검증 이력이 없다.
+
+    처방: 관절각 관측에 에피소드 상수 편향 ±3°(관절별 독립), 중력벡터에
+    상수 피치 회전 ±3°(몸통 하나). 정책이 '내 기준이 틀어져 있을 수 있다'를
+    전제로 중력·접촉·이력에서 실제 자세를 추론하도록 강제한다.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import EventTermCfg as EventTerm
+        from isaaclab.managers import ObservationTermCfg as ObsTerm
+        # 에피소드마다 편향 재추첨 (리셋 이벤트)
+        self.events.calib_bias = EventTerm(
+            func=mdp_stage4.resample_calib_bias,
+            mode="reset",
+            params={"joint_bias_rad": (-0.052, 0.052),   # ±3°
+                    "imu_tilt_rad": (-0.052, 0.052)},    # ±3°
+        )
+        # 관측 함수 교체 — 노이즈·클리핑·이력 설정은 기존 항의 것을 그대로 유지
+        self.observations.policy.joint_pos.func = mdp_stage4.joint_pos_rel_biased
+        self.observations.policy.projected_gravity.func = \
+            mdp_stage4.projected_gravity_biased

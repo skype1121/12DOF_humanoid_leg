@@ -531,6 +531,12 @@ ACTIONS = {
     "arm":        (lambda p: act_stage8_cmd("arm"), "ARM_ALL"),
     "disarm":     (lambda p: act_stage8_cmd("disarm"), "DISARM_ALL"),
     "bridge":     (act_bridge_live, "브리지 live"),
+    # 정적 자세 시험 — 정책 없이 stage8 홀드만으로 목표 자세 진입
+    "posture":    (lambda p: RUN.start("posture", [
+        sys.executable, os.path.join(SCRIPTS, "posture_probe.py"),
+        "--pose", (p.get("pose") if p.get("pose") in
+                   ("policy_v7", "zero", "knee_only", "ankle_only")
+                   else "policy_v7")]), "정적 자세 시험"),
     # 정책
     "stand":      (lambda p: act_bridge_cmd("stand"), "stand 발사"),
     "march":      (lambda p: act_bridge_cmd("march"), "march 발사"),
@@ -632,6 +638,12 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <button data-a=bridge class=warn>브리지 live</button></div>
 <button data-a=stand class=go>stand 발사</button>
 <button data-a=march class=go>march 발사</button>
+<div style="margin-top:8px;padding-top:8px;border-top:1px solid #2a2f3d">
+<div style="font-size:11px;color:#8b93a7;margin-bottom:6px">정적 자세 시험 — 정책 없이 stage8만 (ARM 후)</div>
+<select id=pose><option value=policy_v7>정책 평형 자세</option>
+<option value=knee_only>무릎만</option><option value=ankle_only>발목만</option>
+<option value=zero>전 관절 0 복귀</option></select>
+<button data-a=posture class=warn>자세 진입</button></div>
 <pre id=log_bridge>—</pre></section>
 
 <section><h2>3. 회수 · 판정</h2>
@@ -649,13 +661,14 @@ clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',4200);}
 async function act(a){
  const body={action:a};
  if(a==='bridge')body.checkpoint=$('#ckpt').value;
+ if(a==='posture')body.pose=$('#pose').value;
  if(a==='zero_recapture'){
    if(!confirm('영점 재캡처 — 지금 자세가 기준 자세(수평 매달림/정렬)가 확실합니까?\\n'
      +'현재 읽기가 그대로 새 앵커가 됩니다.'))return;
    if(!confirm('한 번 더 확인합니다. 잘못 잡으면 이후 boot_pose_check 조차\\n'
      +'틀린 기준에 대해 통과합니다. 진행할까요?'))return;}
- else if(['arm','handoff','bridge','stand','march','release','zero_multiple']
-   .includes(a)){ if(!confirm(a+' — 실행할까요?'))return;}
+ else if(['arm','handoff','bridge','stand','march','release','zero_multiple',
+   'posture'].includes(a)){ if(!confirm(a+' — 실행할까요?'))return;}
  try{const r=await fetch('/api/action',{method:'POST',
    headers:{'content-type':'application/json'},body:JSON.stringify(body)});
   const j=await r.json();toast(j.message,!j.ok);}catch(e){toast(''+e,true);}}

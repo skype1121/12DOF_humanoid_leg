@@ -563,8 +563,8 @@ ACTIONS = {
     "posture":    (lambda p: RUN.start("posture", [
         sys.executable, os.path.join(SCRIPTS, "posture_probe.py"),
         "--pose", (p.get("pose") if p.get("pose") in
-                   ("policy_v7", "zero", "knee_only", "ankle_only")
-                   else "policy_v7")]), "정적 자세 시험"),
+                   ("policy_v8", "policy_v7", "zero", "knee_only", "ankle_only")
+                   else "policy_v8")]), "정적 자세 시험"),
     # 정책
     "stand":      (lambda p: act_bridge_cmd("stand"), "stand 발사"),
     "march":      (lambda p: act_bridge_cmd("march"), "march 발사"),
@@ -666,14 +666,15 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <pre id=log_stack>—</pre></section>
 
 <section><h2>2. 정책</h2><div class=row>
-<select id=ckpt><option>stand_v7</option><option>stand_v6</option>
+<select id=ckpt><option>stand_v8</option><option>stand_v7</option><option>stand_v6</option>
 <option>stand_v5</option><option>stand_v3</option><option>march_v5b</option></select>
 <button data-a=bridge class=warn>브리지 live</button></div>
 <button data-a=stand class=go>stand 발사</button>
 <button data-a=march class=go>march 발사</button>
 <div style="margin-top:8px;padding-top:8px;border-top:1px solid #2a2f3d">
 <div style="font-size:11px;color:#8b93a7;margin-bottom:6px">정적 자세 시험 — 정책 없이 stage8만 (ARM 후)</div>
-<select id=pose><option value=policy_v7>정책 평형 자세</option>
+<select id=pose><option value=policy_v8>정책 평형 자세(v8)</option>
+<option value=policy_v7>정책 평형 자세(v7)</option>
 <option value=knee_only>무릎만</option><option value=ankle_only>발목만</option>
 <option value=zero>전 관절 0 복귀</option></select>
 <button data-a=posture class=warn>자세 진입</button></div>

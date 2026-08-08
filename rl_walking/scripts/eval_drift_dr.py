@@ -13,6 +13,7 @@
       --num_envs 128 --steps 250 --out_tag stand_v7_DR
 """
 import argparse
+import json
 import os
 import sys
 
@@ -97,6 +98,18 @@ for i in range(args_cli.steps):
     death_step[newly_dead] = i
     alive &= ~term
 
+# 정착 구간 평균 관절각 = 이 정책의 '평형 자세'. 실물에서 정책 투입 전에
+# 이 자세로 미리 옮겨놓으면(posture_probe) 정책이 움직일 거리가 0이 되어
+# 블렌딩 중 하중을 잃을 이유가 사라진다 — 5차 붕괴의 직접 처방.
+try:
+    q = robot.data.joint_pos.detach().cpu().numpy()
+    jn_names = list(robot.data.joint_names)
+    eq_pose = {n: round(float(np.degrees(q[:, i].mean())), 2)
+               for i, n in enumerate(jn_names)}
+except Exception as _exc:
+    eq_pose, jn_names = {}, []
+    print(f"[warn] 평형 자세 산출 실패: {_exc}")
+
 pg = np.stack(pg_log)                       # (S, N, 3)
 fwd = np.degrees(np.arctan2(pg[:, :, 0], -pg[:, :, 2]))   # 브리지와 동일 규약
 dt = 1.0 / 50.0
@@ -160,6 +173,12 @@ if com_x is not None and ok.sum() > 5:
         P("■ CoM x 분산 0 — 랜덤화가 실제로 적용되지 않았을 수 있음(점검 필요)")
 else:
     P("■ CoM 상관 분석 생략 (CoM 읽기 실패 또는 표본 부족)")
+if eq_pose:
+    P("")
+    P("■ 평형 자세 (정착 구간 평균, 관절 프레임 deg) — posture_probe 전이 목표")
+    for n in jn_names:
+        P(f"    {n:<22} {eq_pose[n]:+7.2f}")
+    P("  POSE_DICT " + json.dumps(eq_pose, ensure_ascii=False))
 P("=" * 74)
 
 os.makedirs(os.path.dirname(OUT), exist_ok=True)

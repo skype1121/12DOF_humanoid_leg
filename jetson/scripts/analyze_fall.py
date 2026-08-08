@@ -26,8 +26,9 @@ LEAN_FALL_DELTA = 15.0     # 시작 자세 대비 이만큼 더 기울면 자립
 EARLY_WINDOW_S = 3.0       # "1초부터 단조 누적" 을 잡아내는 초기 창
 MIN_GRADE_S = 1.5          # 이보다 짧은 구간은 등급을 매기지 않는다
 
-# v6b 5차 무개입 낙하 실측 (비교 기준선)
-V6B_BASELINE = {"slope": 6.0, "lean_end": 19.0, "standing_s": 2.0}
+# v6b 5차 무개입 낙하 실측 기준선 — 이 스크립트로 원본 블랙박스
+# (0804 rl_bridge_20260804_130927.jsonl)를 재분석해 확정한 값.
+V6B_BASELINE = {"slope": 4.06, "lean_end": 19.2, "standing_s": 1.4}
 
 
 def grav_to_angles(quat_wxyz):
@@ -150,16 +151,18 @@ def analyze(path):
 
     dur = rows[-1]["t"]
 
-    # 기준 자세 = 블렌딩 완료 직후 0.3s 평균. 착지 기하 탓에 시작부터 기울어
-    # 있는 경우가 흔한데(0803 실기: 시작 −16°), 절대각으로 자립을 판정하면
-    # 발력 92%로 멀쩡히 서 있는 시행이 "자립 0초"가 된다. 자립 여부는
-    # **발력**이 1순위이고, 각도는 **시작 대비 변화량**으로만 본다.
-    settled = [r for r in rows if r["alpha"] >= 0.99]
-    if settled:
-        base_win = [r["fwd"] for r in settled if r["t"] <= settled[0]["t"] + 0.3]
-        fwd0 = sum(base_win) / len(base_win)
-    else:
-        fwd0 = rows[0]["fwd"]
+    # 분석 창 = 정책 투입(t0)부터 전부. **블렌딩 구간을 빼면 안 된다** —
+    # 5차 v6b 실측에서 낙하 전체가 블렌딩 1.42s 안에서 끝났다(발력 96%를
+    # 유지하다 alpha 0.7→0.9에서 붕괴). 블렌딩을 빼면 사건 자체가 사라져
+    # "판정 불가"가 된다. 대신 낙상 시점의 alpha를 함께 보고해, 정책이
+    # 얼마만큼의 권한을 쥔 상태에서 무너졌는지 드러낸다.
+    settled = rows
+    # 기준 자세 = 투입 직후 0.3s 평균. 착지 기하 탓에 시작부터 기울어 있는
+    # 경우가 흔한데(0803 실기: 시작 −16°), 절대각으로 자립을 판정하면 발력
+    # 92%로 멀쩡히 서 있던 시행이 "자립 0초"가 된다. 자립 여부는 **발력**이
+    # 1순위이고, 각도는 **시작 대비 변화량**으로만 본다.
+    base_win = [r["fwd"] for r in rows if r["t"] <= rows[0]["t"] + 0.3]
+    fwd0 = sum(base_win) / len(base_win)
 
     # 실효 자립 = 발력을 잃거나(줄로 넘어감) 시작 대비 크게 기울 때까지.
     # 블렌딩 구간(alpha<1)은 정책 권한이 부분적이라 판정에서 제외한다.
@@ -204,8 +207,14 @@ def analyze(path):
 
     # 발력은 **자립 구간에서만** 평균낸다. 낙상 후 구간을 섞으면 멀쩡히
     # 서 있다가 넘어진 시행이 "처음부터 줄에 매달려 있었다"로 오독된다.
-    loads = [r["load"] for r in rows
-             if r["alpha"] >= 0.99 and r["t"] <= standing_s]
+    loads = [r["load"] for r in rows if r["t"] <= standing_s]
+    # 낙상 순간 정책이 쥐고 있던 권한 — 블렌딩 중 무너졌는지 완전 인수 후
+    # 무너졌는지가 원인 해석을 가른다.
+    alpha_at_fall = next((r["alpha"] for r in rows if r["t"] >= standing_s), 1.0)
+    # 하중이 처음 빠지기 시작한 순간과 그때의 정책 권한. v6b는 alpha가
+    # 0.7→0.9로 오르는 구간에서 발력 96%가 무너졌다 = 정책이 밀어낸 증거.
+    depart = next((r for r in rows
+                   if r["t"] <= standing_s and r["load"] < LOAD_STANDING), None)
     fwds = [r["fwd"] for r in rows]
 
     return {
@@ -213,7 +222,16 @@ def analyze(path):
         "ckpt": armed[0].get("checkpoint", "?"),
         "dur": dur, "hz": (len(rows) - 1) / dur if dur > 0 else 0.0,
         "standing_s": standing_s, "stand_reason": stand_reason,
-        "settled_s": (settled[-1]["t"] - settled[0]["t"]) if settled else 0.0,
+        "settled_s": dur, "alpha_at_fall": alpha_at_fall,
+        "depart_t": depart["t"] if depart else None,
+        "depart_alpha": depart["alpha"] if depart else None,
+        # 가드가 자립 종료 직후(0.5s 내)에 울렸는지 — 그때만 "가드가 시행을
+        # 끊었다"고 말할 수 있다. 넘어진 뒤 발이 뜨면서 울린 lift_guard를
+        # 시행 무효 사유로 쓰면 진짜 낙상 데이터를 버리게 된다.
+        "guard_ended": any(
+            e.get("event") in ("osc_guard", "osc_guard_tgt", "lift_guard")
+            and standing_s - 0.2 <= e["timestamp"] - t0 <= standing_s + 0.5
+            for e in events),
         "dip_n": len(dips), "dip_t": dips[0]["t"] if dips else None,
         "dip_min": min((r["load"] for r in dips), default=None),
         "guard_events": [e.get("event") for e in events
@@ -248,11 +266,11 @@ def _grade(a):
     # 등급을 매길 자격이 있는 시행인지 먼저 본다. 0.8초짜리 가드 종료 로그에
     # 3빈 회귀로 "전방 단조 밀기"를 선언하면 그건 판정이 아니라 착각이다.
     if a["settled_s"] < MIN_GRADE_S:
-        return ("—", f"판정 불가 — 블렌딩 후 유효 구간이 {a['settled_s']:.1f}s "
+        return ("—", f"판정 불가 — 정책 구동 구간이 {a['settled_s']:.1f}s "
                 f"뿐입니다 (최소 {MIN_GRADE_S:.1f}s)",
                 "시행이 너무 일찍 끝났습니다. 무엇이 끝냈는지(가드·착지·"
                 "인장)를 해결하고 다시 받으세요.")
-    if a["guard_events"] and stand < 2.5:
+    if a["guard_ended"] and stand < 2.5:
         return ("—", f"판정 불가 — 가드({'/'.join(sorted(set(a['guard_events'])))})"
                 f"가 {stand:.1f}s에 시행을 끊었습니다",
                 "균형이 아니라 가드가 결말을 정했습니다. 가드 트립 원인을 "
@@ -285,10 +303,17 @@ def report(a):
           f"{a['dur']:.1f}s ({a['hz']:.1f}Hz)"
           + (f"   손상줄 {a['bad_lines']}" if a["bad_lines"] else ""))
     print()
-    print(f"■ 실효 자립 시간: {a['standing_s']:.1f}s  ({a['stand_reason']})")
+    print(f"■ 실효 자립 시간: {a['standing_s']:.1f}s  ({a['stand_reason']})"
+          + (f"   ※ 낙상 시점 정책권한 alpha={a['alpha_at_fall']:.2f} "
+             f"— 블렌딩 중 무너짐" if a["alpha_at_fall"] < 0.99 else ""))
     print(f"■ 발력 총합: 평균 {a['load_mean']:.0f}% / 최소 {a['load_min']:.0f}%"
           f" / 최대 {a['load_max']:.0f}%  (체중 {BODY_WEIGHT_N:.0f}N 기준)")
     print("   (자립 구간 기준 — 낙상 후 구간 제외)")
+    if a["depart_t"] is not None:
+        print(f"   하중 이탈 개시: {a['depart_t']:.2f}s "
+              f"(그때 정책권한 alpha={a['depart_alpha']:.2f})"
+              + ("  ← 정책이 권한을 쥐면서 무너졌습니다"
+                 if a["depart_alpha"] < 0.99 else ""))
     if a["dip_t"] is not None:
         print(f"   ※ 회복된 발력 딥: {a['dip_t']:.1f}s에 최저 {a['dip_min']:.0f}% "
               f"({a['dip_n']}틱) — 낙상은 아니나 인수 전이 손실 신호")
@@ -304,7 +329,7 @@ def report(a):
     print(f"■ 전방 기울임: 시작 {a['fwd_start']:+.1f}° → 종료 "
           f"{a['fwd_end']:+.1f}°  (최대 {a['fwd_max']:+.1f}° / 최소 "
           f"{a['fwd_min']:+.1f}°)   좌우 최대 |{a['lat_absmax']:.1f}|°")
-    print(f"   기준 자세(블렌딩 후) {a['fwd0']:+.1f}° → 순변화 "
+    print(f"   기준 자세(투입 직후) {a['fwd0']:+.1f}° → 순변화 "
           f"{a['fwd_end'] - a['fwd0']:+.1f}°"
           + ("   ※ 시작부터 크게 기울어 있었습니다 — 착지 기하를 의심하세요"
              if abs(a["fwd0"]) > 8.0 else ""))

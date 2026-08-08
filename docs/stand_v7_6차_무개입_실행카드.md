@@ -2,8 +2,21 @@
 
 **이 세션이 답할 질문은 하나다 — v6b의 "1초부터 전방 단조 밀기"가 사라졌는가.**
 
-5차(v6b) 무개입 낙하 실측: 균형 잡힌 몸(트림0 자립 3회 실증) 위에서 정책이
-1초부터 전방으로 단조 누적(+1.6 → +19°), 발진도 스텝도 없음. 실효 자립 ~2초.
+**5차(v6b) 기준선 — 원본 블랙박스 재분석 확정치**
+(`~/logs/rl_bridge_20260804_130927.jsonl`, 로컬 사본 `.scratch/bb/`):
+
+| 지표 | v6b 실측 |
+|---|---|
+| 투입 시 발력 / 자세 | **96%** / −1.7° (완전 자립, 줄 무부하) |
+| 하중 이탈 개시 | **1.12s — 그때 정책권한 alpha=0.84** |
+| 실효 자립 | **1.4s** (발력 50% 미회복) |
+| 초기 3s 전방 추세 | **+4.06°/s** (R²=0.77), 단조증가 64% |
+| 순변화 | **−1.8° → +19.2°** |
+| 가드 | lift_guard 8.5s (낙상 **후**, 원인 아님) |
+
+읽는 법: 로봇은 발력 96%로 **혼자 서 있었고**, 정책 권한(블렌딩 alpha)이
+0.84로 올라가는 순간 하중이 빠지기 시작했다. 발진도 스텝도 없는 단조 전방
+누적 — **정책이 밀어낸 것**이지 착지나 균형의 문제가 아니다.
 → 원인 가설 = payload **뒤 배치**로 학습된 전방 과보상. v7은 그 위치 가정을
 제거(com_range x −0.03~+0.02 중앙 대역)하고 재베이크한 판이다.
 
@@ -71,9 +84,10 @@ ros2 topic pub --once -w 1 /humanoid/rl_bridge_command std_msgs/String \
 
 ## 5. 판정 — 블랙박스 자동 분석
 ```bash
-python3 jetson/scripts/analyze_fall.py ~/rl_bridge_bb/rl_bridge_<최신>.jsonl
-# 5차 v6b 기록이 있으면 나란히
-python3 jetson/scripts/analyze_fall.py <v7.jsonl> --compare <v6b_5차.jsonl>
+python3 jetson/scripts/analyze_fall.py ~/logs/rl_bridge_<최신>.jsonl
+# 5차 v6b 기준선과 나란히 (경로 확정)
+python3 jetson/scripts/analyze_fall.py ~/logs/rl_bridge_<최신>.jsonl \
+    --compare ~/logs/rl_bridge_20260804_130927.jsonl
 ```
 등급 기준 (스크립트가 자동 산출):
 

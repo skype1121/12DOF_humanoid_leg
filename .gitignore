@@ -18,3 +18,6 @@ demo_output/
 # RL 학습 산출물 (체크포인트·텐서보드 — 용량 큼, 재생성 가능)
 logs/
 outputs/
+
+# 세션 임시 작업물 (64M txverify 등) — 저장소에 올리지 않는다
+.scratch/

@@ -224,19 +224,30 @@ class Telemetry:
             "pct": round(100.0 * (ln + rn) / BODY_WEIGHT_N, 1),
         }
 
+        # IMU는 **항상** 값을 내보낸다. 끊기면 None 으로 지우지 않고 마지막
+        # 값에 age 를 붙여 보낸다 — 화면에서 갑자기 "—"가 되면 자세를 잃은
+        # 것인지 센서가 끊긴 것인지 구분이 안 된다(원격 오판 사고의 씨앗).
         imu = d.get("imu") or {}
         q = imu.get("quat") or imu.get("quat_wxyz")
+        gyro = imu.get("gyro_rad_s") or imu.get("gyro") or []
         if q and len(q) == 4:
             w, x, y, z = (float(v) for v in q)
             gx = -2.0 * (x * z - w * y)
             gy = -2.0 * (y * z + w * x)
             gz = -(1.0 - 2.0 * (x * x + y * y))
-            out["imu"] = {
+            self._imu_last = {
                 "fwd": round(math.degrees(math.atan2(gx, -gz)), 1),
                 "lat": round(math.degrees(math.atan2(gy, -gz)), 1),
                 "tilt": round(math.degrees(
                     math.acos(max(-1.0, min(1.0, -gz)))), 1),
+                "quat": [round(float(v), 4) for v in (w, x, y, z)],
+                "gyro": [round(float(v), 3) for v in gyro[:3]],
+                "grav": [round(gx, 3), round(gy, 3), round(gz, 3)],
             }
+        last = getattr(self, "_imu_last", None)
+        if last is not None:
+            out["imu"] = dict(last)
+            out["imu"]["age"] = (round(n - t["imu"], 1) if t["imu"] else None)
         else:
             out["imu"] = None
 
@@ -352,6 +363,16 @@ ACTIONS = {
     "selftest":   (lambda p: act_gate("selftest", [
         sys.executable, os.path.join(SCRIPTS, "rl_bridge_node.py"),
         "--selftest"]), "브리지 셀프테스트"),
+    # 영점 재앵커 — 미리보기는 읽기 전용, 적용은 zero_anchor.py 가 자체 차단
+    "zero_preview": (lambda p: RUN.start("zero", [
+        sys.executable, os.path.join(SCRIPTS, "zero_anchor.py"),
+        "--preview"]), "영점 미리보기(읽기만)"),
+    "zero_multiple": (lambda p: RUN.start("zero", [
+        sys.executable, os.path.join(SCRIPTS, "zero_anchor.py"),
+        "--apply", "multiple"]), "영점 배수 보정"),
+    "zero_recapture": (lambda p: RUN.start("zero", [
+        sys.executable, os.path.join(SCRIPTS, "zero_anchor.py"),
+        "--apply", "recapture", "--in-reference-pose"]), "영점 재캡처"),
     # 스택
     "stage8":     (lambda p: RUN.start("stage8", [
         sys.executable, os.path.join(SCRIPTS, "stage8_12axis_mit_control_node.py"),
@@ -420,7 +441,14 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <div class=tile><div class=k>전방 기울임</div><div class=v id=fwd>—</div></div>
 <div class=tile><div class=k>좌우 기울임</div><div class=v id=lat>—</div></div>
 <div class=tile><div class=k>블렌딩 alpha</div><div class=v id=blend>—</div></div>
-</div><div class=row style=margin-top:10px>
+<div class=tile><div class=k>총 기울기</div><div class=v id=tilt>—</div></div>
+</div>
+<div class=row style="margin-top:8px;font-size:12px;color:#8b93a7;gap:14px">
+<span>IMU <b id=imu_age class=dim>—</b></span>
+<span>중력 <b id=imu_grav>—</b></span>
+<span>자이로(rad/s) <b id=imu_gyro>—</b></span>
+<span>quat <b id=imu_quat>—</b></span></div>
+<div class=row style=margin-top:10px>
 <span class=pill id=p_arm>stage8</span><span class=pill id=p_base>baseline</span>
 <span class=pill id=p_live>bridge</span><span class=pill id=p_ckpt>ckpt</span>
 <span class=pill id=p_contact>접촉</span></div>
@@ -431,6 +459,11 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <button data-a=boot_pose>영점 판정 12/12</button>
 <button data-a=sensors>센서 기동</button>
 <button data-a=selftest>브리지 셀프테스트</button>
+<div style="margin-top:8px;padding-top:8px;border-top:1px solid #2a2f3d">
+<div class=k style="font-size:11px;color:#8b93a7;margin-bottom:6px">영점 재앵커 — 스택 내린 상태에서만</div>
+<button data-a=zero_preview>미리보기</button>
+<button data-a=zero_multiple class=warn>배수 보정</button>
+<button data-a=zero_recapture class=warn>재캡처</button></div>
 <pre id=log_gate>—</pre></section>
 
 <section><h2>1. 기립 → 무장</h2>
@@ -465,8 +498,13 @@ clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',4200);}
 async function act(a){
  const body={action:a};
  if(a==='bridge')body.checkpoint=$('#ckpt').value;
- if(['arm','handoff','bridge','stand','march','release'].includes(a)){
-   if(!confirm(a+' — 실행할까요?'))return;}
+ if(a==='zero_recapture'){
+   if(!confirm('영점 재캡처 — 지금 자세가 기준 자세(수평 매달림/정렬)가 확실합니까?\\n'
+     +'현재 읽기가 그대로 새 앵커가 됩니다.'))return;
+   if(!confirm('한 번 더 확인합니다. 잘못 잡으면 이후 boot_pose_check 조차\\n'
+     +'틀린 기준에 대해 통과합니다. 진행할까요?'))return;}
+ else if(['arm','handoff','bridge','stand','march','release','zero_multiple']
+   .includes(a)){ if(!confirm(a+' — 실행할까요?'))return;}
  try{const r=await fetch('/api/action',{method:'POST',
    headers:{'content-type':'application/json'},body:JSON.stringify(body)});
   const j=await r.json();toast(j.message,!j.ok);}catch(e){toast(''+e,true);}}
@@ -482,9 +520,19 @@ async function poll(){
   $('#pct').textContent=fr.foot?f.pct.toFixed(0)+'%':'—';
   $('#pct').className='v '+(fr.foot?cls(f.pct,85,50):'dim');
   $('#feet').textContent=fr.foot?f.left_n.toFixed(0)+' / '+f.right_n.toFixed(0)+' N':'—';
-  $('#fwd').textContent=s.imu&&fr.imu?(s.imu.fwd>0?'+':'')+s.imu.fwd+'°':'—';
-  $('#fwd').className='v '+(s.imu&&fr.imu?cls(8-Math.abs(s.imu.fwd),4,0):'dim');
-  $('#lat').textContent=s.imu&&fr.imu?(s.imu.lat>0?'+':'')+s.imu.lat+'°':'—';
+  // IMU는 끊겨도 마지막 값을 계속 보여준다 (dim 처리 + 경과 초 표시).
+  const I=s.imu;
+  $('#fwd').textContent=I?(I.fwd>0?'+':'')+I.fwd+'°':'—';
+  $('#fwd').className='v '+(I?(fr.imu?cls(8-Math.abs(I.fwd),4,0):'dim'):'dim');
+  $('#lat').textContent=I?(I.lat>0?'+':'')+I.lat+'°':'—';
+  $('#lat').className='v '+(I&&fr.imu?'':'dim');
+  $('#tilt').textContent=I?I.tilt+'°':'—';
+  $('#tilt').className='v '+(I&&fr.imu?'':'dim');
+  $('#imu_age').textContent=I&&I.age!=null?(fr.imu?'수신중':(I.age+'초 전 끊김')):'없음';
+  $('#imu_age').className=fr.imu?'ok':'bad';
+  $('#imu_grav').textContent=I&&I.grav?I.grav.map(v=>v.toFixed(2)).join(' , '):'—';
+  $('#imu_gyro').textContent=I&&I.gyro&&I.gyro.length?I.gyro.map(v=>v.toFixed(2)).join(' , '):'—';
+  $('#imu_quat').textContent=I&&I.quat?I.quat.map(v=>v.toFixed(3)).join(' '):'—';
   $('#blend').textContent=s.bridge.blend!=null?(+s.bridge.blend).toFixed(2):'—';
   $('#p_arm').textContent='stage8 '+(s.stage8.armed?'ARMED':(s.stage8.waiting?'대기':'—'));
   $('#p_arm').className='pill '+(s.stage8.armed?'ok':'dim');

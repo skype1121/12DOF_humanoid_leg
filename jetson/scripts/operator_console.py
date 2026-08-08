@@ -26,6 +26,7 @@ import json
 import math
 import os
 import shlex
+import signal
 import subprocess
 import sys
 import threading
@@ -387,17 +388,21 @@ h1{font-size:15px;margin:0;font-weight:600}
 #estop{margin-left:auto;background:#c0243a;color:#fff;border:0;border-radius:8px;
 padding:12px 22px;font-size:16px;font-weight:700;cursor:pointer}
 #estop:active{background:#8f1a2b}
-main{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;padding:12px}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;padding:12px}
 section{background:#191c24;border:1px solid #2a2f3d;border-radius:10px;padding:12px}
+section.full{grid-column:1/-1}
 h2{font-size:12px;margin:0 0 10px;color:#8b93a7;text-transform:uppercase;letter-spacing:.06em}
 button{background:#242938;color:#e6e8ef;border:1px solid #333a4d;border-radius:7px;
-padding:9px 12px;margin:0 6px 6px 0;cursor:pointer;font-size:13px}
+padding:11px 14px;margin:0 6px 6px 0;cursor:pointer;font-size:14px}
 button:hover{background:#2d3346}button.warn{border-color:#7a4b1e;background:#2e2216}
 button.go{border-color:#1e6b4a;background:#16281f}
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.tile{background:#12141a;border:1px solid #262c3a;border-radius:8px;padding:10px}
-.tile .k{font-size:11px;color:#8b93a7}.tile .v{font-size:22px;font-weight:700;margin-top:2px}
-.big{grid-column:1/-1}.big .v{font-size:34px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.tile{background:#12141a;border:1px solid #262c3a;border-radius:8px;padding:10px 12px}
+.tile .k{font-size:11px;color:#8b93a7}.tile .v{font-size:26px;font-weight:700;margin-top:2px;
+line-height:1.15;font-variant-numeric:tabular-nums}
+/* 발력 총합은 줄을 잡은 채 흘끗 보는 지표 — 화면에서 제일 커야 한다 */
+.big{grid-column:span 2}.big .v{font-size:56px}
+@media(max-width:560px){.big{grid-column:1/-1}.big .v{font-size:48px}}
 .ok{color:#4ade80}.bad{color:#f87171}.mid{color:#fbbf24}.dim{color:#6b7280}
 pre{background:#0d0f14;border:1px solid #232936;border-radius:8px;padding:9px;
 max-height:230px;overflow:auto;font-size:11.5px;margin:8px 0 0;white-space:pre-wrap}
@@ -409,16 +414,17 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <header><h1>실기 운영 콘솔</h1><span id=conn class=pill>연결 중…</span>
 <button id=estop>■ 비상정지</button></header>
 <main>
-<section><h2>판정 지표</h2><div class=tiles>
-<div class="tile big"><div class=k>발력 총합 (체중 117.7N 대비)</div><div class=v id=pct>—</div></div>
-<div class=tile><div class=k>왼발 / 오른발</div><div class=v id=feet>—</div></div>
+<section class=full><h2>판정 지표</h2><div class=tiles>
+<div class="tile big"><div class=k>발력 총합 · 체중 117.7N 대비</div><div class=v id=pct>—</div></div>
+<div class=tile><div class=k>왼발 / 오른발 (N)</div><div class=v id=feet>—</div></div>
 <div class=tile><div class=k>전방 기울임</div><div class=v id=fwd>—</div></div>
 <div class=tile><div class=k>좌우 기울임</div><div class=v id=lat>—</div></div>
 <div class=tile><div class=k>블렌딩 alpha</div><div class=v id=blend>—</div></div>
 </div><div class=row style=margin-top:10px>
 <span class=pill id=p_arm>stage8</span><span class=pill id=p_base>baseline</span>
-<span class=pill id=p_live>bridge</span><span class=pill id=p_ckpt>ckpt</span></div>
-<pre id=events>이벤트 없음</pre></section>
+<span class=pill id=p_live>bridge</span><span class=pill id=p_ckpt>ckpt</span>
+<span class=pill id=p_contact>접촉</span></div>
+<pre id=events style=max-height:96px>이벤트 없음</pre></section>
 
 <section><h2>0. 게이트</h2>
 <button data-a=can_up>CAN 브링업</button>
@@ -487,6 +493,9 @@ async function poll(){
   $('#p_live').textContent='bridge '+(s.bridge.live?'LIVE':'—');
   $('#p_live').className='pill '+(s.bridge.live?'ok':'dim');
   $('#p_ckpt').textContent=s.bridge.checkpoint||'ckpt —';
+  const c=s.bridge.contact;
+  $('#p_contact').textContent='접촉 '+(c?('L'+(c[0]>0.5?'●':'○')+' R'+(c[1]>0.5?'●':'○')):'—');
+  $('#p_contact').className='pill '+(c&&c[0]>0.5&&c[1]>0.5?'ok':'dim');
   $('#events').textContent=s.events.length?s.events.join('\\n'):'이벤트 없음';
   const P=s.procs||{};
   const pick=(ks)=>{for(const k of ks){if(P[k])return '['+k+' pid'+P[k].pid+
@@ -591,12 +600,23 @@ def main():
         return selftest()
     TEL.start()
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
-    print(f"운영 콘솔: http://<젯슨IP>:{a.port}/   (Ctrl-C 종료)")
+    srv.daemon_threads = True
+    # rclpy.init() 이 SIGTERM/SIGINT 핸들러를 가로채 kill 이 먹지 않는다
+    # (0808 실측: 재배포하려고 kill 했더니 구버전이 계속 포트를 물고 있어
+    #  새 프로세스가 Address already in use 로 죽었다). 운영 도구가 안 꺼지는
+    # 것은 그 자체로 결함이므로 우리 핸들러를 나중에 덮어씌운다.
+    def _bye(signum, _frame):
+        print(f"\n신호 {signum} — 콘솔 종료 (띄운 프로세스는 그대로 둡니다: "
+              f"모터는 마지막 명령을 홀드).")
+        threading.Thread(target=srv.shutdown, daemon=True).start()
+    for s in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(s, _bye)
+    print(f"운영 콘솔: http://<젯슨IP>:{a.port}/   (Ctrl-C 또는 kill 로 종료)")
     print(f"  ROS 텔레메트리: {'연결' if TEL.ok else '없음(조작반만 동작)'}")
     try:
         srv.serve_forever()
-    except KeyboardInterrupt:
-        print("\n종료 — 콘솔이 띄운 프로세스는 그대로 둡니다 (모터 홀드 유지).")
+    finally:
+        srv.server_close()
     return 0
 
 

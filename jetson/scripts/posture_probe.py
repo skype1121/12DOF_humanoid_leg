@@ -42,6 +42,21 @@ import time
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPTS)
 
+#: 정책 stand_v8 의 시뮬(DR 128env, 낙상 0/128) 정착 평형 자세 [deg, 관절 프레임].
+#: eval_drift_dr.py --out_tag stand_v8_DR 산출. v7 대비 스탠스가 크게 대칭화됐다
+#: (발목 굽힘 비대칭 10.6°→2.3°, 무릎 ∓10.4° 스탠바이).
+#: **실물 절차**: 정책 투입 **전에** 이 자세로 옮겨놓는다. 그러면 정책이
+#: 움직일 거리가 0이 되어, 5차 붕괴(발력 96% → alpha 0.84에서 이탈)의
+#: 직접 원인인 '하중 받은 채 자세 이동'이 사라진다.
+POSE_POLICY_V8 = {
+    "left_hip_f_joint": -7.82, "right_hip_f_joint": 5.02,
+    "left_hip_a_joint": 0.02, "right_hip_a_joint": -0.37,
+    "left_hip_r_joint": 2.00, "right_hip_r_joint": 0.74,
+    "left_knee_joint": -10.24, "right_knee_joint": 10.52,
+    "left_ankle_f_joint": 13.67, "right_ankle_f_joint": -11.40,
+    "left_ankle_r_joint": 0.34, "right_ankle_r_joint": -0.17,
+}
+
 #: 정책 stand_v7 이 시뮬(DR 128env)에서 정착하는 평형 자세 [deg, 관절 프레임].
 #: demo_output/rl_eval_trajstand_v7.npz 의 정착 구간 평균에서 산출.
 POSE_POLICY_V7 = {
@@ -58,7 +73,8 @@ POSE_KNEE_ONLY = dict(POSE_ZERO, **{"left_knee_joint": -10.6,
                                     "right_knee_joint": 11.0})
 POSE_ANKLE_ONLY = dict(POSE_ZERO, **{"left_ankle_f_joint": 12.6,
                                      "right_ankle_f_joint": -2.0})
-POSES = {"policy_v7": POSE_POLICY_V7, "zero": POSE_ZERO,
+POSES = {"policy_v8": POSE_POLICY_V8, "policy_v7": POSE_POLICY_V7,
+         "zero": POSE_ZERO,
          "knee_only": POSE_KNEE_ONLY, "ankle_only": POSE_ANKLE_ONLY}
 
 RATE_HZ = 20.0
@@ -129,7 +145,7 @@ def selftest():
 
 def main():
     ap = argparse.ArgumentParser(description="정적 자세 시험 (정책 없음)")
-    ap.add_argument("--pose", default="policy_v7", choices=list(POSES) + ["custom"])
+    ap.add_argument("--pose", default="policy_v8", choices=list(POSES) + ["custom"])
     ap.add_argument("--json", help="custom 자세 {관절명: deg}")
     ap.add_argument("--ramp", type=float, default=8.0, help="진입 시간(초) 목표")
     ap.add_argument("--hold", type=float, default=20.0, help="도달 후 관찰(초)")

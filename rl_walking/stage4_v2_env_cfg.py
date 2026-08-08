@@ -837,3 +837,30 @@ class Biped12Stage4V2MarchV6EnvCfg(Biped12Stage4V2MarchDRv5EnvCfg):
         # ② 느린 걸음 — 관측·보상 클록을 반드시 함께 바꾼다(위상 정의 공유)
         self.observations.policy.gait_clock.params["freq"] = 0.85
         self.rewards.gait_phase.params["freq"] = 0.85
+
+
+@configclass
+class Biped12Stage4V2MarchV6bEnvCfg(Biped12Stage4V2MarchV6EnvCfg):
+    """march_v6b — v6의 과용량 교정. 진단은 맞았고 처방 용량이 틀렸다.
+
+    v6 실측(64env×30s, cmd 0.3): 발 들기는 완벽히 해결됐다(스윙 최고점 중앙
+    23.3→76.9mm, 20mm 미만 41.6→2.8%). 그러나 **걷지를 못한다** —
+    전진 0.25m(기대 9.0m)·속도추종오차 0.234·낙상 23.4%·직립 9.13°·
+    발목롤 5.26rad/s(AK45-36 한계 5.0 **위반**)·액션레이트 0.128.
+    발을 높이 드는 데 보상이 쏠려 전진이 밀렸고, 클록 0.85Hz는 같은 명령
+    속도에 더 긴 보폭을 요구해 부담을 키웠다.
+
+    v6 대비:
+      ① clearance 가중 2.0 → 0.8 (전진·추종 항과 균형)
+      ② 목표 높이 45 → 35mm (v5b 실측 23mm 대비 충분히 높고, 사람 보행
+         clearance 15~25mm의 상한 부근. 과도한 들기는 에너지·발목속도 부담)
+      ③ 클록 0.85 → 1.0Hz (v5b 1.1에서 완만히만 늦춘다)
+      **배포 시 CKPT_GAIT_FREQ["march_v6b"]=1.0 등록 필수.**
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.feet_clearance.weight = 0.8
+        self.rewards.feet_clearance.params["target_m"] = 0.035
+        self.observations.policy.gait_clock.params["freq"] = 1.0
+        self.rewards.gait_phase.params["freq"] = 1.0

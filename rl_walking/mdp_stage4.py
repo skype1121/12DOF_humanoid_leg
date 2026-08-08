@@ -319,3 +319,23 @@ def feet_swing_clearance(
     r = (h / target_m).clamp(0.0, 1.0)
     r = torch.where(in_contact, torch.zeros_like(r), r)
     return r.mean(dim=1)
+
+
+def joint_vel_over_limit(
+    env,
+    asset_cfg: SceneEntityCfg,
+    limit_rad_s: float = 5.0,
+    cap: float = 100.0,
+) -> torch.Tensor:
+    """지정 관절의 속도 한계 초과분 벌점 [rad/s] (0809 발목롤 위반 대응).
+
+    AK45-36(발목 롤, 모터 6·12)은 감속비 1/8로 최대 5.0rad/s 다. 발 들기를
+    키우자 스윙 중 발목롤이 빨라져 5.26~5.68rad/s 로 한계를 넘었다 —
+    실물에서는 추종 실패이자 과열·손상 경로다. joint_vel_l2(전 관절 균등,
+    가중 −5e-4)로는 특정 관절의 한계 초과를 못 잡는다: 초과분만 선택적으로,
+    한계 이내는 무벌점으로 때린다.
+    cap 은 방폭 관례(폭발 시 무한대 보상 방지).
+    """
+    asset = env.scene[asset_cfg.name]
+    v = asset.data.joint_vel[:, asset_cfg.joint_ids].abs()
+    return (v - limit_rad_s).clamp(min=0.0).sum(dim=1).clamp_max(cap)

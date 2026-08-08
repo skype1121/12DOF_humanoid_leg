@@ -864,3 +864,29 @@ class Biped12Stage4V2MarchV6bEnvCfg(Biped12Stage4V2MarchV6EnvCfg):
         self.rewards.feet_clearance.params["target_m"] = 0.035
         self.observations.policy.gait_clock.params["freq"] = 1.0
         self.rewards.gait_phase.params["freq"] = 1.0
+
+
+@configclass
+class Biped12Stage4V2MarchV6cEnvCfg(Biped12Stage4V2MarchV6bEnvCfg):
+    """march_v6c — v6b의 유일한 배포 차단 사유(발목롤 속도 위반) 제거.
+
+    v6b 실측: 낙상 25.0→15.6%·20mm미만 스윙 41.6→17.2%·직립 8.03→7.72°로
+    전부 개선했으나 **발목롤 5.68rad/s (AK45-36 한계 5.0 위반)**. 발을 더 들면
+    발목롤이 더 빨라지는 구조적 부작용이다. joint_vel_l2(전 관절 균등 −5e-4)는
+    특정 관절의 한계 초과를 잡지 못하므로 전용 벌점을 건다.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.ankle_r_speed = RewTerm(
+            func=mdp_stage4.joint_vel_over_limit,
+            weight=-0.5,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=["left_ankle_r_joint", "right_ankle_r_joint"],
+                    preserve_order=True,
+                ),
+                "limit_rad_s": 4.5,   # 한계 5.0에 10% 마진
+            },
+        )

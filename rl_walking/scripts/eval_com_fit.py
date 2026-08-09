@@ -34,6 +34,14 @@ parser.add_argument("--com_lo", type=float, default=-0.075)
 parser.add_argument("--com_hi", type=float, default=-0.010)
 parser.add_argument("--target", type=float, default=-19.0,
                     help="맞출 실물 낙하 각속도 [°/s]")
+parser.add_argument("--axis", type=str, default="fwd",
+                    help="fwd=전후 CoM(피치 낙하) | lat=좌우 CoM(롤 낙하)")
+parser.add_argument("--init_pitch", type=float, default=0.0,
+                    help="초기 몸통 피치 [°] — 같은 CoM 이 나오는지 보는 대조")
+parser.add_argument("--friction", type=float, default=None,
+                    help="관절 마찰 고정값 (무시 가정의 민감도)")
+parser.add_argument("--armature_scale", type=float, default=1.0,
+                    help="반사관성 배율 (감속기 관성 가정의 민감도)")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -86,8 +94,25 @@ env_cfg.actions.joint_pos.min_delay_steps = 0
 env_cfg.actions.joint_pos.max_delay_steps = 0
 # 질량은 실물로 고정, CoM x 만 넓게 스윕
 env_cfg.events.add_base_mass.params["mass_distribution_params"] = (PAYLOAD_KG, PAYLOAD_KG)
-env_cfg.events.base_com.params["com_range"] = {
-    "x": (args_cli.com_lo, args_cli.com_hi), "y": (0.0, 0.0), "z": (0.0041, 0.0041)}
+if args_cli.axis == "lat":
+    # 좌우 CoM 은 롤 낙하로 잰다 — 좌우대칭이라 명목상 0 이어야 한다.
+    env_cfg.events.base_com.params["com_range"] = {
+        "x": (-0.0307, -0.0307), "y": (args_cli.com_lo, args_cli.com_hi),
+        "z": (0.0041, 0.0041)}
+else:
+    env_cfg.events.base_com.params["com_range"] = {
+        "x": (args_cli.com_lo, args_cli.com_hi), "y": (0.0, 0.0), "z": (0.0041, 0.0041)}
+# 초기 기울기 — 역산이 초기조건에 의존하면 그 숫자는 못 믿는다
+if args_cli.init_pitch != 0.0:
+    _ip = math.radians(args_cli.init_pitch)
+    env_cfg.events.reset_base.params["pose_range"]["pitch"] = (_ip, _ip)
+# 물성 가정의 민감도 — 무시했던 항을 켜 보고 결과가 몇 mm 흔들리는지 본다
+if args_cli.friction is not None:
+    env_cfg.events.joint_friction.params[
+        "friction_distribution_params"] = (args_cli.friction, args_cli.friction)
+if args_cli.armature_scale != 1.0:
+    for _a in env_cfg.scene.robot.actuators.values():
+        _a.armature = _a.armature * args_cli.armature_scale
 env_cfg.episode_length_s = 60.0
 
 env = gym.make(args_cli.task, cfg=env_cfg)
@@ -102,7 +127,7 @@ com_bb = None
 try:
     coms = robot.root_physx_view.get_coms().to("cpu").numpy()
     coms = coms.reshape(N, -1, coms.shape[-1])
-    com_bb = coms[:, 0, 0].copy()          # base 바디 CoM x [m]
+    com_bb = coms[:, 0, 1 if args_cli.axis == "lat" else 0].copy()
 except Exception as exc:
     print(f"[warn] CoM 읽기 실패: {exc}")
 
@@ -131,6 +156,9 @@ for i in range(args_cli.steps):
 
 pg = np.stack(pg_log)
 fwd = np.degrees(np.arctan2(pg[:, :, 0], -pg[:, :, 2]))
+if args_cli.axis == "lat":
+    # 롤 낙하 — 좌우 CoM 을 같은 방식으로 역산
+    fwd = np.degrees(np.arctan2(pg[:, :, 1], -pg[:, :, 2]))
 dt = 1.0 / 50.0
 t = np.arange(pg.shape[0]) * dt
 d = death.cpu().numpy()

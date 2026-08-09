@@ -1012,3 +1012,71 @@ class Biped12Stage4V2StandV12EnvCfg(Biped12Stage4V2StandV10EnvCfg):
             mode="reset",
             params={"k_range": (60.0, 400.0)},
         )
+
+
+@configclass
+class Biped12Stage4V2StandV13EnvCfg(Biped12Stage4V2StandV6EnvCfg):
+    """stand_v13 — **불확실성 전체를 담는 환경** (0810). 세대 경쟁의 종료.
+
+    **왜 v3~v11 의 승격 판정이 전부 무의미했는가 (0810 대조 실측).**
+    같은 정책·같은 배포 래퍼로 평가 환경만 바꿔 재니 순위가 뒤집힌다:
+
+        정책     v6환경(푸시·거친지형)   v8환경(평지·무푸시)
+        v6b            3/64                 20/64
+        v7            16/64                  1/64
+        v9            36/64                  2/64
+        v11             —                   36/64
+
+    **각 정책은 자기 학습 환경에서만 잘한다.** 즉 다섯 세대의 승격은
+    "방금 바꾼 환경에 가장 잘 맞는 정책"을 고른 것이고, 실물 성능과 무관하다.
+    환경을 바꿔 가며 세대를 뽑는 한 이 자기추적은 끝나지 않는다.
+
+    **해법은 환경을 다시 고르는 것이 아니라 불확실성을 통째로 담는 것.**
+    승윤님 설계 철학과 정확히 같다 — "기구에 차이가 있어도 자연스럽게 기능".
+    어느 정책도 '자기 집'이 없는 분포에서 학습시키면, 이긴 정책은 환경에
+    맞춰진 것이 아니라 **불확실성에 강한** 것이다.
+
+    **담는 불확실성 (전부 실측·역산 근거):**
+      CoM x  −0.10 ~ +0.02 m
+             역산 구간이 초기 기울기 가정에 지배된다(0810 B): 물성 가정
+             (마찰·반사관성)은 −31.0~−32.7mm 로 1.7mm 밖에 안 흔드는데,
+             초기 피치 ±2° 가 −17.8~−42.9mm 로 25mm 를 흔든다. 그 초기
+             기울기는 IMU 영점에 의존하고, IMU 영점이야말로 지금 못 믿는 값.
+             → 점추정을 버리고 대역으로 학습한다.
+      질량   +0.0 ~ +3.5 kg (총 10.5~14.0 kg)
+             URDF base 10.491, payload판 12.001. 승윤님 추정 실물 ~13kg.
+             질량은 넘어짐 역학에서 대부분 상쇄되지만(각가속도 = g·d/L²)
+             토크 요구와 서보 권한은 비례하므로 대역으로 덮는다.
+      IMU    피치·롤 상수 편향 ±5° (v9 의 ±3° 확대)
+             근거: imu_mount_calib.py 가 '수직 매달림'을 영점 기준으로 쓰는데,
+             줄에 매단 몸은 CoM 이 매단 점 밑에 오도록 걸리므로 베이스가
+             연직이 아니다. 그 기울기가 1:1 로 영구 편향이 된다.
+             0810 A 실측: −4.5° 편향이 실물 전방추세(+4.48 vs 실물 +4.06)와
+             떨림(2.16° vs 실물 2~4°)을 동시에 재현.
+      영점   관절 상수 편향 ±3° (v9 유지)
+      푸시·지형·게인·지연·마찰: v6 대역 유지 (섭동 판정 원칙)
+
+    v6 을 부모로 고른 이유: v7~v11 이 좁힌 축(CoM·푸시 제거)이 전부 순위
+    역전의 원인이었고, v6 대역이 실측 −31.6mm 를 이미 포함하고 있었다.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import EventTermCfg as EventTerm
+        self.events.base_com.params["com_range"] = {
+            "x": (-0.10, 0.02),
+            "y": (-0.02, 0.02),
+            "z": (0.0, 0.15),
+        }
+        self.events.add_base_mass.params["mass_distribution_params"] = (0.0, 3.5)
+        # 캘리브레이션 상수 편향 — 매 스텝 제로평균 노이즈로는 못 가르친다.
+        # 에피소드 내내 유지되는 편향이어야 '치우친 기준에 적응'을 배운다.
+        self.events.calib_bias = EventTerm(
+            func=mdp_stage4.resample_calib_bias,
+            mode="reset",
+            params={"joint_bias_rad": (-0.052, 0.052),    # ±3°
+                    "imu_tilt_rad": (-0.087, 0.087)},     # ±5°
+        )
+        self.observations.policy.joint_pos.func = mdp_stage4.joint_pos_rel_biased
+        self.observations.policy.projected_gravity.func = \
+            mdp_stage4.projected_gravity_biased

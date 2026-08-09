@@ -31,6 +31,8 @@ parser.add_argument("--num_envs", type=int, default=128)
 parser.add_argument("--out_tag", type=str, default="")
 parser.add_argument("--com_fix", type=float, default=None,
                     help="base_com x 를 이 값으로 고정 [m] — CoM 인과 검증용")
+parser.add_argument("--mass_kg", type=float, default=None,
+                    help="실물 총질량 [kg] 고정 — payload 를 역산해 넣는다 (URDF base 10.491)")
 parser.add_argument("--deploy", type=str, default=None,
                     help="실배포 래퍼 프리셋: new(슬루 인수·0810 수술) | old(블렌딩 1.5s)")
 parser.add_argument("--lpf", type=float, default=0.0,
@@ -115,6 +117,10 @@ if args_cli.com_fix is not None:
     env_cfg.events.base_com.params["com_range"] = {
         "x": (args_cli.com_fix, args_cli.com_fix),
         "y": (0.0, 0.0), "z": (0.08, 0.08)}
+if args_cli.mass_kg is not None:
+    # 총질량만 바꾸고 CoM 은 고정 — 질량이 정말 상쇄되는지 보는 대조.
+    _pl = args_cli.mass_kg - 10.491        # base URDF 실측 전개값
+    env_cfg.events.add_base_mass.params["mass_distribution_params"] = (_pl, _pl)
 if args_cli.kp is not None and args_cli.sea is None:
     for _a in env_cfg.scene.robot.actuators.values():
         _a.stiffness = args_cli.kp
@@ -273,6 +279,8 @@ act_log = []         # (steps, N, 12) — 떨림 지표용
 alive = torch.ones(N, dtype=torch.bool, device=uenv.device)
 death_step = torch.full((N,), args_cli.steps, dtype=torch.long, device=uenv.device)
 
+sat_hits = torch.zeros(robot.data.joint_pos.shape[1], device=robot.data.joint_pos.device)
+sat_n = 0
 for i in range(args_cli.steps):
     with torch.inference_mode():
         actions = policy(_bias(obs))
@@ -281,6 +289,13 @@ for i in range(args_cli.steps):
         obs, _, dones, _ = env.step(_wrapper(actions, i))
     pg_log.append(robot.data.projected_gravity_b.clone().cpu().numpy())
     act_log.append(actions.detach().cpu().numpy())
+    # E: 관절 한계 도달 점검 — 한계에 정확히 붙는 것은 보상을 우회하는 해의 징후
+    _lim = robot.data.soft_joint_pos_limits[0]          # (n_j, 2) lo/hi
+    _q = robot.data.joint_pos
+    _near = ((_q - _lim[:, 0].unsqueeze(0)).abs() < 0.0175) | \
+            ((_q - _lim[:, 1].unsqueeze(0)).abs() < 0.0175)     # 1° 이내
+    sat_hits = sat_hits + _near.float().sum(0)
+    sat_n += args_cli.num_envs
     term = uenv.termination_manager.terminated
     newly_dead = alive & term
     death_step[newly_dead] = i
@@ -349,6 +364,10 @@ def P(s=""):
     print(s)
     lines.append(s)
 
+# E: 관절별 한계 도달 비율 (1° 이내에 머문 시간 비율)
+_satr = (sat_hits / max(1, sat_n)).cpu().numpy() * 100.0
+_jnames = list(robot.data.joint_names)
+
 P("=" * 74)
 P(f"DR 분포 전방 드리프트 — {args_cli.task}")
 P(f"체크포인트: {resume_path}")
@@ -413,6 +432,18 @@ if smth is not None:
     P(f"    E_smth (액션 2차차분)  {smth:.5f}")
     P(f"    우세 주파수            {domf:.2f} Hz")
     P(f"    >5Hz 에너지 비율        {hi5:.1f} %")
+P("")
+P("■ 관절 한계 도달 비율 (한계 1° 이내 체류 시간 %) — 5% 이상만 표기")
+_bad = sorted(((float(_satr[k]), _jnames[k]) for k in range(len(_jnames))),
+              reverse=True)
+if _bad and _bad[0][0] >= 5.0:
+    for v, n in _bad:
+        if v >= 5.0:
+            P(f"    {n:<24} {v:6.1f} %")
+    P("    ⚠ 한계에 붙어 사는 관절 = 보상 우회 해 의심 (v10 힙롤 +30.00° 전례)")
+elif _bad:
+    P(f"    없음 — 최대 {_bad[0][1]} {_bad[0][0]:.1f}%")
+
 if eq_pose:
     P("")
     P("■ 평형 자세 (정착 구간 평균, 관절 프레임 deg) — posture_probe 전이 목표")

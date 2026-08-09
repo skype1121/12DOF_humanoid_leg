@@ -30,6 +30,14 @@ parser.add_argument("--num_envs", type=int, default=128)
 parser.add_argument("--out_tag", type=str, default="")
 parser.add_argument("--com_fix", type=float, default=None,
                     help="base_com x 를 이 값으로 고정 [m] — CoM 인과 검증용")
+parser.add_argument("--kp", type=float, default=None,
+                    help="서보 강성 고정 [Nm/rad] — SEA 루프이득 kp/k_struct 검증용")
+parser.add_argument("--sea", type=float, default=None,
+                    help="구조 강성 [Nm/rad] — 로터-링크 SEA 관측 모델 (실측 43.5)")
+parser.add_argument("--delay", type=str, default=None,
+                    help="액션 지연 min,max [틱] — 떨림 재현 스윕용")
+parser.add_argument("--contact_delay", type=int, default=None,
+                    help="발접촉 관측 지연 [틱] — 실물 발압력 10Hz(5틱) 모사")
 parser.add_argument("--mass_fix", type=float, default=None,
                     help="add_base_mass 를 이 값으로 고정 [kg]")
 cli_args.add_rsl_rl_args(parser)
@@ -44,6 +52,7 @@ import numpy as np               # noqa: E402
 import torch                     # noqa: E402
 import isaaclab_tasks            # noqa: F401,E402
 import rl_walking                # noqa: F401,E402
+from rl_walking import mdp_stage4 as mdp_stage4_mod  # noqa: E402
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper  # noqa: E402
 from isaaclab_tasks.utils import get_checkpoint_path, load_cfg_from_registry  # noqa: E402
 from rsl_rl.runners import OnPolicyRunner  # noqa: E402
@@ -69,6 +78,28 @@ if args_cli.com_fix is not None:
     env_cfg.events.base_com.params["com_range"] = {
         "x": (args_cli.com_fix, args_cli.com_fix),
         "y": (0.0, 0.0), "z": (0.08, 0.08)}
+if args_cli.kp is not None:
+    # 루프이득 가설 검증: kp/k_struct < 1 이면 발산이 멎어야 한다.
+    for _a in env_cfg.scene.robot.actuators.values():
+        _a.stiffness = args_cli.kp
+    env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
+if args_cli.sea is not None:
+    # 관측측 SEA — 정책이 로터각을 읽어 구조 변형에 눈이 멀게 한다.
+    _jp = env_cfg.observations.policy.joint_pos
+    _jp.func = mdp_stage4_mod.joint_pos_rel_sea
+    _jp.params["k_struct"] = args_cli.sea
+if args_cli.delay is not None:
+    # 실물 sysid 실측 루프지연은 4~8틱인데 학습 환경은 2~6틱이다.
+    # 지연은 폐루프 발진의 대표 원인이므로 떨림 재현의 1순위 후보.
+    _lo, _hi = (int(v) for v in args_cli.delay.split(","))
+    env_cfg.actions.joint_pos.min_delay_steps = _lo
+    env_cfg.actions.joint_pos.max_delay_steps = _hi
+if args_cli.contact_delay is not None:
+    # **관측 차원을 바꾸지 않는다** — history_length 를 늘리면 245 계약이 깨져
+    # 브리지 조립·셀프테스트·기존 정책 전부와 호환이 사라진다(0810 발견).
+    # 값의 시점만 늦춘다.
+    env_cfg.observations.policy.feet_contact.params["delay_steps"] = \
+        args_cli.contact_delay
 if args_cli.mass_fix is not None:
     env_cfg.events.add_base_mass.params["mass_distribution_params"] = (
         args_cli.mass_fix, args_cli.mass_fix)

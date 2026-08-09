@@ -46,6 +46,7 @@ def feet_contact_binary(
     env,
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
     threshold: float = 5.0,
+    delay_steps: int = 0,
 ) -> torch.Tensor:
     """발 접촉 이진 관측 (N, 2) — [왼발, 오른발] 순서, 법선힘 노름 > threshold[N].
 
@@ -55,7 +56,24 @@ def feet_contact_binary(
     """
     sensor = env.scene.sensors[sensor_cfg.name]
     forces = sensor.data.net_forces_w[:, sensor_cfg.body_ids, :]  # (N, 2, 3)
-    return (torch.norm(forces, dim=-1) > threshold).to(torch.float32)
+    now = (torch.norm(forces, dim=-1) > threshold).to(torch.float32)
+    if delay_steps <= 0:
+        return now
+    # 실물 발압력(RA30P)은 10Hz — 접촉 관측이 최대 100ms(5틱) 묵는다. 시뮬은
+    # 매 틱 즉시 보므로 그 비대칭이 폐루프 위상 여유를 갉아먹는다.
+    # **관측 차원을 바꾸지 않고**(245 계약 유지) 값의 시점만 늦춘다 —
+    # history_length 를 늘리면 차원이 바뀌어 브리지 조립·셀프테스트·기존
+    # 정책 전부와 호환이 깨진다(0810: 그렇게 짰다가 발견해 되돌림).
+    buf = getattr(env, "_contact_delay_buf", None)
+    if buf is None or buf.shape[0] != delay_steps + 1 or buf.shape[1] != now.shape[0]:
+        buf = now.unsqueeze(0).repeat(delay_steps + 1, 1, 1).clone()
+        env._contact_delay_buf = buf
+        env._contact_delay_idx = 0
+    i = env._contact_delay_idx
+    out = buf[i].clone()          # 가장 오래된 = delay_steps 틱 전
+    buf[i] = now
+    env._contact_delay_idx = (i + 1) % (delay_steps + 1)
+    return out
 
 
 def gait_phase_reward(
@@ -402,3 +420,38 @@ def projected_gravity_biased(env, asset_cfg: SceneEntityCfg = SceneEntityCfg("ro
     out[:, 0] = gx * c - gz * s
     out[:, 2] = gx * s + gz * c
     return out
+
+
+def joint_pos_rel_sea(
+    env,
+    k_struct: float = 43.5,
+    quant_step_rad: float = 0.012,
+    ankle_dither_rad: float = 0.0175,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """관절각 관측 = **로터각** — 로터-링크 구조 변형을 정책이 못 보게 한다.
+
+    **실측 근거 (0802 첫 자립 기립).** 몸통 기울기가 5.7° 인데 12관절 로터
+    오차는 전부 ≤0.7° 였다. 엔코더는 로터(감속기 입력축)에 붙어 있고, 그
+    아래 감속기 백래시·프린트 구조 휨이 직렬 스프링처럼 끼어 있다. 즉
+    **링크는 5.7° 움직였는데 정책은 0.7° 밖에 못 본다.**
+
+    스프링 관계:  τ = k_struct × (rotor − link)   →   rotor = link + τ/k
+    정책은 rotor 를 읽으므로 관측에 τ/k 를 더한다.
+
+    강성 산출: 변형 5.0°(=5.7−0.7) 에 발목 토크 ~3.8Nm → k ≈ 43.5 Nm/rad.
+    서보 kp150 과 직렬 합성하면 실효 33.8 Nm/rad = 명령의 4.4배 무름.
+
+    ImplicitActuator 에는 SEA 가 없어 지금까지 '게인 스케일 하향'으로만
+    근사해 왔는데(stage4_env_cfg 주석), 그것은 **구동측**만 흉내낸다.
+    이 항은 빠져 있던 **관측측**(정책이 변형에 눈이 먼다)을 채운다.
+    형상·순서 불변이라 245 관측 계약을 유지한다.
+    """
+    q = joint_pos_rel_staircase(env, quant_step_rad, ankle_dither_rad, asset_cfg)
+    if k_struct <= 0.0:
+        return q
+    asset = env.scene[asset_cfg.name]
+    tau = asset.data.applied_torque
+    if asset_cfg.joint_ids is not None and not isinstance(asset_cfg.joint_ids, slice):
+        tau = tau[:, asset_cfg.joint_ids]
+    return q + tau[:, : q.shape[1]] / k_struct

@@ -37,6 +37,8 @@ parser.add_argument("--out_tag", type=str, default="")
 parser.add_argument("--zero_deg", type=float, default=None,
                     help="이 값을 주면 단일 조건만 측정 (환경 재생성 회피)")
 parser.add_argument("--imu_deg", type=float, default=0.0)
+parser.add_argument("--sign", choices=("mixed", "pos", "neg"), default="mixed",
+                    help="영점 오차 부호. 실물 재현 검증엔 한 방향으로 고정")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -97,8 +99,13 @@ def run(zero_deg, imu_deg, seed=0):
     dz = math.radians(zero_deg)
     th = math.radians(imu_deg)
     # 영점 오차 부호는 env마다 반반 — 한쪽으로만 주면 최악/최선만 본다
-    sign = torch.where(torch.arange(N, device=dev) % 2 == 0,
-                       torch.ones(N, device=dev), -torch.ones(N, device=dev))
+    if args_cli.sign == "pos":
+        sign = torch.ones(N, device=dev)
+    elif args_cli.sign == "neg":
+        sign = -torch.ones(N, device=dev)
+    else:
+        sign = torch.where(torch.arange(N, device=dev) % 2 == 0,
+                           torch.ones(N, device=dev), -torch.ones(N, device=dev))
     dz_v = (dz * sign).unsqueeze(1)
 
     obs = env.get_observations()
@@ -138,9 +145,21 @@ def run(zero_deg, imu_deg, seed=0):
 
     pg = np.stack(pg_log)
     fwd = np.degrees(np.arctan2(pg[:, :, 0], -pg[:, :, 2]))
-    fell = int((death.cpu().numpy() < args_cli.steps).sum())
+    d = death.cpu().numpy()
+    fell = int((d < args_cli.steps).sum())
+    # 초기 3s 전방 추세 — analyze_fall.py 와 같은 지표라 실물과 직접 비교된다
+    W = min(150, fwd.shape[0])
+    t = np.arange(W) / 50.0
+    sl = []
+    for e in range(N):
+        n = min(W, max(int(d[e]), 2))
+        if n < 10:
+            continue
+        A = np.vstack([t[:n], np.ones(n)]).T
+        sl.append(np.linalg.lstsq(A, fwd[:n, e], rcond=None)[0][0])
+    slope = float(np.mean(sl)) if sl else float("nan")
     env.close()
-    return fell, float(np.nanmean(fwd[-1])), float(np.nanmax(np.abs(fwd[-1])))
+    return fell, float(np.nanmean(fwd[-1])), float(np.nanmax(np.abs(fwd[-1]))), slope
 
 
 P("=" * 74)
@@ -151,17 +170,18 @@ P("=" * 74)
 P("영점 오차 = 관측 −δ + 구동 +δ (실물에서 stand_zero가 틀어졌을 때의 실제 효과)")
 P("IMU 오차 = 중력벡터 피치축 회전")
 P("")
-P(f"{'영점δ':>7}{'IMUθ':>7}{'낙상':>10}{'종료기울임 평균':>16}{'최대|기울임|':>14}")
+P(f"{'영점δ':>7}{'IMUθ':>7}{'낙상':>10}{'종료기울임':>14}{'최대':>12}{'초기3s추세':>13}")
+P("(실물 5차 v6b 무개입 낙하 실측: 초기 3s 전방추세 +4.06°/s)")
 P("-" * 60)
 # 한 프로세스에서 환경을 여러 번 만들면 극단적으로 느리다(0809 실측: 조건 1개에
 # 16분+). 조건당 프로세스 1개로 돌리는 것이 정공법 — --zero_deg 를 주면 단일 조건.
 CASES = ([(args_cli.zero_deg, args_cli.imu_deg)] if args_cli.zero_deg is not None
          else [(0.0, 0.0), (2.0, 0.0), (3.0, 0.0), (0.0, 2.0), (0.0, 3.0)])
 for zd, id_ in CASES:
-    f, m, mx = run(zd, id_)
-    flag = "" if f == 0 else ("  ←" if f < args_cli.num_envs * 0.1 else "  ←← 위험")
+    f, m, mx, sl = run(zd, id_)
+    hit = "  ★실물재현" if 3.0 <= sl <= 5.5 else ""
     P(f"{zd:>6.1f}°{id_:>6.1f}°{f:>6}/{args_cli.num_envs:<4}"
-      f"{m:>+15.1f}°{mx:>13.1f}°{flag}")
+      f"{m:>+13.1f}°{mx:>11.1f}°{sl:>+11.2f}{hit}")
 P("-" * 60)
 P("")
 P("판정 기준: 실물 영점은 매달림 육안 정렬로 잡았고 기구학 검증을 한 적이 없다.")

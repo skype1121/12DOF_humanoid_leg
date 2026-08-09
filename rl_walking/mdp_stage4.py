@@ -448,10 +448,48 @@ def joint_pos_rel_sea(
     형상·순서 불변이라 245 관측 계약을 유지한다.
     """
     q = joint_pos_rel_staircase(env, quant_step_rad, ankle_dither_rad, asset_cfg)
-    if k_struct <= 0.0:
-        return q
     asset = env.scene[asset_cfg.name]
     tau = asset.data.applied_torque
     if asset_cfg.joint_ids is not None and not isinstance(asset_cfg.joint_ids, slice):
         tau = tau[:, asset_cfg.joint_ids]
-    return q + tau[:, : q.shape[1]] / k_struct
+    tau = tau[:, : q.shape[1]]
+    # env별 랜덤 강성이 있으면 그것을 쓰고(학습), 없으면 고정값(평가)
+    k = getattr(env, "_sea_k", None)
+    if k is None:
+        if k_struct <= 0.0:
+            return q
+        return q + tau / k_struct
+    return q + tau / k[:, : q.shape[1]]
+
+
+def resample_sea_stiffness(
+    env,
+    env_ids,
+    k_range: tuple = (60.0, 400.0),
+):
+    """env 마다 구조 강성 k_struct 를 새로 뽑고, 구동측 실효 강성을 함께 쓴다.
+
+    **왜 랜덤화인가.** 실물 k_struct 는 아직 43.5(변형 적합) ~ 107(E_smth
+    역산) 사이로 확정되지 않았다. 하나로 못 박고 학습하면 그 값이 틀렸을 때
+    v3~v9 와 똑같은 실패를 반복한다. 기구가 물러도 서는 정책이 목표이므로
+    **강성 자체를 분포로 학습**시킨다.
+
+    이 이벤트는 반드시 `actuator_gains` **뒤에** 놓는다 — 게인 DR 이 쓴
+    강성을 kp 로 읽어 직렬 합성하므로, 두 랜덤화가 곱해져 자연스럽게 합쳐진다.
+
+        k_eff = kp·k/(kp+k)          ← 링크가 실제로 받는 강성
+        θ_rotor = θ_link + τ/k       ← 정책이 읽는 값 (joint_pos_rel_sea)
+    """
+    robot = env.scene["robot"]
+    if not hasattr(env, "_sea_k"):
+        env._sea_k = torch.full(
+            (env.num_envs, robot.data.joint_pos.shape[1]),
+            float("inf"), device=env.device)
+        env._sea_kp0 = robot.data.joint_stiffness.clone()
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    n_j = env._sea_k.shape[1]
+    # 강성은 몸 하나의 성질이라 env당 스칼라 — 관절별로 흩뿌리지 않는다.
+    k = torch.empty(len(ids), 1, device=env.device).uniform_(*k_range).expand(-1, n_j)
+    env._sea_k[ids] = k
+    kp = robot.data.joint_stiffness[ids]
+    robot.write_joint_stiffness_to_sim(kp * k / (kp + k), env_ids=ids)

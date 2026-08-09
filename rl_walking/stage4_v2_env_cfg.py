@@ -964,3 +964,51 @@ class Biped12Stage4V2StandV10EnvCfg(Biped12Stage4V2StandV9EnvCfg):
             "y": (-0.02, 0.02),
             "z": (0.05, 0.12),
         }
+
+
+@configclass
+class Biped12Stage4V2StandV12EnvCfg(Biped12Stage4V2StandV10EnvCfg):
+    """stand_v12 — **직렬 컴플라이언스(SEA) 정합** (0810). 관측측 결손 교정.
+
+    **왜 이게 v3~v11 전부를 무효화하는 교정인가.**
+    엔코더는 로터(감속기 입력축)에 붙어 있고, 그 아래 감속기 백래시·구조 휨이
+    직렬 스프링이다. 0802 첫 자립 기록이 이것을 이미 말하고 있었다 —
+    **몸통이 5.7° 기울었는데 12관절 로터 오차는 전부 ≤0.7°**. 링크는 5.7°
+    움직였는데 정책은 0.7° 밖에 못 봤다는 뜻이다.
+
+    로터 관성이 작아 준정적으로 풀면 (kp: 서보, k: 구조):
+
+        링크가 받는 실효 강성   k_eff  = kp·k/(kp+k)
+        엔코더가 읽는 값        θ_r    = θ_l + τ_link/k
+                                       = θ_l + kp/(kp+k)·(θ_target − θ_l)
+
+    kp150·k43.5 이면 **관측의 77.5% 가 자기 명령의 메아리**이고 실제 상태는
+    22.5% 뿐이다. 여태 이 효과를 '게인 스케일 하향'으로만 근사해 왔는데
+    그것은 위 두 줄 중 **첫 줄만** 흉내낸 것이다. 정책이 변형에 눈이 먼다는
+    둘째 줄이 통째로 빠져 있었고, v3~v11 은 전부 없는 감각을 가정하고 배웠다.
+
+    **시뮬 확증 (v6b, 독립적인 두 스윕이 루프이득 축 하나로 합쳐짐).**
+    이득 kp/k 가 1.4→1.9 를 넘는 순간 E_smth 가 3.95 → 9.6e6 으로 점프한다.
+    실물 v6b 측정 E_smth = 4.40 → **실물은 발산 문턱 바로 아래**에서 돌고
+    있었다. "부들부들 떨면서 서려다 균형을 잃고 쓰러진" 거동과 일치한다.
+    그리고 **SEA 를 켜야만** 앞뒤 추세 부호가 뒤 → 앞으로 뒤집힌다 —
+    CoM 보정으로도 지연 스윕으로도 재현 못 하던 실물 전방낙상(+4.06°/s)을
+    재현한 첫 기전이다.
+
+    v10 대비 변경:
+      관측  joint_pos → joint_pos_rel_sea (θ_link + τ/k). 245 관측 계약 유지.
+      구동  reset 이벤트로 env별 k_eff 기록 (actuator_gains **뒤**에 배치)
+      DR    k_struct 60~400 Nm/rad — 실물 추정 43.5~107 을 넉넉히 감싼다.
+            하나로 못 박지 않는 이유: 그 값이 틀리면 v3~v9 실패의 반복이다.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import EventTermCfg as EventTerm
+        self.observations.policy.joint_pos.func = mdp_stage4.joint_pos_rel_sea
+        # actuator_gains 뒤에 와야 게인 DR 결과를 kp 로 읽는다 (직렬 합성)
+        self.events.sea_stiffness = EventTerm(
+            func=mdp_stage4.resample_sea_stiffness,
+            mode="reset",
+            params={"k_range": (60.0, 400.0)},
+        )

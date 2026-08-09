@@ -78,16 +78,23 @@ if args_cli.com_fix is not None:
     env_cfg.events.base_com.params["com_range"] = {
         "x": (args_cli.com_fix, args_cli.com_fix),
         "y": (0.0, 0.0), "z": (0.08, 0.08)}
-if args_cli.kp is not None:
-    # 루프이득 가설 검증: kp/k_struct < 1 이면 발산이 멎어야 한다.
+if args_cli.kp is not None and args_cli.sea is None:
     for _a in env_cfg.scene.robot.actuators.values():
         _a.stiffness = args_cli.kp
-    env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
 if args_cli.sea is not None:
-    # 관측측 SEA — 정책이 로터각을 읽어 구조 변형에 눈이 멀게 한다.
+    # ── 직렬 컴플라이언스(SEA) 양면 모델 ──────────────────────────────
+    # 로터 관성이 작아 준정적으로 풀면 (kp: 서보, k: 구조):
+    #   링크가 받는 실효 강성   k_eff = kp·k/(kp+k)
+    #   엔코더(로터)가 읽는 값  θ_r = θ_l + τ_link/k
+    # 구동측만 낮추면 '게인 스케일'(기존 근사)이고, 관측측만 넣으면
+    # 토크가 과대해 폭발한다. 둘 다 해야 물리가 맞는다.
+    _k = args_cli.sea
+    for _a in env_cfg.scene.robot.actuators.values():
+        _kp = args_cli.kp if args_cli.kp is not None else _a.stiffness
+        _a.stiffness = _kp * _k / (_kp + _k)
     _jp = env_cfg.observations.policy.joint_pos
     _jp.func = mdp_stage4_mod.joint_pos_rel_sea
-    _jp.params["k_struct"] = args_cli.sea
+    _jp.params["k_struct"] = _k
 if args_cli.delay is not None:
     # 실물 sysid 실측 루프지연은 4~8틱인데 학습 환경은 2~6틱이다.
     # 지연은 폐루프 발진의 대표 원인이므로 떨림 재현의 1순위 후보.

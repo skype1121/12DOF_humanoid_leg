@@ -25,6 +25,7 @@ import collections
 import json
 import math
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -409,7 +410,13 @@ class Telemetry:
             gx = -2.0 * (x * z - w * y)
             gy = -2.0 * (y * z + w * x)
             gz = -(1.0 - 2.0 * (x * x + y * y))
+            # 방위(yaw) — 기울기와 달리 중력만으로는 못 구하므로 quat 에서
+            yaw = math.degrees(math.atan2(2.0 * (w * z + x * y),
+                                          1.0 - 2.0 * (y * y + z * z)))
             self._imu_last = {
+                "yaw": round(yaw, 1),
+                # 부호 규약(0809 검증): fwd>0 = 앞으로 기울임,
+                # lat>0 = 왼쪽으로 기울임 (base +X 전방 / +Y 좌측)
                 "fwd": round(math.degrees(math.atan2(gx, -gz)), 1),
                 "lat": round(math.degrees(math.atan2(gy, -gz)), 1),
                 "tilt": round(math.degrees(
@@ -446,8 +453,56 @@ class Telemetry:
         return out
 
 
+class CanHealth:
+    """CAN 버스 건강 — bus-off 폭주를 화면에 띄운다.
+
+    0809 실기: 로봇이 서 있는 동안 bus-off 가 200회 가까이 발생해 모터가
+    통신을 잃었다 되찾으며 "무릎이 쫙 나갔다가 점프하듯 튀는" 사고가 났는데,
+    **화면에는 아무 표시도 없었다.** 조작자는 원인을 알 수 없었고 진단에
+    한참 걸렸다. 버스 건강은 발력·기울기와 같은 급의 안전 지표다.
+    """
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.state = None
+        self.busoff = None
+        self.prev = None
+        self.rate = 0.0          # 최근 60초 bus-off 증가분
+        self.hist = collections.deque(maxlen=60)
+
+    def poll(self):
+        try:
+            out = subprocess.run(["ip", "-d", "-s", "link", "show", "can1"],
+                                 capture_output=True, text=True, timeout=4).stdout
+        except (OSError, subprocess.SubprocessError):
+            return
+        st = None
+        m = re.search(r"can state (\S+)", out)
+        if m:
+            st = m.group(1)
+        bo = None
+        m = re.search(r"re-started\s+bus-errors.*?\n\s*(\d+)\s+(\d+)\s+(\d+)\s+"
+                      r"(\d+)\s+(\d+)\s+(\d+)", out, re.S)
+        if m:
+            bo = int(m.group(6))
+        with self.lock:
+            self.state = st
+            if bo is not None:
+                if self.prev is not None:
+                    self.hist.append(max(0, bo - self.prev))
+                self.prev = bo
+                self.busoff = bo
+                self.rate = sum(self.hist)
+
+    def view(self):
+        with self.lock:
+            return {"state": self.state, "busoff": self.busoff,
+                    "rate60": self.rate}
+
+
 RUN = Runner()
 TEL = Telemetry()
+CAN = CanHealth()
 
 
 # ---------------------------------------------------------------------------
@@ -507,6 +562,30 @@ def act_estop():
     return True, " / ".join(msgs) or "발행 경로 없음 (ROS 미연결)"
 
 
+#: hang_stand 트림 채널 파일 (0.5°/s 로 램프되므로 급변 없음)
+TRIM_FILES = {"a": "/tmp/ankle_trim_deg", "h": "/tmp/hip_trim_deg",
+              "k": "/tmp/knee_trim_deg"}
+#: 한계 — hang_stand.TRIM_CH 와 일치시킬 것 (0809 확대: a16/h10/k14)
+TRIM_LIM = {"a": (-4.0, 16.0), "h": (-4.0, 10.0), "k": (-2.0, 14.0)}
+
+
+def act_trim(payload):
+    """트림 3채널 설정. 한계 밖 값은 거부한다(자동 클램프하지 않는다 —
+    조작자가 의도한 값이 안 들어간 것을 모르는 편이 더 위험하다)."""
+    wrote = []
+    for ch, path in TRIM_FILES.items():
+        if ch not in payload:
+            continue
+        v = float(payload[ch])
+        lo, hi = TRIM_LIM[ch]
+        _need(lo <= v <= hi, f"{ch} 트림 {v:+.1f}° 는 한계 [{lo}, {hi}] 밖입니다")
+        with open(path, "w") as f:
+            f.write(f"{v}\n")
+        wrote.append(f"{ch}={v:+.1f}°")
+    _need(wrote, "설정할 트림 채널이 없습니다 (a/h/k 중 하나 이상 필요)")
+    return True, "트림 " + " ".join(wrote) + " (0.5°/s 램프)"
+
+
 def act_bridge_live(payload):
     ckpt = str(payload.get("checkpoint", "stand_v7"))
     _need(ckpt.replace("_", "").isalnum(), "체크포인트 이름이 올바르지 않습니다")
@@ -553,12 +632,27 @@ ACTIONS = {
         "--can-channel", "can1", "--wait-takeover"]), "stage8 선기동(인수대기)"),
     "hang_stand": (lambda p: RUN.start("hang_stand", [
         sys.executable, os.path.join(CALIB, "hang_stand.py")]), "기립 스크립트"),
-    "ground":     (lambda p: act_marker("/tmp/hang_ground"), "접지 선언"),
+    # 트림 — hang_stand 의 3채널을 콘솔에서 직접. 부호를 손으로 계산하다
+    # 반대로 밀었던 사고(0809: 발목을 하한 −2로 밀고 있었는데 답은 +12.5)를
+    # 막기 위해 **정책 평형 자세 프리셋**을 함께 둔다.
+    "trim":       (act_trim, "트림 조정"),
+    "trim_preset": (lambda p: act_trim({"a": 12.5, "h": 6.4, "k": 10.4}),
+                    "정책 평형 자세 트림(v8)"),
+    "trim_zero":  (lambda p: act_trim({"a": 0.0, "h": 0.0, "k": 0.0}),
+                   "트림 전부 0"),
+    # 게인 램프 — **착지 전에** 공중에서 kp20→kp150 (hang_stand 문서 3단계).
+    # 전 모터 오차 3° 미만일 때만 수락된다(아니면 스크립트가 파일 삭제+거부).
+    "gain_ramp":  (lambda p: act_marker("/tmp/hang_gain"), "게인 램프 kp150"),
+    "ground":     (lambda p: act_marker("/tmp/hang_ground"), "접지 선언(스톨가드 해제)"),
     "handoff":    (lambda p: act_marker("/tmp/hang_stand_handoff"), "핸드오프"),
     "baseline":   (lambda p: act_stage8_cmd("baseline"), "베이스라인 12/12"),
     "arm":        (lambda p: act_stage8_cmd("arm"), "ARM_ALL"),
     "disarm":     (lambda p: act_stage8_cmd("disarm"), "DISARM_ALL"),
     "bridge":     (act_bridge_live, "브리지 live"),
+    # 영점 기구학 검증 — 정책 없이 발목 ±3° 스윕 → 절편(=영점 오차)
+    "zero_kin": (lambda p: RUN.start("zerokin", [
+        sys.executable, os.path.join(SCRIPTS, "zero_kinematic_check.py")]),
+        "영점 기구학 검증"),
     # 정적 자세 시험 — 정책 없이 stage8 홀드만으로 목표 자세 진입
     "posture":    (lambda p: RUN.start("posture", [
         sys.executable, os.path.join(SCRIPTS, "posture_probe.py"),
@@ -632,15 +726,19 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <div class=tile><div class=k>블렌딩 alpha</div><div class=v id=blend>—</div></div>
 <div class=tile><div class=k>총 기울기</div><div class=v id=tilt>—</div></div>
 </div>
-<div class=row style="margin-top:8px;font-size:12px;color:#8b93a7;gap:14px">
-<span>IMU <b id=imu_age class=dim>—</b></span>
-<span>중력 <b id=imu_grav>—</b></span>
-<span>자이로(rad/s) <b id=imu_gyro>—</b></span>
-<span>quat <b id=imu_quat>—</b></span></div>
+<div class=row style="margin-top:10px;gap:16px;align-items:center">
+<canvas id=tiltmap width=132 height=132 style="border:1px solid #2a2f3d;border-radius:10px;background:#0d0f14"></canvas>
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style=font-size:13px><span class=dim>앞뒤 (X)</span> &nbsp;<b id=t_fwd style=font-size:17px>—</b></div>
+<div style=font-size:13px><span class=dim>좌우 (Y)</span> &nbsp;<b id=t_lat style=font-size:17px>—</b></div>
+<div style=font-size:13px><span class=dim>방위 (Z)</span> &nbsp;<b id=t_yaw style=font-size:17px>—</b></div>
+<div style=font-size:11px;color:#8b93a7>IMU <b id=imu_age class=dim>—</b> · 흔들림 <b id=imu_gyro>—</b></div>
+</div></div>
 <div class=row style=margin-top:10px>
 <span class=pill id=p_arm>stage8</span><span class=pill id=p_base>baseline</span>
 <span class=pill id=p_live>bridge</span><span class=pill id=p_ckpt>ckpt</span>
-<span class=pill id=p_contact>접촉</span></div>
+<span class=pill id=p_contact>접촉</span>
+<span class=pill id=p_can>CAN</span></div>
 <pre id=events style=max-height:96px>이벤트 없음</pre></section>
 
 <section><h2>0. 게이트</h2>
@@ -658,6 +756,16 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <section><h2>1. 기립 → 무장</h2>
 <button data-a=stage8 class=warn>stage8 선기동</button>
 <button data-a=hang_stand class=warn>hang_stand</button>
+<div style="margin:6px 0;padding:6px 0;border-top:1px solid #2a2f3d">
+<div style="font-size:11px;color:#8b93a7;margin-bottom:4px">트림 — 공중에서 스탠바이 자세 만들기 (0.5°/s)</div>
+<button data-a=trim_preset class=warn>정책 평형 자세 (a+12.5 h+6.4 k+10.4)</button>
+<button data-a=trim_zero>트림 0</button><br>
+<span style=font-size:12px;color:#8b93a7>수동: </span>
+<input id=t_a type=number step=0.5 value=0 style="width:58px;background:#12141a;color:#e6e8ef;border:1px solid #333a4d;border-radius:5px;padding:4px">
+<input id=t_h type=number step=0.5 value=0 style="width:58px;background:#12141a;color:#e6e8ef;border:1px solid #333a4d;border-radius:5px;padding:4px">
+<input id=t_k type=number step=0.5 value=0 style="width:58px;background:#12141a;color:#e6e8ef;border:1px solid #333a4d;border-radius:5px;padding:4px">
+<button data-a=trim>적용 (발목/힙/무릎)</button></div>
+<button data-a=gain_ramp class=warn>게인 램프 kp150</button>
 <button data-a=ground>접지 선언</button>
 <button data-a=handoff class=warn>핸드오프</button><br>
 <button data-a=baseline>베이스라인</button>
@@ -672,7 +780,8 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <button data-a=stand class=go>stand 발사</button>
 <button data-a=march class=go>march 발사</button>
 <div style="margin-top:8px;padding-top:8px;border-top:1px solid #2a2f3d">
-<div style="font-size:11px;color:#8b93a7;margin-bottom:6px">정적 자세 시험 — 정책 없이 stage8만 (ARM 후)</div>
+<div style="font-size:11px;color:#8b93a7;margin-bottom:6px">측정 — 정책 없이 stage8만 (ARM 후)</div>
+<button data-a=zero_kin class=warn>영점 기구학 검증</button><br>
 <select id=pose><option value=policy_v8>정책 평형 자세(v8)</option>
 <option value=policy_v7>정책 평형 자세(v7)</option>
 <option value=knee_only>무릎만</option><option value=ankle_only>발목만</option>
@@ -696,13 +805,14 @@ async function act(a){
  const body={action:a};
  if(a==='bridge')body.checkpoint=$('#ckpt').value;
  if(a==='posture')body.pose=$('#pose').value;
+ if(a==='trim'){body.a=+$('#t_a').value;body.h=+$('#t_h').value;body.k=+$('#t_k').value;}
  if(a==='zero_recapture'){
    if(!confirm('영점 재캡처 — 지금 자세가 기준 자세(수평 매달림/정렬)가 확실합니까?\\n'
      +'현재 읽기가 그대로 새 앵커가 됩니다.'))return;
    if(!confirm('한 번 더 확인합니다. 잘못 잡으면 이후 boot_pose_check 조차\\n'
      +'틀린 기준에 대해 통과합니다. 진행할까요?'))return;}
  else if(['arm','handoff','bridge','stand','march','release','zero_multiple',
-   'posture'].includes(a)){ if(!confirm(a+' — 실행할까요?'))return;}
+   'posture','zero_kin','gain_ramp','trim','trim_preset'].includes(a)){ if(!confirm(a+' — 실행할까요?'))return;}
  try{const r=await fetch('/api/action',{method:'POST',
    headers:{'content-type':'application/json'},body:JSON.stringify(body)});
   const j=await r.json();toast(j.message,!j.ok);}catch(e){toast(''+e,true);}}
@@ -710,6 +820,25 @@ document.querySelectorAll('button[data-a]').forEach(b=>
  b.onclick=()=>act(b.dataset.a));
 $('#estop').onclick=()=>act('estop');
 function cls(v,g,m){return v>=g?'ok':(v>=m?'mid':'bad');}
+// 기울기 시각화: 십자선 위의 점. 바깥 원 = 10°(넘어가기 시작하는 대역),
+// 안쪽 원 = 3°. 점이 위=앞으로, 왼쪽=왼쪽으로 기울어짐.
+function drawTilt(I,fresh){
+ const c=$('#tiltmap'),x=c.getContext('2d'),W=c.width,H=c.height,cx=W/2,cy=H/2,R=W/2-10;
+ x.clearRect(0,0,W,H);
+ x.strokeStyle='#2a2f3d';x.lineWidth=1;
+ [R,R*0.3].forEach(r=>{x.beginPath();x.arc(cx,cy,r,0,7);x.stroke();});
+ x.beginPath();x.moveTo(cx-R,cy);x.lineTo(cx+R,cy);x.moveTo(cx,cy-R);x.lineTo(cx,cy+R);x.stroke();
+ x.fillStyle='#6b7280';x.font='9px system-ui';x.textAlign='center';
+ x.fillText('앞',cx,cy-R-2);x.fillText('뒤',cx,cy+R+8);
+ x.textAlign='right';x.fillText('왼',cx-R-3,cy+3);
+ x.textAlign='left';x.fillText('오',cx+R+3,cy+3);
+ if(!I)return;
+ const s=R/10, px=cx-(I.lat||0)*s, py=cy-(I.fwd||0)*s;
+ const t=Math.hypot(I.fwd||0,I.lat||0);
+ const col=!fresh?'#6b7280':(t<3?'#4ade80':(t<6?'#fbbf24':'#f87171'));
+ x.strokeStyle=col;x.lineWidth=1.5;x.beginPath();x.moveTo(cx,cy);x.lineTo(px,py);x.stroke();
+ x.fillStyle=col;x.beginPath();x.arc(px,py,5,0,7);x.fill();
+}
 async function poll(){
  try{const s=await (await fetch('/api/state')).json();
   $('#conn').textContent=s.ros?'ROS 연결됨':'ROS 없음';
@@ -735,9 +864,33 @@ async function poll(){
   $('#tilt').className='v '+(I&&fr.imu?'':'dim');
   $('#imu_age').textContent=I&&I.age!=null?(fr.imu?'수신중':(I.age+'초 전 끊김')):'없음';
   $('#imu_age').className=fr.imu?'ok':'bad';
-  $('#imu_grav').textContent=I&&I.grav?I.grav.map(v=>v.toFixed(2)).join(' , '):'—';
-  $('#imu_gyro').textContent=I&&I.gyro&&I.gyro.length?I.gyro.map(v=>v.toFixed(2)).join(' , '):'—';
-  $('#imu_quat').textContent=I&&I.quat?I.quat.map(v=>v.toFixed(3)).join(' '):'—';
+  // 각도를 방향 말로 — 부호 규약: fwd>0 앞으로, lat>0 왼쪽으로 (0809 검증)
+  const word=(v,pos,neg)=>Math.abs(v)<0.35?'거의 수평':
+    (v>0?pos:neg)+' '+Math.abs(v).toFixed(1)+'°';
+  const cl=v=>Math.abs(v)<3?'ok':(Math.abs(v)<6?'mid':'bad');
+  if(I){
+    $('#t_fwd').textContent=word(I.fwd,'앞으로','뒤로');
+    $('#t_fwd').className=fr.imu?cl(I.fwd):'dim';
+    $('#t_lat').textContent=word(I.lat,'왼쪽으로','오른쪽으로');
+    $('#t_lat').className=fr.imu?cl(I.lat):'dim';
+    $('#t_yaw').textContent=(I.yaw>0?'+':'')+(I.yaw!=null?I.yaw.toFixed(0):'—')+'°';
+    $('#t_yaw').className=fr.imu?'':'dim';
+    const g=I.gyro||[];
+    const mag=Math.hypot(g[0]||0,g[1]||0,g[2]||0);
+    $('#imu_gyro').textContent=mag<0.02?'정지':mag.toFixed(2)+' rad/s';
+  }else{['t_fwd','t_lat','t_yaw'].forEach(k=>{$('#'+k).textContent='—';$('#'+k).className='dim';});}
+  const C=s.can||{};
+  if(C.busoff==null){$('#p_can').textContent='CAN —';$('#p_can').className='pill dim';}
+  else{
+    const bad=C.rate60>0;
+    $('#p_can').textContent='CAN '+(C.state||'?')
+      +(bad?('  ⚠ bus-off +'+C.rate60+'/60s'):('  bus-off '+C.busoff));
+    $('#p_can').className='pill '+(bad?'bad':'ok');
+    if(bad&&!window._canWarned){window._canWarned=1;
+      toast('CAN bus-off 발생 중 — 모터 통신이 끊기고 있습니다. 즉시 중단하세요',true);}
+    if(!bad)window._canWarned=0;
+  }
+  drawTilt(I,fr.imu);
   $('#blend').textContent=s.bridge.blend!=null?(+s.bridge.blend).toFixed(2):'—';
   $('#p_arm').textContent='stage8 '+(s.stage8.armed?'ARMED':(s.stage8.waiting?'대기':'—'));
   $('#p_arm').className='pill '+(s.stage8.armed?'ok':'dim');
@@ -755,7 +908,7 @@ async function poll(){
     (P[k].alive?' 실행중':' 종료 rc='+P[k].rc)+']\\n'+P[k].lines.join('\\n');}return '—';};
   $('#log_gate').textContent=pick(['boot_pose','selftest','sensors']);
   $('#log_stack').textContent=pick(['hang_stand','stage8','stage8_arm','stage8_baseline']);
-  $('#log_bridge').textContent=pick(['bridge']);
+  $('#log_bridge').textContent=pick(['zerokin','posture','bridge']);
   $('#log_tail').textContent=pick(['analyze','release','stack_down']);
  }catch(e){$('#conn').textContent='콘솔 연결 끊김';$('#conn').className='pill bad';}
 }
@@ -784,6 +937,7 @@ class Handler(BaseHTTPRequestHandler):
             st = TEL.view()
             st["procs"] = RUN.snapshot()
             st["session"] = SESSION.status()
+            st["can"] = CAN.view()
             return self._send(200, json.dumps(st))
         return self._send(404, json.dumps({"ok": False, "message": "not found"}))
 
@@ -902,9 +1056,19 @@ def main():
     def sampler():
         """세션이 열려 있는 동안 판정 지표를 SAMPLE_HZ 로 남긴다."""
         period = 1.0 / SAMPLE_HZ
+        n_tick = 0
         while True:
             time.sleep(period)
+            n_tick += 1
             try:
+                if n_tick % int(SAMPLE_HZ) == 0:      # 1Hz — CAN 통계는 무겁다
+                    before = CAN.view().get("busoff")
+                    CAN.poll()
+                    after = CAN.view().get("busoff")
+                    if (before is not None and after is not None
+                            and after > before):
+                        SESSION.event("can_busoff", count=after,
+                                      delta=after - before)
                 if SESSION.status()["active"]:
                     SESSION.sample(TEL.view())
                     SESSION.maybe_autoclose()

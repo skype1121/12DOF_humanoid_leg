@@ -1,0 +1,21 @@
+============================================================================================
+검증 사다리 — Biped12-Velocity-Stage4V2-Stand-V6-v0
+체크포인트: /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-08-03_06-12-07/model_48987.pt
+64 env × 8.0s
+아래 단계가 통과하기 전에 위 단계를 실물에 올리지 않는다.
+============================================================================================
+단계                    DR          낙상     추세°/s    E_smth       에너지      명령진폭     포화%      판정
+--------------------------------------------------------------------------------------------
+정책 없이 자유 낙하           OFF    실패: can't assign a dict to a torch.cuda.LongTensor
+정책 없이 자유 낙하           ON     실패: Simulation context already exists. Cannot create a new one.
+PD 홀드 서기 (강체)         OFF    실패: Simulation context already exists. Cannot create a new one.
+PD 홀드 서기 (강체)         ON     실패: Simulation context already exists. Cannot create a new one.
+정책 서기                 OFF    실패: Simulation context already exists. Cannot create a new one.
+정책 서기                 ON     실패: Simulation context already exists. Cannot create a new one.
+정책 서기 + 외란            OFF    실패: Simulation context already exists. Cannot create a new one.
+정책 서기 + 외란            ON     실패: Simulation context already exists. Cannot create a new one.
+--------------------------------------------------------------------------------------------
+
+■ 승격 판정
+   **승격 불가** — 랜덤화 ON 에서 탈락: 표본없음
+============================================================================================

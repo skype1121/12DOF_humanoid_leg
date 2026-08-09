@@ -28,6 +28,10 @@ parser.add_argument("--task", type=str,
 parser.add_argument("--steps", type=int, default=250, help="50Hz — 250=5s")
 parser.add_argument("--num_envs", type=int, default=128)
 parser.add_argument("--out_tag", type=str, default="")
+parser.add_argument("--com_fix", type=float, default=None,
+                    help="base_com x 를 이 값으로 고정 [m] — CoM 인과 검증용")
+parser.add_argument("--mass_fix", type=float, default=None,
+                    help="add_base_mass 를 이 값으로 고정 [kg]")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -58,6 +62,16 @@ env_cfg.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
 env_cfg.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
 env_cfg.events.reset_base.params["pose_range"]["yaw"] = (0.0, 0.0)
 env_cfg.episode_length_s = 60.0
+if args_cli.com_fix is not None:
+    # CoM 인과 검증: 정책은 그대로 두고 **몸만** 실측값으로 바꾼다.
+    # 지금까지 CoM 은 전부 정책 없는 시험에서만 다뤘다 — 정책이 루프에 있는
+    # 조건에서 처음으로 검증하는 실험이다.
+    env_cfg.events.base_com.params["com_range"] = {
+        "x": (args_cli.com_fix, args_cli.com_fix),
+        "y": (0.0, 0.0), "z": (0.08, 0.08)}
+if args_cli.mass_fix is not None:
+    env_cfg.events.add_base_mass.params["mass_distribution_params"] = (
+        args_cli.mass_fix, args_cli.mass_fix)
 
 log_root = os.path.abspath(os.path.join("logs", "rsl_rl", agent_cfg.experiment_name))
 resume_path = get_checkpoint_path(log_root, agent_cfg.load_run, agent_cfg.load_checkpoint)
@@ -85,6 +99,7 @@ except Exception as exc:      # 읽기 실패해도 본 측정(드리프트)은 
 
 obs = env.get_observations()
 pg_log = []          # (steps, N, 3)
+act_log = []         # (steps, N, 12) — 떨림 지표용
 alive = torch.ones(N, dtype=torch.bool, device=uenv.device)
 death_step = torch.full((N,), args_cli.steps, dtype=torch.long, device=uenv.device)
 
@@ -93,6 +108,7 @@ for i in range(args_cli.steps):
         actions = policy(obs)
         obs, _, dones, _ = env.step(actions)
     pg_log.append(robot.data.projected_gravity_b.clone().cpu().numpy())
+    act_log.append(actions.detach().cpu().numpy())
     term = uenv.termination_manager.terminated
     newly_dead = alive & term
     death_step[newly_dead] = i
@@ -109,6 +125,29 @@ try:
 except Exception as _exc:
     eq_pose, jn_names = {}, []
     print(f"[warn] 평형 자세 산출 실패: {_exc}")
+
+# ── 떨림 지표 (0809 실물에서 1급 판정 지표로 승격) ────────────────────
+# 5차 실물 v6b 실측: 관절 1~4Hz 로 RMS 2~4° 진동, E_smth 4.40 (낙하 초기 7.01).
+# "명령의 진폭이 실측보다 크다" = 정책이 떨림을 만든다. 같은 잣대로 시뮬을 잰다.
+ACT = np.stack(act_log) if act_log else None
+smth = domf = hi5 = None
+if ACT is not None and ACT.shape[0] > 8:
+    # E_smth = Σ‖a(t+2) − 2a(t+1) + a(t)‖²  — HoST 지표. 액션은 무차원이라
+    # 실물(deg²)과 절대비교는 안 되고, **세대 간 상대비교**로 쓴다.
+    d2 = np.diff(ACT, n=2, axis=0)
+    smth = float(np.mean(np.sum(d2 ** 2, axis=2)))
+    # 우세 주파수 — env·관절 평균 스펙트럼에서 (2차 추세 제거)
+    fs_ = 50.0
+    x = ACT - ACT.mean(axis=0, keepdims=True)
+    n_ = x.shape[0]
+    w = np.hanning(n_)[:, None, None]
+    X = np.abs(np.fft.rfft(x * w, axis=0))
+    f_ = np.fft.rfftfreq(n_, 1.0 / fs_)
+    P_ = (X ** 2).mean(axis=(1, 2))
+    m_ = f_ > 0.5
+    if m_.any():
+        domf = float(f_[m_][np.argmax(P_[m_])])
+        hi5 = float(100.0 * P_[m_ & (f_ > 5.0)].sum() / max(P_[m_].sum(), 1e-12))
 
 pg = np.stack(pg_log)                       # (S, N, 3)
 fwd = np.degrees(np.arctan2(pg[:, :, 0], -pg[:, :, 2]))   # 브리지와 동일 규약
@@ -173,6 +212,12 @@ if com_x is not None and ok.sum() > 5:
         P("■ CoM x 분산 0 — 랜덤화가 실제로 적용되지 않았을 수 있음(점검 필요)")
 else:
     P("■ CoM 상관 분석 생략 (CoM 읽기 실패 또는 표본 부족)")
+if smth is not None:
+    P("")
+    P("■ 떨림 지표 (실물 5차 v6b: 1~4Hz · RMS 2~4° · E_smth 4.40)")
+    P(f"    E_smth (액션 2차차분)  {smth:.5f}")
+    P(f"    우세 주파수            {domf:.2f} Hz")
+    P(f"    >5Hz 에너지 비율        {hi5:.1f} %")
 if eq_pose:
     P("")
     P("■ 평형 자세 (정착 구간 평균, 관절 프레임 deg) — posture_probe 전이 목표")

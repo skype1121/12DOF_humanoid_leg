@@ -925,3 +925,42 @@ class Biped12Stage4V2StandV9EnvCfg(Biped12Stage4V2StandV8EnvCfg):
         self.observations.policy.joint_pos.func = mdp_stage4.joint_pos_rel_biased
         self.observations.policy.projected_gravity.func = \
             mdp_stage4.projected_gravity_biased
+
+
+@configclass
+class Biped12Stage4V2StandV10EnvCfg(Biped12Stage4V2StandV9EnvCfg):
+    """stand_v10 — **실물 질량 분포 정합** (0810). 두 달치 실패의 구조적 원인 교정.
+
+    **왜 이게 근본 교정인가.**
+    0809 실기에서 정책 없이 관절을 kp150 으로 굳히고 손을 떼자 로봇이
+    **−19°/s 로 뒤로** 무너졌다(−0.9° → −20.0° 를 1.0초). 정책도 제어도 없는
+    순수 역학이라 질량 분포 식별에 이상적인 시험이다. 같은 지표로 시뮬을
+    역산하니(eval_com_fit.py, 질량 12.001kg 고정·CoM x 64 env 스윕):
+
+        각속도 = +0.938 × CoM_x[mm] + 10.62   (r = +0.846)
+        → 실물 −19°/s 를 내는 **전신 CoM x = 발목축 뒤 31.6mm**
+
+    대조:
+        biped12_payload.urdf  12.001kg · CoM 뒤 **30.7mm**  ← 1mm 차이로 일치
+        biped12_base.urdf     10.491kg · CoM 뒤 13.5mm     ← **여태 학습에 사용**
+
+    즉 결손 1.51kg 을 뒤 150·위 100mm 에 배치한 payload 자산이 처음부터
+    옳았고, 학습만 그것을 안 쓰고 있었다. v3~v9 정책들은 **CoM 이 실물의
+    절반만큼만 뒤에 있는 몸**을 균형잡는 법을 배웠다 — 실물에서 후방 보정이
+    구조적으로 부족했던 이유다. 정책을 아무리 갈아도 없어지지 않는 갭이었다.
+
+    v9 대비 변경 (v9 의 캘리브레이션 편향 랜덤화는 유지):
+      질량   add_base_mass 1.2~1.6 → **1.35~1.67** (실물 12.0kg 정합, 중심 1.51)
+      CoM x  base_com −0.03~+0.02 → **−0.043~−0.021**
+             (전신 CoM −36.8 ~ −25.3mm, 중심 −30.7mm = 실측 대역)
+    y·z 는 v7 대역 유지. 랜덤화 **폭**은 좁히지 않는다 — 중심만 옮긴다.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.add_base_mass.params["mass_distribution_params"] = (1.35, 1.67)
+        self.events.base_com.params["com_range"] = {
+            "x": (-0.043, -0.021),
+            "y": (-0.02, 0.02),
+            "z": (0.05, 0.12),
+        }

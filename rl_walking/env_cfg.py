@@ -314,10 +314,16 @@ class RewardsCfg:
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1.0e-4)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
+    #: 관절 리밋 벌점 — **전 관절**. 종전에는 발목·힙외전만 감시해서 hip_r·
+    #: hip_f·무릎을 스톱까지 밀어도 비용이 0이었다. 0810 실측: stand_v10 이
+    #: 양쪽 hip_r 을 정확히 하드리밋 +30.00°(soft +27)에 눌러 붙이는 자세를
+    #: 학습했다(v7 +0.3/−2.2, v8 +2.0/+0.7 은 정상 → v10 신규 회귀).
+    #: 하드스톱 의존은 실물에서 모터가 구조물을 계속 미는 과열·손상 경로이고,
+    #: march_v3 의 '니락'(무릎 과신전 스톱 기대기)과 같은 보상 해킹이다.
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_.*", ".*_hip_a_joint"])},
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
 
     # -- 접촉·종료

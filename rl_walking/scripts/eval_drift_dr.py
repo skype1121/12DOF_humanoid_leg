@@ -31,6 +31,8 @@ parser.add_argument("--num_envs", type=int, default=128)
 parser.add_argument("--out_tag", type=str, default="")
 parser.add_argument("--com_fix", type=float, default=None,
                     help="base_com x 를 이 값으로 고정 [m] — CoM 인과 검증용")
+parser.add_argument("--deploy", type=str, default=None,
+                    help="실배포 래퍼 프리셋: new(슬루 인수·0810 수술) | old(블렌딩 1.5s)")
 parser.add_argument("--lpf", type=float, default=0.0,
                     help="브리지 stand LPF EMA beta (실물 0.27). 0=끔")
 parser.add_argument("--blend", type=float, default=0.0,
@@ -46,7 +48,9 @@ parser.add_argument("--land", action="store_true",
 parser.add_argument("--zero_deg", type=float, default=0.0,
                     help="영점 오차 [°] — 관측은 δ 적게, 명령은 δ 더 나간다")
 parser.add_argument("--imu_deg", type=float, default=0.0,
-                    help="IMU 장착 오차 [°] — 중력벡터를 피치축으로 회전")
+                    help="IMU 장착 오차 [°] — 중력벡터를 피치축으로 회전 (앞뒤)")
+parser.add_argument("--imu_roll_deg", type=float, default=0.0,
+                    help="IMU 롤 장착 오차 [°] — 중력벡터를 롤축으로 회전 (좌우)")
 parser.add_argument("--sign", type=str, default="mixed",
                     help="영점 오차 부호: mixed|pos|neg")
 parser.add_argument("--kp", type=float, default=None,
@@ -62,6 +66,20 @@ parser.add_argument("--mass_fix", type=float, default=None,
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
+
+# ── 실배포 프리셋 ────────────────────────────────────────────────────
+# 세대 판정은 **실제로 배포되는 것**과 같은 조건에서 해야 한다. v3~v9 승격은
+# 래퍼 없는 조건에서 결정됐는데, 실물 실패의 지배 요인이 그 래퍼였다.
+if args_cli.deploy in ("new", "old"):
+    args_cli.lpf = 0.27              # 브리지 STAND_LPF_BETA
+    args_cli.land = True             # hang_stand 착지 자세에서 인수
+    args_cli.blend_from = "zero"     # 트림0 착지
+    if args_cli.deploy == "new":
+        args_cli.blend_mode = "slew"     # stage8 _step_toward 4°/틱
+        args_cli.slew_deg = 4.0
+    else:
+        args_cli.blend_mode = "full"     # 종전 크로스페이드
+        args_cli.blend = 1.5
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -160,6 +178,7 @@ obs = env.get_observations()
 # 관측 레이아웃 245 = 49×5: ang_vel3·gravity3·cmd3·qpos12·qvel12·act12·clock2·contact2
 _GRAV, _QPOS = slice(15, 30), slice(45, 105)
 _dz, _th = math.radians(args_cli.zero_deg), math.radians(args_cli.imu_deg)
+_rl = math.radians(args_cli.imu_roll_deg)
 _N = args_cli.num_envs
 _dev = env.unwrapped.device
 if args_cli.sign == "pos":
@@ -177,11 +196,16 @@ def _bias(o):
     t = o["policy"] if hasattr(o, "keys") and "policy" in o.keys() else o
     if _dz != 0.0:
         t[:, _QPOS] = t[:, _QPOS] - _dzv
-    if _th != 0.0:
+    if _th != 0.0 or _rl != 0.0:
         g = t[:, _GRAV].reshape(-1, 5, 3).clone()
-        gx, gz = g[..., 0].clone(), g[..., 2].clone()
-        g[..., 0] = gx * math.cos(_th) - gz * math.sin(_th)
-        g[..., 2] = gx * math.sin(_th) + gz * math.cos(_th)
+        if _th != 0.0:                      # 피치축 (앞뒤 장착 오차)
+            gx, gz = g[..., 0].clone(), g[..., 2].clone()
+            g[..., 0] = gx * math.cos(_th) - gz * math.sin(_th)
+            g[..., 2] = gx * math.sin(_th) + gz * math.cos(_th)
+        if _rl != 0.0:                      # 롤축 (좌우 장착 오차)
+            gy, gz = g[..., 1].clone(), g[..., 2].clone()
+            g[..., 1] = gy * math.cos(_rl) - gz * math.sin(_rl)
+            g[..., 2] = gy * math.sin(_rl) + gz * math.cos(_rl)
         t[:, _GRAV] = g.reshape(-1, 15)
     return o
 
@@ -332,6 +356,29 @@ P(f"{N} env × {args_cli.steps/50:.1f}s, 명령 전무(cmd=0), DR 켜짐")
 P("=" * 74)
 P(f"낙상(조기 종료): {int((death < args_cli.steps).sum())}/{N} "
   f"({100.0*(death < args_cli.steps).sum()/N:.1f}%)")
+# 낙상 방향 분해 — 넘어진 순간의 몸통 기울기 부호로 전/후/좌/우 분류
+_lat = np.degrees(np.arctan2(pg[:, :, 1], -pg[:, :, 2]))
+_fell = death < args_cli.steps
+_dir = {"뒤": 0, "앞": 0, "왼": 0, "오른": 0}
+for e in np.where(_fell)[0]:
+    k = max(0, min(int(death[e]), pg.shape[0] - 1))
+    f_, l_ = fwd[k, e], _lat[k, e]
+    if abs(f_) >= abs(l_):
+        _dir["앞" if f_ > 0 else "뒤"] += 1
+    else:
+        _dir["왼" if l_ > 0 else "오른"] += 1
+P(f"   낙상 방향 — 뒤 {_dir['뒤']} · 앞 {_dir['앞']} · "
+  f"왼 {_dir['왼']} · 오른 {_dir['오른']}")
+# 몸통 피치 진동 진폭 — 추세를 뺀 나머지의 RMS (실물 떨림 2~4°)
+_amp = []
+for e in range(N):
+    n = min(W, max(death[e], 2))
+    if n < 10:
+        continue
+    y = fwd[:n, e]
+    _amp.append(float(np.std(y - np.poly1d(np.polyfit(t[:n], y, 1))(t[:n]))))
+P(f"   몸통 피치 진동 RMS(추세 제거) — 중앙 {np.median(_amp):.2f}° "
+  f"p95 {np.percentile(_amp, 95):.2f}°" if _amp else "   진동 표본 부족")
 P(f"초기 3s 전방 추세 °/s — 평균 {np.nanmean(slopes):+.2f}, "
   f"중앙 {np.nanmedian(slopes):+.2f}, "
   f"p5 {np.nanpercentile(slopes,5):+.2f}, p95 {np.nanpercentile(slopes,95):+.2f}, "

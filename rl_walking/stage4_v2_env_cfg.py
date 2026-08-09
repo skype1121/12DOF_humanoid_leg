@@ -1063,8 +1063,17 @@ class Biped12Stage4V2StandV13EnvCfg(Biped12Stage4V2StandV6EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         from isaaclab.managers import EventTermCfg as EventTerm
+        # x 상한을 +0.02 → +0.06 으로 넓힘 (0810 정책거동 역산):
+        # v6b 를 실물 조건에 넣고 base_com x 만 스윕하니 추세가 깨끗한 직선
+        # (추세 = +285.5·x −1.83, r=0.991). 실물 +4.06°/s 를 내는 값은
+        # **x = +20.6mm**(전신 CoM 발목축 뒤 8mm)이고, v6b 학습대역
+        # (−80~−30mm, 전신 −53~−31mm)에서 100mm 가까이 떨어져 있다.
+        # → 정책이 '있지도 않은 후방 편중'을 보정해 앞으로 미는 기전.
+        # 0804 트림0 안정(−1.7° 정지)과도 맞고, 0809 역산 −31.6mm 와는
+        # 어긋난다(그 사이 m8 시프트·재앵커 — 영점 오염 의심).
+        # 어느 쪽이 맞는지 모르므로 **양쪽을 다 담는다.**
         self.events.base_com.params["com_range"] = {
-            "x": (-0.10, 0.02),
+            "x": (-0.10, 0.06),
             "y": (-0.02, 0.02),
             "z": (0.0, 0.15),
         }

@@ -100,6 +100,15 @@ for _k in ("roll", "pitch"):
 if getattr(env_cfg.events, "reset_robot_joints", None):
     env_cfg.events.reset_robot_joints.params["position_range"] = (0.0, 0.0)
     env_cfg.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
+# ⚠ **초기 몸통 속도 랜덤화 차단** (0810 발견).
+# `reset_base` 는 pose_range 뿐 아니라 **velocity_range** 를 갖는다:
+#   x/y ±0.3 m/s · z ±0.2 · roll/pitch/yaw **±0.3 rad/s (=±17°/s)**
+# 순수 역학 식별 시험에 ±17°/s 초기 각속도가 섞이면 −19°/s 낙하 속도
+# 측정이 통째로 오염된다. pose_range 만 0 으로 놓고 안심했던 것이 결함이었다.
+_vr = env_cfg.events.reset_base.params.get("velocity_range")
+if isinstance(_vr, dict):
+    for _k in list(_vr):
+        _vr[_k] = (0.0, 0.0)
 env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
 env_cfg.events.actuator_gains.params["damping_distribution_params"] = (1.0, 1.0)
 env_cfg.actions.joint_pos.min_delay_steps = 0

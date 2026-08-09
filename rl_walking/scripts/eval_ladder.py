@@ -117,6 +117,32 @@ def make_env(stage, dr_on):
     # 외란은 3·4단계에서만 (0·1·2 단계는 그 단계가 재려는 것이 아니다)
     if stage < 3:
         cfg.events.push_robot = None
+    if stage <= 1:
+        # **0·1단계는 외란을 빼고 모델만 잰다.** reset_base 의 velocity_range
+        # (roll/pitch/yaw ±0.3 rad/s = ±17°/s)는 모델 불확실성이 아니라 외란이다.
+        # 0810 실측: 이걸 켠 채로는 명목 모델이 17/64 넘어졌는데, 끄자 0/64 ·
+        # 추세 +0.07°/s 로 **완벽히 섰다** — 실물 0804(−1.7° 정지)와 일치.
+        # 즉 "시뮬은 곧은 다리에서 뒤로 넘어진다(−4.55°/s)"는 여러 세대의
+        # 근거였던 주장 자체가 이 오염의 산물이었다.
+        _vr0 = cfg.events.reset_base.params.get("velocity_range")
+        if isinstance(_vr0, dict):
+            for _k0 in list(_vr0):
+                _vr0[_k0] = (0.0, 0.0)
+        for _k0 in ("roll", "pitch"):
+            if _k0 in cfg.events.reset_base.params["pose_range"]:
+                cfg.events.reset_base.params["pose_range"][_k0] = (0.0, 0.0)
+        if getattr(cfg.events, "reset_robot_joints", None):
+            cfg.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
+        # **0·1단계는 항상 평지.** 이 단계가 재는 것은 질량 분포이지 지형
+        # 내성이 아니고, 실물 0단계 시험도 평평한 바닥에서 했다.
+        # (0810 실측: 이걸 안 껐더니 랜덤화 OFF 에서도 18/64 가 넘어졌다 —
+        #  v2 지형이 최대 19° 경사를 20% 섞기 때문. 모델 판정이 오염된다.)
+        # 생성기 지형은 all-flat 으로 바꿔도 패치 경계·원점 차이가 남는다.
+        # 무한 평면으로 갈아 끼우는 것이 확실하다 (실물 시험장과 같다).
+        cfg.scene.terrain.terrain_type = "plane"
+        cfg.scene.terrain.terrain_generator = None
+        if getattr(cfg.curriculum, "terrain_levels", None) is not None:
+            cfg.curriculum.terrain_levels = None
     if not dr_on:
         # 랜덤화 OFF — '이상 조건'. 이 값만으로 승격 판정 금지.
         for k in ("roll", "pitch"):
@@ -125,6 +151,14 @@ def make_env(stage, dr_on):
         if getattr(cfg.events, "reset_robot_joints", None):
             cfg.events.reset_robot_joints.params["position_range"] = (0.0, 0.0)
             cfg.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
+        # ⚠ reset_base 는 pose_range 말고 **velocity_range** 도 갖는다:
+        #   roll/pitch/yaw ±0.3 rad/s (=±17°/s). 0810 실측: 다른 걸 다 껐는데도
+        #   DR OFF 가 17/64 로 갈린 범인이 이것이었다. 균형 문턱 시험에
+        #   ±17°/s 초기 각속도를 주면 재는 것은 균형이 아니라 외란 내성이다.
+        _vr = cfg.events.reset_base.params.get("velocity_range")
+        if isinstance(_vr, dict):
+            for _k in list(_vr):
+                _vr[_k] = (0.0, 0.0)
         cfg.events.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
         cfg.events.actuator_gains.params["damping_distribution_params"] = (1.0, 1.0)
         cfg.actions.joint_pos.min_delay_steps = 0
@@ -135,6 +169,24 @@ def make_env(stage, dr_on):
         if getattr(cfg.events, "calib_bias", None):
             cfg.events.calib_bias.params["joint_bias_rad"] = (0.0, 0.0)
             cfg.events.calib_bias.params["imu_tilt_rad"] = (0.0, 0.0)
+        # 아래 둘을 빠뜨려 'OFF' 가 절반만 꺼져 있었다 (0810 실측: DR OFF 인데
+        # 64 env 결과가 갈려 18/64 가 넘어졌다 — 완전히 같은 조건이면 0 아니면 64).
+        if getattr(cfg.events, "add_base_mass", None):
+            m = cfg.events.add_base_mass.params["mass_distribution_params"]
+            mid = 0.5 * (m[0] + m[1])
+            cfg.events.add_base_mass.params["mass_distribution_params"] = (mid, mid)
+        if getattr(cfg.events, "joint_friction", None):
+            cfg.events.joint_friction.params[
+                "friction_distribution_params"] = (0.0, 0.0)
+        # **지면 마찰**이 env 마다 다르면 넘어짐 판정이 갈린다 — 0810 실측:
+        # 다른 걸 다 껐는데도 DR OFF 가 17/64 로 갈렸고 범인이 이것이었다.
+        if getattr(cfg.events, "physics_material", None):
+            pm = cfg.events.physics_material.params
+            pm["static_friction_range"] = (0.8, 0.8)
+            pm["dynamic_friction_range"] = (0.6, 0.6)
+        if getattr(cfg.events, "joint_armature", None):
+            cfg.events.joint_armature.params[
+                "armature_distribution_params"] = (1.0, 1.0)
     return cfg
 
 

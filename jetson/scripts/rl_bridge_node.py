@@ -458,7 +458,37 @@ OSC_VEL_DEADBAND = 0.5   #: rad/s — 이하 속도의 부호는 무시 (양자�
 
 #: 온셋 블렌딩 (0803 stand_v3 2차: 진입 0.8s에 힙 타깃 24° 휘두름 → 9Hz 링잉
 #: 기폭. 현재 실측 자세→정책 타깃 크로스페이드로 진입 과도 제거)
-BLEND_S = 1.5
+#:
+#: ⚠ **1.5 → 0.0 (0810 시뮬 실측).** 이 크로스페이드가 다섯 세대 실패의
+#: 최대 단일 요인이었다. 기전: 명령이 `착지자세·(1−α) + 정책타깃·α` 라서
+#: **정책의 보정량까지 α배로 깎인다**. 0.5초 시점 α=0.26 — 정책이 자기
+#: 보정의 26% 밖에 못 낸다. 그 사이 로봇은 착지 자세에 붙들려 있고,
+#: 그 자세가 안 서는 자세면 넘어진다. 권한을 되찾을 땐 이미 늦다.
+#:
+#: 측정 (v6b·64env·DR켬·LPF 0.27 동일, `eval_drift_dr.py --blend/--blend_mode`):
+#:     블렌딩 2.5s   58/64 낙상   −24.6°/s
+#:     블렌딩 1.5s   47/64        −18.2      ← 종전 값
+#:     블렌딩 0.8s   25/64        − 5.5
+#:     블렌딩 0.4s   11/64        − 1.2
+#:     **블렌딩 없음(슬루 인수)  3/64   − 0.8**   ← 채택
+#:     (참고) 래퍼 전혀 없음      1/64   − 0.2
+#: 정책 무관이다 — 네 세대 전부 블렌딩에서 47~55/64 로 무너졌다.
+#: 실측 −18.2°/s 는 0809 실기 강체 낙하 −19°/s 와 거의 일치한다.
+#:
+#: **그럼 0803 링잉은 무엇이 막고 있나 — LPF 다, 블렌딩이 아니다.**
+#: >5Hz 에너지 비율:  래퍼 없음 25.6% → LPF만 13.3% → LPF+블렌딩 12.4%
+#:                  → **LPF+슬루(블렌딩 제거) 12.3%**
+#: 블렌딩의 발진 억제 기여는 0 이다. E_smth 는 오히려 블렌딩이 악화시킨다
+#: (0.41 vs 0.16). 완화책 5종 중 이 한 종만 순손실이었다.
+#:
+#: **진입 과도는 stage8 이 이미 막는다.** stage8 제어루프는 매 틱 모든 관절에
+#: `_step_toward` 로 4°/틱 슬루를 건다(MAX_TARGET_STEP_DEG_PER_TICK, 646행).
+#: 인수 시점의 `commanded_relative_deg_by_joint` 는 hang_stand 가 남긴 착지
+#: 명령이므로, 블렌딩을 빼도 명령은 착지 자세에서 4°/틱으로만 출발한다.
+#: 즉 브리지 크로스페이드는 **한 층 아래에서 이미 풀린 문제를 위해 덧댄 것**.
+#:
+#: 되돌리려면 이 값만 1.5 로 올리면 종전 거동으로 복귀한다 (경로 보존).
+BLEND_S = 0.0
 #: 리프트 가드 — 0.6s (4차 실기: 0.4s가 전방 낙하 중 회복 스텝의 양발
 #: 순간 무접촉을 중단시킴 → 스텝 완료 여유 부여. 들림 발버둥 차단은 유지)
 #: (0803 실측: 재인장으로 들리자 접촉 [0,0] → 정책 공중 발버둥.
@@ -467,7 +497,13 @@ LIFT_STOP_S = 0.6
 
 
 def blend_alpha(elapsed_s, dur_s=BLEND_S):
-    """온셋 블렌딩 가중치 — 스무스스텝 0→1 (양 끝 기울기 0, 단조증가)."""
+    """온셋 블렌딩 가중치 — 스무스스텝 0→1 (양 끝 기울기 0, 단조증가).
+
+    BLEND_S=0 (현행 기본) 이면 크로스페이드는 비활성이고 이 함수는 롤백
+    경로·자기검사용으로만 남는다. 0 나눗셈은 즉시 1.0 으로 처리한다.
+    """
+    if dur_s <= 0.0:
+        return 1.0
     a = min(1.0, max(0.0, elapsed_s / dur_s))
     return a * a * (3.0 - 2.0 * a)
 
@@ -698,22 +734,36 @@ def _selftest_stand_lpf():
 
 
 def _selftest_blend():
-    a0, a_mid, a1 = blend_alpha(0.0), blend_alpha(BLEND_S / 2), blend_alpha(BLEND_S)
+    # ① 크로스페이드 수학은 롤백 경로로 보존 — 명시 dur_s 로 검사한다
+    #    (BLEND_S 를 쓰면 기본값 0 에서 검사 자체가 무의미해진다)
+    D = 1.5
+    a0, a_mid, a1 = blend_alpha(0.0, D), blend_alpha(D / 2, D), blend_alpha(D, D)
     assert a0 == 0.0 and a1 == 1.0, (a0, a1)
     assert abs(a_mid - 0.5) < 1e-9, a_mid
-    assert blend_alpha(BLEND_S * 2) == 1.0            # 과경과 클램프
-    assert blend_alpha(-1.0) == 0.0                   # 음수 클램프
+    assert blend_alpha(D * 2, D) == 1.0               # 과경과 클램프
+    assert blend_alpha(-1.0, D) == 0.0                # 음수 클램프
     prev = -1.0
     for k in range(0, 151):
-        a = blend_alpha(k * 0.01)
+        a = blend_alpha(k * 0.01, D)
         assert a >= prev, (k, a, prev)                # 단조증가
         prev = a
-    assert blend_alpha(0.02) < 0.002                  # 양 끝 기울기 0 (부드러운 출발)
-    assert 1.0 - blend_alpha(BLEND_S - 0.02) < 0.002
+    assert blend_alpha(0.02, D) < 0.002               # 양 끝 기울기 0 (부드러운 출발)
+    assert 1.0 - blend_alpha(D - 0.02, D) < 0.002
     frm, tgt = 10.0, 20.0
     mix = frm * (1 - a_mid) + tgt * a_mid
     assert abs(mix - 15.0) < 1e-9
-    return f"스무스스텝 0→1 단조·클램프·끝기울기0·혼합 정확 (BLEND_S={BLEND_S}s)"
+    # ② 현행 기본 경로: 크로스페이드 비활성 = 첫 틱부터 정책 권한 100%
+    #    (0810 수술. 0 나눗셈 없이 즉시 1.0 이어야 한다)
+    assert blend_alpha(0.0, 0.0) == 1.0
+    assert blend_alpha(-1.0, 0.0) == 1.0
+    if BLEND_S <= 0.0:
+        assert blend_alpha(0.0) == 1.0, "기본 경로가 α<1 을 내면 권한이 깎인다"
+    # ③ 인수 안전은 stage8 슬루가 담당한다는 계약 명시 (4°/틱)
+    #    브리지가 크로스페이드를 안 걸어도 명령은 착지 자세에서 4°/틱로 출발.
+    step, gap = 4.0, 24.0
+    assert math.ceil(gap / step) == 6, "24° 이탈은 6틱(120ms)에 도달 — 과도 아님"
+    return (f"스무스스텝 롤백경로 정상 + 기본경로 α≡1 (BLEND_S={BLEND_S}s, "
+            "인수 슬루는 stage8 4°/틱)")
 
 
 def _selftest_osc_guard():
@@ -1224,7 +1274,7 @@ def main():
                     self.blend_from[j] = (base + rel
                                           if base is not None and rel is not None
                                           else self.joint_deg[j])
-            alpha = blend_alpha(now - self.blend_t0)
+            alpha = 1.0 if BLEND_S <= 0.0 else blend_alpha(now - self.blend_t0)
             if alpha < 1.0:
                 for j in JOINT_ORDER:
                     targets_deg_motor[j] = (self.blend_from[j] * (1.0 - alpha)

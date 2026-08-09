@@ -13,6 +13,7 @@
       --num_envs 128 --steps 250 --out_tag stand_v7_DR
 """
 import argparse
+import math
 import json
 import os
 import sys
@@ -30,6 +31,24 @@ parser.add_argument("--num_envs", type=int, default=128)
 parser.add_argument("--out_tag", type=str, default="")
 parser.add_argument("--com_fix", type=float, default=None,
                     help="base_com x 를 이 값으로 고정 [m] — CoM 인과 검증용")
+parser.add_argument("--lpf", type=float, default=0.0,
+                    help="브리지 stand LPF EMA beta (실물 0.27). 0=끔")
+parser.add_argument("--blend", type=float, default=0.0,
+                    help="브리지 온셋 블렌딩 [s] (실물 1.5). 0=끔")
+parser.add_argument("--blend_mode", type=str, default="full",
+                    help="full(현행: 정책 권한도 α로 깎임) | offset(기준자세만 램프) | slew(속도제한)")
+parser.add_argument("--slew_deg", type=float, default=4.0,
+                    help="slew 모드 틱당 상한 [°] (브리지 4°/틱)")
+parser.add_argument("--blend_from", type=str, default="zero",
+                    help="블렌딩 시작 자세: zero(트림0) | trim(a12.5/h6.4/k10.4) | eq(정책평형)")
+parser.add_argument("--land", action="store_true",
+                    help="착지 자세(전 관절 0)에서 시작 — 실물 인수 시점 재현")
+parser.add_argument("--zero_deg", type=float, default=0.0,
+                    help="영점 오차 [°] — 관측은 δ 적게, 명령은 δ 더 나간다")
+parser.add_argument("--imu_deg", type=float, default=0.0,
+                    help="IMU 장착 오차 [°] — 중력벡터를 피치축으로 회전")
+parser.add_argument("--sign", type=str, default="mixed",
+                    help="영점 오차 부호: mixed|pos|neg")
 parser.add_argument("--kp", type=float, default=None,
                     help="서보 강성 고정 [Nm/rad] — SEA 루프이득 kp/k_struct 검증용")
 parser.add_argument("--sea", type=float, default=None,
@@ -136,6 +155,95 @@ except Exception as exc:      # 읽기 실패해도 본 측정(드리프트)은 
     print(f"[warn] CoM 읽기 실패: {exc}")
 
 obs = env.get_observations()
+
+# ── 캘리브레이션 편향 주입 ────────────────────────────────────────────
+# 관측 레이아웃 245 = 49×5: ang_vel3·gravity3·cmd3·qpos12·qvel12·act12·clock2·contact2
+_GRAV, _QPOS = slice(15, 30), slice(45, 105)
+_dz, _th = math.radians(args_cli.zero_deg), math.radians(args_cli.imu_deg)
+_N = args_cli.num_envs
+_dev = env.unwrapped.device
+if args_cli.sign == "pos":
+    _sg = torch.ones(_N, device=_dev)
+elif args_cli.sign == "neg":
+    _sg = -torch.ones(_N, device=_dev)
+else:   # 한쪽으로만 주면 최악/최선만 본다 — env 반반
+    _sg = torch.where(torch.arange(_N, device=_dev) % 2 == 0,
+                      torch.ones(_N, device=_dev), -torch.ones(_N, device=_dev))
+_dzv = (_dz * _sg).unsqueeze(1)
+
+
+def _bias(o):
+    """영점·IMU 편향을 관측에 주입 (제자리 수정 — TensorDict/텐서 공용)."""
+    t = o["policy"] if hasattr(o, "keys") and "policy" in o.keys() else o
+    if _dz != 0.0:
+        t[:, _QPOS] = t[:, _QPOS] - _dzv
+    if _th != 0.0:
+        g = t[:, _GRAV].reshape(-1, 5, 3).clone()
+        gx, gz = g[..., 0].clone(), g[..., 2].clone()
+        g[..., 0] = gx * math.cos(_th) - gz * math.sin(_th)
+        g[..., 2] = gx * math.sin(_th) + gz * math.cos(_th)
+        t[:, _GRAV] = g.reshape(-1, 15)
+    return o
+
+
+# ── 배포 래퍼 이식 (jetson/scripts/rl_bridge_node.py) ──────────────────
+# 실물에만 있고 시뮬에 없던 두 가지. 다섯 세대가 전부 이 래퍼를 통과했다.
+#   ① stand LPF  : EMA beta=0.27 (0803 발진 완화책, 차단 2.5Hz@50Hz)
+#   ② 온셋 블렌딩: 착지 자세 → 정책 타깃 스무스스텝 크로스페이드 1.5s
+# 순서는 브리지와 동일: 정책 → LPF → 블렌딩 (bridge 1181행 → 1227행)
+_robot = env.unwrapped.scene["robot"]
+_DEF = _robot.data.default_joint_pos.clone()
+#: 착지 자세 후보 — hang_stand 가 스트리밍하던 명령이 블렌딩 시작점이 된다.
+#: 트림 3채널 → 관절각 (하드웨어맵 direction·TRIM_CH gain 으로 확정된 변환)
+_TRIM_POSE_DEG = {"left_ankle_f_joint": +12.5, "right_ankle_f_joint": -12.5,
+                  "left_hip_f_joint": -6.4, "right_hip_f_joint": +6.4,
+                  "left_knee_joint": -10.4, "right_knee_joint": +10.4}
+_jn = list(_robot.data.joint_names)
+if args_cli.blend_from == "trim":
+    _LAND = torch.zeros_like(_DEF)
+    for _i, _n in enumerate(_jn):
+        _LAND[:, _i] = math.radians(_TRIM_POSE_DEG.get(_n, 0.0))
+elif args_cli.blend_from == "eq":
+    _LAND = _DEF.clone()                # 정책 평형에 가장 가까운 근사 = 기본자세
+else:
+    _LAND = torch.zeros_like(_DEF)      # 트림0 = 관절 프레임 전부 0
+_ASCALE = 0.25
+_tgt_filt = None
+_cmd_prev = None
+
+
+def _wrapper(a, step_i):
+    """정책 액션 → 실제 명령. 브리지와 같은 순서로 LPF·블렌딩을 건다."""
+    global _tgt_filt
+    tgt = _DEF + _ASCALE * a                                   # 관절 프레임 타깃
+    if args_cli.lpf > 0.0:
+        _tgt_filt = tgt.clone() if _tgt_filt is None else \
+            _tgt_filt + args_cli.lpf * (tgt - _tgt_filt)
+        tgt = _tgt_filt
+    if args_cli.blend_mode == "slew":
+        # 속도제한 인수: 정책 권한 100%, 명령이 틱당 상한보다 빨리 못 움직인다.
+        # 크로스페이드가 없으니 정책 보정이 처음부터 온전히 나간다.
+        global _cmd_prev
+        lim = math.radians(args_cli.slew_deg)
+        _cmd_prev = _LAND.clone() if _cmd_prev is None else _cmd_prev
+        tgt = _cmd_prev + torch.clamp(tgt - _cmd_prev, -lim, lim)
+        _cmd_prev = tgt.clone()
+    elif args_cli.blend > 0.0:
+        u = min(1.0, max(0.0, (step_i / 50.0) / args_cli.blend))
+        al = u * u * (3.0 - 2.0 * u)                           # 스무스스텝
+        if args_cli.blend_mode == "offset":
+            # 기준자세만 크로스페이드하고 정책 보정 0.25a 는 온전히 더한다.
+            # 현행 full 은 (DEF+0.25a)·α 라 **정책의 보정량까지 α배로 깎인다** —
+            # α=0.26(0.5초)이면 정책이 자기 보정의 26% 밖에 못 낸다.
+            tgt = (_LAND * (1.0 - al) + _DEF * al) + (tgt - _DEF)
+        else:
+            tgt = _LAND * (1.0 - al) + tgt * al
+    return (tgt - _DEF) / _ASCALE
+
+
+if args_cli.land:
+    # 실물은 hang_stand 트림0 자세로 착지한 뒤 정책이 인수한다.
+    _robot.write_joint_state_to_sim(_LAND, torch.zeros_like(_LAND))
 pg_log = []          # (steps, N, 3)
 act_log = []         # (steps, N, 12) — 떨림 지표용
 alive = torch.ones(N, dtype=torch.bool, device=uenv.device)
@@ -143,8 +251,10 @@ death_step = torch.full((N,), args_cli.steps, dtype=torch.long, device=uenv.devi
 
 for i in range(args_cli.steps):
     with torch.inference_mode():
-        actions = policy(obs)
-        obs, _, dones, _ = env.step(actions)
+        actions = policy(_bias(obs))
+        if _dz != 0.0:                       # 명령도 δ 만큼 더 나간다
+            actions = actions + _dzv / 0.25
+        obs, _, dones, _ = env.step(_wrapper(actions, i))
     pg_log.append(robot.data.projected_gravity_b.clone().cpu().numpy())
     act_log.append(actions.detach().cpu().numpy())
     term = uenv.termination_manager.terminated

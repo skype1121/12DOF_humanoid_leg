@@ -28,8 +28,10 @@ parser.add_argument("--task", type=str,
 parser.add_argument("--steps", type=int, default=250)
 parser.add_argument("--num_envs", type=int, default=64)
 parser.add_argument("--pose", default="policy_v7",
-                    choices=("policy_v7", "zero", "knee_only", "ankle_only"))
+                    choices=("policy_v8", "policy_v7", "zero", "knee_only", "ankle_only"))
 parser.add_argument("--out_tag", type=str, default="")
+parser.add_argument("--payload", action="store_true",
+                    help="결손 1.51kg 을 payload URDF 대로 배치 (뒤 150·위 100mm)")
 parser.add_argument("--flat", action="store_true",
                     help="지형을 평면으로 고정 (경사 타일 제거)")
 parser.add_argument("--trace", action="store_true",
@@ -67,9 +69,18 @@ POSE_POLICY_V7 = {
     "left_ankle_f_joint": 12.6, "right_ankle_f_joint": -2.0,
     "left_ankle_r_joint": -0.4, "right_ankle_r_joint": -2.0,
 }
+#: stand_v8 평형 자세 = 실물에서 쓸 '무릎 굽힌 스탠바이' (trim a+12.5/h+6.4/k+10.4)
+POSE_POLICY_V8 = {
+    "left_hip_f_joint": -7.82, "right_hip_f_joint": 5.02,
+    "left_hip_a_joint": 0.02, "right_hip_a_joint": -0.37,
+    "left_hip_r_joint": 2.00, "right_hip_r_joint": 0.74,
+    "left_knee_joint": -10.24, "right_knee_joint": 10.52,
+    "left_ankle_f_joint": 13.67, "right_ankle_f_joint": -11.40,
+    "left_ankle_r_joint": 0.34, "right_ankle_r_joint": -0.17,
+}
 POSE_ZERO = {k: 0.0 for k in POSE_POLICY_V7}
 POSES = {
-    "policy_v7": POSE_POLICY_V7, "zero": POSE_ZERO,
+    "policy_v8": POSE_POLICY_V8, "policy_v7": POSE_POLICY_V7, "zero": POSE_ZERO,
     "knee_only": dict(POSE_ZERO, **{"left_knee_joint": -10.6,
                                     "right_knee_joint": 11.0}),
     "ankle_only": dict(POSE_ZERO, **{"left_ankle_f_joint": 12.6,
@@ -96,6 +107,15 @@ env_cfg.events.reset_base.params["pose_range"]["yaw"] = (0.0, 0.0)
 # **정적 안정성만 본다.** 이 환경들은 3~8초마다 랜덤 푸시를 걸고 리셋 시 몸통을
 # ±0.07rad(±4°) 기울여 스폰한다. 그대로 두면 "수동 상태로 외란을 버티는가"를
 # 재게 되어 정적 안정성 질문에 답하지 못한다 (0808 실측: 이 함정에 걸렸다).
+if args_cli.payload:
+    # biped12_payload.urdf 를 이벤트로 재현 — USD 재생성 없이 동일한 질량 분포.
+    # payload 1.51kg @ base 프레임 (−150, 0, +100)mm 를 base 바디(=base+pelvis
+    # 고정관절 병합, 3.986kg)에 더하면 병합 CoM 이 (−31.7, +0.3, +4.1)mm 이동한다.
+    # 결과: 전신 12.001kg · CoM 발목축 뒤 30.7mm (base 모델은 10.491kg · 뒤 13.5mm).
+    env_cfg.events.add_base_mass.params["mass_distribution_params"] = (1.51, 1.51)
+    env_cfg.events.base_com.params["com_range"] = {
+        "x": (-0.0317, -0.0317), "y": (0.0003, 0.0003), "z": (0.0041, 0.0041)}
+
 if args_cli.nominal:
     # 실물 stage8 홀드에 가깝게: 게인 정격(kp150/kd5) · 액션 지연 0 · 마찰 고정.
     # 실물은 이 조건에서 고정 관절만으로 몇 분씩 선다.
@@ -108,13 +128,14 @@ if args_cli.nominal:
             "friction_distribution_params"] = (0.0, 0.0)
     # CoM·질량 랜덤화도 끈다. 이게 남아 있으면 '시뮬이 정적으로 못 선다'가
     # 아니라 'CoM 뽑기에 따라 못 선다'를 재는 것이 된다 — 전혀 다른 명제다.
-    if getattr(env_cfg.events, "base_com", None) is not None:
+    if not args_cli.payload and getattr(env_cfg.events, "base_com", None) is not None:
         env_cfg.events.base_com.params["com_range"] = {
             "x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
     for _t in ("add_base_mass", "base_mass", "randomize_rigid_body_mass",
                "payload"):
         _e = getattr(env_cfg.events, _t, None)
-        if _e is not None and "mass_distribution_params" in getattr(_e, "params", {}):
+        if (not args_cli.payload and _e is not None
+                and "mass_distribution_params" in getattr(_e, "params", {})):
             _e.params["mass_distribution_params"] = (0.0, 0.0)
     if getattr(env_cfg.events, "physics_material", None) is not None:
         _p = env_cfg.events.physics_material.params

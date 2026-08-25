@@ -400,3 +400,36 @@ class Biped12FlatEnvCfg_PLAY(Biped12FlatEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (0.5, 0.5)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+
+
+@configclass
+class Biped12FlatEnvCfg_DEMO(Biped12FlatEnvCfg_PLAY):
+    """시연용 — 정지→첫 스텝 전이가 보이고, env 마다 다른 명령을 받는다.
+
+    **PLAY 와 무엇이 다른가.** PLAY 는 세대 판정용이라 전 env 가 같은 명령
+    (전진 0.5·heading 0)을 받고, 정지 명령은 2% 뿐이다. 게다가 스폰 yaw 가
+    ±180° 랜덤인데 heading 목표는 0 이라, 시작 1~2초가 '첫 발 내딛기'가 아니라
+    **제자리 방향 틀기**로 보인다. 그 뒤로는 전원이 같은 보폭으로 행진한다.
+    보려는 것이 판정이 아니라 거동이라면 이 태스크를 쓴다.
+
+    변경점:
+      스폰 yaw 고정      시작이 방향 전환이 아니라 첫 스텝이 되게
+      정지 env 50%      재샘플마다 정지↔보행 전이가 실제로 보이게
+      재샘플 4~7s       전이를 자주 보려고 (PLAY 는 8~12s)
+      명령 대역 복원     전진 0~0.8 · 조향 ±1.2rad — env 마다 다르게 흩어지도록
+      명령 화살표 표시   각 로봇이 무슨 명령을 받았는지 눈으로 확인
+
+    ⚠ 이것은 **시연용**이다. 세대 승격 판정에 쓰지 말 것 — 판정은
+    `rl_walking/scripts/eval_drift_dr.py` (DR 켬) 와 `eval_ladder.py` 로 한다.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        # 스폰 방향 고정 — PLAY 의 ±180° 랜덤 yaw 가 '첫 스텝'을 가린다
+        self.events.reset_base.params["pose_range"]["yaw"] = (0.0, 0.0)
+        cmd = self.commands.base_velocity
+        cmd.rel_standing_envs = 0.5          # 절반은 정지에서 출발
+        cmd.resampling_time_range = (4.0, 7.0)
+        cmd.ranges.lin_vel_x = (0.0, 0.8)
+        cmd.ranges.heading = (-1.2, 1.2)
+        cmd.debug_vis = True

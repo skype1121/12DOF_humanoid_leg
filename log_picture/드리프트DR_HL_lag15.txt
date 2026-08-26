@@ -1,0 +1,39 @@
+==========================================================================
+DR 분포 전방 드리프트 — Biped12-Velocity-Stage4V2-Stand-V6-v0
+체크포인트: /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-08-04_11-31-27/model_59899.pt
+64 env × 8.0s, 명령 전무(cmd=0), DR 켜짐
+==========================================================================
+낙상(조기 종료): 46/64 (71.9%)
+   낙상 방향 — 뒤 11 · 앞 14 · 왼 10 · 오른 11
+   몸통 피치 진동 RMS(추세 제거) — 중앙 1.99° p95 7.25°
+초기 3s 전방 추세 °/s — 평균 -1.21, 중앙 +0.18, p5 -19.66, p95 +10.81, 최대 +14.53
+
+■ 실물 기준선 +4.06°/s 이상으로 전방 드리프트한 env: 9/64 (14.1%)
+   → 이 비율이 0에 가까우면, 실물 거동은 DR 분포 밖이다(랜덤화로 못 덮음).
+
+■ CoM x 분산 0 — 랜덤화가 실제로 적용되지 않았을 수 있음(점검 필요)
+
+■ 떨림 지표 (실물 5차 v6b: 1~4Hz · RMS 2~4° · E_smth 4.40)
+    E_smth (액션 2차차분)  0.51171
+    우세 주파수            0.62 Hz
+    >5Hz 에너지 비율        11.7 %
+
+■ 관절 한계 도달 비율 (한계 1° 이내 체류 시간 %) — 5% 이상만 표기
+    right_knee_joint            5.1 %
+    ⚠ 한계에 붙어 사는 관절 = 보상 우회 해 의심 (v10 힙롤 +30.00° 전례)
+
+■ 평형 자세 (정착 구간 평균, 관절 프레임 deg) — posture_probe 전이 목표
+    left_hip_f_joint         -1.18
+    right_hip_f_joint        +1.22
+    left_hip_a_joint         -0.90
+    right_hip_a_joint        -2.19
+    left_hip_r_joint         +3.30
+    right_hip_r_joint        -5.70
+    left_knee_joint         -11.39
+    right_knee_joint        +11.91
+    left_ankle_f_joint       +9.66
+    right_ankle_f_joint     -11.40
+    left_ankle_r_joint       +0.06
+    right_ankle_r_joint      +0.71
+  POSE_DICT {"left_hip_f_joint": -1.18, "right_hip_f_joint": 1.22, "left_hip_a_joint": -0.9, "right_hip_a_joint": -2.19, "left_hip_r_joint": 3.3, "right_hip_r_joint": -5.7, "left_knee_joint": -11.39, "right_knee_joint": 11.91, "left_ankle_f_joint": 9.66, "right_ankle_f_joint": -11.4, "left_ankle_r_joint": 0.06, "right_ankle_r_joint": 0.71}
+==========================================================================

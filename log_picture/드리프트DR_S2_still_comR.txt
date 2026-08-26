@@ -1,0 +1,41 @@
+==========================================================================
+DR 분포 전방 드리프트 — Biped12-Velocity-Stage4V2-Stand-V6-v0
+인자: --headless --task Biped12-Velocity-Stage4V2-Stand-V6-v0 --load_run 2026-08-04_11-31-27 --checkpoint model_59899.pt --num_envs 64 --steps 400 --deploy old --com_fix 0.0206 --still --out_tag S2_still_comR
+체크포인트: /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-08-04_11-31-27/model_59899.pt
+64 env × 8.0s, 명령 전무(cmd=0), DR 켜짐
+==========================================================================
+낙상(조기 종료): 42/64 (65.6%)
+   낙상 방향 — 뒤 9 · 앞 10 · 왼 11 · 오른 12
+   몸통 피치 진동 RMS(추세 제거) — 중앙 1.94° p95 3.68°
+초기 3s 전방 추세 °/s — 평균 +2.18, 중앙 +0.67, p5 -0.16, p95 +8.69, 최대 +14.29
+
+■ 실물 기준선 +4.06°/s 이상으로 전방 드리프트한 env: 12/64 (18.8%)
+   → 이 비율이 0에 가까우면, 실물 거동은 DR 분포 밖이다(랜덤화로 못 덮음).
+
+■ CoM x 분산 0 — 랜덤화가 실제로 적용되지 않았을 수 있음(점검 필요)
+
+■ 떨림 지표 (실물 5차 v6b: 1~4Hz · RMS 2~4° · E_smth 4.40)
+    E_smth (액션 2차차분)  0.41188
+    우세 주파수            1.50 Hz
+    >5Hz 에너지 비율        7.7 %
+
+■ 관절 한계 도달 비율 (한계 1° 이내 체류 시간 %) — 5% 이상만 표기
+    left_knee_joint             5.8 %
+    right_knee_joint            5.8 %
+    ⚠ 한계에 붙어 사는 관절 = 보상 우회 해 의심 (v10 힙롤 +30.00° 전례)
+
+■ 평형 자세 (정착 구간 평균, 관절 프레임 deg) — posture_probe 전이 목표
+    left_hip_f_joint         -1.51
+    right_hip_f_joint        -0.39
+    left_hip_a_joint         +0.72
+    right_hip_a_joint        -1.69
+    left_hip_r_joint         +2.34
+    right_hip_r_joint        -6.47
+    left_knee_joint         -10.91
+    right_knee_joint        +12.03
+    left_ankle_f_joint      +10.19
+    right_ankle_f_joint      -7.86
+    left_ankle_r_joint       +0.22
+    right_ankle_r_joint      +0.45
+  POSE_DICT {"left_hip_f_joint": -1.51, "right_hip_f_joint": -0.39, "left_hip_a_joint": 0.72, "right_hip_a_joint": -1.69, "left_hip_r_joint": 2.34, "right_hip_r_joint": -6.47, "left_knee_joint": -10.91, "right_knee_joint": 12.03, "left_ankle_f_joint": 10.19, "right_ankle_f_joint": -7.86, "left_ankle_r_joint": 0.22, "right_ankle_r_joint": 0.45}
+==========================================================================

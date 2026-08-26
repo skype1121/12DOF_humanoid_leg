@@ -51,6 +51,15 @@ parser.add_argument("--zero_deg", type=float, default=0.0,
                     help="영점 오차 [°] — 관측은 δ 적게, 명령은 δ 더 나간다")
 parser.add_argument("--imu_deg", type=float, default=0.0,
                     help="IMU 장착 오차 [°] — 중력벡터를 피치축으로 회전 (앞뒤)")
+parser.add_argument("--still", action="store_true",
+                    help="초기 속도 랜덤화 차단 — reset_base velocity_range(±17°/s)와 관절 속도. "
+                         "실물 인수는 정지 상태에서 시작하므로 실물 재현 런에서 권장")
+parser.add_argument("--usd", type=str, default=None,
+                    help="로봇 USD 교체 (발 기하 변형판 등) — spawn.usd_path 오버라이드")
+parser.add_argument("--att_lag", type=int, default=0,
+                    help="IMU 자세 랙 [틱] — 중력 채널만 N틱 지연 (자이로는 즉시). iAHRS 자세필터 랙 모사")
+parser.add_argument("--gyro_bias_dps", type=float, default=0.0,
+                    help="자이로 피치축 상수 편향 [°/s] — ang_vel y 채널 오염")
 parser.add_argument("--imu_roll_deg", type=float, default=0.0,
                     help="IMU 롤 장착 오차 [°] — 중력벡터를 롤축으로 회전 (좌우)")
 parser.add_argument("--sign", type=str, default="mixed",
@@ -103,6 +112,17 @@ agent_cfg = load_cfg_from_registry(args_cli.task, "rsl_rl_cfg_entry_point")
 agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
 env_cfg = load_cfg_from_registry(args_cli.task, "env_cfg_entry_point")
 env_cfg.scene.num_envs = args_cli.num_envs
+if args_cli.usd:
+    env_cfg.scene.robot.spawn.usd_path = args_cli.usd
+if args_cli.still:
+    # 7f52452 가 이 파일만 빠뜨렸었다 (적대검증 지적). 실물 5차 인수는 줄에
+    # 매달려 정지한 상태에서 시작한다 — ±17°/s 초기 각속도는 실물에 없는 외란.
+    _vr = env_cfg.events.reset_base.params.get("velocity_range")
+    if isinstance(_vr, dict):
+        for _k in list(_vr):
+            _vr[_k] = (0.0, 0.0)
+    if getattr(env_cfg.events, "reset_robot_joints", None):
+        env_cfg.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
 env_cfg.seed = agent_cfg.seed
 # 정지 서기 조건 — 실물 무개입 낙하와 동일하게 명령 전무
 env_cfg.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
@@ -197,9 +217,26 @@ else:   # 한쪽으로만 주면 최악/최선만 본다 — env 반반
 _dzv = (_dz * _sg).unsqueeze(1)
 
 
+#: 관측 245 = 49×5 채널블록 (역사-major, 각 블록 reshape (5,ch)):
+#: ang_vel 0:15 · gravity 15:30 · cmd 30:45 · qpos 45:105 · qvel · act · clock · contact
+_ANGV = slice(0, 15)
+_att_hist = []      # 자세 랙용 중력 블록 링버퍼
+
+
 def _bias(o):
-    """영점·IMU 편향을 관측에 주입 (제자리 수정 — TensorDict/텐서 공용)."""
+    """영점·IMU 편향·자세랙·자이로편향을 관측에 주입 (제자리 수정)."""
     t = o["policy"] if hasattr(o, "keys") and "policy" in o.keys() else o
+    if args_cli.att_lag > 0:
+        # iAHRS 자세필터 랙 — 중력(자세) 채널만 N틱 과거값. 자이로는 원시라 즉시.
+        _att_hist.append(t[:, _GRAV].clone())
+        if len(_att_hist) > args_cli.att_lag:
+            t[:, _GRAV] = _att_hist.pop(0)
+        else:
+            t[:, _GRAV] = _att_hist[0]
+    if args_cli.gyro_bias_dps != 0.0:
+        av = t[:, _ANGV].reshape(-1, 5, 3).clone()
+        av[..., 1] = av[..., 1] + math.radians(args_cli.gyro_bias_dps)
+        t[:, _ANGV] = av.reshape(-1, 15)
     if _dz != 0.0:
         t[:, _QPOS] = t[:, _QPOS] - _dzv
     if _th != 0.0 or _rl != 0.0:
@@ -370,6 +407,7 @@ _jnames = list(robot.data.joint_names)
 
 P("=" * 74)
 P(f"DR 분포 전방 드리프트 — {args_cli.task}")
+P("인자: " + " ".join(sys.argv[1:]))
 P(f"체크포인트: {resume_path}")
 P(f"{N} env × {args_cli.steps/50:.1f}s, 명령 전무(cmd=0), DR 켜짐")
 P("=" * 74)

@@ -42,6 +42,8 @@ parser.add_argument("--task", type=str,
 parser.add_argument("--stage", type=int, required=True,
                     help="0=자유낙하 1=PD홀드 2=정책서기 3=서기+외란 4=보행")
 parser.add_argument("--dr", type=int, default=1, help="1=랜덤화 ON, 0=OFF")
+parser.add_argument("--usd", type=str, default=None,
+                    help="로봇 USD 교체 — spawn.usd_path 오버라이드")
 parser.add_argument("--num_envs", type=int, default=64)
 parser.add_argument("--steps", type=int, default=400)
 parser.add_argument("--out_tag", type=str, default="")
@@ -106,6 +108,8 @@ def make_env(stage, dr_on):
     """단계·랜덤화 조합에 맞춘 환경을 만든다."""
     cfg = load_cfg_from_registry(args_cli.task, "env_cfg_entry_point")
     cfg.scene.num_envs = args_cli.num_envs
+    if args_cli.usd:
+        cfg.scene.robot.spawn.usd_path = args_cli.usd
     cfg.seed = 0
     cfg.episode_length_s = 60.0
     cfg.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)

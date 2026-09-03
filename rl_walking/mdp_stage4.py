@@ -377,6 +377,7 @@ def resample_calib_bias(
     imu_tilt_rad: tuple = (-0.052, 0.052),     # ±3°
     ankle_bias_rad: tuple | None = None,       # v15: 발목 별도 대역 (0809 재앵커 시프트 4~5.5° 실측)
     knee_bias_rad: tuple | None = None,        # v15: 무릎 별도 대역 (좌우 다리 길이차 ≈ 무릎각 편향)
+    imu_lag_steps: tuple | None = None,        # v17: IMU 자세 지연 [틱] env별 정수 (0~3)
 ):
     """에피소드마다 관측 상수 편향을 새로 뽑는다 (mode="reset" 이벤트).
 
@@ -400,6 +401,11 @@ def resample_calib_bias(
             len(ids), len(cols), device=env.device).uniform_(*rng)
     env._calib_imu_tilt[ids] = torch.empty(
         len(ids), device=env.device).uniform_(*imu_tilt_rad)
+    if imu_lag_steps is not None:
+        if not hasattr(env, "_imu_lag"):
+            env._imu_lag = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+        env._imu_lag[ids] = torch.randint(int(imu_lag_steps[0]), int(imu_lag_steps[1]) + 1,
+                                          (len(ids),), device=env.device)
 
 
 def joint_pos_rel_biased(
@@ -567,3 +573,21 @@ def resample_effort_scale(
     new = env._effort_nominal[ids] * s
     asset.root_physx_view.set_dof_max_forces(new.cpu(), indices=ids.cpu())
     asset.data.joint_effort_limits[ids] = new
+
+
+def projected_gravity_lagged(env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
+    """projected_gravity_biased + env별 자세 지연(0~3틱) — iAHRS 자세 필터 지연 근사.
+
+    링버퍼(4틱)에 매 스텝의 편향 포함 중력벡터를 넣고 env별 lag 만큼 前 값을 낸다.
+    lag 는 resample_calib_bias(imu_lag_steps) 가 리셋마다 뽑는다 (없으면 0).
+    """
+    g = projected_gravity_biased(env, asset_cfg)
+    lag = getattr(env, "_imu_lag", None)
+    if lag is None:
+        return g
+    if not hasattr(env, "_grav_buf"):
+        env._grav_buf = g.unsqueeze(0).repeat(4, 1, 1).clone()
+    env._grav_buf = torch.roll(env._grav_buf, 1, dims=0)
+    env._grav_buf[0] = g
+    idx = lag.clamp(0, 3).view(1, -1, 1).expand(1, g.shape[0], g.shape[1])
+    return torch.gather(env._grav_buf, 0, idx).squeeze(0)

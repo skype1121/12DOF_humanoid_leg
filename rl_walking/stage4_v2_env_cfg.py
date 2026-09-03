@@ -1187,3 +1187,19 @@ class Biped12Stage4V2StandV16EnvCfg(Biped12Stage4V2StandV15EnvCfg):
         if getattr(self.events, "joint_friction", None):
             self.events.joint_friction.params["friction_distribution_params"] = (0.0, 0.3)
         self.observations.policy.feet_contact.params["delay_steps"] = 5
+
+
+class Biped12Stage4V2StandV17EnvCfg(Biped12Stage4V2StandV16EnvCfg):
+    """stand_v17 — v16 + **엔코더 사각지대·센서 지연 2축** (0904 꼬리물기).
+
+      1. **감속기 백래시 히스테리시스 ±0.3~1.5°** — 로터 엔코더는 감속기 뒤
+         백래시·벨트·프린트 구조 변형을 못 본다(0802 실측: 기울기 5.7° 에 관절
+         오차 0.7°). 명령이 방향을 바꿀 때 데드밴드 동안 출력이 안 움직인다.
+      2. **IMU 자세 지연 0~3틱** — iAHRS 자세 필터 지연. 자이로(각속도)는 그대로.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.backlash_rad_range = (0.005, 0.026)
+        self.events.calib_bias.params["imu_lag_steps"] = (0, 3)
+        self.observations.policy.projected_gravity.func = mdp_stage4.projected_gravity_lagged

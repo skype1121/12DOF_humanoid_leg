@@ -56,6 +56,11 @@ class SlewJointPositionAction(JointPositionAction):
             self._beta = torch.empty(self.num_envs, device=self.device).uniform_(
                 self._lpf_lo, self._lpf_hi)
             self._lpf_state = torch.zeros(self.num_envs, self.action_dim, device=self.device)
+        self._bl_lo, self._bl_hi = (float(v) for v in cfg.backlash_rad_range)
+        self._use_bl = self._bl_hi > 0.0
+        if self._use_bl:
+            self._bl = torch.empty(self.num_envs, 1, device=self.device).uniform_(self._bl_lo, self._bl_hi)
+            self._bl_out = torch.zeros(self.num_envs, self.action_dim, device=self.device)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         super().reset(env_ids)
@@ -66,6 +71,8 @@ class SlewJointPositionAction(JointPositionAction):
                     self._delay, self._min_delay, self._max_delay + 1)
             if self._use_lpf:
                 self._beta.uniform_(self._lpf_lo, self._lpf_hi)
+            if self._use_bl:
+                self._bl.uniform_(self._bl_lo, self._bl_hi)
         else:
             self._needs_init[env_ids] = True
             ids = env_ids if isinstance(env_ids, torch.Tensor) else torch.as_tensor(
@@ -79,6 +86,9 @@ class SlewJointPositionAction(JointPositionAction):
             if self._use_lpf:
                 self._beta[ids] = torch.empty(len(ids), device=self.device).uniform_(
                     self._lpf_lo, self._lpf_hi)
+            if self._use_bl:
+                self._bl[ids] = torch.empty(len(ids), 1, device=self.device).uniform_(
+                    self._bl_lo, self._bl_hi)
 
     def process_actions(self, actions: torch.Tensor):
         # scale/offset/clip 적용 (부모)
@@ -92,6 +102,8 @@ class SlewJointPositionAction(JointPositionAction):
                 self._buf[:, ids] = cur.unsqueeze(0)
             if self._use_lpf:
                 self._lpf_state[ids] = cur
+            if self._use_bl:
+                self._bl_out[ids] = cur
             self._needs_init[ids] = False
         target = self._processed_actions
         # EMA 저역필터 (실물 브리지 순서: 정책 → LPF → 지연 → 노드 슬루)
@@ -111,6 +123,13 @@ class SlewJointPositionAction(JointPositionAction):
             delta, -self._max_delta, self._max_delta
         )
         self._prev_target = self._processed_actions.clone()
+        # 백래시 히스테리시스: 출력은 명령 주위 ±b 데드밴드 안에서는 움직이지 않는다
+        if self._use_bl:
+            cmd = self._processed_actions
+            over = cmd - self._bl_out
+            self._bl_out = torch.where(over > self._bl, cmd - self._bl,
+                           torch.where(over < -self._bl, cmd + self._bl, self._bl_out))
+            self._processed_actions = self._bl_out.clone()
 
 
 @configclass
@@ -127,3 +146,7 @@ class SlewJointPositionActionCfg(JointPositionActionCfg):
     # 배포 래퍼 EMA β 랜덤 대역 (1.0,1.0)=비활성. 실물 STAND_LPF_BETA=0.27 포함하도록
     # v15 는 (0.2, 1.0).
     lpf_beta_range: tuple[float, float] = (1.0, 1.0)
+    # 감속기 백래시 히스테리시스 반폭 [rad] env별 대역 (0,0)=비활성. v17 (0.005, 0.026)=0.3~1.5°.
+    # 실물: 로터 엔코더는 감속기 뒤 백래시·벨트·프린트 변형을 못 본다(엔코더 사각지대,
+    # 0802 실측 기울기 5.7° 에 관절오차 0.7°). 명령이 방향을 바꿀 때 |Δ|<b 동안 출력이 안 움직인다.
+    backlash_rad_range: tuple[float, float] = (0.0, 0.0)

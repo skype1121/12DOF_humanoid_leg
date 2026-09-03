@@ -1,0 +1,50 @@
+패치 2건
+biped12_base.usd: /colliders/base/pelvis/node_STL_BINARY_/mesh (convexDecomposition → convexDecomposition)
+biped12_physics.usd: /colliders/base/pelvis/node_STL_BINARY_/mesh (convexDecomposition → convexDecomposition)
+== 전 콜리전 메시 approximation ==
+biped12_base.usd /colliders/base/pelvis/node_STL_BINARY_/mesh approx=convexDecomposition
+biped12_base.usd /colliders/base/D455/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/base/imu/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/left_hip_f_joint/left_hip_f_link/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/left_hip_a_joint/left_hip_a_link/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/left_hip_r_joint/left_hip_r_link/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/left_knee_joint/left_knee_link/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/left_ankle_f_joint/left_ankle_f_link/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/left_ankle_r_joint/left_ankle_r_link/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/left_ankle_r_joint/leftfoot_leftback_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/left_ankle_r_joint/leftfoot_leftfront_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/left_ankle_r_joint/leftfoot_rightback_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/left_ankle_r_joint/leftfoot_rightfront_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/right_hip_f_joint/right_hip_f_link/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/right_hip_a_joint/right_hip_a_link/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/right_hip_r_joint/right_hip_r_link/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/right_knee_joint/right_knee_link/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/right_ankle_f_joint/right_ankle_f_link/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/right_ankle_r_joint/right_ankle_r_link/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/right_ankle_r_joint/rightfoot_leftfback_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/right_ankle_r_joint/rightfoot_leftfront_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/right_ankle_r_joint/rightfoot_rightfback_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_base.usd /colliders/right_ankle_r_joint/rightfoot_rightfront_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/base/pelvis/node_STL_BINARY_/mesh approx=convexDecomposition
+biped12_physics.usd /colliders/base/D455/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/base/imu/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/left_hip_f_joint/left_hip_f_link/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/left_hip_a_joint/left_hip_a_link/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/left_hip_r_joint/left_hip_r_link/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/left_knee_joint/left_knee_link/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/left_ankle_f_joint/left_ankle_f_link/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/left_ankle_r_joint/left_ankle_r_link/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/left_ankle_r_joint/leftfoot_leftback_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/left_ankle_r_joint/leftfoot_leftfront_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/left_ankle_r_joint/leftfoot_rightback_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/left_ankle_r_joint/leftfoot_rightfront_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/right_hip_f_joint/right_hip_f_link/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/right_hip_a_joint/right_hip_a_link/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/right_hip_r_joint/right_hip_r_link/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/right_knee_joint/right_knee_link/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/right_ankle_f_joint/right_ankle_f_link/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/right_ankle_r_joint/right_ankle_r_link/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/right_ankle_r_joint/rightfoot_leftfback_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/right_ankle_r_joint/rightfoot_leftfront_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/right_ankle_r_joint/rightfoot_rightfback_RA30P/node_STL_BINARY_/mesh approx=None
+biped12_physics.usd /colliders/right_ankle_r_joint/rightfoot_rightfront_RA30P/node_STL_BINARY_/mesh approx=None

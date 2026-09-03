@@ -1,0 +1,4 @@
+필터 저작: /biped12/base ↔ /biped12/left_hip_a_joint
+필터 저작: /biped12/base ↔ /biped12/right_hip_a_joint
+검증 /biped12/base: API=True targets=['/biped12/left_hip_a_joint', '/biped12/right_hip_a_joint']
+검증 /biped12/base: API=True targets=['/biped12/left_hip_a_joint', '/biped12/right_hip_a_joint']

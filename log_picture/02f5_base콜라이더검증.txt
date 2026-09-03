@@ -1,0 +1,13 @@
+== /biped12/base
+  /visuals/pelvis/node_STL_BINARY_/mesh        purp=default col=False approx=- y[-0.1223,+0.1218] z[-0.0497,+0.2650] x[-0.1635,+0.0945]
+  /visuals/D455/node_STL_BINARY_/mesh          purp=default col=False approx=- y[-0.0622,+0.0617] z[+0.1577,+0.1867] x[+0.0572,+0.0832]
+  /visuals/imu/node_STL_BINARY_/mesh           purp=default col=False approx=- y[-0.0170,+0.0180] z[-0.0077,+0.0273] x[-0.0540,-0.0440]
+  /collisions/pelvis/node_STL_BINARY_/mesh     purp=guide col=False approx=convexDecomposition y[-0.1223,+0.1218] z[-0.0497,+0.2650] x[-0.1635,+0.0945]
+  /collisions/D455/node_STL_BINARY_/mesh       purp=guide col=False approx=- y[-0.0622,+0.0617] z[+0.1577,+0.1867] x[+0.0572,+0.0832]
+  /collisions/imu/node_STL_BINARY_/mesh        purp=guide col=False approx=- y[-0.0170,+0.0180] z[-0.0077,+0.0273] x[-0.0540,-0.0440]
+== /biped12/left_hip_a_joint
+  /visuals/left_hip_a_link/node_STL_BINARY_/mesh purp=default col=False approx=- y[-0.1523,+0.0497] z[-0.0716,+0.0282] x[-0.0497,+0.0662]
+  /collisions/left_hip_a_link/node_STL_BINARY_/mesh purp=guide col=False approx=- y[-0.1523,+0.0497] z[-0.0716,+0.0282] x[-0.0497,+0.0662]
+== /biped12/left_hip_f_joint
+  /visuals/left_hip_f_link/node_STL_BINARY_/mesh purp=default col=False approx=- y[-0.0445,+0.0445] z[-0.0445,+0.0445] x[-0.0503,+0.1065]
+  /collisions/left_hip_f_link/node_STL_BINARY_/mesh purp=guide col=False approx=- y[-0.0445,+0.0445] z[-0.0445,+0.0445] x[-0.0503,+0.1065]

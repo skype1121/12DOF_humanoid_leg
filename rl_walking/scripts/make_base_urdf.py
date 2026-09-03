@@ -61,12 +61,14 @@ root.set("name", "biped12")
 
 
 def to_joint_name(n):
-    return n[:-5] + "_joint" if n.endswith("_Link") else n
+    # 0725 익스포트는 _Link, final1(0903) 익스포트는 _link — 둘 다 _joint 로
+    # (env 정규식·접촉센서가 링크명 *_joint 기준; 관절과 동명이나 URDF 네임스페이스 분리로 유효)
+    return n[:-5] + "_joint" if n.endswith(("_Link", "_link")) else n
 
 
 # 2) 이름 통일 (링크명 + 관절명 + parent/child 참조)
 for el in root.iter():
-    if el.tag in ("link", "joint") and el.get("name", "").endswith("_Link"):
+    if el.tag in ("link", "joint") and el.get("name", "").endswith(("_Link", "_link")):
         report.append(f"이름 변경: {el.tag} {el.get('name')} → {to_joint_name(el.get('name'))}")
         el.set("name", to_joint_name(el.get("name")))
     if el.tag in ("parent", "child"):

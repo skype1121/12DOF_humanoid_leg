@@ -3,35 +3,35 @@ biped12.usd 변환 검증 + 실측 관절리밋 주입 (자동 생성)
 1) 프림 트리 (depth<=2)
    /biped12  [Xform]
    /biped12/base  [Xform]
-   /biped12/left_hip_f_link  [Xform]
+   /biped12/left_hip_f_joint  [Xform]
    /biped12/joints  [Scope]
-   /biped12/left_hip_a_link  [Xform]
-   /biped12/left_hip_r_link  [Xform]
-   /biped12/left_knee_link  [Xform]
-   /biped12/left_ankle_f_link  [Xform]
-   /biped12/left_ankle_r_link  [Xform]
-   /biped12/right_hip_f_link  [Xform]
-   /biped12/right_hip_a_link  [Xform]
-   /biped12/right_hip_r_link  [Xform]
-   /biped12/right_knee_link  [Xform]
-   /biped12/right_ankle_f_link  [Xform]
-   /biped12/right_ankle_r_link  [Xform]
+   /biped12/left_hip_a_joint  [Xform]
+   /biped12/left_hip_r_joint  [Xform]
+   /biped12/left_knee_joint  [Xform]
+   /biped12/left_ankle_f_joint  [Xform]
+   /biped12/left_ankle_r_joint  [Xform]
+   /biped12/right_hip_f_joint  [Xform]
+   /biped12/right_hip_a_joint  [Xform]
+   /biped12/right_hip_r_joint  [Xform]
+   /biped12/right_knee_joint  [Xform]
+   /biped12/right_ankle_f_joint  [Xform]
+   /biped12/right_ankle_r_joint  [Xform]
    /biped12/Looks  [Scope]
 ======================================================================
 2) 리지드 바디 + 질량
    base                         mass=4.3234100341796875
-   left_hip_f_link              mass=0.3995000123977661
-   left_hip_a_link              mass=0.7989000082015991
-   left_hip_r_link              mass=0.48458001017570496
-   left_knee_link               mass=0.607699990272522
-   left_ankle_f_link            mass=0.4793507754802704
-   left_ankle_r_link            mass=0.5633919835090637
-   right_hip_f_link             mass=0.3995000720024109
-   right_hip_a_link             mass=0.7519814372062683
-   right_hip_r_link             mass=0.4845781624317169
-   right_knee_link              mass=0.6076962351799011
-   right_ankle_f_link           mass=0.4793507754802704
-   right_ankle_r_link           mass=0.5633919835090637
+   left_hip_f_joint             mass=0.3995000123977661
+   left_hip_a_joint             mass=0.7989000082015991
+   left_hip_r_joint             mass=0.48458001017570496
+   left_knee_joint              mass=0.607699990272522
+   left_ankle_f_joint           mass=0.4793507754802704
+   left_ankle_r_joint           mass=0.5633919835090637
+   right_hip_f_joint            mass=0.3995000720024109
+   right_hip_a_joint            mass=0.7519814372062683
+   right_hip_r_joint            mass=0.4845781624317169
+   right_knee_joint             mass=0.6076962351799011
+   right_ankle_f_joint          mass=0.4793507754802704
+   right_ankle_r_joint          mass=0.5633919835090637
    >>> 총질량 = 10.9433 kg (기대 10.943 + base 0.001 — final1_urdf(패드8+imu+D455 0.103))
 ======================================================================
 3) 관절: 리밋 주입 전 상태 → 주입 (단위 deg)

@@ -1,0 +1,58 @@
+== biped12_base.usd
+  /visuals/base/pelvis/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/base/D455/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/base/imu/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_hip_f_joint/left_hip_f_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_hip_a_joint/left_hip_a_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_hip_r_joint/left_hip_r_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_knee_joint/left_knee_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_ankle_f_joint/left_ankle_f_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_ankle_r_joint/left_ankle_r_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_ankle_r_joint/leftfoot_leftback_RA30P/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_ankle_r_joint/leftfoot_leftfront_RA30P/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_ankle_r_joint/leftfoot_rightback_RA30P/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_ankle_r_joint/leftfoot_rightfront_RA30P/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/right_hip_f_joint/right_hip_f_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/right_hip_a_joint/right_hip_a_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/right_hip_r_joint/right_hip_r_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/right_knee_joint/right_knee_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/right_ankle_f_joint/right_ankle_f_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/right_ankle_r_joint/right_ankle_r_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/right_ankle_r_joint/rightfoot_leftfback_RA30P/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/right_ankle_r_joint/rightfoot_leftfront_RA30P/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/right_ankle_r_joint/rightfoot_rightfback_RA30P/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/right_ankle_r_joint/rightfoot_rightfront_RA30P/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /colliders/base/pelvis/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /colliders/base/D455/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /colliders/base/imu/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  ...(생략)
+== biped12_physics.usd
+  /biped12/base/collisions [Xform] spec=Def inst=True
+  /biped12/left_hip_f_joint/collisions [Xform] spec=Def inst=True
+  /biped12/left_hip_a_joint/collisions [Xform] spec=Def inst=True
+  /biped12/left_hip_r_joint/collisions [Xform] spec=Def inst=True
+  /biped12/left_knee_joint/collisions [Xform] spec=Def inst=True
+  /biped12/left_ankle_f_joint/collisions [Xform] spec=Def inst=True
+  /biped12/left_ankle_r_joint/collisions [Xform] spec=Def inst=True
+  /biped12/right_hip_f_joint/collisions [Xform] spec=Def inst=True
+  /biped12/right_hip_a_joint/collisions [Xform] spec=Def inst=True
+  /biped12/right_hip_r_joint/collisions [Xform] spec=Def inst=True
+  /biped12/right_knee_joint/collisions [Xform] spec=Def inst=True
+  /biped12/right_ankle_f_joint/collisions [Xform] spec=Def inst=True
+  /biped12/right_ankle_r_joint/collisions [Xform] spec=Def inst=True
+  /visuals/base/pelvis/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/base/D455/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/base/imu/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_hip_f_joint/left_hip_f_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_hip_a_joint/left_hip_a_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_hip_r_joint/left_hip_r_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_knee_joint/left_knee_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_ankle_f_joint/left_ankle_f_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_ankle_r_joint/left_ankle_r_link/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_ankle_r_joint/leftfoot_leftback_RA30P/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_ankle_r_joint/leftfoot_leftfront_RA30P/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_ankle_r_joint/leftfoot_rightback_RA30P/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  /visuals/left_ankle_r_joint/leftfoot_rightfront_RA30P/node_STL_BINARY_/mesh [Mesh] spec=Def inst=False
+  ...(생략)
+== biped12_robot.usd
+== biped12_sensor.usd

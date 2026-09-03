@@ -1,0 +1,52 @@
+biped12.usd 변환 검증 + 실측 관절리밋 주입 (자동 생성)
+======================================================================
+1) 프림 트리 (depth<=2)
+   /biped12  [Xform]
+   /biped12/base  [Xform]
+   /biped12/left_hip_f_joint  [Xform]
+   /biped12/joints  [Scope]
+   /biped12/left_hip_a_joint  [Xform]
+   /biped12/left_hip_r_joint  [Xform]
+   /biped12/left_knee_joint  [Xform]
+   /biped12/left_ankle_f_joint  [Xform]
+   /biped12/left_ankle_r_joint  [Xform]
+   /biped12/right_hip_f_joint  [Xform]
+   /biped12/right_hip_a_joint  [Xform]
+   /biped12/right_hip_r_joint  [Xform]
+   /biped12/right_knee_joint  [Xform]
+   /biped12/right_ankle_f_joint  [Xform]
+   /biped12/right_ankle_r_joint  [Xform]
+   /biped12/Looks  [Scope]
+======================================================================
+2) 리지드 바디 + 질량
+   base                         mass=4.3234100341796875
+   left_hip_f_joint             mass=0.3995000123977661
+   left_hip_a_joint             mass=0.7989000082015991
+   left_hip_r_joint             mass=0.48458001017570496
+   left_knee_joint              mass=0.607699990272522
+   left_ankle_f_joint           mass=0.4793507754802704
+   left_ankle_r_joint           mass=0.5527732968330383
+   right_hip_f_joint            mass=0.3995000720024109
+   right_hip_a_joint            mass=0.7519814372062683
+   right_hip_r_joint            mass=0.4845781624317169
+   right_knee_joint             mass=0.6076962351799011
+   right_ankle_f_joint          mass=0.4793507754802704
+   right_ankle_r_joint          mass=0.5527732968330383
+   >>> 총질량 = 10.9221 kg (기대 10.943 + base 0.001 — final1_urdf(패드8+imu+D455 0.103))
+======================================================================
+3) 관절: 리밋 주입 전 상태 → 주입 (단위 deg)
+   left_hip_f_joint         axis=X  [-inf, inf] -> [-30.0, 100.0]
+   left_hip_a_joint         axis=Z  [-inf, inf] -> [-35.0, 13.9]
+   left_hip_r_joint         axis=Y  [-inf, inf] -> [-30.0, 30.0]
+   left_knee_joint          axis=X  [-inf, inf] -> [-120.0, 5.0]
+   left_ankle_f_joint       axis=X  [-inf, inf] -> [-45.0, 30.0]
+   left_ankle_r_joint       axis=Z  [-inf, inf] -> [-20.0, 20.0]
+   right_hip_f_joint        axis=X  [-inf, inf] -> [-100.0, 30.0]
+   right_hip_a_joint        axis=Z  [-inf, inf] -> [-14.2, 35.0]
+   right_hip_r_joint        axis=Y  [-inf, inf] -> [-30.0, 30.0]
+   right_knee_joint         axis=X  [-inf, inf] -> [-5.0, 120.0]
+   right_ankle_f_joint      axis=X  [-inf, inf] -> [-30.0, 45.0]
+   right_ankle_r_joint      axis=Z  [-inf, inf] -> [-20.0, 20.0]
+======================================================================
+4) 결과: 관절 12개, 리밋 주입 12개
+   저장 완료 OK

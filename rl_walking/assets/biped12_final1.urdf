@@ -34,7 +34,7 @@
       </geometry>
     </collision>
   </link>
-  <link name="left_hip_f_link">
+  <link name="left_hip_f_joint">
     <inertial>
       <origin xyz="-0.004802 8.0766E-05 0.0019792" rpy="0 0 0" />
       <mass value="0.3995" />
@@ -59,10 +59,10 @@
   <joint name="left_hip_f_joint" type="continuous">
     <origin xyz="0.071 0 0" rpy="0 0 0" />
     <parent link="pelvis" />
-    <child link="left_hip_f_link" />
+    <child link="left_hip_f_joint" />
     <axis xyz="-1 0 0" />
   </joint>
-  <link name="left_hip_a_link">
+  <link name="left_hip_a_joint">
     <inertial>
       <origin xyz="-0.00029649 -0.035704 -0.019838" rpy="0 0 0" />
       <mass value="0.7989" />
@@ -86,11 +86,11 @@
   </link>
   <joint name="left_hip_a_joint" type="continuous">
     <origin xyz="0.0725 0 0.019625" rpy="0 0 0" />
-    <parent link="left_hip_f_link" />
-    <child link="left_hip_a_link" />
+    <parent link="left_hip_f_joint" />
+    <child link="left_hip_a_joint" />
     <axis xyz="0 0 -1" />
   </joint>
-  <link name="left_hip_r_link">
+  <link name="left_hip_r_joint">
     <inertial>
       <origin xyz="-0.0028997 -0.032008 0.00017983" rpy="0 0 0" />
       <mass value="0.48458" />
@@ -114,11 +114,11 @@
   </link>
   <joint name="left_hip_r_joint" type="continuous">
     <origin xyz="0 -0.12405 -0.02" rpy="0 0 0" />
-    <parent link="left_hip_a_link" />
-    <child link="left_hip_r_link" />
+    <parent link="left_hip_a_joint" />
+    <child link="left_hip_r_joint" />
     <axis xyz="0 1 0" />
   </joint>
-  <link name="left_knee_link">
+  <link name="left_knee_joint">
     <inertial>
       <origin xyz="0.025103 -0.054039 -0.0002832" rpy="0 0 0" />
       <mass value="0.6077" />
@@ -142,11 +142,11 @@
   </link>
   <joint name="left_knee_joint" type="continuous">
     <origin xyz="-0.01985 -0.15827 0.00035" rpy="0 0 0" />
-    <parent link="left_hip_r_link" />
-    <child link="left_knee_link" />
+    <parent link="left_hip_r_joint" />
+    <child link="left_knee_joint" />
     <axis xyz="-1 0 0" />
   </joint>
-  <link name="left_ankle_f_link">
+  <link name="left_ankle_f_joint">
     <inertial>
       <origin xyz="0.0231470188711767 -0.00363723520690706 0.000196108049467458" rpy="0 0 0" />
       <mass value="0.479350778376135" />
@@ -170,11 +170,11 @@
   </link>
   <joint name="left_ankle_f_joint" type="continuous">
     <origin xyz="0 -0.236 0" rpy="0 0 0" />
-    <parent link="left_knee_link" />
-    <child link="left_ankle_f_link" />
+    <parent link="left_knee_joint" />
+    <child link="left_ankle_f_joint" />
     <axis xyz="-1 0 0" />
   </joint>
-  <link name="left_ankle_r_link">
+  <link name="left_ankle_r_joint">
     <inertial>
       <origin xyz="0.00052334730830618 -0.0251210324577549 0.00788557788482058" rpy="0 0 0" />
       <mass value="0.552773293782394" />
@@ -198,8 +198,8 @@
   </link>
   <joint name="left_ankle_r_joint" type="continuous">
     <origin xyz="0.02 -0.08245 -0.0105" rpy="0 0 0" />
-    <parent link="left_ankle_f_link" />
-    <child link="left_ankle_r_link" />
+    <parent link="left_ankle_f_joint" />
+    <child link="left_ankle_r_joint" />
     <axis xyz="0 0 1" />
   </joint>
   <link name="leftfoot_leftfront_RA30P">
@@ -226,7 +226,7 @@
   </link>
   <joint name="leftfoot_leftfront_RA30P" type="fixed">
     <origin xyz="0.025125 -0.0536 0.070601" rpy="0 0 0" />
-    <parent link="left_ankle_r_link" />
+    <parent link="left_ankle_r_joint" />
     <child link="leftfoot_leftfront_RA30P" />
     <axis xyz="0 0 0" />
   </joint>
@@ -254,7 +254,7 @@
   </link>
   <joint name="leftfoot_rightfront_RA30P" type="fixed">
     <origin xyz="-0.024875 -0.0536 0.070601" rpy="0 0 0" />
-    <parent link="left_ankle_r_link" />
+    <parent link="left_ankle_r_joint" />
     <child link="leftfoot_rightfront_RA30P" />
     <axis xyz="0 0 0" />
   </joint>
@@ -282,7 +282,7 @@
   </link>
   <joint name="leftfoot_leftback_RA30P" type="fixed">
     <origin xyz="0.025125 -0.0536 -0.050933" rpy="0 0 0" />
-    <parent link="left_ankle_r_link" />
+    <parent link="left_ankle_r_joint" />
     <child link="leftfoot_leftback_RA30P" />
     <axis xyz="0 0 0" />
   </joint>
@@ -310,11 +310,11 @@
   </link>
   <joint name="leftfoot_rightback_RA30P" type="fixed">
     <origin xyz="-0.024875 -0.0536 -0.050933" rpy="0 0 0" />
-    <parent link="left_ankle_r_link" />
+    <parent link="left_ankle_r_joint" />
     <child link="leftfoot_rightback_RA30P" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="right_hip_f_link">
+  <link name="right_hip_f_joint">
     <inertial>
       <origin xyz="0.00480203017234523 8.94208739444791E-05 0.00195829899369726" rpy="0 0 0" />
       <mass value="0.399500067678193" />
@@ -339,10 +339,10 @@
   <joint name="right_hip_f_joint" type="continuous">
     <origin xyz="-0.071 0 0" rpy="0 0 0" />
     <parent link="pelvis" />
-    <child link="right_hip_f_link" />
+    <child link="right_hip_f_joint" />
     <axis xyz="1 0 0" />
   </joint>
-  <link name="right_hip_a_link">
+  <link name="right_hip_a_joint">
     <inertial>
       <origin xyz="-0.000291191460199541 -0.0379313905989257 -0.0217892547404157" rpy="0 0 0" />
       <mass value="0.75198145394561" />
@@ -366,11 +366,11 @@
   </link>
   <joint name="right_hip_a_joint" type="continuous">
     <origin xyz="-0.0725 0 0.019625" rpy="0 0 0" />
-    <parent link="right_hip_f_link" />
-    <child link="right_hip_a_link" />
+    <parent link="right_hip_f_joint" />
+    <child link="right_hip_a_joint" />
     <axis xyz="0 0 -1" />
   </joint>
-  <link name="right_hip_r_link">
+  <link name="right_hip_r_joint">
     <inertial>
       <origin xyz="0.002881064498 -0.03200325677 -2.796388496e-05" rpy="0 0 0" />
       <mass value="0.484578164755911" />
@@ -394,11 +394,11 @@
   </link>
   <joint name="right_hip_r_joint" type="continuous">
     <origin xyz="0 -0.12405 -0.02" rpy="0 0 0" />
-    <parent link="right_hip_a_link" />
-    <child link="right_hip_r_link" />
+    <parent link="right_hip_a_joint" />
+    <child link="right_hip_r_joint" />
     <axis xyz="0 1 0" />
   </joint>
-  <link name="right_knee_link">
+  <link name="right_knee_joint">
     <inertial>
       <origin xyz="-0.0251028272609897 -0.0540390159075022 0.000283200578150344" rpy="0 0 0" />
       <mass value="0.607696213986947" />
@@ -422,11 +422,11 @@
   </link>
   <joint name="right_knee_joint" type="continuous">
     <origin xyz="0.01985 -0.15827 -0.00035" rpy="0 0 0" />
-    <parent link="right_hip_r_link" />
-    <child link="right_knee_link" />
+    <parent link="right_hip_r_joint" />
+    <child link="right_knee_joint" />
     <axis xyz="1 0 0" />
   </joint>
-  <link name="right_ankle_f_link">
+  <link name="right_ankle_f_joint">
     <inertial>
       <origin xyz="-0.0231470188711867 -0.00362831846975931 0.000176972933583652" rpy="0 0 0" />
       <mass value="0.479350778376136" />
@@ -450,11 +450,11 @@
   </link>
   <joint name="right_ankle_f_joint" type="continuous">
     <origin xyz="0 -0.236 0" rpy="0 0 0" />
-    <parent link="right_knee_link" />
-    <child link="right_ankle_f_link" />
+    <parent link="right_knee_joint" />
+    <child link="right_ankle_f_joint" />
     <axis xyz="1 0 0" />
   </joint>
-  <link name="right_ankle_r_link">
+  <link name="right_ankle_r_joint">
     <inertial>
       <origin xyz="0.000523347275080716 -0.0251210324601663 0.0078855779863003" rpy="0 0 0" />
       <mass value="0.55277329273497" />
@@ -478,8 +478,8 @@
   </link>
   <joint name="right_ankle_r_joint" type="continuous">
     <origin xyz="-0.01955 -0.08245 -0.0115" rpy="0 0 0" />
-    <parent link="right_ankle_f_link" />
-    <child link="right_ankle_r_link" />
+    <parent link="right_ankle_f_joint" />
+    <child link="right_ankle_r_joint" />
     <axis xyz="0 0 -1" />
   </joint>
   <link name="rightfoot_leftfront_RA30P">
@@ -506,7 +506,7 @@
   </link>
   <joint name="rightfoot_leftfront_RA30P" type="fixed">
     <origin xyz="0.025125 -0.0536 0.070601" rpy="0 0 0" />
-    <parent link="right_ankle_r_link" />
+    <parent link="right_ankle_r_joint" />
     <child link="rightfoot_leftfront_RA30P" />
     <axis xyz="0 0 0" />
   </joint>
@@ -534,7 +534,7 @@
   </link>
   <joint name="rightfoot_rightfront_RA30P" type="fixed">
     <origin xyz="-0.024875000000001 -0.053599999999991 0.0706006296302268" rpy="0 0 0" />
-    <parent link="right_ankle_r_link" />
+    <parent link="right_ankle_r_joint" />
     <child link="rightfoot_rightfront_RA30P" />
     <axis xyz="0 0 0" />
   </joint>
@@ -562,7 +562,7 @@
   </link>
   <joint name="rightfoot_leftfback_RA30P" type="fixed">
     <origin xyz="0.025125 -0.0536 -0.050933" rpy="0 0 0" />
-    <parent link="right_ankle_r_link" />
+    <parent link="right_ankle_r_joint" />
     <child link="rightfoot_leftfback_RA30P" />
     <axis xyz="0 0 0" />
   </joint>
@@ -590,7 +590,7 @@
   </link>
   <joint name="rightfoot_rightfback_RA30P" type="fixed">
     <origin xyz="-0.024875000000001 -0.053599999999991 -0.0509328643762696" rpy="0 0 0" />
-    <parent link="right_ankle_r_link" />
+    <parent link="right_ankle_r_joint" />
     <child link="rightfoot_rightfback_RA30P" />
     <axis xyz="0 0 0" />
   </joint>

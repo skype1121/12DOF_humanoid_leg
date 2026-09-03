@@ -1156,6 +1156,11 @@ class Biped12Stage4V2StandV15EnvCfg(Biped12Stage4V2StandV14sEnvCfg):
         self.actions.joint_pos.lpf_beta_range = (0.2, 1.0)
         self.events.reset_base.params["pose_range"]["roll"] = (-0.052, 0.052)
         self.events.reset_base.params["pose_range"]["pitch"] = (-0.052, 0.052)
+        # CoM x 대역 하한 −0.10 → −0.05 (0904 v14 판정): 실질량 자산의 명목 CoM 은
+        # 발목축 위(+0.2mm, 시뮬 실측)이고 뒤꿈치 지지 한계가 −74mm 라, −0.10 은
+        # 물리적으로 설 수 없는 에피소드(강체홀드 DR ON 56/64·배포 DR ON 89% 낙상)
+        # 만 보탠다. 상한 +0.06(발끝 73~85mm 안쪽) 유지. 실질량 재적합 +16mm 포함.
+        self.events.base_com.params["com_range"]["x"] = (-0.05, 0.06)
         self.events.calib_bias.params["ankle_bias_rad"] = (-0.105, 0.105)
         self.events.calib_bias.params["knee_bias_rad"] = (-0.070, 0.070)
 

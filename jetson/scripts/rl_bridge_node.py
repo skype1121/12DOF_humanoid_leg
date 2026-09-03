@@ -164,6 +164,11 @@ CHECKPOINTS = {
     # **영점을 실측 검증하기 전까지는 v9가 안전한 선택**이다.
     "stand_v9": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-08-09_03-59-22/exported"),
+    # stand_v14 (0904): 실질량 17.62kg(저울)·압력패드 8점 자산으로 학습한 첫 세대.
+    # 고정환경(V6) 교차평가 v6b 대비 낙상 65.6→40.6%(com0)·85.9→29.7%(com+16), 전방
+    # 밀기 소멸(추세 중앙 +0.1). md5 eed4c3fd… — 실물 데뷔 후보 1순위 (승윤님 결정 후 배포).
+    "stand_v14": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-09-04_02-06-07/exported"),
 }
 
 #: 체크포인트별 게이트 클록 주파수 [Hz] — 학습 클록과 반드시 일치 (불일치 =
@@ -171,7 +176,7 @@ CHECKPOINTS = {
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
 CKPT_GAIT_FREQ = {"march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
-                   "stand_v8": 1.1, "stand_v9": 1.1}
+                   "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 
 # ---------------------------------------------------------------------------

@@ -1149,6 +1149,8 @@ class Biped12Stage4V2StandV15EnvCfg(Biped12Stage4V2StandV14sEnvCfg):
          항상 조금 기울어 시작). velocity 는 여전히 0 (외란이 아니라 초기조건).
       3. **캘리브레이션 오차 관절군별 확대** — 발목 ±6° (0809 재앵커 시프트
          4~5.5° 실측), 무릎 ±4° (좌우 다리 길이차 ≈ 무릎각 편향), 나머지 ±3°.
+      + **물리 실현성 제약**: 토크 포화 벌점(|τ|/τ_lim>0.6) · 소프트리밋 위반 벌점 −5
+        (0904 명목 평가: 전 세대 hip_r 하드스톱 풀토크 악용 발견).
     """
 
     def __post_init__(self):
@@ -1163,6 +1165,15 @@ class Biped12Stage4V2StandV15EnvCfg(Biped12Stage4V2StandV14sEnvCfg):
         self.events.base_com.params["com_range"]["x"] = (-0.05, 0.06)
         self.events.calib_bias.params["ankle_bias_rad"] = (-0.105, 0.105)
         self.events.calib_bias.params["knee_bias_rad"] = (-0.070, 0.070)
+        # ── 물리 실현성 제약 2종 (0904 명목 평가 발견) ─────────────────────────
+        # v6b~v14 전 세대가 hip_r 을 하드스톱 ±30° 에 밀어붙여 토크 한계 25Nm 를
+        # 43~92% 시간 유지(v6b 는 hip_a 87%). 시뮬에서 공짜인 하드스톱을 악용하는
+        # 자세(오리발/안짱다리) — 실물 AK70 연속정격(~피크 1/3) 초과 → 과열·브라운아웃.
+        # 보상은 이 둘만 추가/강화 (승윤님: 보상 복잡화 금지, 실물 실현성은 예외).
+        from isaaclab.managers import RewardTermCfg as _RewTerm
+        self.rewards.torque_saturation = _RewTerm(
+            func=mdp_stage4.torque_saturation, weight=-2.0, params={"thresh": 0.6})
+        self.rewards.dof_pos_limits.weight = -5.0
 
 
 class Biped12Stage4V2StandV16EnvCfg(Biped12Stage4V2StandV15EnvCfg):

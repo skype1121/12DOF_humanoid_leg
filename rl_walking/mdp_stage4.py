@@ -591,3 +591,16 @@ def projected_gravity_lagged(env, asset_cfg: SceneEntityCfg = SceneEntityCfg("ro
     env._grav_buf[0] = g
     idx = lag.clamp(0, 3).view(1, -1, 1).expand(1, g.shape[0], g.shape[1])
     return torch.gather(env._grav_buf, 0, idx).squeeze(0)
+
+
+def torque_saturation(env, thresh: float = 0.6, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
+    """토크 포화 벌점 — |τ|/τ_lim 이 thresh 를 넘는 초과분의 제곱합 (관절 평균).
+
+    0904 명목 평가 실측: v6b·v14 가 hip_r 을 하드스톱 ±30° 에 밀어붙여 25Nm(한계) 를
+    43~92% 시간 유지, v6b 는 hip_a 도 87%. AK70-10 연속정격은 피크의 ~1/3 이라
+    실물에선 과열·브라운아웃(5차 우측 분기 브라운아웃). thresh=0.6 = "잠깐은 되지만
+    계속은 안 되는" 선. 시뮬에서 공짜인 하드스톱 기대기를 비싸게 만든다.
+    """
+    asset = env.scene[asset_cfg.name]
+    r = asset.data.applied_torque.abs() / (asset.data.joint_effort_limits + 1e-6)
+    return torch.clamp(r - thresh, min=0.0).pow(2).mean(dim=1)

@@ -74,6 +74,9 @@ parser.add_argument("--contact_delay", type=int, default=None,
                     help="발접촉 관측 지연 [틱] — 실물 발압력 10Hz(5틱) 모사")
 parser.add_argument("--mass_fix", type=float, default=None,
                     help="add_base_mass 를 이 값으로 고정 [kg]")
+parser.add_argument("--nominal", action="store_true",
+                    help="결정론적 명목 평가 — 모든 랜덤화 OFF(속도·관절리셋·게인·지연·CoM·영점·질량·마찰·재질·아마추어). "
+                         "실물 nominal 모델 그대로의 정책 거동 (0904 승윤님 평가원칙). com_fix/imu_deg 는 그 위에 적용")
 parser.add_argument("--ground_k", type=float, default=None,
                     help="지면 compliant contact 강성 [N/m, 접촉점당] — 패드 컴플라이언스 실험")
 parser.add_argument("--ground_c", type=float, default=None,
@@ -134,6 +137,51 @@ env_cfg.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
 env_cfg.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
 env_cfg.events.reset_base.params["pose_range"]["yaw"] = (0.0, 0.0)
 env_cfg.episode_length_s = 60.0
+if args_cli.nominal:
+    # eval_ladder DR-OFF 블록과 동일 목록 (남은 것 목록으로 점검한 결과)
+    _vr = env_cfg.events.reset_base.params.get("velocity_range")
+    if isinstance(_vr, dict):
+        for _k in list(_vr): _vr[_k] = (0.0, 0.0)
+    for _k in ("roll", "pitch"):
+        if _k in env_cfg.events.reset_base.params["pose_range"]:
+            env_cfg.events.reset_base.params["pose_range"][_k] = (0.0, 0.0)
+    if getattr(env_cfg.events, "reset_robot_joints", None):
+        env_cfg.events.reset_robot_joints.params["position_range"] = (0.0, 0.0)
+        env_cfg.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
+    env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
+    env_cfg.events.actuator_gains.params["damping_distribution_params"] = (1.0, 1.0)
+    env_cfg.actions.joint_pos.min_delay_steps = 0
+    env_cfg.actions.joint_pos.max_delay_steps = 0
+    if hasattr(env_cfg.actions.joint_pos, "lpf_beta_range"):
+        env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)
+    if hasattr(env_cfg.actions.joint_pos, "backlash_rad_range"):
+        env_cfg.actions.joint_pos.backlash_rad_range = (0.0, 0.0)
+    if getattr(env_cfg.events, "base_com", None):
+        env_cfg.events.base_com.params["com_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
+    if getattr(env_cfg.events, "calib_bias", None):
+        for _k in ("joint_bias_rad", "imu_tilt_rad", "ankle_bias_rad", "knee_bias_rad"):
+            if _k in env_cfg.events.calib_bias.params and env_cfg.events.calib_bias.params[_k] is not None:
+                env_cfg.events.calib_bias.params[_k] = (0.0, 0.0)
+        if "imu_lag_steps" in env_cfg.events.calib_bias.params:
+            env_cfg.events.calib_bias.params["imu_lag_steps"] = (0, 0)
+    for _ev in ("stance_asym", "effort_scale"):
+        if getattr(env_cfg.events, _ev, None) is not None:
+            setattr(env_cfg.events, _ev, None)
+    if getattr(env_cfg.events, "add_base_mass", None):
+        _op = env_cfg.events.add_base_mass.params.get("operation", "add")
+        env_cfg.events.add_base_mass.params["mass_distribution_params"] = ((1.0, 1.0) if _op == "scale" else (0.0, 0.0))
+    if getattr(env_cfg.events, "joint_friction", None):
+        env_cfg.events.joint_friction.params["friction_distribution_params"] = (0.0, 0.0)
+    if getattr(env_cfg.events, "physics_material", None):
+        env_cfg.events.physics_material.params["static_friction_range"] = (0.8, 0.8)
+        env_cfg.events.physics_material.params["dynamic_friction_range"] = (0.6, 0.6)
+    if getattr(env_cfg.events, "joint_armature", None):
+        env_cfg.events.joint_armature.params["armature_distribution_params"] = (1.0, 1.0)
+    env_cfg.events.push_robot = None
+    env_cfg.scene.terrain.terrain_type = "plane"
+    env_cfg.scene.terrain.terrain_generator = None
+    if getattr(env_cfg.curriculum, "terrain_levels", None) is not None:
+        env_cfg.curriculum.terrain_levels = None
 if args_cli.com_fix is not None:
     # CoM 인과 검증: 정책은 그대로 두고 **몸만** 실측값으로 바꾼다.
     # 지금까지 CoM 은 전부 정책 없는 시험에서만 다뤘다 — 정책이 루프에 있는
@@ -331,6 +379,29 @@ death_step = torch.full((N,), args_cli.steps, dtype=torch.long, device=uenv.devi
 
 sat_hits = torch.zeros(robot.data.joint_pos.shape[1], device=robot.data.joint_pos.device)
 sat_n = 0
+# ── 물리 실현성 지표 (0904 승윤님 요청): 생존 env-step 에서 AK 모터 한계 대비 ─────
+_dev = robot.data.joint_pos.device
+_nj = robot.data.joint_pos.shape[1]
+_eff_lim = robot.data.joint_effort_limits                      # (N, J)
+_vel_lim = getattr(robot.data, "joint_velocity_limits", None)
+if _vel_lim is None:                                           # 폴백: 액추에이터 cfg
+    _vl = torch.full((_nj,), 30.0, device=_dev)
+    for _k, _n in enumerate(robot.data.joint_names):
+        if _n.endswith("_ankle_r_joint"): _vl[_k] = 5.0
+    _vel_lim = _vl.unsqueeze(0).expand(N, -1)
+_tau_peak = torch.zeros(_nj, device=_dev); _qd_peak = torch.zeros(_nj, device=_dev)
+_tau_sat = torch.zeros(_nj, device=_dev); _qd_sat = torch.zeros(_nj, device=_dev)
+_tau_rms2 = torch.zeros(_nj, device=_dev); _alive_n = 0
+_roll_log = []                                                 # (steps, N)
+_cs = uenv.scene["contact_forces"]
+_bnames = list(_cs.body_names)
+_fl = [k for k, n in enumerate(_bnames) if n == "left_ankle_r_joint"][0]
+_fr = [k for k, n in enumerate(_bnames) if n == "right_ankle_r_joint"][0]
+_rb = list(robot.data.body_names)
+_rl, _rr = _rb.index("left_ankle_r_joint"), _rb.index("right_ankle_r_joint")
+_asym_sum = 0.0; _asym_n = 0
+_slip_sum = 0.0; _slip_hits = 0; _slip_n = 0
+_land_dx = []; _land_dyaw = []
 for i in range(args_cli.steps):
     with torch.inference_mode():
         actions = policy(_bias(obs))
@@ -340,16 +411,50 @@ for i in range(args_cli.steps):
     pg_log.append(robot.data.projected_gravity_b.clone().cpu().numpy())
     act_log.append(actions.detach().cpu().numpy())
     # E: 관절 한계 도달 점검 — 한계에 정확히 붙는 것은 보상을 우회하는 해의 징후
-    _lim = robot.data.soft_joint_pos_limits[0]          # (n_j, 2) lo/hi
+    # 0904 맹점 수정: 소프트리밋(0.9×) 기준 1° 창은 하드리밋(±30°)에 붙은 관절을
+    # 놓친다 (v14 hip_r ±30.0° 오리발 자세를 0.8% 로 보고). 하드리밋 기준 + 소프트리밋
+    # 밖까지 '한계 도달'로 센다.
+    _hlim = robot.data.joint_pos_limits[0]              # (n_j, 2) 하드 lo/hi
+    _lim = robot.data.soft_joint_pos_limits[0]          # (n_j, 2) 소프트 lo/hi
     _q = robot.data.joint_pos
-    _near = ((_q - _lim[:, 0].unsqueeze(0)).abs() < 0.0175) | \
-            ((_q - _lim[:, 1].unsqueeze(0)).abs() < 0.0175)     # 1° 이내
+    _near = ((_q - _hlim[:, 0].unsqueeze(0)).abs() < 0.0175) | \
+            ((_q - _hlim[:, 1].unsqueeze(0)).abs() < 0.0175) | \
+            (_q < _lim[:, 0].unsqueeze(0)) | (_q > _lim[:, 1].unsqueeze(0))
     sat_hits = sat_hits + _near.float().sum(0)
     sat_n += args_cli.num_envs
     term = uenv.termination_manager.terminated
     newly_dead = alive & term
     death_step[newly_dead] = i
     alive &= ~term
+    # 물리 실현성 누산 (생존 env 만)
+    if alive.any():
+        _a = alive
+        _tau = robot.data.applied_torque[_a].abs()
+        _qd = robot.data.joint_vel[_a].abs()
+        _tau_peak = torch.maximum(_tau_peak, _tau.max(0).values)
+        _qd_peak = torch.maximum(_qd_peak, _qd.max(0).values)
+        _tau_sat += (_tau >= 0.95 * _eff_lim[_a]).float().sum(0)
+        _qd_sat += (_qd >= 0.95 * _vel_lim[_a]).float().sum(0)
+        _tau_rms2 += (_tau ** 2).sum(0)
+        _alive_n += int(_a.sum())
+        _pgv = robot.data.projected_gravity_b
+        _roll_log.append(torch.rad2deg(torch.atan2(_pgv[:, 1], -_pgv[:, 2])).cpu().numpy())
+        _f = _cs.data.net_forces_w[:, [_fl, _fr], 2].clamp(min=0.0)     # (N,2) 수직력
+        _both = _a & (_f[:, 0] > 5.0) & (_f[:, 1] > 5.0)
+        if _both.any():
+            _asym_sum += float(((_f[_both, 0] - _f[_both, 1]).abs() / (_f[_both].sum(1) + 1e-6)).sum())
+            _asym_n += int(_both.sum())
+        _v = robot.data.body_lin_vel_w[:, [_rl, _rr], :2].norm(dim=-1)     # (N,2) 발 수평속도
+        _inc = _a.unsqueeze(1) & (_f > 20.0)
+        if _inc.any():
+            _slip_sum += float(_v[_inc].sum()); _slip_hits += int((_v[_inc] > 0.02).sum()); _slip_n += int(_inc.sum())
+        if 50 <= i < 150:                                                    # 1~3s 정착 구간 착지 기하
+            _px = robot.data.body_pos_w[:, [_rl, _rr], 0]
+            _land_dx.append((_px[_a, 0] - _px[_a, 1]).cpu().numpy())
+            _qy = robot.data.body_quat_w[:, [_rl, _rr], :]                  # (N,2,4) wxyz
+            _yaw = torch.atan2(2 * (_qy[..., 0] * _qy[..., 3] + _qy[..., 1] * _qy[..., 2]),
+                               1 - 2 * (_qy[..., 2] ** 2 + _qy[..., 3] ** 2))
+            _land_dyaw.append(torch.rad2deg(_yaw[_a, 0] - _yaw[_a, 1]).cpu().numpy())
 
 # 정착 구간 평균 관절각 = 이 정책의 '평형 자세'. 실물에서 정책 투입 전에
 # 이 자세로 미리 옮겨놓으면(posture_probe) 정책이 움직일 거리가 0이 되어
@@ -483,6 +588,35 @@ if smth is not None:
     P(f"    E_smth (액션 2차차분)  {smth:.5f}")
     P(f"    우세 주파수            {domf:.2f} Hz")
     P(f"    >5Hz 에너지 비율        {hi5:.1f} %")
+P("")
+P("■ 물리 실현성 (AK 모터 한계 대비, 생존 env-step) — 실물이 이 동작을 낼 수 있는가")
+try:
+    _jn = list(robot.data.joint_names)
+    _n_as = max(1, _alive_n)
+    _lim0 = _eff_lim[0].cpu().numpy(); _vl0 = _vel_lim[0].cpu().numpy()
+    _tp = _tau_peak.cpu().numpy(); _qp = _qd_peak.cpu().numpy()
+    _ts = 100 * _tau_sat.cpu().numpy() / _n_as; _qs = 100 * _qd_sat.cpu().numpy() / _n_as
+    _trms = np.sqrt(_tau_rms2.cpu().numpy() / _n_as)
+    P(f"    {'관절':<20} {'τ피크':>7} {'/한계':>6} {'τRMS':>6} {'τ포화%':>7} {'|qd|피크':>8} {'/한계':>6} {'qd포화%':>7}")
+    for k, n in enumerate(_jn):
+        P(f"    {n:<20} {_tp[k]:7.2f} {_lim0[k]:6.1f} {_trms[k]:6.2f} {_ts[k]:7.2f} {_qp[k]:8.2f} {_vl0[k]:6.1f} {_qs[k]:7.2f}")
+    _worst_t = int(np.argmax(_ts)); _worst_q = int(np.argmax(_qs))
+    P(f"    토크 포화 최대 {_jn[_worst_t]} {_ts[_worst_t]:.2f}% · 속도 포화 최대 {_jn[_worst_q]} {_qs[_worst_q]:.2f}% "
+      f"· 피크/한계 최대 {np.max(_tp / _lim0) * 100:.0f}%")
+    if _roll_log:
+        _r = np.stack(_roll_log)
+        _rr_ = np.sqrt(np.mean((_r - _r.mean(0, keepdims=True)) ** 2, axis=0))
+        P(f"    롤 진동 RMS(추세 제거) — 중앙 {np.median(_rr_):.2f}° p95 {np.percentile(_rr_, 95):.2f}°")
+    if _asym_n:
+        P(f"    좌우 접촉력 비대칭 |FL−FR|/(FL+FR) 평균 {100 * _asym_sum / _asym_n:.1f}%")
+    if _land_dx:
+        _dx = np.concatenate(_land_dx) * 1000; _dy = np.concatenate(_land_dyaw)
+        P(f"    착지 기하 비대칭(1~3s) — 발 전후차 |L−R| 중앙 {np.median(np.abs(_dx)):.1f}mm p95 {np.percentile(np.abs(_dx), 95):.1f}mm "
+          f"· 발 요차 중앙 {np.median(np.abs(_dy)):.1f}° p95 {np.percentile(np.abs(_dy), 95):.1f}°")
+    if _slip_n:
+        P(f"    foot slip — 접촉 중 발 수평속도 평균 {100 * _slip_sum / _slip_n:.2f} cm/s · >2cm/s 비율 {100 * _slip_hits / _slip_n:.1f}%")
+except Exception as _exc:                                     # noqa: BLE001
+    P(f"    (산출 실패: {_exc})")
 P("")
 P("■ 관절 한계 도달 비율 (한계 1° 이내 체류 시간 %) — 5% 이상만 표기")
 _bad = sorted(((float(_satr[k]), _jnames[k]) for k in range(len(_jnames))),

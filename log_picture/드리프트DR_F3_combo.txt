@@ -1,0 +1,39 @@
+==========================================================================
+DR 분포 전방 드리프트 — Biped12-Velocity-Stage4V2-Stand-V6-v0
+인자: --headless --task Biped12-Velocity-Stage4V2-Stand-V6-v0 --load_run 2026-08-04_11-31-27 --checkpoint model_59899.pt --num_envs 64 --steps 400 --deploy old --still --out_tag F3_combo --usd /home/ryu/humanoid_leg_test1/rl_walking/assets/usd_final3/biped12.usd --com_fix 0.0206 --imu_deg -2.0
+체크포인트: /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-08-04_11-31-27/model_59899.pt
+64 env × 8.0s, 명령 전무(cmd=0), DR 켜짐
+==========================================================================
+낙상(조기 종료): 59/64 (92.2%)
+   낙상 방향 — 뒤 13 · 앞 12 · 왼 15 · 오른 19
+   몸통 피치 진동 RMS(추세 제거) — 중앙 3.88° p95 5.63°
+초기 3s 전방 추세 °/s — 평균 +6.54, 중앙 +9.30, p5 -7.60, p95 +13.64, 최대 +14.61
+
+■ 실물 기준선 +4.06°/s 이상으로 전방 드리프트한 env: 43/64 (67.2%)
+   → 이 비율이 0에 가까우면, 실물 거동은 DR 분포 밖이다(랜덤화로 못 덮음).
+
+■ CoM x 분산 0 — 랜덤화가 실제로 적용되지 않았을 수 있음(점검 필요)
+
+■ 떨림 지표 (실물 5차 v6b: 1~4Hz · RMS 2~4° · E_smth 4.40)
+    E_smth (액션 2차차분)  0.56079
+    우세 주파수            0.62 Hz
+    >5Hz 에너지 비율        6.9 %
+
+■ 관절 한계 도달 비율 (한계 1° 이내 체류 시간 %) — 5% 이상만 표기
+    없음 — 최대 right_knee_joint 4.3%
+
+■ 평형 자세 (정착 구간 평균, 관절 프레임 deg) — posture_probe 전이 목표
+    left_hip_f_joint         -1.20
+    right_hip_f_joint        +1.49
+    left_hip_a_joint         +0.63
+    right_hip_a_joint        -0.54
+    left_hip_r_joint         +2.73
+    right_hip_r_joint        -4.74
+    left_knee_joint         -11.09
+    right_knee_joint        +11.43
+    left_ankle_f_joint      +10.93
+    right_ankle_f_joint     -10.53
+    left_ankle_r_joint       -0.38
+    right_ankle_r_joint      +0.94
+  POSE_DICT {"left_hip_f_joint": -1.2, "right_hip_f_joint": 1.49, "left_hip_a_joint": 0.63, "right_hip_a_joint": -0.54, "left_hip_r_joint": 2.73, "right_hip_r_joint": -4.74, "left_knee_joint": -11.09, "right_knee_joint": 11.43, "left_ankle_f_joint": 10.93, "right_ankle_f_joint": -10.53, "left_ankle_r_joint": -0.38, "right_ankle_r_joint": 0.94}
+==========================================================================

@@ -375,6 +375,8 @@ def resample_calib_bias(
     env_ids,
     joint_bias_rad: tuple = (-0.052, 0.052),   # ±3°
     imu_tilt_rad: tuple = (-0.052, 0.052),     # ±3°
+    ankle_bias_rad: tuple | None = None,       # v15: 발목 별도 대역 (0809 재앵커 시프트 4~5.5° 실측)
+    knee_bias_rad: tuple | None = None,        # v15: 무릎 별도 대역 (좌우 다리 길이차 ≈ 무릎각 편향)
 ):
     """에피소드마다 관측 상수 편향을 새로 뽑는다 (mode="reset" 이벤트).
 
@@ -388,6 +390,14 @@ def resample_calib_bias(
     ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
     env._calib_joint_bias[ids] = torch.empty(
         len(ids), n_j, device=env.device).uniform_(*joint_bias_rad)
+    # 관절군별 대역 (발목·무릎): 실물 영점 오차는 관절마다 크기가 다르다
+    names = env.scene["robot"].data.joint_names
+    for rng, key in ((ankle_bias_rad, "_ankle_f_joint"), (knee_bias_rad, "_knee_joint")):
+        if rng is None:
+            continue
+        cols = [i for i, n in enumerate(names) if n.endswith(key)]
+        env._calib_joint_bias[ids[:, None], torch.tensor(cols, device=env.device)] = torch.empty(
+            len(ids), len(cols), device=env.device).uniform_(*rng)
     env._calib_imu_tilt[ids] = torch.empty(
         len(ids), device=env.device).uniform_(*imu_tilt_rad)
 

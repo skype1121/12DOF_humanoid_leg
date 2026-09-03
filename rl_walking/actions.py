@@ -47,6 +47,15 @@ class SlewJointPositionAction(JointPositionAction):
                 self._min_delay, self._max_delay + 1, (self.num_envs,),
                 device=self.device
             )
+        # 배포 래퍼 EMA 저역필터 (0904, v15): 실물 브리지는 STAND_LPF_BETA=0.27 로
+        # 정책 출력을 평활한 뒤 노드로 보낸다 — 학습엔 없던 필터라 정책이 자기
+        # 출력이 깎이는 걸 본 적이 없다. env 별 β∈[lo,hi] (1.0 = 필터 없음).
+        self._lpf_lo, self._lpf_hi = (float(v) for v in cfg.lpf_beta_range)
+        self._use_lpf = self._lpf_hi < 1.0 or self._lpf_lo < 1.0
+        if self._use_lpf:
+            self._beta = torch.empty(self.num_envs, device=self.device).uniform_(
+                self._lpf_lo, self._lpf_hi)
+            self._lpf_state = torch.zeros(self.num_envs, self.action_dim, device=self.device)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         super().reset(env_ids)
@@ -55,16 +64,21 @@ class SlewJointPositionAction(JointPositionAction):
             if self._max_delay > 0:
                 self._delay = torch.randint_like(
                     self._delay, self._min_delay, self._max_delay + 1)
+            if self._use_lpf:
+                self._beta.uniform_(self._lpf_lo, self._lpf_hi)
         else:
             self._needs_init[env_ids] = True
+            ids = env_ids if isinstance(env_ids, torch.Tensor) else torch.as_tensor(
+                env_ids, device=self.device
+            )
             if self._max_delay > 0:
-                ids = env_ids if isinstance(env_ids, torch.Tensor) else torch.as_tensor(
-                    env_ids, device=self.device
-                )
                 self._delay[ids] = torch.randint(
                     self._min_delay, self._max_delay + 1, (len(ids),),
                     device=self.device
                 )
+            if self._use_lpf:
+                self._beta[ids] = torch.empty(len(ids), device=self.device).uniform_(
+                    self._lpf_lo, self._lpf_hi)
 
     def process_actions(self, actions: torch.Tensor):
         # scale/offset/clip 적용 (부모)
@@ -76,8 +90,15 @@ class SlewJointPositionAction(JointPositionAction):
             self._prev_target[ids] = cur
             if self._max_delay > 0:
                 self._buf[:, ids] = cur.unsqueeze(0)
+            if self._use_lpf:
+                self._lpf_state[ids] = cur
             self._needs_init[ids] = False
         target = self._processed_actions
+        # EMA 저역필터 (실물 브리지 순서: 정책 → LPF → 지연 → 노드 슬루)
+        if self._use_lpf:
+            b = self._beta.view(-1, 1)
+            self._lpf_state = b * target + (1.0 - b) * self._lpf_state
+            target = self._lpf_state
         # env별 액션 지연: 버퍼 밀고 d틱 前 목표를 꺼냄
         if self._max_delay > 0:
             self._buf = torch.roll(self._buf, 1, dims=0)
@@ -103,3 +124,6 @@ class SlewJointPositionActionCfg(JointPositionActionCfg):
     max_delay_steps: int = 0
     # 지연 하한 [정책틱] — 0803 실측(루프 4~8틱) 중심화용. max보다 크면 max로 클램프.
     min_delay_steps: int = 0
+    # 배포 래퍼 EMA β 랜덤 대역 (1.0,1.0)=비활성. 실물 STAND_LPF_BETA=0.27 포함하도록
+    # v15 는 (0.2, 1.0).
+    lpf_beta_range: tuple[float, float] = (1.0, 1.0)

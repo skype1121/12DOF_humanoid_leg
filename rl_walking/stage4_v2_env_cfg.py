@@ -1134,3 +1134,27 @@ class Biped12Stage4V2StandV14sEnvCfg(Biped12Stage4V2StandV14EnvCfg):
             mode="reset",
             params={"fore_aft_m": (-0.03, 0.03), "yaw_rad": (-0.087, 0.087)},
         )
+
+
+class Biped12Stage4V2StandV15EnvCfg(Biped12Stage4V2StandV14sEnvCfg):
+    """stand_v15 — v14s + **배포·캘리브레이션 현실화 3축** (0904 꼬리물기).
+
+    승윤님 진단: "캘리브레이션을 하고 내려도 로봇 무게 때문에 착지부터 비틀려
+    있고 랜덤이다. 캘리브레이션 도구도 완벽하지 않다." 정책이 완벽한 로봇을
+    본 적이 없게 만든다:
+      1. **배포 래퍼 LPF 를 학습에 내장** — 실물 브리지는 정책 출력을 EMA
+         β=0.27 로 평활한다. 정책은 자기 출력이 깎이는 걸 본 적이 없었다.
+         env 별 β∈[0.2, 1.0] (1.0=필터 없음도 포함해 계약 유지).
+      2. **착지 비틀림** — reset 시 몸통 롤·피치 ±3° (실물 착지는 줄·무게로
+         항상 조금 기울어 시작). velocity 는 여전히 0 (외란이 아니라 초기조건).
+      3. **캘리브레이션 오차 관절군별 확대** — 발목 ±6° (0809 재앵커 시프트
+         4~5.5° 실측), 무릎 ±4° (좌우 다리 길이차 ≈ 무릎각 편향), 나머지 ±3°.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.lpf_beta_range = (0.2, 1.0)
+        self.events.reset_base.params["pose_range"]["roll"] = (-0.052, 0.052)
+        self.events.reset_base.params["pose_range"]["pitch"] = (-0.052, 0.052)
+        self.events.calib_bias.params["ankle_bias_rad"] = (-0.105, 0.105)
+        self.events.calib_bias.params["knee_bias_rad"] = (-0.070, 0.070)

@@ -240,6 +240,15 @@ def run(stage, dr_on, policy=None):
     # kp 150~500·관절마찰 스윕·스폰높이 스윕은 전부 이 인공물을 쫓은 것이었다(기각).
     if args_cli.spawn_zero or stage <= 1:
         cfg.scene.robot.init_state.joint_pos = {".*": 0.0}
+        # 0·1단계는 정책 무관 강체홀드 — 착지 비대칭(v14s+)·토크한계 스케일(v16+) 이벤트도
+        # 끈다 (0904: v14s 0단계가 발 어긋남 채 홀드되어 23/64 낙하 — 모델 판정 오염)
+        for _ev in ("stance_asym", "effort_scale"):
+            if getattr(cfg.events, _ev, None) is not None:
+                setattr(cfg.events, _ev, None)
+    if not dr_on:
+        for _ev in ("stance_asym", "effort_scale"):
+            if getattr(cfg.events, _ev, None) is not None:
+                setattr(cfg.events, _ev, None)
     if args_cli.ground_k is not None:
         # 패드 컴플라이언스 (eval_drift_dr 와 동일 정의)
         _pm = cfg.scene.terrain.physics_material

@@ -49,6 +49,12 @@ parser.add_argument("--steps", type=int, default=400)
 parser.add_argument("--out_tag", type=str, default="")
 parser.add_argument("--baseline", type=str, default=None,
                     help="회귀 판정 기준이 될 이전 세대 리포트 json 경로")
+# 강성 sysid (0904): 17.6kg 실질량 자산이 kp150 강체홀드에서 64/64 후방 낙하하는데
+# 실물은 같은 kp150 으로 5분 섰다 → 시뮬에 없는 패시브 강성(감속기 마찰 등)을 스윕
+parser.add_argument("--kp", type=float, default=None,
+                    help="전 액추에이터 stiffness 오버라이드 (Nm/rad)")
+parser.add_argument("--jfric", type=float, default=None,
+                    help="관절 마찰계수 고정값 (DR OFF 시 0 대신) — PhysX joint friction coeff")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -197,6 +203,12 @@ def make_env(stage, dr_on):
 def run(stage, dr_on, policy=None):
     """한 조합을 돌리고 지표 묶음을 낸다."""
     cfg = make_env(stage, dr_on)
+    if args_cli.kp is not None:
+        for _a in cfg.scene.robot.actuators.values():
+            _a.stiffness = args_cli.kp
+    if args_cli.jfric is not None and getattr(cfg.events, "joint_friction", None):
+        cfg.events.joint_friction.params["friction_distribution_params"] = (
+            args_cli.jfric, args_cli.jfric)
     env = gym.make(args_cli.task, cfg=cfg)
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
     uenv = env.unwrapped

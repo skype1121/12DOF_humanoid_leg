@@ -101,6 +101,9 @@ hold = (torch.zeros_like(robot.data.default_joint_pos) - robot.data.default_join
 env.get_observations()
 
 print(f"{'k':>3s} {'z(m)':>7s} {'pitch°':>8s} {'roll°':>8s}  |qpos|max(관절)  term", flush=True)
+tau_max = None
+JI = {n: i for i, n in enumerate(jn)}
+watch = ["left_hip_f_joint", "left_knee_joint", "left_ankle_f_joint"]
 for k in range(args_cli.steps):
     with torch.inference_mode():
         obs, _r, _d, _x = env.step(hold)
@@ -113,6 +116,8 @@ for k in range(args_cli.steps):
             mag = float(np.linalg.norm(ff))
             if mag > 0.1:
                 print(f"    {name:28s} {mag:9.2f}  ({ff[0]:+.1f},{ff[1]:+.1f},{ff[2]:+.1f})", flush=True)
+    tau = robot.data.applied_torque[0].abs().cpu().numpy()
+    tau_max = tau if tau_max is None else np.maximum(tau_max, tau)
     root = robot.data.root_pos_w[0]
     pg = robot.data.projected_gravity_b[0].cpu().numpy()
     pitch = np.degrees(np.arctan2(pg[0], -pg[2]))
@@ -120,9 +125,11 @@ for k in range(args_cli.steps):
     q = robot.data.joint_pos[0].cpu().numpy()
     i = int(np.abs(q).argmax())
     term = uenv.termination_manager.terminated[0].item()
-    if k % 3 == 0 or term:
+    if k % 5 == 0 or term:
+        wq = " ".join(f"{w.split('_')[1]}{np.degrees(q[JI[w]]):+5.1f}°" for w in watch)
+        wt = " ".join(f"{robot.data.applied_torque[0, JI[w]].item():+5.1f}" for w in watch)
         print(f"{k:3d} {root[2].item():7.4f} {pitch:8.2f} {roll:8.2f}  "
-              f"{np.degrees(q[i]):+7.2f}°({jn[i]})  {'💀' if term else ''}", flush=True)
+              f"{np.degrees(q[i]):+7.2f}°({jn[i]})  좌[{wq}] τ[{wt}] {'💀' if term else ''}", flush=True)
     if term:
         # 어떤 종료조건이 발화했는지
         tm = uenv.termination_manager
@@ -132,5 +139,6 @@ for k in range(args_cli.steps):
                 print(f"    발화 종료조건: {name}", flush=True)
         break
 
+print("관절별 |τ|max (Nm):", " ".join(f"{n.replace('_joint','')}={v:.1f}" for n, v in zip(jn, tau_max)), flush=True)
 env.close()
 simulation_app.close()

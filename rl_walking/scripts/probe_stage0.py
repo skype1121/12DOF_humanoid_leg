@@ -116,6 +116,17 @@ for k in range(args_cli.steps):
             mag = float(np.linalg.norm(ff))
             if mag > 0.1:
                 print(f"    {name:28s} {mag:9.2f}  ({ff[0]:+.1f},{ff[1]:+.1f},{ff[2]:+.1f})", flush=True)
+    if k in (0, 10, 20, 30):
+        # 시뮬 실측 전신 CoM vs 발목축 / 패드 뒤끝 (세계 x = 전방)
+        bm = robot.root_physx_view.get_masses()[0].cpu().numpy()
+        bp = robot.data.body_com_pos_w[0].cpu().numpy()
+        com = (bm[:, None] * bp).sum(0) / bm.sum()
+        BI = {n: i for i, n in enumerate(robot.data.body_names)}
+        ax = robot.data.body_pos_w[0, BI["left_ankle_f_joint"]].cpu().numpy()
+        ar = robot.data.body_pos_w[0, BI["left_ankle_r_joint"]].cpu().numpy()
+        print(f"  [CoM@k{k}] 총질량 {bm.sum():.3f}  CoM 세계 x={com[0]*1000:+.1f} z={com[2]*1000:.1f}mm  "
+              f"발목축 x={ax[0]*1000:+.1f}  ankle_r원점 x={ar[0]*1000:+.1f} → 패드뒤끝≈{(ar[0]-0.0639)*1000:+.1f} 앞끝≈{(ar[0]+0.0836)*1000:+.1f}  "
+              f"CoM−발목축 {(com[0]-ax[0])*1000:+.1f}mm", flush=True)
     tau = robot.data.applied_torque[0].abs().cpu().numpy()
     tau_max = tau if tau_max is None else np.maximum(tau_max, tau)
     root = robot.data.root_pos_w[0]

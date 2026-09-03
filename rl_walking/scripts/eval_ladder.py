@@ -55,6 +55,19 @@ parser.add_argument("--kp", type=float, default=None,
                     help="전 액추에이터 stiffness 오버라이드 (Nm/rad)")
 parser.add_argument("--jfric", type=float, default=None,
                     help="관절 마찰계수 고정값 (DR OFF 시 0 대신) — PhysX joint friction coeff")
+# 0904 실측: 스폰 z=0.66 은 정착 높이 0.654 보다 높아 착지 록킹(±4.5°)을 만들고,
+# 17.6kg 자산은 후방 전도 임계(~5.4°)를 넘긴다. 실물 0단계는 줄로 내려놓아
+# 록킹이 없다 — 하네스가 실물 시험과 다른 것을 재고 있었다.
+parser.add_argument("--spawn_z", type=float, default=None,
+                    help="스폰 골반 높이 오버라이드 (m). 정착 높이 0.654 근처면 낙하 록킹 제거")
+# 0904 시뮬 실측 (probe_stage0 CoM): DR OFF 가 add_base_mass 를 '대역 중앙'으로 고정해
+# 골반 ×1.32 → 10.9kg 자산 +1.43(전장 결손 보정 의도), 17.6kg 실질량 자산엔 +2.28 순수
+# 초과. 또 스폰이 DEFAULT_POSE(무릎 -6°)라 0° 홀드로 펴지는 과도가 몸통을 뒤로 던진다.
+# 실물 0단계(영자세로 줄에 매달아 내림)엔 둘 다 없다.
+parser.add_argument("--payload_neutral", action="store_true",
+                    help="add_base_mass 를 중립값(add→0, scale→1)으로 — 실질량 자산용")
+parser.add_argument("--spawn_zero", action="store_true",
+                    help="스폰 관절자세를 전부 0 으로 (DEFAULT_POSE 과도 제거)")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -209,6 +222,20 @@ def run(stage, dr_on, policy=None):
     if args_cli.jfric is not None and getattr(cfg.events, "joint_friction", None):
         cfg.events.joint_friction.params["friction_distribution_params"] = (
             args_cli.jfric, args_cli.jfric)
+    if args_cli.spawn_z is not None:
+        p0 = cfg.scene.robot.init_state.pos
+        cfg.scene.robot.init_state.pos = (p0[0], p0[1], args_cli.spawn_z)
+    if args_cli.payload_neutral and getattr(cfg.events, "add_base_mass", None):
+        _op = cfg.events.add_base_mass.params.get("operation", "add")
+        _neutral = 1.0 if _op == "scale" else 0.0
+        cfg.events.add_base_mass.params["mass_distribution_params"] = (_neutral, _neutral)
+    # 0·1단계는 **항상 영자세 스폰** (0904 실측): DEFAULT_POSE(무릎 -6°·발목 트림)로
+    # 스폰한 뒤 0° 를 명령하면 펴짐 과도가 몸통을 뒤로 던진다 — 10.9kg 자산은 여유로
+    # 버텼지만 17.6kg 실질량 자산은 64/64 후방 낙하(-21.6°/s). 영자세 스폰이면 0/64·
+    # -0.11°/s 로 실물(0802/0804 정지)과 일치. 실물 0단계는 영자세로 줄에 매달아 내린다.
+    # kp 150~500·관절마찰 스윕·스폰높이 스윕은 전부 이 인공물을 쫓은 것이었다(기각).
+    if args_cli.spawn_zero or stage <= 1:
+        cfg.scene.robot.init_state.joint_pos = {".*": 0.0}
     env = gym.make(args_cli.task, cfg=cfg)
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
     uenv = env.unwrapped

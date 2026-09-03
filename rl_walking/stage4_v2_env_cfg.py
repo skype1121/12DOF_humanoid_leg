@@ -1158,3 +1158,27 @@ class Biped12Stage4V2StandV15EnvCfg(Biped12Stage4V2StandV14sEnvCfg):
         self.events.reset_base.params["pose_range"]["pitch"] = (-0.052, 0.052)
         self.events.calib_bias.params["ankle_bias_rad"] = (-0.105, 0.105)
         self.events.calib_bias.params["knee_bias_rad"] = (-0.070, 0.070)
+
+
+class Biped12Stage4V2StandV16EnvCfg(Biped12Stage4V2StandV15EnvCfg):
+    """stand_v16 — v15 + **모터·센서 부하 현실화 3축** (0904 꼬리물기).
+
+      1. **토크 한계 env별 0.6~1.0 스케일** — 연속정격·발열 디레이팅·브라운아웃
+         (5차 실기 우측 분기). 정책이 피크 토크를 상수로 믿지 않게.
+      2. **관절 마찰 확대 0~0.3** (PhysX 관절마찰계수; 0단계 스윕에서 0.2 는
+         강체홀드 거동을 눈에 띄게 바꿈) — 감속기 정지마찰·부하 의존 마찰.
+      3. **발 접촉 관측 5틱 지연** — 실물 foot_n 이 정확히 5틱(100ms) 스테일
+         (IMU 감사 실측). 학습은 0틱이었다.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import EventTermCfg as EventTerm
+        self.events.effort_scale = EventTerm(
+            func=mdp_stage4.resample_effort_scale,
+            mode="reset",
+            params={"scale_range": (0.6, 1.0)},
+        )
+        if getattr(self.events, "joint_friction", None):
+            self.events.joint_friction.params["friction_distribution_params"] = (0.0, 0.3)
+        self.observations.policy.feet_contact.params["delay_steps"] = 5

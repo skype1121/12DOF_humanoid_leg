@@ -543,3 +543,27 @@ def reset_stance_asymmetry(
     lim = asset.data.soft_joint_pos_limits[ids]
     q = torch.clamp(q, lim[..., 0], lim[..., 1])
     asset.write_joint_state_to_sim(q, v, env_ids=ids)
+
+
+def resample_effort_scale(
+    env,
+    env_ids,
+    scale_range: tuple = (0.6, 1.0),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+):
+    """모터 토크 한계 env별 스케일 (mode="reset") — 모터 부하·발열 디레이팅·브라운아웃 근사.
+
+    승윤님 진단(0904): "모터 부하 떨림 — 시뮬의 완벽한 조건과의 괴리". 실물 AK70 은
+    연속 정격이 피크(24.8Nm)보다 훨씬 낮고, 5차 실기에 우측 분기 브라운아웃(m8
+    시프트)도 있었다. 정책이 '항상 24.8Nm 이 있다'고 믿지 않게 한다.
+    """
+    asset = env.scene[asset_cfg.name]
+    if not hasattr(env, "_effort_nominal"):
+        env._effort_nominal = asset.data.joint_effort_limits.clone()
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    if len(ids) == 0:
+        return
+    s = torch.empty(len(ids), 1, device=env.device).uniform_(*scale_range)
+    new = env._effort_nominal[ids] * s
+    asset.root_physx_view.set_dof_max_forces(new.cpu(), indices=ids.cpu())
+    asset.data.joint_effort_limits[ids] = new

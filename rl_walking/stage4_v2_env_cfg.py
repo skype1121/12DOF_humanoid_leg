@@ -1115,3 +1115,22 @@ class Biped12Stage4V2StandV14EnvCfg(Biped12Stage4V2StandV13EnvCfg):
         self.scene.robot.spawn.usd_path = (
             "/home/ryu/humanoid_leg_test1/rl_walking/assets/usd_final3/biped12.usd")
         self.events.add_base_mass.params["mass_distribution_params"] = (-1.0, 1.5)
+
+
+class Biped12Stage4V2StandV14sEnvCfg(Biped12Stage4V2StandV14EnvCfg):
+    """stand_v14s — v14 + **착지 비대칭 랜덤화** (승윤님 제안 0904).
+
+    실물은 무게 때문에 발이 대칭으로 착지하지 못한다: 한 발이 5cm 앞, 요가
+    몇 도 틀어진 채 스탠딩이 시작된다. reset 마다 발마다 전후 ±3cm(상대차
+    최대 6cm)·요 ±5° 를 관절각으로 심어 그 자세에서 시작하게 한다.
+    v14 와 이것만 다르다 — 효과 귀속을 위한 대조 세대.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import EventTermCfg as EventTerm
+        self.events.stance_asym = EventTerm(
+            func=mdp_stage4.reset_stance_asymmetry,
+            mode="reset",
+            params={"fore_aft_m": (-0.03, 0.03), "yaw_rad": (-0.087, 0.087)},
+        )

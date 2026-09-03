@@ -493,3 +493,43 @@ def resample_sea_stiffness(
     env._sea_k[ids] = k
     kp = robot.data.joint_stiffness[ids]
     robot.write_joint_stiffness_to_sim(kp * k / (kp + k), env_ids=ids)
+
+
+def reset_stance_asymmetry(
+    env,
+    env_ids,
+    fore_aft_m: tuple = (-0.03, 0.03),     # 발 하나당 전후 오프셋 → 좌우 상대차 최대 6cm
+    yaw_rad: tuple = (-0.087, 0.087),      # 발 요 틀어짐 ±5° (hip_r)
+    leg_len_m: float = 0.605,              # hip_f→발(ankle_r) 유효 길이 (0904 프로브: 5°→52.7mm)
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+):
+    """착지 비대칭 랜덤화 (mode="reset", reset_robot_joints **뒤에** 적용).
+
+    승윤님 관찰(0904): 실물은 무게 때문에 발이 대칭으로 착지하지 못한다 —
+    한 발이 5cm 앞에 있거나 각도가 틀어진 채 스탠딩이 시작된다. 정책이
+    그 자세에서 균형을 잡거나 발을 되돌리는 것을 배워야 한다.
+
+    구현: 각 발의 전후 오프셋 d 를 독립으로 뽑아 hip_f 에 asin(d/L) 을 더하고
+    ankle_f 에서 같은 각을 빼 발을 수평으로 유지(피치 3관절이 같은 축 방향이라
+    ankle = −hip). 부호는 0904 시뮬 프로브 실측: 좌 hip_f + = 앞, 우 hip_f − = 앞.
+    요는 hip_r 에 직접 더한다. 발 높이 변화는 L(1−cosθ) ≈ 2mm 로 무시.
+    """
+    asset = env.scene[asset_cfg.name]
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    n = len(ids)
+    if n == 0:
+        return
+    names = asset.data.joint_names
+    J = {k: names.index(k) for k in names}
+    q = asset.data.joint_pos[ids].clone()
+    v = asset.data.joint_vel[ids].clone()
+    for side, sgn in (("left", 1.0), ("right", -1.0)):
+        d = torch.empty(n, device=env.device).uniform_(*fore_aft_m)
+        th = torch.asin(torch.clamp(d / leg_len_m, -0.99, 0.99))
+        yaw = torch.empty(n, device=env.device).uniform_(*yaw_rad)
+        q[:, J[f"{side}_hip_f_joint"]] += sgn * th
+        q[:, J[f"{side}_ankle_f_joint"]] -= sgn * th
+        q[:, J[f"{side}_hip_r_joint"]] += yaw
+    lim = asset.data.soft_joint_pos_limits[ids]
+    q = torch.clamp(q, lim[..., 0], lim[..., 1])
+    asset.write_joint_state_to_sim(q, v, env_ids=ids)

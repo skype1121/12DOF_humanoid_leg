@@ -74,6 +74,10 @@ parser.add_argument("--contact_delay", type=int, default=None,
                     help="발접촉 관측 지연 [틱] — 실물 발압력 10Hz(5틱) 모사")
 parser.add_argument("--mass_fix", type=float, default=None,
                     help="add_base_mass 를 이 값으로 고정 [kg]")
+parser.add_argument("--ground_k", type=float, default=None,
+                    help="지면 compliant contact 강성 [N/m, 접촉점당] — 패드 컴플라이언스 실험")
+parser.add_argument("--ground_c", type=float, default=None,
+                    help="지면 compliant contact 감쇠 [N·s/m]; 생략 시 2·sqrt(2k)")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -173,6 +177,15 @@ if args_cli.contact_delay is not None:
 if args_cli.mass_fix is not None:
     env_cfg.events.add_base_mass.params["mass_distribution_params"] = (
         args_cli.mass_fix, args_cli.mass_fix)
+if args_cli.ground_k is not None:
+    # 패드 컴플라이언스 실험 (0904): 실물 RA30P 패드(고무 캡) ↔ 강체 지면의 직렬 스프링을
+    # 지면 재질의 compliant contact 로 모델링 (PhysX 5, 접촉점당 N/m · N·s/m).
+    # 접촉 8점·모멘트암 60mm → 발 피치 회전강성 ≈ 8·k·0.06² = 0.029·k Nm/rad
+    # (k=1e4 이면 ≈ 290 Nm/rad = 발목 kp150×2 와 동급 — 숨은 직렬 탄성).
+    _pm = env_cfg.scene.terrain.physics_material
+    _pm.compliant_contact_stiffness = args_cli.ground_k
+    _pm.compliant_contact_damping = (args_cli.ground_c if args_cli.ground_c is not None
+                                     else 2.0 * (args_cli.ground_k * 2.0) ** 0.5)
 
 log_root = os.path.abspath(os.path.join("logs", "rsl_rl", agent_cfg.experiment_name))
 resume_path = get_checkpoint_path(log_root, agent_cfg.load_run, agent_cfg.load_checkpoint)

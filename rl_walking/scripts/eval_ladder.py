@@ -68,6 +68,10 @@ parser.add_argument("--payload_neutral", action="store_true",
                     help="add_base_mass 를 중립값(add→0, scale→1)으로 — 실질량 자산용")
 parser.add_argument("--spawn_zero", action="store_true",
                     help="스폰 관절자세를 전부 0 으로 (DEFAULT_POSE 과도 제거)")
+parser.add_argument("--ground_k", type=float, default=None,
+                    help="지면 compliant contact 강성 [N/m] — 패드 컴플라이언스 실험")
+parser.add_argument("--ground_c", type=float, default=None,
+                    help="지면 compliant contact 감쇠 [N·s/m]; 생략 시 2·sqrt(2k)")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -236,6 +240,12 @@ def run(stage, dr_on, policy=None):
     # kp 150~500·관절마찰 스윕·스폰높이 스윕은 전부 이 인공물을 쫓은 것이었다(기각).
     if args_cli.spawn_zero or stage <= 1:
         cfg.scene.robot.init_state.joint_pos = {".*": 0.0}
+    if args_cli.ground_k is not None:
+        # 패드 컴플라이언스 (eval_drift_dr 와 동일 정의)
+        _pm = cfg.scene.terrain.physics_material
+        _pm.compliant_contact_stiffness = args_cli.ground_k
+        _pm.compliant_contact_damping = (args_cli.ground_c if args_cli.ground_c is not None
+                                         else 2.0 * (args_cli.ground_k * 2.0) ** 0.5)
     env = gym.make(args_cli.task, cfg=cfg)
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
     uenv = env.unwrapped

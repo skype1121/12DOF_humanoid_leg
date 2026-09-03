@@ -1089,3 +1089,29 @@ class Biped12Stage4V2StandV13EnvCfg(Biped12Stage4V2StandV6EnvCfg):
         self.observations.policy.joint_pos.func = mdp_stage4.joint_pos_rel_biased
         self.observations.policy.projected_gravity.func = \
             mdp_stage4.projected_gravity_biased
+
+
+class Biped12Stage4V2StandV14EnvCfg(Biped12Stage4V2StandV13EnvCfg):
+    """stand_v14 — **실질량 17.62kg · 압력패드 8점 실접촉 자산으로 전환** (0904).
+
+    **왜 자산을 바꾸는가 (0903~0904 실측).**
+      - 저울 실측 17.62kg. 구 자산 10.49(+payload 최대 3.5) 로는 어떤 세대도
+        실물 질량을 본 적이 없었다. 17.6kg 에서 v6b 낙상 27% → 66% (F3b),
+        피치 진동 RMS 1.9~2.3° → 3.1~3.7°(실물 2~4° 대역 진입).
+      - 실접촉은 발바닥이 아니라 RA30P 패드 8개(1.6mm 돌출) — usd_final3 는
+        패드 콜리전 8개를 갖는다(횡폭 ±38mm, 헐 ±45 보다 좁음 → 좌우 낙상 지배).
+      - 0단계 강체홀드(영자세 스폰) 0/64·−0.11°/s 로 실물 정지와 일치 —
+        자산 충실도 합격 후 전환한다.
+
+    **질량 대역.** URDF 가 실질량이므로 add_base_mass 는 0 중심:
+      −1.0 ~ +1.5 kg (배선·부속·장착물 불확실성, 이전 대역폭 유지).
+    **CoM x 대역.** v13 (−0.10~+0.06) 유지 — 실질량 재적합 +14~17mm 포함
+      (F3c: 추세 = +492·com_x − 3.82, r 0.972).
+    **나머지** IMU ±5°·영점 ±3°·푸시·지형·게인·지연·마찰: v13 그대로.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.robot.spawn.usd_path = (
+            "/home/ryu/humanoid_leg_test1/rl_walking/assets/usd_final3/biped12.usd")
+        self.events.add_base_mass.params["mass_distribution_params"] = (-1.0, 1.5)

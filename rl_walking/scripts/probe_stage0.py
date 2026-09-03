@@ -13,6 +13,10 @@ parser.add_argument("--task", type=str, default="Biped12-Velocity-Stage4V2-Stand
 parser.add_argument("--usd", type=str, default=None)
 parser.add_argument("--num_envs", type=int, default=4)
 parser.add_argument("--steps", type=int, default=100)
+parser.add_argument("--ground_k", type=float, default=None)
+parser.add_argument("--ground_c", type=float, default=None)
+parser.add_argument("--payload_neutral", action="store_true")
+parser.add_argument("--spawn_zero", action="store_true")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 args_cli.enable_cameras = False
@@ -76,6 +80,16 @@ if getattr(cfg.events, "physics_material", None):
 if getattr(cfg.events, "joint_armature", None):
     cfg.events.joint_armature.params["armature_distribution_params"] = (1.0, 1.0)
 
+if args_cli.ground_k is not None:
+    _pm = cfg.scene.terrain.physics_material
+    _pm.compliant_contact_stiffness = args_cli.ground_k
+    _pm.compliant_contact_damping = (args_cli.ground_c if args_cli.ground_c is not None
+                                     else 2.0 * (args_cli.ground_k * 2.0) ** 0.5)
+if args_cli.payload_neutral and getattr(cfg.events, "add_base_mass", None):
+    _op = cfg.events.add_base_mass.params.get("operation", "add")
+    cfg.events.add_base_mass.params["mass_distribution_params"] = ((1.0, 1.0) if _op == "scale" else (0.0, 0.0))
+if args_cli.spawn_zero:
+    cfg.scene.robot.init_state.joint_pos = {".*": 0.0}
 env = gym.make(args_cli.task, cfg=cfg)
 env = RslRlVecEnvWrapper(env, clip_actions=100.0)
 uenv = env.unwrapped

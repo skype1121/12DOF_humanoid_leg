@@ -77,6 +77,10 @@ parser.add_argument("--mass_fix", type=float, default=None,
 parser.add_argument("--nominal", action="store_true",
                     help="결정론적 명목 평가 — 모든 랜덤화 OFF(속도·관절리셋·게인·지연·CoM·영점·질량·마찰·재질·아마추어). "
                          "실물 nominal 모델 그대로의 정책 거동 (0904 승윤님 평가원칙). com_fix/imu_deg 는 그 위에 적용")
+parser.add_argument("--keep_env_lpf", action="store_true",
+                    help="nominal/deploy 에서도 env 액션텀 LPF 대역을 유지 (v15 발산 분리 실험용)")
+parser.add_argument("--keep_delay", action="store_true",
+                    help="nominal 에서도 env 액션 지연 대역을 유지 (분리 실험용)")
 parser.add_argument("--ground_k", type=float, default=None,
                     help="지면 compliant contact 강성 [N/m, 접촉점당] — 패드 컴플라이언스 실험")
 parser.add_argument("--ground_c", type=float, default=None,
@@ -121,6 +125,11 @@ env_cfg = load_cfg_from_registry(args_cli.task, "env_cfg_entry_point")
 env_cfg.scene.num_envs = args_cli.num_envs
 if args_cli.usd:
     env_cfg.scene.robot.spawn.usd_path = args_cli.usd
+if args_cli.deploy in ("new", "old") and hasattr(env_cfg.actions.joint_pos, "lpf_beta_range") and not args_cli.keep_env_lpf:
+    # v15+ 는 브리지 LPF(β 0.27)를 학습 env 액션텀에 내장한다(β 0.2~1 랜덤). 배포 판정은
+    # 래퍼가 브리지 LPF 를 따로 씌우므로 env 쪽 LPF 는 꺼야 실제 배포(필터 1개)와 같다.
+    # 0904 실측: 둘 다 켜면 위상지연 2배 → v15 가 3.75Hz 로 발산(E_smth 8.7e10, 100% 낙상).
+    env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)
 if args_cli.still:
     # 7f52452 가 이 파일만 빠뜨렸었다 (적대검증 지적). 실물 5차 인수는 줄에
     # 매달려 정지한 상태에서 시작한다 — ±17°/s 초기 각속도는 실물에 없는 외란.
@@ -150,9 +159,10 @@ if args_cli.nominal:
         env_cfg.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
     env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
     env_cfg.events.actuator_gains.params["damping_distribution_params"] = (1.0, 1.0)
-    env_cfg.actions.joint_pos.min_delay_steps = 0
-    env_cfg.actions.joint_pos.max_delay_steps = 0
-    if hasattr(env_cfg.actions.joint_pos, "lpf_beta_range"):
+    if not args_cli.keep_delay:
+        env_cfg.actions.joint_pos.min_delay_steps = 0
+        env_cfg.actions.joint_pos.max_delay_steps = 0
+    if hasattr(env_cfg.actions.joint_pos, "lpf_beta_range") and not args_cli.keep_env_lpf:
         env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)
     if hasattr(env_cfg.actions.joint_pos, "backlash_rad_range"):
         env_cfg.actions.joint_pos.backlash_rad_range = (0.0, 0.0)
@@ -398,7 +408,9 @@ _bnames = list(_cs.body_names)
 _fl = [k for k, n in enumerate(_bnames) if n == "left_ankle_r_joint"][0]
 _fr = [k for k, n in enumerate(_bnames) if n == "right_ankle_r_joint"][0]
 _rb = list(robot.data.body_names)
-_rl, _rr = _rb.index("left_ankle_r_joint"), _rb.index("right_ankle_r_joint")
+# ⚠ 이름 주의: _rl 은 위에서 IMU 롤 편향각(rad)으로 이미 쓰이는 전역 — 0904 저녁 이 이름을
+# 발 바디 인덱스로 덮어써 _bias() 가 중력을 11rad 회전 → 06:15~19:30 사이 전 평가 무효 사고.
+_bidx_l, _bidx_r = _rb.index("left_ankle_r_joint"), _rb.index("right_ankle_r_joint")
 _asym_sum = 0.0; _asym_n = 0
 _slip_sum = 0.0; _slip_hits = 0; _slip_n = 0
 _land_dx = []; _land_dyaw = []
@@ -444,14 +456,14 @@ for i in range(args_cli.steps):
         if _both.any():
             _asym_sum += float(((_f[_both, 0] - _f[_both, 1]).abs() / (_f[_both].sum(1) + 1e-6)).sum())
             _asym_n += int(_both.sum())
-        _v = robot.data.body_lin_vel_w[:, [_rl, _rr], :2].norm(dim=-1)     # (N,2) 발 수평속도
+        _v = robot.data.body_lin_vel_w[:, [_bidx_l, _bidx_r], :2].norm(dim=-1)     # (N,2) 발 수평속도
         _inc = _a.unsqueeze(1) & (_f > 20.0)
         if _inc.any():
             _slip_sum += float(_v[_inc].sum()); _slip_hits += int((_v[_inc] > 0.02).sum()); _slip_n += int(_inc.sum())
         if 50 <= i < 150:                                                    # 1~3s 정착 구간 착지 기하
-            _px = robot.data.body_pos_w[:, [_rl, _rr], 0]
+            _px = robot.data.body_pos_w[:, [_bidx_l, _bidx_r], 0]
             _land_dx.append((_px[_a, 0] - _px[_a, 1]).cpu().numpy())
-            _qy = robot.data.body_quat_w[:, [_rl, _rr], :]                  # (N,2,4) wxyz
+            _qy = robot.data.body_quat_w[:, [_bidx_l, _bidx_r], :]                  # (N,2,4) wxyz
             _yaw = torch.atan2(2 * (_qy[..., 0] * _qy[..., 3] + _qy[..., 1] * _qy[..., 2]),
                                1 - 2 * (_qy[..., 2] ** 2 + _qy[..., 3] ** 2))
             _land_dyaw.append(torch.rad2deg(_yaw[_a, 0] - _yaw[_a, 1]).cpu().numpy())

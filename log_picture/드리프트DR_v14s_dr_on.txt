@@ -1,0 +1,63 @@
+==========================================================================
+DR 분포 전방 드리프트 — Biped12-Velocity-Stage4V2-Stand-V14s-v0
+인자: --headless --task Biped12-Velocity-Stage4V2-Stand-V14s-v0 --load_run 2026-09-04_05-04-39 --checkpoint model_114999.pt --num_envs 64 --steps 400 --still --mass_fix 0.0 --usd /home/ryu/humanoid_leg_test1/rl_walking/assets/usd_final3/biped12.usd --out_tag v14s_dr_on --deploy old
+체크포인트: /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-09-04_05-04-39/model_114999.pt
+64 env × 8.0s, 명령 전무(cmd=0), DR 켜짐
+==========================================================================
+낙상(조기 종료): 64/64 (100.0%)
+   낙상 방향 — 뒤 14 · 앞 14 · 왼 19 · 오른 17
+   몸통 피치 진동 RMS(추세 제거) — 중앙 2.08° p95 5.42°
+초기 3s 전방 추세 °/s — 평균 -31.48, 중앙 -37.33, p5 -52.84, p95 +6.14, 최대 +12.91
+
+■ 실물 기준선 +4.06°/s 이상으로 전방 드리프트한 env: 6/64 (9.4%)
+   → 이 비율이 0에 가까우면, 실물 거동은 DR 분포 밖이다(랜덤화로 못 덮음).
+
+■ CoM x vs 전방추세 상관계수 r = +0.872  (CoM x 범위 -0.1400~+0.0134 m)
+   선형 적합: 추세 = +366.6·com_x -6.38  →  실물 +4.06°/s 를 내는 com_x ≈ +0.0285 m
+   (학습 범위 밖 값이면, 실물 CoM이 학습 분포를 벗어나 있다는 뜻)
+
+■ 떨림 지표 (실물 5차 v6b: 1~4Hz · RMS 2~4° · E_smth 4.40)
+    E_smth (액션 2차차분)  0.55187
+    우세 주파수            0.62 Hz
+    >5Hz 에너지 비율        44.2 %
+
+■ 물리 실현성 (AK 모터 한계 대비, 생존 env-step) — 실물이 이 동작을 낼 수 있는가
+    관절                       τ피크    /한계   τRMS    τ포화%   |qd|피크    /한계   qd포화%
+    left_hip_f_joint       11.15   25.0   4.17    0.00     1.38   30.0    0.00
+    right_hip_f_joint      10.09   25.0   3.52    0.00     1.47   30.0    0.00
+    left_hip_a_joint        9.83   25.0   3.00    0.00     1.10   30.0    0.00
+    right_hip_a_joint      15.55   25.0   3.32    0.00     1.32   30.0    0.00
+    left_hip_r_joint       25.00   25.0  14.50   30.82     3.06   30.0    0.00
+    right_hip_r_joint      25.00   25.0  13.95   25.05     2.41   30.0    0.00
+    left_knee_joint        14.68   25.0   4.82    0.00     1.44   30.0    0.00
+    right_knee_joint       12.29   25.0   4.34    0.00     1.20   30.0    0.00
+    left_ankle_f_joint     19.23   25.0   5.23    0.00     3.44   30.0    0.00
+    right_ankle_f_joint    16.25   25.0   5.28    0.00     3.22   30.0    0.00
+    left_ankle_r_joint      7.68   24.0   2.29    0.00     2.39    5.0    0.00
+    right_ankle_r_joint     6.38   24.0   2.25    0.00     1.02    5.0    0.00
+    토크 포화 최대 left_hip_r_joint 30.82% · 속도 포화 최대 left_hip_f_joint 0.00% · 피크/한계 최대 100%
+    롤 진동 RMS(추세 제거) — 중앙 1.26° p95 2.33°
+    좌우 접촉력 비대칭 |FL−FR|/(FL+FR) 평균 10.4%
+    착지 기하 비대칭(1~3s) — 발 전후차 |L−R| 중앙 8.3mm p95 49.2mm · 발 요차 중앙 60.0° p95 60.7°
+    foot slip — 접촉 중 발 수평속도 평균 3.75 cm/s · >2cm/s 비율 52.5%
+
+■ 관절 한계 도달 비율 (한계 1° 이내 체류 시간 %) — 5% 이상만 표기
+    left_hip_r_joint           68.2 %
+    right_hip_r_joint          67.6 %
+    ⚠ 한계에 붙어 사는 관절 = 보상 우회 해 의심 (v10 힙롤 +30.00° 전례)
+
+■ 평형 자세 (정착 구간 평균, 관절 프레임 deg) — posture_probe 전이 목표
+    left_hip_f_joint         -9.85
+    right_hip_f_joint       +10.94
+    left_hip_a_joint         -1.55
+    right_hip_a_joint        +0.92
+    left_hip_r_joint        +25.42
+    right_hip_r_joint       -25.59
+    left_knee_joint         -12.56
+    right_knee_joint        +11.49
+    left_ankle_f_joint       +7.64
+    right_ankle_f_joint      -7.46
+    left_ankle_r_joint       +1.16
+    right_ankle_r_joint      +1.42
+  POSE_DICT {"left_hip_f_joint": -9.85, "right_hip_f_joint": 10.94, "left_hip_a_joint": -1.55, "right_hip_a_joint": 0.92, "left_hip_r_joint": 25.42, "right_hip_r_joint": -25.59, "left_knee_joint": -12.56, "right_knee_joint": 11.49, "left_ankle_f_joint": 7.64, "right_ankle_f_joint": -7.46, "left_ankle_r_joint": 1.16, "right_ankle_r_joint": 1.42}
+==========================================================================

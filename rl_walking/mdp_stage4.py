@@ -571,8 +571,9 @@ def resample_effort_scale(
         return
     s = torch.empty(len(ids), 1, device=env.device).uniform_(*scale_range)
     new = env._effort_nominal[ids] * s
-    asset.root_physx_view.set_dof_max_forces(new.cpu(), indices=ids.cpu())
-    asset.data.joint_effort_limits[ids] = new
+    # PhysX 텐서 API 는 전체 (N,J) 버퍼 + 인덱스를 요구 — 부분 텐서를 직접 넘기면
+    # "Failed to set DOF max forces in backend" (0904 v16 첫 런치 크래시). 공식 메서드 사용.
+    asset.write_joint_effort_limit_to_sim(new, env_ids=ids)
 
 
 def projected_gravity_lagged(env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):

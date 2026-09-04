@@ -174,6 +174,10 @@ CHECKPOINTS = {
     # hip_r 토크포화 95%→0%, 에너지 1/6. **실물 데뷔 후보 1순위** (승윤님 결정 후 배포).
     "stand_v15": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-04_16-43-02/exported"),
+    # stand_v16 (0904): v15 + 토크한계 0.6~1.0·관절마찰 0~0.3·발접촉 5틱 지연. V6 고정환경 26.6/26.6/15.6%
+    # (v15 보다 열위이나 실물 효과 포함 학습), 플러시 자산 신래퍼 com+16 1.6%. 명목 0/64, 발 요차 7°.
+    "stand_v16": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-09-04_20-05-14/exported"),
 }
 
 #: 체크포인트별 게이트 클록 주파수 [Hz] — 학습 클록과 반드시 일치 (불일치 =
@@ -181,7 +185,7 @@ CHECKPOINTS = {
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
 CKPT_GAIT_FREQ = {"march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
-                   "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1}
+                   "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 
 # ---------------------------------------------------------------------------

@@ -39,6 +39,16 @@ parser.add_argument("--deploy", type=str, default=None,
                     help="실배포 프리셋: old(=실물 배포 경로 h3: 러너 슬루→LPF→블렌딩, 액션텀 훅, 관측 actions=raw) | "
                          "old_h2(0905 이전 판정 래퍼: LPF→블렌딩→env 슬루, 관측 오염 — 대조군 전용) | "
                          "new(슬루 인수·미배포 경로 — 근거로 인용 금지)")
+parser.add_argument("--settle_s", type=float, default=0.0,
+                    help="착지 후 stage8 PD 홀드로 서 있는 정착 시간 [s] — 정책 인수 전 실물 재현(감사 B6). "
+                         "체인 슬루 기준점·블렌딩 시작점 = 정착 후 실측 자세(PD 처짐 포함). 0=끔(h3 기본)")
+parser.add_argument("--ablate", type=str, default="",
+                    help="DR 축 단독 제거(쉼표 목록): land_tilt(착지 롤/피치) com(base_com) mass(add_base_mass) calib(영점·IMU 편향) "
+                         "asym(착지 비대칭) jpos(리셋 관절 어긋남) — 정착 안정성 원인 분리용")
+parser.add_argument("--stiff_range", type=str, default=None,
+                    help="actuator_gains 강성 DR 대역 덮어쓰기 'lo,hi' (학습 (0.2,1.1)). 정착 안정성 대역 스윕용")
+parser.add_argument("--settle_gate_deg", type=float, default=3.0,
+                    help="--settle_s 와 함께: 정착 후 |피치|·|롤| 이 이 값을 넘는 env 는 '착지 재시도' 대상 — 통과 env 만의 낙상률을 따로 보고")
 parser.add_argument("--nominal_delay", type=int, default=4,
                     help="--nominal 의 액션 지연 [틱] (기본 4 = 실측 루프지연 4~8틱 중앙값; 0905 이전은 0 이었음)")
 parser.add_argument("--lpf", type=float, default=0.0,
@@ -143,6 +153,50 @@ if args_cli.deploy in ("new", "old", "old_h2") and hasattr(env_cfg.actions.joint
     # 래퍼가 브리지 LPF 를 따로 씌우므로 env 쪽 LPF 는 꺼야 실제 배포(필터 1개)와 같다.
     # 0904 실측: 둘 다 켜면 위상지연 2배 → v15 가 3.75Hz 로 발산(E_smth 8.7e10, 100% 낙상).
     env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)
+if args_cli.ablate:
+    # DR 축 단독 제거 — "정착(PD 홀드) 후 뒤로 기우는 DR 몸체" 의 원인 축 분리 (0906). nominal 블록과 같은 키를 쓴다.
+    for _ab in [s.strip() for s in args_cli.ablate.split(",") if s.strip()]:
+        if _ab == "land_tilt":
+            for _k in ("roll", "pitch"):
+                if _k in env_cfg.events.reset_base.params["pose_range"]:
+                    env_cfg.events.reset_base.params["pose_range"][_k] = (0.0, 0.0)
+        elif _ab == "com" and getattr(env_cfg.events, "base_com", None):
+            env_cfg.events.base_com.params["com_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
+        elif _ab == "mass" and getattr(env_cfg.events, "add_base_mass", None):
+            _op = env_cfg.events.add_base_mass.params.get("operation", "add")
+            env_cfg.events.add_base_mass.params["mass_distribution_params"] = ((1.0, 1.0) if _op == "scale" else (0.0, 0.0))
+        elif _ab == "calib" and getattr(env_cfg.events, "calib_bias", None):
+            for _k in list(env_cfg.events.calib_bias.params):
+                if _k.endswith("_rad") and env_cfg.events.calib_bias.params[_k] is not None:
+                    env_cfg.events.calib_bias.params[_k] = (0.0, 0.0)
+        elif _ab == "asym" and getattr(env_cfg.events, "stance_asym", None) is not None:
+            env_cfg.events.stance_asym = None
+        elif _ab == "jpos" and getattr(env_cfg.events, "reset_robot_joints", None):
+            env_cfg.events.reset_robot_joints.params["position_range"] = (0.0, 0.0)
+        elif _ab == "gains":
+            env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
+            env_cfg.events.actuator_gains.params["damping_distribution_params"] = (1.0, 1.0)
+        elif _ab == "effort" and getattr(env_cfg.events, "effort_scale", None) is not None:
+            env_cfg.events.effort_scale = None
+        elif _ab == "friction" and getattr(env_cfg.events, "joint_friction", None):
+            env_cfg.events.joint_friction.params["friction_distribution_params"] = (0.0, 0.0)
+        elif _ab == "armature" and getattr(env_cfg.events, "joint_armature", None):
+            env_cfg.events.joint_armature.params["armature_distribution_params"] = (1.0, 1.0)
+        elif _ab == "delay":
+            env_cfg.actions.joint_pos.min_delay_steps = int(args_cli.nominal_delay)
+            env_cfg.actions.joint_pos.max_delay_steps = int(args_cli.nominal_delay)
+        elif _ab == "backlash" and hasattr(env_cfg.actions.joint_pos, "backlash_rad_range"):
+            env_cfg.actions.joint_pos.backlash_rad_range = (0.0, 0.0)
+        elif _ab == "material" and getattr(env_cfg.events, "physics_material", None):
+            env_cfg.events.physics_material.params["static_friction_range"] = (0.8, 0.8)
+            env_cfg.events.physics_material.params["dynamic_friction_range"] = (0.6, 0.6)
+        else:
+            print(f"[ablate] 미지원 또는 해당 이벤트 없음: {_ab}")
+    print(f"[ablate] DR 축 제거: {args_cli.ablate}")
+if args_cli.stiff_range:
+    _lo, _hi = (float(v) for v in args_cli.stiff_range.split(","))
+    env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (_lo, _hi)
+    print(f"[stiff] 강성 DR 대역 → ({_lo}, {_hi})")
 if args_cli.still:
     # 7f52452 가 이 파일만 빠뜨렸었다 (적대검증 지적). 실물 5차 인수는 줄에
     # 매달려 정지한 상태에서 시작한다 — ±17°/s 초기 각속도는 실물에 없는 외란.
@@ -430,9 +484,40 @@ def _wrapper(a, step_i):
     return (tgt - _DEF) / _ASCALE
 
 
+_gate_ok_np = None
 if args_cli.land:
     # 실물은 hang_stand 트림0 자세로 착지한 뒤 정책이 인수한다.
     _robot.write_joint_state_to_sim(_LAND, torch.zeros_like(_LAND))
+    if args_cli.settle_s > 0.0:
+        # 감사 B6: 실물은 착지·ARM 뒤 stage8 PD 홀드로 수 초 서 있다가 정책이 인수한다 — 블렌딩 시작점은
+        # 명령 0° 가 아니라 PD 처짐이 포함된 실측 자세. 정착 중엔 착지 자세 홀드 명령만 보낸다(체인 훅 우회).
+        _hold = (_LAND - _DEF) / _ASCALE
+        _n_settle = int(round(args_cli.settle_s * 50))
+        _fell = torch.zeros(N, dtype=torch.bool, device=uenv.device)
+        if args_cli.blend_mode == "chain":
+            _term.process_actions = _orig_process
+        for _ in range(_n_settle):
+            obs, _, _d, _ = env.step(_hold)
+            _fell |= _d.bool()
+        if args_cli.blend_mode == "chain":
+            _term.process_actions = _hooked_process
+            _q = _robot.data.joint_pos.clone()
+            _chain.land = _q.clone()
+            _chain.prev = _q.clone()
+            _chain.filt_ok[:] = False
+            _chain.t[:] = 0
+        _pg = _robot.data.projected_gravity_b
+        _pitch = torch.rad2deg(torch.atan2(_pg[:, 0], -_pg[:, 2]))      # +앞
+        _roll = torch.rad2deg(torch.atan2(_pg[:, 1], -_pg[:, 2]))
+        print(f"[deploy] 정착 {args_cli.settle_s:.1f}s({_n_settle}틱) PD 홀드 후 정책 인수 — 정착 중 종료 env {int(_fell.sum())}/{N}, "
+              f"블렌딩·슬루 시작점 = 정착 후 실측 자세 (무릎 평균 처짐 {math.degrees(float((_robot.data.joint_pos - _LAND).abs().mean())):.2f}°, "
+              f"정착 후 피치 평균 {float(_pitch.mean()):+.2f}° [min {float(_pitch.min()):+.1f} max {float(_pitch.max()):+.1f}] "
+              f"롤 |평균| {float(_roll.abs().mean()):.2f}°, 정착 중 종료 아님 = 40° 미만일 뿐)")
+        if args_cli.settle_gate_deg > 0.0:
+            _g = (_pitch.abs() <= args_cli.settle_gate_deg) & (_roll.abs() <= args_cli.settle_gate_deg) & ~_fell
+            _gate_ok_np = _g.cpu().numpy()
+            print(f"[deploy] 정착 게이트 |피치|·|롤| ≤ {args_cli.settle_gate_deg:g}° 통과 {int(_g.sum())}/{N} "
+                  f"(나머지는 실물이면 착지 재시도 — 통과 env 낙상률을 리포트에 별도 표기)")
 pg_log = []          # (steps, N, 3)
 act_log = []         # (steps, N, 12) — 떨림 지표용
 alive = torch.ones(N, dtype=torch.bool, device=uenv.device)
@@ -600,7 +685,8 @@ P(f"{N} env × {args_cli.steps/50:.1f}s, 명령 전무(cmd=0), DR 켜짐")
 P("배포 경로: " + ("h3 chain — 러너 슬루→LPF→블렌딩, 관측 actions=raw (0906 정합)" if args_cli.blend_mode == "chain"
                    else "h2 래퍼 — LPF→블렌딩→env 슬루, 관측 오염 (대조군)" if args_cli.deploy == "old_h2"
                    else f"{args_cli.deploy or '없음'} (blend_mode={args_cli.blend_mode})")
-  + (f" | 명목 지연 {args_cli.nominal_delay}틱" if args_cli.nominal and not args_cli.keep_delay else ""))
+  + (f" | 명목 지연 {args_cli.nominal_delay}틱" if args_cli.nominal and not args_cli.keep_delay else "")
+  + (f" | 정착 {args_cli.settle_s:.1f}s 후 인수(B6)" if args_cli.settle_s > 0.0 else ""))
 P("=" * 74)
 P(f"낙상(조기 종료): {int((death < args_cli.steps).sum())}/{N} "
   f"({100.0*(death < args_cli.steps).sum()/N:.1f}%)")
@@ -619,6 +705,20 @@ for e in np.where(_fell)[0]:
         _dir["왼" if l_ > 0 else "오른"] += 1
 P(f"   낙상 방향 — 뒤 {_dir['뒤']} · 앞 {_dir['앞']} · "
   f"왼 {_dir['왼']} · 오른 {_dir['오른']}")
+if _gate_ok_np is not None:
+    # 감사 B6 후속: 정착(PD 홀드) 후 실물 착지 게이트(±3°)를 통과한 env 만의 낙상 — 실물 프로토콜(혼자 설 때까지 재착지)에 대응
+    _g = _gate_ok_np
+    _gd = {"뒤": 0, "앞": 0, "왼": 0, "오른": 0}
+    for e in np.where(_fell & _g)[0]:
+        k = max(0, min(int(death[e]) - 1, pg.shape[0] - 1))
+        f_, l_ = fwd[k, e], _lat[k, e]
+        if abs(f_) >= abs(l_):
+            _gd["앞" if f_ > 0 else "뒤"] += 1
+        else:
+            _gd["왼" if l_ > 0 else "오른"] += 1
+    P(f"   정착 게이트(|피치|·|롤| ≤ {args_cli.settle_gate_deg:g}°, 실물 착지 재시도 규칙) 통과 {int(_g.sum())}/{N} — "
+      f"통과 env 낙상 {int((_fell & _g).sum())}/{int(_g.sum())} ({100.0 * (_fell & _g).sum() / max(1, _g.sum()):.1f}%) "
+      f"방향 뒤 {_gd['뒤']} · 앞 {_gd['앞']} · 왼 {_gd['왼']} · 오른 {_gd['오른']}")
 # 몸통 피치 진동 진폭 — 추세를 뺀 나머지의 RMS (실물 떨림 2~4°)
 _amp = []
 for e in range(N):

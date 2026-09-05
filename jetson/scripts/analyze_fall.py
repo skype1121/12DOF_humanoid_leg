@@ -33,6 +33,7 @@ JOINT_ORDER = ["left_hip_f_joint", "right_hip_f_joint", "left_hip_a_joint", "rig
                "left_ankle_f_joint", "right_ankle_f_joint", "left_ankle_r_joint", "right_ankle_r_joint"]
 TAU_LIMIT_NM = [25.0] * 10 + [24.0, 24.0]
 TAU_SAT_FRAC = 0.95       # 시뮬 명목 판정(eval_drift_dr 물리 실현성)과 같은 문턱(|τ| ≥ 0.95·한계) — 0905 감사 C1
+TAU_STALE_S = 0.1         # stage8 status 가 이보다 오래된 틱의 tau_est 는 동결값 → 토크표에서 제외 (0905 감사 C4)
 LOAD_STANDING = 85.0       # 이 % 이상이면 하중을 정책이 받고 있다고 본다
 LOAD_LOST = 50.0           # 이 % 아래로 떨어지면 줄/사람에게 넘어간 것
 LEAN_FALL_DELTA = 15.0     # 시작 자세 대비 이만큼 더 기울면 자립 종료
@@ -189,7 +190,8 @@ def analyze(path, foot_scale=None):
         rows.append({"t": rel, "fwd": fwd, "lat": lat, "tilt": tilt,
                      "load": load_pct, "contact": t.get("contact"),
                      "alpha": t.get("blend_alpha", 1.0),
-                     "tau": t.get("tau_est_nm")})
+                     "tau": t.get("tau_est_nm"),
+                     "status_age": t.get("status_age_s")})   # stage8 status 신선도 (0906 감사 C4)
 
     dur = rows[-1]["t"]
 
@@ -291,8 +293,11 @@ def analyze(path, foot_scale=None):
         "rows": rows,
         "foot_scale": scale,
         # 0905 감사 C2: 토크표는 자립 구간(t ≤ standing_s)만 — 낙상 후·STOP_ALL 홀드 틱을 넣으면
-        # 시뮬(생존 스텝만 집계)과 축이 어긋난다
-        "tau": torque_summary([r for r in rows if r["t"] <= standing_s]),
+        # 시뮬(생존 스텝만 집계)과 축이 어긋난다. C4: status 가 TAU_STALE_S 보다 오래된 틱(동결값)은 제외.
+        "tau": torque_summary([r for r in rows if r["t"] <= standing_s
+                               and not (r["status_age"] is not None and r["status_age"] > TAU_STALE_S)]),
+        "tau_stale": sum(1 for r in rows if r["t"] <= standing_s
+                         and r["status_age"] is not None and r["status_age"] > TAU_STALE_S),
     }
 
 
@@ -399,7 +404,9 @@ def report(a):
     else:
         print("■ 이벤트: 없음 (가드 무트립·STOP_ALL 없음)")
     if a.get("tau"):
-        print(f"■ 실물 토크 (stage8 torque_est, 자립 구간 t≤{a['standing_s']:.1f}s 만) — 시뮬 명목 판정 표와 같은 축")
+        print(f"■ 실물 토크 (stage8 torque_est, 자립 구간 t≤{a['standing_s']:.1f}s 만"
+              + (f", status 스테일 {a['tau_stale']}틱 제외" if a.get("tau_stale") else "")
+              + ") — 시뮬 명목 판정 표와 같은 축")
         print(f"   관절                 |τ|피크  RMS   한계  포화%(≥{TAU_SAT_FRAC*100:.0f}%)  샘플")
         worst = None
         for name, peak, rms, sat, n in a["tau"]:

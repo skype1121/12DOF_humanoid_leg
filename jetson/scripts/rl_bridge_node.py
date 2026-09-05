@@ -554,6 +554,87 @@ def _selftest_grav_gate():
     return "정합 통과 · (−1,0,0) 거부 · 스테일/미수신 거부 · 15° 통과/20° 거부"
 
 
+def _parse_env_contract(path):
+    """rsl_rl 이 남긴 params/env.yaml 에서 배포 계약 항목만 줄 단위로 뽑는다 (PyYAML·python 태그 불필요).
+    scene.robot.init_state.joint_pos(첫 블록) · actions.joint_pos 의 scale/max_delta_per_step/use_default_offset/지연 대역 ·
+    decimation · sim.dt."""
+    out = {"joint_pos": {}}
+    sect = None
+    in_init = in_jp = done_jp = False
+    jp_indent = 0
+    with open(path, encoding="utf-8") as f:
+        for raw in f:
+            s = raw.rstrip("\n")
+            if not s.strip() or s.lstrip().startswith("#"):
+                continue
+            indent = len(s) - len(s.lstrip())
+            key, _, val = s.strip().partition(":")
+            val = val.strip()
+            if indent == 0:
+                sect = key
+                in_init = in_jp = False
+                if key == "decimation":
+                    out["decimation"] = int(val)
+                continue
+            if sect == "sim" and key == "dt" and indent == 2:
+                out["dt"] = float(val)
+            elif sect == "scene" and not done_jp:
+                if key == "init_state":
+                    in_init, in_jp = True, False
+                elif in_init and key == "joint_pos" and not val:
+                    in_jp, jp_indent = True, indent
+                elif in_jp:
+                    if indent > jp_indent and val and not val.startswith("!!"):
+                        try:
+                            out["joint_pos"][key] = float(val)
+                        except ValueError:
+                            pass
+                    elif indent <= jp_indent:
+                        in_jp, done_jp = False, True
+            elif sect == "actions":
+                if key == "max_delta_per_step":
+                    out["max_delta"] = float(val)
+                elif key == "scale" and val not in ("", "null"):
+                    out.setdefault("scale", float(val))
+                elif key == "use_default_offset":
+                    out["use_default_offset"] = (val.lower() == "true")
+                elif key == "min_delay_steps":
+                    out["min_delay"] = int(val)
+                elif key == "max_delay_steps":
+                    out["max_delay"] = int(val)
+    return out
+
+
+def _selftest_contract(required=()):
+    """(0906 — 반복 감사 질문의 코드화) 배포 stand 정책의 학습 env(params/env.yaml)와 러너 상수의 계약:
+    DEFAULT_POSE(관절명 기준 12개) · 액션 스케일 · 슬루 4°/틱 · 제어 주기 50Hz(decimation×dt) · use_default_offset.
+    env.yaml 이 없는 세대는 SKIP(구 세대·비 stand). STAND_DEFAULT 와 required 의 stand_* 는 env.yaml 이 있어야 한다
+    (배포 패키지가 models/<gen>/env.yaml 을 <run>/params/ 로 싣는다)."""
+    names = [n for n in dict.fromkeys([STAND_DEFAULT] + list(required)) if n in CHECKPOINTS]
+    checked, skipped = [], []
+    for name in names:
+        yml = os.path.join(os.path.dirname(CHECKPOINTS[name].rstrip("/")), "params", "env.yaml")
+        if not os.path.isfile(yml):
+            skipped.append(name)
+            continue
+        c = _parse_env_contract(yml)
+        for j, want in zip(JOINT_ORDER, DEFAULT_POSE_RAD):
+            got = c["joint_pos"].get(j)
+            assert got is not None, f"{name}: env.yaml init_state.joint_pos 에 {j} 없음 ({yml})"
+            assert abs(got - float(want)) < 1e-6, (
+                f"{name}: DEFAULT_POSE[{j}] 러너 {float(want):+.5f} ≠ 학습 env {got:+.5f} rad")
+        assert abs(c.get("scale", -1.0) - _DC.ACTION_SCALE) < 1e-9, f"{name}: 액션 스케일 {c.get('scale')} ≠ {_DC.ACTION_SCALE}"
+        assert abs(c.get("max_delta", -1.0) - SLEW_RAD) < 1e-9, f"{name}: 슬루 {c.get('max_delta')} ≠ {SLEW_RAD}"
+        hz = 1.0 / (c["dt"] * c["decimation"])
+        assert abs(hz - _DC.RATE_HZ) < 1e-6, f"{name}: 제어 주기 {hz:.2f}Hz ≠ {_DC.RATE_HZ}"
+        assert c.get("use_default_offset") is True, f"{name}: use_default_offset={c.get('use_default_offset')} (기대 True)"
+        checked.append(f"{name}(지연 {c.get('min_delay', '?')}~{c.get('max_delay', '?')}틱)")
+    need = [n for n in names if n in skipped and (n == STAND_DEFAULT or n.startswith("stand_"))]
+    assert not need, f"stand 정책의 env.yaml 없음: {need} — 배포 패키지에 params/env.yaml 포함 필요"
+    return ("DEFAULT_POSE 12관절·스케일 0.25·슬루 4°/틱·50Hz·default_offset 일치: " + ", ".join(checked)
+            + (f" | SKIP {', '.join(skipped)}" if skipped else ""))
+
+
 #: boot_pose_check 검증 저널 (젯슨 경로) — 프레임 게이트의 근거 자료
 FRAME_JOURNAL = "/home/mama/rl_calib/last_pose_journal.json"
 FRAME_MAX_AGE_DEFAULT_S = 3600.0
@@ -943,6 +1024,7 @@ def run_selftest(required=()):
              ("프레임 게이트", _selftest_frame_gate),
              ("중력 게이트", _selftest_grav_gate),
              ("발진 가드", _selftest_osc_guard),
+             ("학습 계약", lambda: _selftest_contract(required)),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:
@@ -1042,6 +1124,7 @@ def main():
             # 축으로 대조할 수 있어야 한다 (실물 전류 기록 요구, 승윤님).
             self.tau_est = {}
             self.temp_raw = {}
+            self.status_ts = 0.0     # 마지막 stage8 status 수신 시각 — 블랙박스 status_age_s (0905 감사 C4: tau_est 동결값 식별)
             self.tgt_filt = None
             self.osc_tgt = OscGuard(JOINT_ORDER)
             self.prev_tgt = None
@@ -1107,6 +1190,7 @@ def main():
             except json.JSONDecodeError:
                 return
             self.armed = bool(d.get("armed"))
+            self.status_ts = time.time()
             js = d.get("joints") or {}
             if not isinstance(js, dict):
                 return
@@ -1450,7 +1534,9 @@ def main():
                    # 0905 신설(기록 전용): stage8 토크 추정[Nm]·온도 원값, JOINT_ORDER 순,
                    # 미수신 관절은 None — 시뮬 토크 피크/포화 지표와 동일 축 대조용
                    "tau_est_nm": [self.tau_est.get(j) for j in JOINT_ORDER],
-                   "temp_raw": [self.temp_raw.get(j) for j in JOINT_ORDER]}
+                   "temp_raw": [self.temp_raw.get(j) for j in JOINT_ORDER],
+                   # stage8 status 신선도 [s] — analyze_fall 이 0.1s 초과 틱의 tau_est 를 동결값으로 제외
+                   "status_age_s": round(now - self.status_ts, 3) if self.status_ts > 0.0 else None}
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
             if not (self.live and self.armed):

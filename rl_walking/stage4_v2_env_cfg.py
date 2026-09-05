@@ -1249,3 +1249,17 @@ class Biped12Stage4V2StandV18EnvCfg(Biped12Stage4V2StandV17EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+
+
+class Biped12Stage4V2StandV19EnvCfg(Biped12Stage4V2StandV18EnvCfg):
+    """stand_v19 — v18 + **액션 지연 대역 3~8틱** (0905 배포 계약 감사 B4, 0906 야간 개선 루프).
+
+    실측 루프지연은 4~8틱(0803 블랙박스 sysid)인데 v15~v18 학습 대역은 3~6틱 — 실측 상단 7~8틱이
+    학습 분포 밖이었다. 이 축 하나만 바꾼다. 대조군 = v18c(같은 웜스타트 v18b/120998·같은 6000it·V18 env).
+    판정(judge_gen h3 배포 경로)에서 v18c 대비 낙상·E_smth·τ가 같은 방향으로 좋아질 때만 채택 후보.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.min_delay_steps = 3
+        self.actions.joint_pos.max_delay_steps = 8

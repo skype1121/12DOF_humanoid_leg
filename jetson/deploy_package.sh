@@ -24,6 +24,8 @@ for g in $GENS; do
   mkdir -p "$STAGE/$dst"
   cp "models/$g/policy.pt" "$STAGE/$dst/policy.pt"
   [ -f "models/$g/policy.onnx" ] && cp "models/$g/policy.onnx" "$STAGE/$dst/policy.onnx"
+  # 학습 env 계약(params/env.yaml) — 브리지 selftest '학습 계약' 이 DEFAULT_POSE·스케일·슬루·주기를 대조 (0906)
+  if [ -f "models/$g/env.yaml" ]; then mkdir -p "$STAGE/logs/rsl_rl/biped12_stage4/$run/params"; cp "models/$g/env.yaml" "$STAGE/logs/rsl_rl/biped12_stage4/$run/params/env.yaml"; fi
   echo "  $g → $dst/policy.pt ($(md5sum models/$g/policy.pt | cut -c1-8)…)"
   n=$((n+1))
 done

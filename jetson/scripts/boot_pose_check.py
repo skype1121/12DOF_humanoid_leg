@@ -52,6 +52,9 @@ JOURNAL = "/home/mama/rl_calib/last_pose_journal.json"
 WINDOW = {m: (10.0 if m in (6, 12) else 36.0) for m in range(1, 13)}
 #: 자세오차 허용 (deg) — 매달림 재현성 ~2° 실측 기준 여유. AK45는 창의 절반 미만 강제
 TOL = {m: (3.5 if m in (6, 12) else 8.0) for m in range(1, 13)}
+#: 경고 문턱 (deg, 0906 감사 C7): 통과는 시키되 학습 영점편향 대역(힙 3°/무릎 4°/발목 6°) 경계를 넘는 잔차를 드러낸다.
+#: 허용치 자체(8°)를 낮출지는 승윤님 결정 — 여기서는 판정을 바꾸지 않는다.
+WARN = {m: (2.0 if m in (6, 12) else 4.0) for m in range(1, 13)}
 POLL_N = 15          #: 모터당 폴링 횟수
 MIN_VALID = 12       #: 유효 응답 최소 (미만이면 응답률 저조 — 반접촉 전조 의심)
 
@@ -215,7 +218,7 @@ def main():
             print(f"[경고] 모터 {exit_fail} MIT 해제 송신 실패 — 제로게인 "
                   f"상태라 무토크지만, 버스 복구 후 재실행으로 해제 권장")
 
-    shifted, pose_bad, dead = [], [], []
+    shifted, pose_bad, dead, warned = [], [], [], []
     unchecked, faulted, unstable, good = [], [], [], set()
     print(f"{'모터':>4} {'관절':24s} {'읽기':>8} {'기준':>8} "
           f"{'k':>3} {'잔차':>7}  판정")
@@ -256,6 +259,11 @@ def main():
         elif k != 0:
             verdict = f"✗ 프레임 {k:+d}창 어긋남"
             shifted.append((m, k))
+        elif abs(resid) > WARN[m]:
+            verdict = f"△ 일치(잔차 {abs(resid):.1f}°>{WARN[m]:g}° 경고 — 학습 영점편향 대역 경계)"
+            warned.append(m)
+            if not flags:
+                good.add(m)
         else:
             verdict = "✓ 일치"
             if not flags:
@@ -282,6 +290,10 @@ def main():
     if pose_bad:
         print(f"[보류] 모터 {pose_bad} 잔차 초과 — 로봇 자세를 기준 자세로 "
               f"맞춘 뒤 재실행 (지금은 k 판정 신뢰 불가)")
+    if warned:
+        print(f"[경고] 모터 {warned} 잔차가 경고 문턱(AK70 4°/AK45 2°)을 넘음 — 허용치(8°/3.5°) 안이라 통과이나 "
+              f"정책 학습의 영점편향 대역(힙 3°/무릎 4°/발목 6°) 경계. 자세를 다시 잡고 재실행하거나 "
+              f"영점 상태를 의심할 것 (허용치 하향은 승윤님 결정)")
     if shifted and not pose_bad and not unstable:
         if a.ref == "stand":
             print("[프레임 어긋남] 보정 제안 (현재 프레임 기준 새 stand_zero):")

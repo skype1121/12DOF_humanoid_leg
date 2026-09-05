@@ -77,6 +77,7 @@ torque saturation·foot slip·action smoothness 를 함께 기록. 회귀 금지
 - **0906 부터 명목·사다리 DR-OFF 의 액션 지연 = 4틱**(`--nominal_delay`, eval_drift_dr/eval_ladder 공통). 0905 이전 명목/DR-OFF 행은 지연 0틱이라
   E_smth·낙상 수치를 새 행과 직접 비교하지 말 것(v18c/v19 부터 새 기준). `--deploy old` 는 0906 부터 실물 순서 체인(h3); 종전 래퍼는 `--deploy old_h2`.
 - 실측 루프지연(analyze_fall B4, 5차 블랙박스): 순수 지연 중앙 3틱 + 1차 지연 τ 40~80ms — 학습 지연 대역은 순수 지연에 대응, τ 는 PD/아마추어/마찰 DR 몫.
+  독립 구현(ChatGPT 작성 `loop_delay.py`, 저장소 루트)도 같은 블랙박스에서 중앙 3틱·τ 60~120ms·12/12 관절 — 교차검증 일치.
 - **V6 고정환경 교차평가는 관측 함수가 V6 기준**(projected_gravity 무지연·무편향, 발접촉 무지연). v15~ 정책은 지연·편향 관측으로 학습했으므로
   교차평가는 "쉬운 관측" 조건이다 — 세대 간 **상대 비교**로만 쓰고 절대 낙상률로 읽지 말 것.
 - 검증 사다리 DR-ON 단계에도 `--payload_neutral` 이 걸린다(질량 DR 만 중립). 사다리 DR-ON = "질량 제외 DR" 로 읽는다.

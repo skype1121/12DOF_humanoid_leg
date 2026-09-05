@@ -42,6 +42,8 @@ parser.add_argument("--task", type=str,
 parser.add_argument("--stage", type=int, required=True,
                     help="0=자유낙하 1=PD홀드 2=정책서기 3=서기+외란 4=보행")
 parser.add_argument("--dr", type=int, default=1, help="1=랜덤화 ON, 0=OFF")
+parser.add_argument("--nominal_delay", type=int, default=4,
+                    help="DR OFF 의 액션 지연 [틱] (기본 4 = 실측 순수 지연 중앙값; 0906 이전은 0 — 학습 하한 3 미만이었음)")
 parser.add_argument("--usd", type=str, default=None,
                     help="로봇 USD 교체 — spawn.usd_path 오버라이드")
 parser.add_argument("--num_envs", type=int, default=64)
@@ -188,8 +190,9 @@ def make_env(stage, dr_on):
                 _vr[_k] = (0.0, 0.0)
         cfg.events.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
         cfg.events.actuator_gains.params["damping_distribution_params"] = (1.0, 1.0)
-        cfg.actions.joint_pos.min_delay_steps = 0
-        cfg.actions.joint_pos.max_delay_steps = 0
+        # 0906 감사 B3 정합: 명목 지연 0틱은 학습 하한(3)보다 낮고 실측(순수 지연 ~3틱+PD 지연)과 무관 → 기본 4틱 고정
+        cfg.actions.joint_pos.min_delay_steps = int(args_cli.nominal_delay)
+        cfg.actions.joint_pos.max_delay_steps = int(args_cli.nominal_delay)
         if getattr(cfg.events, "base_com", None):
             cfg.events.base_com.params["com_range"] = {
                 "x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}

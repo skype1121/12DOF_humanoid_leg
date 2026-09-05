@@ -1,0 +1,18 @@
+{
+  "name": "stand_v14s",
+  "run": "2026-09-04_05-04-39",
+  "checkpoint": "model_114999.pt",
+  "checkpoint_md5": "9d828ae1cc4eb0248e0edf365c8bc54a",
+  "task": "Biped12-Velocity-Stage4V2-Stand-V14s-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "stand_v14 model_107000",
+  "summary": "V6고정 32.8/26.6/15.6% · 착지 비대칭 학습 · hip_r 포화 97%",
+  "legacy": false,
+  "files": {
+    "policy.pt": "4218ad0b07e27e4b8897ba9c17a2ccad",
+    "policy.onnx": "def1a82913b44f19eb589ea66386899e",
+    "env.yaml": "ee21e5507127ad0141f5437f8881ed7b",
+    "agent.yaml": "07eb77bed37f9661a5780eca771ba7ab"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-04_05-04-39"
+}

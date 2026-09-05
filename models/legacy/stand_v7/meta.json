@@ -1,0 +1,18 @@
+{
+  "name": "stand_v7",
+  "run": "2026-08-04_13-13-49",
+  "checkpoint": "model_63898.pt",
+  "checkpoint_md5": "1694addb55775b043f307b37078da533",
+  "task": "Biped12-Velocity-Stage4V2-Stand-V7-v0",
+  "usd": "rl_walking/assets/usd/biped12.usd",
+  "warm_start": "",
+  "summary": "10.49kg 자산 세대(정합 낮음) — 6차 실기 예정이었던 정책",
+  "legacy": true,
+  "files": {
+    "policy.pt": "392314766e74e478ff123463647bc8f8",
+    "policy.onnx": "fb1d27e9115f556e6fbbbc49b88865b0",
+    "env.yaml": "222b0a146eee388eb5ad9164bf4566ff",
+    "agent.yaml": "36fec0dab02e44764bbb375b772dbd39"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-08-04_13-13-49"
+}

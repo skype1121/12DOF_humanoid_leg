@@ -18,9 +18,9 @@ import struct
 import xml.etree.ElementTree as ET
 
 REPO = "/home/ryu/humanoid_leg_test1"
-SRC = os.path.join(REPO, "final3_urdf", "urdf", "final3_urdf.urdf")
-OUT = os.path.join(REPO, "final3_urdf", "urdf", "final3_urdf_fixed.urdf")
-MESH = os.path.join(REPO, "final3_urdf", "meshes")
+SRC = os.path.join(REPO, "urdf", "final3_urdf", "urdf", "final3_urdf.urdf")
+OUT = os.path.join(REPO, "urdf", "final3_urdf", "urdf", "final3_urdf_fixed.urdf")
+MESH = os.path.join(REPO, "urdf", "final3_urdf", "meshes")
 O2 = (0.01985, -0.158275, 0.0)
 
 

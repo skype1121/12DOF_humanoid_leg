@@ -26,7 +26,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/pelvis.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/pelvis.STL" />
       </geometry>
       <material
         name="">
@@ -40,7 +40,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/pelvis.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/pelvis.STL" />
       </geometry>
     </collision>
   </link>
@@ -66,7 +66,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_hip_f_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/left_hip_f_joint.STL" />
       </geometry>
       <material
         name="">
@@ -80,7 +80,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_hip_f_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/left_hip_f_joint.STL" />
       </geometry>
     </collision>
   </link>
@@ -124,7 +124,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_hip_a_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/left_hip_a_joint.STL" />
       </geometry>
       <material
         name="">
@@ -138,7 +138,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_hip_a_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/left_hip_a_joint.STL" />
       </geometry>
     </collision>
   </link>
@@ -182,7 +182,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_hip_r_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/left_hip_r_joint.STL" />
       </geometry>
       <material
         name="">
@@ -196,7 +196,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_hip_r_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/left_hip_r_joint.STL" />
       </geometry>
     </collision>
   </link>
@@ -240,7 +240,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_knee_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/left_knee_joint.STL" />
       </geometry>
       <material
         name="">
@@ -254,7 +254,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_knee_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/left_knee_joint.STL" />
       </geometry>
     </collision>
   </link>
@@ -298,7 +298,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_ankle_f_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/left_ankle_f_joint.STL" />
       </geometry>
       <material
         name="">
@@ -312,7 +312,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_ankle_f_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/left_ankle_f_joint.STL" />
       </geometry>
     </collision>
   </link>
@@ -356,7 +356,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_ankle_r_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/left_ankle_r_joint.STL" />
       </geometry>
       <material
         name="">
@@ -370,7 +370,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/left_ankle_r_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/left_ankle_r_joint.STL" />
       </geometry>
     </collision>
   </link>
@@ -414,7 +414,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_hip_f_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/right_hip_f_joint.STL" />
       </geometry>
       <material
         name="">
@@ -428,7 +428,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_hip_f_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/right_hip_f_joint.STL" />
       </geometry>
     </collision>
   </link>
@@ -472,7 +472,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_hip_a_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/right_hip_a_joint.STL" />
       </geometry>
       <material
         name="">
@@ -486,7 +486,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_hip_a_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/right_hip_a_joint.STL" />
       </geometry>
     </collision>
   </link>
@@ -530,7 +530,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_hip_r_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/right_hip_r_joint.STL" />
       </geometry>
       <material
         name="">
@@ -544,7 +544,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_hip_r_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/right_hip_r_joint.STL" />
       </geometry>
     </collision>
   </link>
@@ -583,7 +583,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_knee_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/right_knee_joint.STL" />
       </geometry>
       <material
         name="">
@@ -597,7 +597,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_knee_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/right_knee_joint.STL" />
       </geometry>
     </collision>
   </link>
@@ -636,7 +636,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_ankle_f_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/right_ankle_f_joint.STL" />
       </geometry>
       <material
         name="">
@@ -650,7 +650,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_ankle_f_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/right_ankle_f_joint.STL" />
       </geometry>
     </collision>
   </link>
@@ -689,7 +689,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_ankle_r_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/right_ankle_r_joint.STL" />
       </geometry>
       <material
         name="">
@@ -703,7 +703,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="/home/ryu/humanoid_leg_test1/URDF12DOF/meshes/right_ankle_r_joint.STL" />
+          filename="/home/ryu/humanoid_leg_test1/urdf/URDF12DOF/meshes/right_ankle_r_joint.STL" />
       </geometry>
     </collision>
   </link>

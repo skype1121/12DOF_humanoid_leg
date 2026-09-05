@@ -1,0 +1,18 @@
+{
+  "name": "stand_v13",
+  "run": "2026-08-10_04-05-26",
+  "checkpoint": "model_95300.pt",
+  "checkpoint_md5": "504e9650fcd580cd0a5353c2ef7d45e3",
+  "task": "Biped12-Velocity-Stage4V2-Stand-V13-v0",
+  "usd": "rl_walking/assets/usd/biped12.usd",
+  "warm_start": "",
+  "summary": "10.49kg 자산 불확실성 합집합 세대 — v14 웜스타트 원본",
+  "legacy": true,
+  "files": {
+    "policy.pt": "14142f1f277dacfa1f61259acea1766c",
+    "policy.onnx": "db7fa736af61be5d9b5948f2e6104148",
+    "env.yaml": "9abed1053aeca0397e2258c838b3763b",
+    "agent.yaml": "0172ee60b8aae059aa649e01732af7f7"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-08-10_04-05-26"
+}

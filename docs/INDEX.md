@@ -1,0 +1,22 @@
+# docs/ INDEX (2026-09-05)
+
+| 문서 | 내용 | 상태 |
+|---|---|---|
+| `RL보행_이식가이드.md` | 시뮬→실물 이식 절차(URDF 교체·USD 변환·리밋 주입·브리지) | 참고 — URDF 소스 경로는 `urdf/` 로 이동됨 |
+| `RL보행_작업로그.md` | 세대별 작업 로그 | 8월까지. 9월 세대(v14~v17)는 커밋 메시지·`log_picture/` 가 기록 |
+| `RL보행_최종보고서.md` | 보행 정책 보고서 | 참고 |
+| `보행정책_개선보고_20260726.md` | 7/26 개선 보고 | 참고 |
+| `12dof_real_control_current.md` | 실물 12축 제어 스택 현황 | 참고 |
+| `stage8_12axis_real_control_quickstart.md` | stage8 실물 제어 퀵스타트 | 유효 |
+| `main_pc_initial_setup.md` | 메인 PC 초기 설정 | 유효 |
+| `march_v3_실행카드.md` | march_v3(v5b판) 실물 실행 카드 | 참고 |
+| `stand_v7_6차_무개입_실행카드.md` | stand_v7 6차 무개입 실기 카드 | 참고 — 다음 실기는 v17/v15 (아래) |
+| `stand_v8_실행카드.md` | stand_v8 카드 | 참고 |
+| `0802_march_v3_실물데뷔_사고보고서.md` | 8/2 실물 데뷔 사고 보고 | 참고 |
+
+## 현재(2026-09-05) 실물 실기 진입 상태 요약
+- 자산: `urdf/final3_urdf`(17.63kg 저울 정합) → `rl_walking/assets/usd_final3`(+플러시 `usd_final3f`)
+- 데뷔 후보: `stand_v17`(1순위) / `stand_v15`(대조) / `stand_v16` — 브리지 `CHECKPOINTS` 등록, 젯슨 미복사
+- 실기 전 필수: 젯슨 발력 판정 체중 117.7 → 172.9 N, 블랙박스 모터 전류 기록 추가, 패드 압축량(1mm 기준) 확인
+- 판정 도구: `eval_ladder.py`(0~4단계), `eval_drift_dr.py --nominal`(결정론 명목 + 물리 실현성 지표), V6 고정환경 교차평가
+- 사고 교훈: 체인 부모 kill 금지(자식 판정 죽음), 전역 변수 섀도잉(`_rl`) — `log_picture/0904_무효_버그창/README.md`

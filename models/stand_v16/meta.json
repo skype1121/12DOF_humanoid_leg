@@ -1,0 +1,18 @@
+{
+  "name": "stand_v16",
+  "run": "2026-09-04_20-05-14",
+  "checkpoint": "model_120998.pt",
+  "checkpoint_md5": "37e8162753fd8931868719e91c872d18",
+  "task": "Biped12-Velocity-Stage4V2-Stand-V16-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "stand_v15 model_114999",
+  "summary": "V6고정 26.6/26.6/15.6%, 플러시 1.6% · 토크한계·마찰·발접촉지연 학습 · 발요차 7°",
+  "legacy": false,
+  "files": {
+    "policy.pt": "0d7e4febef03dcff56144970f1862baf",
+    "policy.onnx": "fd12c22014cffb1be89578bb0ad324ea",
+    "env.yaml": "21d31b50d8456602fded67ebe9e5b89d",
+    "agent.yaml": "8c704ffbde80fec5aa2c9675022a995d"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-04_20-05-14"
+}

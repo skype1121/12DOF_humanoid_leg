@@ -21,8 +21,8 @@ import os
 import xml.etree.ElementTree as ET
 
 REPO = "/home/ryu/humanoid_leg_test1"
-SRC = os.path.join(REPO, "final1_urdf", "urdf", "final1_urdf.urdf")
-OUT = os.path.join(REPO, "final1_urdf", "urdf", "final1_urdf_fixed.urdf")
+SRC = os.path.join(REPO, "urdf", "final1_urdf", "urdf", "final1_urdf.urdf")
+OUT = os.path.join(REPO, "urdf", "final1_urdf", "urdf", "final1_urdf_fixed.urdf")
 
 O_OLD = (0.01985, -0.28232, -0.02035)   # 붕괴 상태의 hip_a→hip_r
 O1 = (0.0, -0.12405, -0.02)             # 수복: hip_a→hip_r (구 자산과 동일)

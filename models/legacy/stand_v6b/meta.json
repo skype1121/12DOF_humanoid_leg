@@ -1,0 +1,18 @@
+{
+  "name": "stand_v6b",
+  "run": "2026-08-04_11-31-27",
+  "checkpoint": "model_59899.pt",
+  "checkpoint_md5": "49139a6de44a7ebd3338b3882df2da11",
+  "task": "Biped12-Velocity-Stage4V2-Stand-V6-v0",
+  "usd": "rl_walking/assets/usd/biped12.usd",
+  "warm_start": "",
+  "summary": "10.49kg 자산 세대(정합 낮음) — 5차 실기 정책, 17.6kg 에서 65.6/85.9%",
+  "legacy": true,
+  "files": {
+    "policy.pt": "a14a880173a4f884090bcc2041dca650",
+    "policy.onnx": "f5c7c66c0bd4120ccc77ccb70e9bf074",
+    "env.yaml": "8a109b5aee7bfb55e2891db2b20b7a0d",
+    "agent.yaml": "5d0c18403d6b918c55bff462ab73fc30"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-08-04_11-31-27"
+}

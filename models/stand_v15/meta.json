@@ -1,0 +1,18 @@
+{
+  "name": "stand_v15",
+  "run": "2026-09-04_16-43-02",
+  "checkpoint": "model_114999.pt",
+  "checkpoint_md5": "393ed52999d5e23ef1f6ed99e6bb0c49",
+  "task": "Biped12-Velocity-Stage4V2-Stand-V15-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "stand_v14 model_107000",
+  "summary": "V6고정 18.8/17.2/10.9% (com0 최고) · 명목 0/64 · hip_r 포화 0% · 발요차 25°",
+  "legacy": false,
+  "files": {
+    "policy.pt": "6faa7cc4fb23ac9b5a28f59eb77ec91b",
+    "policy.onnx": "4a6f0d7582e6ce22a8e32e5f97b3a5e5",
+    "env.yaml": "646460d824d16b7354080d6bf1b88e0d",
+    "agent.yaml": "07eb77bed37f9661a5780eca771ba7ab"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-04_16-43-02"
+}

@@ -1,0 +1,18 @@
+{
+  "name": "stand_v14",
+  "run": "2026-09-04_02-06-07",
+  "checkpoint": "model_107000.pt",
+  "checkpoint_md5": "173cc68c996abc8906e0ac733b217a4c",
+  "task": "Biped12-Velocity-Stage4V2-Stand-V14-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "stand_v13 model_95300",
+  "summary": "V6고정 40.6/29.7/21.9% · hip_r 포화 95%(오리발 60°) — 실질량 첫 세대",
+  "legacy": false,
+  "files": {
+    "policy.pt": "eed4c3fdfb4ad333158ef7a8406a95c7",
+    "policy.onnx": "3d305d82e52c386eb53941ea94c71b19",
+    "env.yaml": "af60c5fd2c5a803e0c21119437f92977",
+    "agent.yaml": "150e97db0732ed49e672597540edd4cf"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-04_02-06-07"
+}

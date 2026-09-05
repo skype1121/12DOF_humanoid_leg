@@ -24,7 +24,7 @@ import os
 import xml.etree.ElementTree as ET
 
 REPO = "/home/ryu/humanoid_leg_test1"
-DEFAULT_SRC = os.path.join(REPO, "12URDF0725", "urdf", "12URDF.urdf")
+DEFAULT_SRC = os.path.join(REPO, "urdf", "12URDF0725", "urdf", "12URDF.urdf")
 OUT = os.path.join(REPO, "rl_walking", "assets", "biped12_base.urdf")
 
 # 검증된 부호 규약 (joint_direction 실측 + log_picture/05 무중력 프로브 합격 자산 기준)

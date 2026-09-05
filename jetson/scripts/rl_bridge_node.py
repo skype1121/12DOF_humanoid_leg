@@ -81,7 +81,7 @@ from rl_walking.deploy.policy_runner_stage4 import (  # noqa: E402
     CONTACT_FORCE_THRESHOLD_N, HeadingHold, PolicyRunnerStage4,
     yaw_from_quat_wxyz)
 from rl_walking.deploy.policy_runner import (  # noqa: E402
-    DEFAULT_POSE_RAD, JOINT_ORDER)
+    DEFAULT_POSE_RAD, JOINT_ORDER, SLEW_RAD)
 
 RATE_HZ = 50.0
 TICK_SEC = 1.0 / RATE_HZ
@@ -442,17 +442,33 @@ def _selftest_policy_one(name):
     gyro = (0.0, 0.0, 0.0)
     quat = (1.0, 0.0, 0.0, 0.0)
     qvel = np.zeros(12)
+    # 러너 계약(policy_runner_stage4.step 주석, 0802 회귀 수정): 브리지는 타깃을
+    # 리밋으로 클램프하지 않는다 — 학습 env 와 1:1. 위치 울타리는 Stage8 노드의
+    # 절대각 검사가 '방출 명령' 기준으로 담당. 따라서 여기서 검증할 것은
+    # ① 유한성 ② 슬루 상한(4°/틱) 준수 ③ 소프트 리밋 초과량은 정보로만 보고
+    # (목 센서 루프에는 물리가 없어 리밋 밖 표류가 정상 — 리밋 준수 단정은 오검사였음).
+    prev = q.copy()
+    slew_max = 0.0
+    exc_max, exc_j = 0.0, -1
     t0 = time.perf_counter()
     for i in range(500):
         out = core.tick(gyro, quat, q, qvel, [1.0, 1.0])
         assert np.isfinite(out).all(), f"{name} 틱 {i}: 비유한 목표"
+        d = np.abs(out - prev)
+        slew_max = max(slew_max, float(d.max()))
+        assert d.max() <= SLEW_RAD * 1.001 + 1e-6, (
+            f"{name} 틱 {i}: 슬루 초과 {math.degrees(d.max()):.2f}° > 4°/틱 (관절 {int(d.argmax())})")
         if core.runner._limits_lo is not None:
-            assert (out >= core.runner._limits_lo - 1e-9).all()
-            assert (out <= core.runner._limits_hi + 1e-9).all()
+            e = np.maximum(core.runner._limits_lo - out, out - core.runner._limits_hi)
+            if float(e.max()) > exc_max:
+                exc_max, exc_j = float(e.max()), int(e.argmax())
+        prev = out
         q = out  # 목표 추종 가정 (목)
     dt = (time.perf_counter() - t0) / 500
     assert dt < TICK_SEC, f"{name} 틱 연산 {dt*1000:.2f}ms ≥ 20ms — 젯슨에서 재확인 필요"
-    return dt, core.runner.backend
+    info = (f"소프트리밋 초과 {math.degrees(exc_max):+.1f}°(관절 {exc_j}, Stage8 클램프 영역)"
+            if exc_max > 0 else "소프트리밋 내")
+    return dt, core.runner.backend, f"슬루 최대 {math.degrees(slew_max):.2f}°/틱, {info}"
 
 
 def _selftest_policy():
@@ -467,9 +483,9 @@ def _selftest_policy():
     assert not missing_freq, f"CKPT_GAIT_FREQ 누락: {missing_freq}"
     res = []
     for n in names:
-        dt, backend = _selftest_policy_one(n)
-        res.append(f"{n} {dt*1000:.2f}ms")
-    return f"500틱 유한·리밋 준수 ×{len(names)}: " + ", ".join(res) + f" (50Hz 예산 20ms, 백엔드 {backend})"
+        dt, backend, note = _selftest_policy_one(n)
+        res.append(f"{n} {dt*1000:.2f}ms [{note}]")
+    return f"500틱 유한·슬루 준수 ×{len(names)}: " + "; ".join(res) + f" (50Hz 예산 20ms, 백엔드 {backend})"
 
 
 #: boot_pose_check 검증 저널 (젯슨 경로) — 프레임 게이트의 근거 자료

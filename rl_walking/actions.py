@@ -106,11 +106,6 @@ class SlewJointPositionAction(JointPositionAction):
                 self._bl_out[ids] = cur
             self._needs_init[ids] = False
         target = self._processed_actions
-        # EMA 저역필터 (실물 브리지 순서: 정책 → LPF → 지연 → 노드 슬루)
-        if self._use_lpf:
-            b = self._beta.view(-1, 1)
-            self._lpf_state = b * target + (1.0 - b) * self._lpf_state
-            target = self._lpf_state
         # env별 액션 지연: 버퍼 밀고 d틱 前 목표를 꺼냄
         if self._max_delay > 0:
             self._buf = torch.roll(self._buf, 1, dims=0)
@@ -123,6 +118,12 @@ class SlewJointPositionAction(JointPositionAction):
             delta, -self._max_delta, self._max_delta
         )
         self._prev_target = self._processed_actions.clone()
+        # EMA 저역필터 — 0905 감사 확정: 실물 브리지 순서는 러너 슬루(4°/틱) → LPF β0.27 → 노드 슬루.
+        # v15~v17 은 LPF→슬루 순서로 학습됐고(포화 구간에서 불일치), v18 부터 슬루→LPF 로 정합.
+        if self._use_lpf:
+            b = self._beta.view(-1, 1)
+            self._lpf_state = b * self._processed_actions + (1.0 - b) * self._lpf_state
+            self._processed_actions = self._lpf_state.clone()
         # 백래시 히스테리시스: 출력은 명령 주위 ±b 데드밴드 안에서는 움직이지 않는다
         if self._use_bl:
             cmd = self._processed_actions

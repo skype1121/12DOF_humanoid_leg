@@ -31,6 +31,8 @@ parser.add_argument("--num_envs", type=int, default=128)
 parser.add_argument("--out_tag", type=str, default="")
 parser.add_argument("--com_fix", type=float, default=None,
                     help="base_com x 를 이 값으로 고정 [m] — CoM 인과 검증용")
+parser.add_argument("--com_z", type=float, default=0.0,
+                    help="--com_fix 와 함께 쓰는 base_com z 오프셋 [m] (구 하드코딩 0.08 → 기본 0)")
 parser.add_argument("--mass_kg", type=float, default=None,
                     help="실물 총질량 [kg] 고정 — payload 를 역산해 넣는다 (URDF base 10.491)")
 parser.add_argument("--deploy", type=str, default=None,
@@ -192,13 +194,26 @@ if args_cli.nominal:
     env_cfg.scene.terrain.terrain_generator = None
     if getattr(env_cfg.curriculum, "terrain_levels", None) is not None:
         env_cfg.curriculum.terrain_levels = None
+    # 0905 감사 확정: 아래 4개가 빠져 '명목'이 명목이 아니었다
+    #  - link_mass_calib(전 링크 ×1.09~1.19, 10.49kg 시절 12kg 정합용) → 17.62kg 자산에 이중 적용
+    #  - 관측 노이즈(enable_corruption), qvel 드롭아웃, 지면 restitution
+    if getattr(env_cfg.events, "link_mass_calib", None):
+        env_cfg.events.link_mass_calib.params["mass_distribution_params"] = (1.0, 1.0)
+    env_cfg.observations.policy.enable_corruption = False
+    _jv = getattr(env_cfg.observations.policy, "joint_vel", None)
+    if _jv is not None and "zero_prob" in (_jv.params or {}):
+        _jv.params["zero_prob"] = 0.0
+    if getattr(env_cfg.events, "physics_material", None):
+        env_cfg.events.physics_material.params["restitution_range"] = (0.0, 0.0)
 if args_cli.com_fix is not None:
     # CoM 인과 검증: 정책은 그대로 두고 **몸만** 실측값으로 바꾼다.
     # 지금까지 CoM 은 전부 정책 없는 시험에서만 다뤘다 — 정책이 루프에 있는
     # 조건에서 처음으로 검증하는 실험이다.
+    # z 는 0905 감사 전까지 (0.08,0.08) 고정이었다 — 10.49kg+payload 시절 값. 실질량
+    # 자산에선 근거 없는 +8cm 상향 → 기본 0, --com_z 로 명시.
     env_cfg.events.base_com.params["com_range"] = {
         "x": (args_cli.com_fix, args_cli.com_fix),
-        "y": (0.0, 0.0), "z": (0.08, 0.08)}
+        "y": (0.0, 0.0), "z": (args_cli.com_z, args_cli.com_z)}
 if args_cli.mass_kg is not None:
     # 총질량만 바꾸고 CoM 은 고정 — 질량이 정말 상쇄되는지 보는 대조.
     _pl = args_cli.mass_kg - 10.491        # base URDF 실측 전개값
@@ -450,7 +465,7 @@ for i in range(args_cli.steps):
         _tau_rms2 += (_tau ** 2).sum(0)
         _alive_n += int(_a.sum())
         _pgv = robot.data.projected_gravity_b
-        _roll_log.append(torch.rad2deg(torch.atan2(_pgv[:, 1], -_pgv[:, 2])).cpu().numpy())
+        _roll_log.append(torch.rad2deg(torch.atan2(_pgv[:, 1], -_pgv[:, 2])).cpu().numpy())  # (N,) 매 스텝(alive 있을 때)
         _f = _cs.data.net_forces_w[:, [_fl, _fr], 2].clamp(min=0.0)     # (N,2) 수직력
         _both = _a & (_f[:, 0] > 5.0) & (_f[:, 1] > 5.0)
         if _both.any():
@@ -489,7 +504,13 @@ if ACT is not None and ACT.shape[0] > 8:
     # E_smth = Σ‖a(t+2) − 2a(t+1) + a(t)‖²  — HoST 지표. 액션은 무차원이라
     # 실물(deg²)과 절대비교는 안 되고, **세대 간 상대비교**로 쓴다.
     d2 = np.diff(ACT, n=2, axis=0)
-    smth = float(np.mean(np.sum(d2 ** 2, axis=2)))
+    # 0905 감사: 자동 리셋된 죽은 env 의 액션이 섞여 세대 간 비교 오염 → env 별 생존 구간만 평균
+    _dn2 = death.cpu().numpy() if hasattr(death, "cpu") else death
+    _per = []
+    for _e in range(ACT.shape[1]):
+        _n = int(min(d2.shape[0], max(_dn2[_e] - 2, 1)))
+        _per.append(float(np.mean(np.sum(d2[:_n, _e, :] ** 2, axis=1))))
+    smth = float(np.mean(_per))
     # 우세 주파수 — env·관절 평균 스펙트럼에서 (2차 추세 제거)
     fs_ = 50.0
     x = ACT - ACT.mean(axis=0, keepdims=True)
@@ -548,7 +569,9 @@ _lat = np.degrees(np.arctan2(pg[:, :, 1], -pg[:, :, 2]))
 _fell = death < args_cli.steps
 _dir = {"뒤": 0, "앞": 0, "왼": 0, "오른": 0}
 for e in np.where(_fell)[0]:
-    k = max(0, min(int(death[e]), pg.shape[0] - 1))
+    # 0905 감사 확정: env.step 이 종료 판정 직후 같은 스텝에서 리셋하므로 death 인덱스의
+    # 자세는 리셋 틸트(±4°)다. 넘어진 자세는 그 직전 프레임(임계 ~40° 직전).
+    k = max(0, min(int(death[e]) - 1, pg.shape[0] - 1))
     f_, l_ = fwd[k, e], _lat[k, e]
     if abs(f_) >= abs(l_):
         _dir["앞" if f_ > 0 else "뒤"] += 1
@@ -616,9 +639,16 @@ try:
     P(f"    토크 포화 최대 {_jn[_worst_t]} {_ts[_worst_t]:.2f}% · 속도 포화 최대 {_jn[_worst_q]} {_qs[_worst_q]:.2f}% "
       f"· 피크/한계 최대 {np.max(_tp / _lim0) * 100:.0f}%")
     if _roll_log:
-        _r = np.stack(_roll_log)
-        _rr_ = np.sqrt(np.mean((_r - _r.mean(0, keepdims=True)) ** 2, axis=0))
-        P(f"    롤 진동 RMS(추세 제거) — 중앙 {np.median(_rr_):.2f}° p95 {np.percentile(_rr_, 95):.2f}°")
+        # 0905 감사: 낙상·리셋 env 까지 섞여 p95 오염 → env 별 생존 구간(death 이전)만
+        _r = np.stack(_roll_log)                                   # (S', N)
+        _dn = death.cpu().numpy() if hasattr(death, "cpu") else death
+        _rr_ = []
+        for _e in range(_r.shape[1]):
+            _n = int(min(_r.shape[0], max(_dn[_e], 2)))
+            if _n >= 10:
+                _y = _r[:_n, _e]; _rr_.append(float(np.std(_y - _y.mean())))
+        if _rr_:
+            P(f"    롤 진동 RMS(추세 제거, 생존 구간) — 중앙 {np.median(_rr_):.2f}° p95 {np.percentile(_rr_, 95):.2f}°")
     if _asym_n:
         P(f"    좌우 접촉력 비대칭 |FL−FR|/(FL+FR) 평균 {100 * _asym_sum / _asym_n:.1f}%")
     if _land_dx:

@@ -64,15 +64,22 @@ def feet_contact_binary(
     # **관측 차원을 바꾸지 않고**(245 계약 유지) 값의 시점만 늦춘다 —
     # history_length 를 늘리면 차원이 바뀌어 브리지 조립·셀프테스트·기존
     # 정책 전부와 호환이 깨진다(0810: 그렇게 짰다가 발견해 되돌림).
+    # 0905 감사 확정: 슬롯 delay_steps+1 로 '읽고 쓰기' 하면 지연이 delay_steps+1 틱(off-by-one)
+    # 이었고, 리셋 시 이전 에피소드(낙상 직전) 접촉값이 새 에피소드 첫 틱들로 새어 나왔다.
+    # → 슬롯 = delay_steps (정확히 delay_steps 틱 전), 리셋 env 는 현재값으로 채움.
     buf = getattr(env, "_contact_delay_buf", None)
-    if buf is None or buf.shape[0] != delay_steps + 1 or buf.shape[1] != now.shape[0]:
-        buf = now.unsqueeze(0).repeat(delay_steps + 1, 1, 1).clone()
+    if buf is None or buf.shape[0] != delay_steps or buf.shape[1] != now.shape[0]:
+        buf = now.unsqueeze(0).repeat(delay_steps, 1, 1).clone()
         env._contact_delay_buf = buf
         env._contact_delay_idx = 0
+    rid = getattr(env, "_contact_reset_ids", None)
+    if rid is not None and len(rid) > 0:
+        buf[:, rid] = now[rid].unsqueeze(0)
+        env._contact_reset_ids = None
     i = env._contact_delay_idx
-    out = buf[i].clone()          # 가장 오래된 = delay_steps 틱 전
+    out = buf[i].clone()          # delay_steps 틱 전 값
     buf[i] = now
-    env._contact_delay_idx = (i + 1) % (delay_steps + 1)
+    env._contact_delay_idx = (i + 1) % delay_steps
     return out
 
 
@@ -378,6 +385,7 @@ def resample_calib_bias(
     ankle_bias_rad: tuple | None = None,       # v15: 발목 별도 대역 (0809 재앵커 시프트 4~5.5° 실측)
     knee_bias_rad: tuple | None = None,        # v15: 무릎 별도 대역 (좌우 다리 길이차 ≈ 무릎각 편향)
     imu_lag_steps: tuple | None = None,        # v17: IMU 자세 지연 [틱] env별 정수 (0~3)
+    imu_roll_rad: tuple | None = None,         # v18: IMU 롤 장착 편향 (0905 감사: 피치만 있었음, 실측 롤 +2.6~3.1°)
 ):
     """에피소드마다 관측 상수 편향을 새로 뽑는다 (mode="reset" 이벤트).
 
@@ -406,6 +414,14 @@ def resample_calib_bias(
             env._imu_lag = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
         env._imu_lag[ids] = torch.randint(int(imu_lag_steps[0]), int(imu_lag_steps[1]) + 1,
                                           (len(ids),), device=env.device)
+    if imu_roll_rad is not None:
+        if not hasattr(env, "_calib_imu_roll"):
+            env._calib_imu_roll = torch.zeros(env.num_envs, device=env.device)
+        env._calib_imu_roll[ids] = torch.empty(len(ids), device=env.device).uniform_(*imu_roll_rad)
+    # 0905 감사 확정: 지연 링버퍼(중력·발접촉)가 리셋에 초기화되지 않아 새 에피소드 첫 틱들에
+    # 낙상 직전 값이 새어 나왔다 → 리셋 env id 를 기록해 다음 관측 계산에서 현재값으로 채움
+    env._grav_reset_ids = ids
+    env._contact_reset_ids = ids
 
 
 def joint_pos_rel_biased(
@@ -435,6 +451,12 @@ def projected_gravity_biased(env, asset_cfg: SceneEntityCfg = SceneEntityCfg("ro
     gx, gz = g[:, 0], g[:, 2]
     out[:, 0] = gx * c - gz * s
     out[:, 2] = gx * s + gz * c
+    rl = getattr(env, "_calib_imu_roll", None)          # v18: 롤 장착 편향 (y-z 회전)
+    if rl is not None:
+        cr, sr = torch.cos(rl), torch.sin(rl)
+        gy, gz2 = out[:, 1].clone(), out[:, 2].clone()
+        out[:, 1] = gy * cr - gz2 * sr
+        out[:, 2] = gy * sr + gz2 * cr
     return out
 
 
@@ -574,6 +596,11 @@ def resample_effort_scale(
     # PhysX 텐서 API 는 전체 (N,J) 버퍼 + 인덱스를 요구 — 부분 텐서를 직접 넘기면
     # "Failed to set DOF max forces in backend" (0904 v16 첫 런치 크래시). 공식 메서드 사용.
     asset.write_joint_effort_limit_to_sim(new, env_ids=ids)
+    # 0905 감사: PhysX 한계만 바꾸면 액추에이터 모델이 applied_torque 를 명목 한계로 클립해
+    # 토크 포화 지표 분자/분모가 어긋난다 → 액추에이터 effort_limit 도 같이 갱신
+    for act in asset.actuators.values():
+        if hasattr(act, "effort_limit") and torch.is_tensor(act.effort_limit) and act.effort_limit.dim() == 2:
+            act.effort_limit[ids] = new[:, act.joint_indices]
 
 
 def projected_gravity_lagged(env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
@@ -588,6 +615,10 @@ def projected_gravity_lagged(env, asset_cfg: SceneEntityCfg = SceneEntityCfg("ro
         return g
     if not hasattr(env, "_grav_buf"):
         env._grav_buf = g.unsqueeze(0).repeat(4, 1, 1).clone()
+    rid = getattr(env, "_grav_reset_ids", None)
+    if rid is not None and len(rid) > 0:                 # 0905: 리셋 env 는 현재 중력으로 채움
+        env._grav_buf[:, rid] = g[rid].unsqueeze(0)
+        env._grav_reset_ids = None
     env._grav_buf = torch.roll(env._grav_buf, 1, dims=0)
     env._grav_buf[0] = g
     idx = lag.clamp(0, 3).view(1, -1, 1).expand(1, g.shape[0], g.shape[1])

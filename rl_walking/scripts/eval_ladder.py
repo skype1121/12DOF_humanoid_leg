@@ -249,6 +249,28 @@ def run(stage, dr_on, policy=None):
         for _ev in ("stance_asym", "effort_scale"):
             if getattr(cfg.events, _ev, None) is not None:
                 setattr(cfg.events, _ev, None)
+    # 0905 감사 확정(critical): 0·1단계와 DR OFF 에서 v15+ 축(액션텀 LPF·백래시, 발목/무릎 영점,
+    # IMU 지연)과 link_mass_calib(전 링크 ×1.09~1.19)·관측 노이즈·qvel 드롭아웃·restitution 이
+    # 살아 있었다 — v17 0단계 36/64 는 그 인공물. 강체홀드는 정책·태스크 독립이어야 한다.
+    if not dr_on or stage <= 1:
+        if hasattr(cfg.actions.joint_pos, "lpf_beta_range"):
+            cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)
+        if hasattr(cfg.actions.joint_pos, "backlash_rad_range"):
+            cfg.actions.joint_pos.backlash_rad_range = (0.0, 0.0)
+        if getattr(cfg.events, "calib_bias", None):
+            for _k in ("ankle_bias_rad", "knee_bias_rad"):
+                if cfg.events.calib_bias.params.get(_k) is not None:
+                    cfg.events.calib_bias.params[_k] = (0.0, 0.0)
+            if "imu_lag_steps" in cfg.events.calib_bias.params:
+                cfg.events.calib_bias.params["imu_lag_steps"] = (0, 0)
+        if getattr(cfg.events, "link_mass_calib", None):
+            cfg.events.link_mass_calib.params["mass_distribution_params"] = (1.0, 1.0)
+        cfg.observations.policy.enable_corruption = False
+        _jv = getattr(cfg.observations.policy, "joint_vel", None)
+        if _jv is not None and "zero_prob" in (_jv.params or {}):
+            _jv.params["zero_prob"] = 0.0
+        if getattr(cfg.events, "physics_material", None):
+            cfg.events.physics_material.params["restitution_range"] = (0.0, 0.0)
     if args_cli.ground_k is not None:
         # 패드 컴플라이언스 (eval_drift_dr 와 동일 정의)
         _pm = cfg.scene.terrain.physics_material

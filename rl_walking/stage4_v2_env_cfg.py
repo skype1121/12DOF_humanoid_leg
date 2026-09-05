@@ -1115,6 +1115,11 @@ class Biped12Stage4V2StandV14EnvCfg(Biped12Stage4V2StandV13EnvCfg):
         self.scene.robot.spawn.usd_path = (
             "/home/ryu/humanoid_leg_test1/rl_walking/assets/usd_final3/biped12.usd")
         self.events.add_base_mass.params["mass_distribution_params"] = (-1.0, 1.5)
+        # 0905 감사 확정(critical): Biped12Stage4DREnvCfg 의 link_mass_calib(전 링크 ×1.09~1.19,
+        # 10.49kg 시절 '실물 12kg 정합'용)가 상속돼 실질량 자산이 19.2~21.0kg 으로 학습·평가됐다.
+        # v14~v17 은 이 상태로 학습됨(v18 부터 정정). URDF 가 실측이므로 스케일 1.0 고정.
+        if getattr(self.events, "link_mass_calib", None):
+            self.events.link_mass_calib.params["mass_distribution_params"] = (1.0, 1.0)
 
 
 class Biped12Stage4V2StandV14sEnvCfg(Biped12Stage4V2StandV14EnvCfg):
@@ -1156,8 +1161,17 @@ class Biped12Stage4V2StandV15EnvCfg(Biped12Stage4V2StandV14sEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.actions.joint_pos.lpf_beta_range = (0.2, 1.0)
-        self.events.reset_base.params["pose_range"]["roll"] = (-0.052, 0.052)
-        self.events.reset_base.params["pose_range"]["pitch"] = (-0.052, 0.052)
+        # 0905 감사: ±3° 는 부모(DRv4 ±4°)보다 좁힌 값이었다 → ±4° 유지. 초기 '속도'는 실물
+        # 착지(줄에 매달려 정지)에 없으므로 0 — docstring 과 하네스 실제를 일치시킴 (v18~).
+        self.events.reset_base.params["pose_range"]["roll"] = (-0.07, 0.07)
+        self.events.reset_base.params["pose_range"]["pitch"] = (-0.07, 0.07)
+        _vr = self.events.reset_base.params.get("velocity_range")
+        if isinstance(_vr, dict):
+            for _k in list(_vr):
+                _vr[_k] = (0.0, 0.0)
+        if getattr(self.events, "reset_robot_joints", None):
+            self.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
+        self.events.calib_bias.params["imu_roll_rad"] = (-0.052, 0.052)   # 롤 편향 ±3° (실측 +2.6~3.1°)
         # CoM x 대역 하한 −0.10 → −0.05 (0904 v14 판정): 실질량 자산의 명목 CoM 은
         # 발목축 위(+0.2mm, 시뮬 실측)이고 뒤꿈치 지지 한계가 −74mm 라, −0.10 은
         # 물리적으로 설 수 없는 에피소드(강체홀드 DR ON 56/64·배포 DR ON 89% 낙상)

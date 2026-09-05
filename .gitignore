@@ -21,3 +21,4 @@ outputs/
 
 # 세션 임시 작업물 (64M txverify 등) — 저장소에 올리지 않는다
 .scratch/
+deploy/*.tar.gz

@@ -432,10 +432,9 @@ def _selftest_gains():
     return f"전 관절 kp{POLICY_KP:g}/kd{POLICY_KD:g} 일치"
 
 
-def _selftest_policy():
-    """(5) 목 센서(정지 직립) 500틱 — 유한성·리밋·주기 (관절 프레임 그대로)."""
+def _selftest_policy_one(name):
     import numpy as np
-    core = BridgeCore("walk")
+    core = BridgeCore(name)
     core.cmd = (0.0, 0.0, 0.0)
     core.reset()
     q = np.array(core.runner._limits_lo) * 0.0 if core.runner._limits_lo is not None \
@@ -446,15 +445,31 @@ def _selftest_policy():
     t0 = time.perf_counter()
     for i in range(500):
         out = core.tick(gyro, quat, q, qvel, [1.0, 1.0])
-        assert np.isfinite(out).all(), f"틱 {i}: 비유한 목표"
+        assert np.isfinite(out).all(), f"{name} 틱 {i}: 비유한 목표"
         if core.runner._limits_lo is not None:
             assert (out >= core.runner._limits_lo - 1e-9).all()
             assert (out <= core.runner._limits_hi + 1e-9).all()
         q = out  # 목표 추종 가정 (목)
     dt = (time.perf_counter() - t0) / 500
-    assert dt < TICK_SEC, f"틱 연산 {dt*1000:.2f}ms ≥ 20ms — 젯슨에서 재확인 필요"
-    return (f"500틱 유한·리밋 준수, 틱 {dt*1000:.2f}ms "
-            f"(50Hz 예산 20ms, 백엔드 {core.runner.backend})")
+    assert dt < TICK_SEC, f"{name} 틱 연산 {dt*1000:.2f}ms ≥ 20ms — 젯슨에서 재확인 필요"
+    return dt, core.runner.backend
+
+
+def _selftest_policy():
+    """(5) 목 센서(정지 직립) 500틱 — 유한성·리밋·주기 (관절 프레임 그대로).
+
+    0905 감사(low): 'walk' 만 돌려 신규 stand_v14~ 등록(경로·로드·gait_freq·stand LPF 분기)이
+    자가검증에서 한 번도 실행되지 않았다 → walk + 레지스트리의 stand_* 전부 순회, stand_* 인데
+    CKPT_GAIT_FREQ 에 없으면 FAIL.
+    """
+    names = ["walk"] + [k for k in CHECKPOINTS if k.startswith("stand_")]
+    missing_freq = [k for k in names if k.startswith("stand_") and k not in CKPT_GAIT_FREQ]
+    assert not missing_freq, f"CKPT_GAIT_FREQ 누락: {missing_freq}"
+    res = []
+    for n in names:
+        dt, backend = _selftest_policy_one(n)
+        res.append(f"{n} {dt*1000:.2f}ms")
+    return f"500틱 유한·리밋 준수 ×{len(names)}: " + ", ".join(res) + f" (50Hz 예산 20ms, 백엔드 {backend})"
 
 
 #: boot_pose_check 검증 저널 (젯슨 경로) — 프레임 게이트의 근거 자료

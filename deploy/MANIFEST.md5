@@ -1,10 +1,13 @@
 835942d385988a859941c3edfd474e25  ./config/joint_limits_12dof.json
-83e6a1ad7d71f450cb4c705edf67c307  ./docs/stand_v18_7차_실행카드.md
+f92a9fcc1838a341a1cd4ff6ca524ca2  ./docs/stand_v18_7차_실행카드.md
 0e670b805fd077b902e8d6e066c84833  ./jetson/calib_data/sim_default_stand_targets_20260727.json
-002e348969aa308415ad347a1aab6461  ./jetson/scripts/analyze_fall.py
-bd1c93ab55c1f34233e0115ee6e0416a  ./jetson/scripts/operator_console.py
+945c4fa7883f995c989129ceac6bb134  ./jetson/scripts/analyze_fall.py
+071a0d57c95885231177525e5885dcc0  ./jetson/scripts/foot_force_adapter_node.py
+00429624b39249b07449ab97ffed1a40  ./jetson/scripts/operator_console.py
 0dd26fc3c7584343ade75e4801a4cd95  ./jetson/scripts/posture_probe.py
-95023aa6cfd33060d27650f22d9e52be  ./jetson/scripts/rl_bridge_node.py
+931bd59d930071755e973c0d936bed1e  ./jetson/scripts/release_all.py
+f611d04776782c5b689a456c43c5c1a6  ./jetson/scripts/rl_bridge_node.py
+e83d0872d5136a37657148ed261a11f3  ./jetson/scripts/zero_kinematic_check.py
 4a6f0d7582e6ce22a8e32e5f97b3a5e5  ./logs/rsl_rl/biped12_stage4/2026-09-04_16-43-02/exported/policy.onnx
 6faa7cc4fb23ac9b5a28f59eb77ec91b  ./logs/rsl_rl/biped12_stage4/2026-09-04_16-43-02/exported/policy.pt
 fd12c22014cffb1be89578bb0ad324ea  ./logs/rsl_rl/biped12_stage4/2026-09-04_20-05-14/exported/policy.onnx

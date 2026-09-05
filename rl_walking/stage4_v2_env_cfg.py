@@ -1263,3 +1263,19 @@ class Biped12Stage4V2StandV19EnvCfg(Biped12Stage4V2StandV18EnvCfg):
         super().__post_init__()
         self.actions.joint_pos.min_delay_steps = 3
         self.actions.joint_pos.max_delay_steps = 8
+
+
+class Biped12Stage4V2StandV20EnvCfg(Biped12Stage4V2StandV19EnvCfg):
+    """stand_v20 — v19 + **서보 강성 DR 하한 0.2 → 0.6** (0906 새벽 정착 실험).
+
+    근거: 정책 없이 자세 0 을 PD 홀드(정착 1s)만 해도 DR ON 환경의 62/64 가 뒤로 기운다(피치 평균 −8°, 게이트 ±3° 통과 2/64).
+    축 단독 제거 실험에서 원인은 actuator_gains 강성 DR(0.2~1.1×) 하나 — 착지 기울기·CoM·질량·영점·비대칭·마찰·아마추어·지연·
+    백래시는 무관. 명목(강성 1.0)은 −1.9° 로 안정하고 실물 트림0 자립(−1.7°, 0804)과 일치한다. 즉 강성 0.2~0.5× 몸체는
+    실물이 보인 정적 자세를 재현하지 못하는 DR 표본이다(하한 스윕: 0.5→18/64, 0.6→31/64, 0.8→55/64 통과).
+    0.6 은 '정적 자세를 절반 이상 재현' 하는 경계 — 동적 컴플라이언스(구조 강성 43.5Nm/rad 실측)는 SEA 모델로 옮기는 것이 정도이며
+    이 세대는 그 전까지의 중간 후보. 대조군 = v19(같은 웜스타트·같은 6000it, 강성 0.2~1.1). 판정은 V6 고정환경·h3·h3g 공통 조건으로만.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.actuator_gains.params["stiffness_distribution_params"] = (0.6, 1.1)

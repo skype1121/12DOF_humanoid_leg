@@ -505,7 +505,7 @@ if ACT is not None and ACT.shape[0] > 8:
     # 실물(deg²)과 절대비교는 안 되고, **세대 간 상대비교**로 쓴다.
     d2 = np.diff(ACT, n=2, axis=0)
     # 0905 감사: 자동 리셋된 죽은 env 의 액션이 섞여 세대 간 비교 오염 → env 별 생존 구간만 평균
-    _dn2 = death.cpu().numpy() if hasattr(death, "cpu") else death
+    _dn2 = death_step.detach().cpu().numpy()      # death 는 아래(531행 부근)에서 정의되므로 텐서 직접 사용
     _per = []
     for _e in range(ACT.shape[1]):
         _n = int(min(d2.shape[0], max(_dn2[_e] - 2, 1)))
@@ -641,7 +641,7 @@ try:
     if _roll_log:
         # 0905 감사: 낙상·리셋 env 까지 섞여 p95 오염 → env 별 생존 구간(death 이전)만
         _r = np.stack(_roll_log)                                   # (S', N)
-        _dn = death.cpu().numpy() if hasattr(death, "cpu") else death
+        _dn = death_step.detach().cpu().numpy()
         _rr_ = []
         for _e in range(_r.shape[1]):
             _n = int(min(_r.shape[0], max(_dn[_e], 2)))

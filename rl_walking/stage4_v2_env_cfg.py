@@ -1230,3 +1230,22 @@ class Biped12Stage4V2StandV17EnvCfg(Biped12Stage4V2StandV16EnvCfg):
         self.actions.joint_pos.backlash_rad_range = (0.005, 0.026)
         self.events.calib_bias.params["imu_lag_steps"] = (0, 3)
         self.observations.policy.projected_gravity.func = mdp_stage4.projected_gravity_lagged
+
+
+class Biped12Stage4V2StandV18EnvCfg(Biped12Stage4V2StandV17EnvCfg):
+    """stand_v18 — **0905 적대 감사 확정 결함을 반영한 '정정 세대'** (설계 축은 v17 과 동일).
+
+    새 축 없음. v14~v17 이 잘못된 nominal 위에서 학습됐다는 것이 감사(100 에이전트, 확정 31)로
+    드러나 그 정정본만 다시 학습한다:
+      1. **link_mass_calib 1.0 고정** — 전 링크 ×1.09~1.19 가 상속돼 실질량 자산이 19.2~21.0kg
+         으로 학습됐었다. 저울 17.62kg 그대로.
+      2. 액션텀 순서 지연→슬루→LPF (실물 브리지: 러너 슬루 → LPF 0.27 → 노드 슬루).
+      3. 발접촉 지연 정확히 5틱(off-by-one 수정) + 리셋 초기화, IMU 지연 링버퍼 리셋 초기화.
+      4. IMU 롤 장착 편향 ±3° 추가(실측 +2.6~3.1°; 기존은 피치만).
+      5. 착지 롤/피치 ±4°(부모 대역 유지), 초기 속도 0(실물 착지는 정지).
+      6. effort_scale 이 액추에이터 effort_limit 도 갱신(토크 포화 지표 정합).
+    부모 클래스 코드 자체가 정정됐으므로 이 클래스는 '이름표'다 — v17 웜스타트로 6000it.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()

@@ -48,7 +48,7 @@ FOOT_TOPIC = "/humanoid/foot_force"
 BRIDGE_CMD_TOPIC = "/humanoid/rl_bridge_command"
 BRIDGE_DEBUG_TOPIC = "/humanoid/rl_bridge_debug"
 
-BODY_WEIGHT_N = 117.7        # 실물 12kg — 발력 총합 %의 분모
+BODY_WEIGHT_N = 172.9        # 실물 17.62kg(저울 0904) — 발력 총합 %의 분모. 구 117.7 은 12kg 추정치(4차 "90%" 는 실제 61%)
 STALE_SEC = 1.5              # 이보다 오래된 텔레메트리는 '끊김'으로 표시
 #: can_up.sh 는 sudo가 필요하다. 젯슨 계정 암호(공개본에서 기본값 제거)를 환경변수로
 #: 덮어쓸 수 있게 둔다 — 소스에 상수로 박아두지 않기 위함.
@@ -719,7 +719,7 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <button id=estop>■ 비상정지</button></header>
 <main>
 <section class=full><h2>판정 지표</h2><div class=tiles>
-<div class="tile big"><div class=k>발력 총합 · 체중 117.7N 대비</div><div class=v id=pct>—</div></div>
+<div class="tile big"><div class=k>발력 총합 · 체중 172.9N 대비</div><div class=v id=pct>—</div></div>
 <div class=tile><div class=k>왼발 / 오른발 (N)</div><div class=v id=feet>—</div></div>
 <div class=tile><div class=k>전방 기울임</div><div class=v id=fwd>—</div></div>
 <div class=tile><div class=k>좌우 기울임</div><div class=v id=lat>—</div></div>

@@ -19,7 +19,7 @@ import math
 import os
 import sys
 
-BODY_WEIGHT_N = 117.7      # 실물 12kg × 9.81
+BODY_WEIGHT_N = 172.9      # 실물 17.62kg(저울, 2026-09-04) × 9.81 — 구 117.7(12kg 추정) 폐기
 LOAD_STANDING = 85.0       # 이 % 이상이면 하중을 정책이 받고 있다고 본다
 LOAD_LOST = 50.0           # 이 % 아래로 떨어지면 줄/사람에게 넘어간 것
 LEAN_FALL_DELTA = 15.0     # 시작 자세 대비 이만큼 더 기울면 자립 종료

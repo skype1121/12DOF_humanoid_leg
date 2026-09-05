@@ -83,7 +83,7 @@ ABORT_FWD_DEG = 9.0      #: 발 지지면 앞여유 7.5° + 여유. 넘으면 �
 ABORT_LAT_DEG = 9.0
 ABORT_LOAD_PCT = 55.0    #: 체중 대비. 이 아래면 줄/사람이 받기 시작한 것
 SENSOR_STALE_SEC = 0.6
-BODY_WEIGHT_N = 117.7
+BODY_WEIGHT_N = 172.9   # 실물 17.62kg 저울 실측(0904) × 9.81 — 구 117.7(12kg 추정) 폐기
 
 
 def build_targets(frames, pose_deg, baseline):

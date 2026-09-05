@@ -1,0 +1,18 @@
+{
+  "name": "stand_v18",
+  "run": "2026-09-05_17-57-21",
+  "checkpoint": "model_132996.pt",
+  "checkpoint_md5": "10c01ff21ff0aa23dfabfd00f3ee03f6",
+  "task": "Biped12-Velocity-Stage4V2-Stand-V18-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "v17 2026-09-04_21-48-32/model_126997",
+  "summary": "chain 판정 reports/gen_v18/README.md",
+  "legacy": false,
+  "files": {
+    "policy.pt": "ab2d058b35f6906167caca3ef4e42373",
+    "policy.onnx": "8ad41bdee4d4b6382f2935c280bd668f",
+    "env.yaml": "36e63a9ffb30ad57d8eddfb22a385e85",
+    "agent.yaml": "1369462b12d1f895fdc96fd5b3ddcecd"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-05_17-57-21"
+}

@@ -20,6 +20,11 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
+try:
+    import numpy as np          # 루프지연 추정에만 사용 — 없으면 그 절만 생략
+except ImportError:             # pragma: no cover
+    np = None
+
 BODY_WEIGHT_N = 172.9      # 실물 17.62kg(저울, 2026-09-04) × 9.81 — 구 117.7(12kg 추정) 폐기
 #: 0906 발력 어댑터 재보정(npc 0.01804→0.02650) 이전 블랙박스의 foot_n 은 참값의 117.7/172.9 배 —
 #: 첫 live 틱 timestamp 가 컷오프(2026-09-06 00:00 KST) 이전이면 ×1.469 자동 보정 (--foot_scale 로 강제).
@@ -34,6 +39,14 @@ JOINT_ORDER = ["left_hip_f_joint", "right_hip_f_joint", "left_hip_a_joint", "rig
 TAU_LIMIT_NM = [25.0] * 10 + [24.0, 24.0]
 TAU_SAT_FRAC = 0.95       # 시뮬 명목 판정(eval_drift_dr 물리 실현성)과 같은 문턱(|τ| ≥ 0.95·한계) — 0905 감사 C1
 TAU_STALE_S = 0.1         # stage8 status 가 이보다 오래된 틱의 tau_est 는 동결값 → 토크표에서 제외 (0905 감사 C4)
+ANKLE_R_JOINTS = ("left_ankle_r_joint", "right_ankle_r_joint")   # AK45-36: torque_est 디코드 스케일 미확정 (감사 C3)
+#: 루프지연 추정 (0905 감사 B4): 목표(targets_deg_joint = 러너 출력, 블렌딩 전) → 실측 qpos 를
+#: "순수 지연 d틱 + 1차 지연 τ" 모델로 격자 적합. 학습 대역 v15~v18 3~6틱 / v19 3~8틱, 0803 실측 4~8틱.
+LAG_MAX_TICKS = 15
+LAG_TAU_MS = (0, 20, 40, 60, 80, 120, 160, 240)
+LAG_MIN_STD_DEG = 0.3     # 목표 신호 표준편차가 이보다 작은 관절은 '정지' — 추정 제외
+LAG_MIN_R2 = 0.5          # 적합도 미달 관절은 중앙값 집계에서 제외
+LAG_TRAIN_BAND = (3, 8)   # 현행 학습 대역 상한(v19); v15~v18 은 3~6
 LOAD_STANDING = 85.0       # 이 % 이상이면 하중을 정책이 받고 있다고 본다
 LOAD_LOST = 50.0           # 이 % 아래로 떨어지면 줄/사람에게 넘어간 것
 LEAN_FALL_DELTA = 15.0     # 시작 자세 대비 이만큼 더 기울면 자립 종료
@@ -164,6 +177,100 @@ def torque_summary(rows):
     return out
 
 
+def _first_order(ud, a, n):
+    """1차 저역(EMA 계수 a)을 지수 커널 컨볼루션으로 — 초기 과도는 호출자가 warm 구간을 버린다."""
+    if a >= 1.0:
+        return ud[:n].copy(), 1
+    L = int(math.ceil(math.log(1e-4) / math.log(1.0 - a))) + 1
+    kern = a * (1.0 - a) ** np.arange(L)
+    return np.convolve(ud, kern)[:n], L
+
+
+def _fit_lag(u, y, dt, max_d=LAG_MAX_TICKS, taus_ms=LAG_TAU_MS):
+    """y ≈ 1차지연(τ){u 를 d 틱 지연} — 잔차 RMS 최소 (d, τ). 반환 (d, τ_ms, R²).
+    평균 오프셋(영점·PD 처짐)은 지연과 무관하므로 잔차에서 뺀다. 초기 과도(warm)는 공통으로 버린다."""
+    n = len(u)
+    best = (None, None, -1.0)
+    for tau_ms in taus_ms:
+        a = 1.0 if tau_ms == 0 else dt / (tau_ms / 1000.0 + dt)
+        for d in range(0, max_d + 1):
+            ud = np.concatenate([np.full(d, u[0]), u[:n - d]])
+            if a >= 1.0:
+                yh, L = ud, 1
+            else:
+                yh, L = _first_order(ud, a, n)
+            warm = max(max_d, L)
+            if n - warm < 40:
+                continue
+            res = y[warm:] - yh[warm:]
+            res = res - res.mean()
+            y0 = y[warm:] - y[warm:].mean()
+            r2 = 1.0 - float(np.mean(res ** 2)) / (float(np.mean(y0 ** 2)) + 1e-12)
+            if r2 > best[2]:
+                best = (d, tau_ms, r2)
+    return best
+
+
+def loop_delay_summary(rows, t_end):
+    """관절별 루프지연 추정 — 자립 구간(t≤t_end)·블렌딩 완료(alpha≥0.99) 틱만. numpy 없으면 None."""
+    if np is None:
+        return None
+    sel = [r for r in rows if r["t"] <= t_end and r["alpha"] >= 0.99
+           and isinstance(r.get("u"), dict) and r.get("q")]
+    if len(sel) < 60:
+        return {"n": len(sel), "joints": [], "median_ticks": None, "tick_ms": None, "n_good": 0,
+                "why": "블렌딩 완료 후 자립 표본 60틱 미만"}
+    ts = np.array([r["ts"] for r in sel], dtype=float)
+    dt = float(np.median(np.diff(ts))) if len(ts) > 1 else 0.02
+    U = np.array([[float(r["u"].get(j, float("nan"))) for j in JOINT_ORDER] for r in sel])
+    Q = np.degrees(np.array([r["q"] for r in sel], dtype=float))
+    joints = []
+    for k, name in enumerate(JOINT_ORDER):
+        u, y = U[:, k], Q[:, k]
+        if not np.all(np.isfinite(u)) or not np.all(np.isfinite(y)) or u.std() < LAG_MIN_STD_DEG:
+            joints.append((name, None, None, None, "정지(목표 분산 부족)"))
+            continue
+        d, tau, r2 = _fit_lag(u, y, dt)
+        joints.append((name, d, tau, r2, "" if (r2 is not None and r2 >= LAG_MIN_R2) else "적합도 미달"))
+    good = [d for _, d, _, r2, note in joints if d is not None and not note]
+    return {"n": len(sel), "tick_ms": dt * 1000.0, "joints": joints, "n_good": len(good),
+            "median_ticks": float(np.median(good)) if good else None}
+
+
+def lag_selftest():
+    """합성 목표(0.5~3Hz 정현 합) → 지연 d·1차 τ·잡음 0.05°·양자화 0.1° 로 실측을 만들고 d 를 ±1틱 안에 회수하는지."""
+    assert np is not None, "numpy 필요"
+    rng = np.random.default_rng(0)
+    dt, n = 0.02, 1500
+    t = np.arange(n) * dt
+    fails = []
+    print("  d[틱]  τ[ms]  → d̂  τ̂    R²")
+    for d in (4, 6, 8):
+        for tau in (40, 80):
+            u = sum(rng.uniform(0.5, 2.0) * np.sin(2 * math.pi * f * t + rng.uniform(0, 6.28))
+                    for f in (0.5, 1.1, 1.9, 2.7))
+            ud = np.concatenate([np.full(d, u[0]), u[:n - d]])
+            a = dt / (tau / 1000.0 + dt)
+            y = np.empty(n); s = ud[0]
+            for i in range(n):
+                s = s + a * (ud[i] - s); y[i] = s
+            y = np.round((y + 0.7 + rng.normal(0, 0.05, n)) / 0.1) * 0.1   # 오프셋 0.7° + 잡음 + 0.1° 양자화
+            dh, th, r2 = _fit_lag(u, y, dt)
+            ok = dh is not None and abs(dh - d) <= 1
+            print(f"  {d:4d}  {tau:5d}   → {dh}  {th}  {r2:.3f}  {'OK' if ok else 'FAIL'}")
+            if not ok:
+                fails.append((d, tau, dh, th))
+    # 플럼빙: rows 형태로 summary 호출
+    rows = [{"t": i * dt, "alpha": 1.0, "ts": 1000.0 + i * dt,
+             "u": {j: float(u[i]) for j in JOINT_ORDER}, "q": [math.radians(float(y[i]))] * 12}
+            for i in range(n)]
+    s = loop_delay_summary(rows, t_end=1e9)
+    assert s and s["median_ticks"] is not None and abs(s["median_ticks"] - 8) <= 1, s
+    assert not fails, f"루프지연 회수 실패: {fails}"
+    print(f"[selftest] analyze_fall 루프지연 추정: 6조합 ±1틱 회수 · summary 중앙 {s['median_ticks']:.0f}틱 — ALL PASS")
+    return 0
+
+
 def analyze(path, foot_scale=None):
     ticks, events, bad = load(path)
     if not ticks:
@@ -191,7 +298,8 @@ def analyze(path, foot_scale=None):
                      "load": load_pct, "contact": t.get("contact"),
                      "alpha": t.get("blend_alpha", 1.0),
                      "tau": t.get("tau_est_nm"),
-                     "status_age": t.get("status_age_s")})   # stage8 status 신선도 (0906 감사 C4)
+                     "status_age": t.get("status_age_s"),    # stage8 status 신선도 (0906 감사 C4)
+                     "u": t.get("targets_deg_joint"), "q": t.get("qpos_rad"), "ts": t["timestamp"]})
 
     dur = rows[-1]["t"]
 
@@ -298,6 +406,7 @@ def analyze(path, foot_scale=None):
                                and not (r["status_age"] is not None and r["status_age"] > TAU_STALE_S)]),
         "tau_stale": sum(1 for r in rows if r["t"] <= standing_s
                          and r["status_age"] is not None and r["status_age"] > TAU_STALE_S),
+        "lag": loop_delay_summary(rows, standing_s),
     }
 
 
@@ -413,7 +522,8 @@ def report(a):
             k = JOINT_ORDER.index(name)
             if peak is None:
                 print(f"   {name:<20} (기록 없음)"); continue
-            print(f"   {name:<20} {peak:6.2f} {rms:6.2f} {TAU_LIMIT_NM[k]:5.0f}   {sat:6.1f}%     {n}")
+            print(f"   {name:<20} {peak:6.2f} {rms:6.2f} {TAU_LIMIT_NM[k]:5.0f}   {sat:6.1f}%     {n}"
+                  + ("   (AK45 스케일 미확정 — 24Nm 대조 보류)" if name in ANKLE_R_JOINTS else ""))
             if worst is None or peak / TAU_LIMIT_NM[k] > worst[1]:
                 worst = (name, peak / TAU_LIMIT_NM[k])
         if worst:
@@ -422,6 +532,28 @@ def report(a):
     elif a["rows"]:
         print("■ 실물 토크: 블랙박스에 tau_est_nm 없음 (0905 이전 브리지) — 토크 대조 불가")
         print()
+    lag = a.get("lag")
+    if lag is None:
+        print("■ 루프지연 추정: numpy 없음 — 생략")
+    elif not lag["joints"]:
+        print(f"■ 루프지연 추정: 생략 ({lag.get('why', '표본 부족')}, 표본 {lag['n']}틱)")
+    else:
+        print(f"■ 루프지연 추정 (targets_deg_joint→qpos, 순수 지연 d + 1차 지연 τ 격자 적합; 블렌딩 완료 후 자립 {lag['n']}틱, 틱 {lag['tick_ms']:.1f}ms)")
+        print("   관절                 d[틱]   τ[ms]    R²")
+        for name, d, tau, r2, note in lag["joints"]:
+            if d is None:
+                print(f"   {name:<20}   —       —      —   {note}"); continue
+            print(f"   {name:<20} {d:4d}   {tau:5d}   {r2:5.2f}   {note}")
+        if lag["median_ticks"] is not None:
+            med = lag["median_ticks"]
+            band = "학습 대역 안" if LAG_TRAIN_BAND[0] <= med <= LAG_TRAIN_BAND[1] else "⚠ 학습 대역 밖"
+            print(f"   → 중앙 d = {med:.0f}틱 ({med * lag['tick_ms']:.0f}ms), 유효 관절 {lag['n_good']}/12 — "
+                  f"{band}(v19 {LAG_TRAIN_BAND[0]}~{LAG_TRAIN_BAND[1]}틱, v15~v18 3~6틱), 0803 실측 4~8틱")
+        else:
+            print("   → 유효 관절 없음 (정지 상태이거나 적합도 미달)")
+    print()
+    print("■ 정의 주의(감사 C5·C6): 실물 낙상 = 발력<50% 또는 시작 대비 +15° 기울임 / 시뮬 낙상 = 절대 40°·베이스 접촉 —")
+    print("   낙상률·초기 3s 추세·E_smth 는 정의가 달라 시뮬 수치와 직접 비교하지 않는다(방향·순서·토크 축만 대조).")
     grade, headline, action = verdict(a)
     print(f"■ 판정 [{grade}급] {headline}")
     print(f"   다음: {action}")
@@ -459,6 +591,9 @@ def main():
     p.add_argument("--csv", help="틱 시계열을 CSV로 저장")
     p.add_argument("--foot_scale", type=float, default=None,
                    help="foot_n 배율 강제 (기본: 0906 이전 블랙박스는 자동 ×1.469, 이후 1.0)")
+    p.add_argument("--selftest", action="store_true", help="루프지연 추정기 합성 검증(블랙박스 불필요)")
+    if "--selftest" in sys.argv:
+        return lag_selftest()
     args = p.parse_args()
 
     a = analyze(args.jsonl, args.foot_scale)

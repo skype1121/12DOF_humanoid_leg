@@ -82,6 +82,7 @@ from rl_walking.deploy.policy_runner_stage4 import (  # noqa: E402
     yaw_from_quat_wxyz)
 from rl_walking.deploy.policy_runner import (  # noqa: E402
     DEFAULT_POSE_RAD, JOINT_ORDER, SLEW_RAD)
+from rl_walking.deploy import deploy_chain as _DC  # noqa: E402 — 배포 경로 상수·함수의 단일 원본 (판정 스크립트와 공유)
 
 RATE_HZ = 50.0
 TICK_SEC = 1.0 / RATE_HZ
@@ -624,7 +625,9 @@ OSC_VEL_DEADBAND = 0.5   #: rad/s — 이하 속도의 부호는 무시 (양자�
 #:
 #: 남은 진짜 문제: **정책이 권한을 얻으면 앞으로 민다.** 래퍼가 아니라 정책이다.
 #: ═══════════════════════════════════════════════════════════════════
-BLEND_S = 1.5
+#: 0906 감사 B1: 값의 원본은 rl_walking/deploy/deploy_chain.py — 판정 스크립트(eval_drift_dr --deploy old)가
+#: 같은 상수·같은 순서(러너 슬루 → LPF → 블렌딩)를 import 한다. 여기서 숫자를 바꾸지 말 것.
+BLEND_S = _DC.BLEND_S
 #: 리프트 가드 — 0.6s (4차 실기: 0.4s가 전방 낙하 중 회복 스텝의 양발
 #: 순간 무접촉을 중단시킴 → 스텝 완료 여유 부여. 들림 발버둥 차단은 유지)
 #: (0803 실측: 재인장으로 들리자 접촉 [0,0] → 정책 공중 발버둥.
@@ -632,29 +635,16 @@ BLEND_S = 1.5
 LIFT_STOP_S = 0.6
 
 
-def blend_alpha(elapsed_s, dur_s=BLEND_S):
-    """온셋 블렌딩 가중치 — 스무스스텝 0→1 (양 끝 기울기 0, 단조증가).
-
-    BLEND_S=0 (현행 기본) 이면 크로스페이드는 비활성이고 이 함수는 롤백
-    경로·자기검사용으로만 남는다. 0 나눗셈은 즉시 1.0 으로 처리한다.
-    """
-    if dur_s <= 0.0:
-        return 1.0
-    a = min(1.0, max(0.0, elapsed_s / dur_s))
-    return a * a * (3.0 - 2.0 * a)
+#: 온셋 블렌딩 가중치 — 스무스스텝 0→1 (양 끝 기울기 0, 단조증가). dur_s<=0 이면 즉시 1.0.
+#: 구현은 deploy_chain.blend_alpha (판정 스크립트와 동일 함수).
+blend_alpha = _DC.blend_alpha
 
 
 #: stand 계열 타깃 저역필터 (0803 발진 분석: 지연 80~100ms 루프에서 5~9Hz
 #: 정책 주도 리밋사이클 — 발진 대역 루프게인 컷. 서기 보정은 <2Hz라 손실 미미.
 #: EMA 1차: beta=0.27 ≈ 차단 2.5Hz@50Hz. march/walk에는 미적용 (보행 리듬 보존).
-STAND_LPF_BETA = 0.27
-
-
-def lpf_step(state, x, beta=STAND_LPF_BETA):
-    """EMA 1차 저역필터 한 스텝 — state None이면 x로 초기화 (점프 없음)."""
-    if state is None:
-        return list(x)
-    return [s + beta * (v - s) for s, v in zip(state, x)]
+STAND_LPF_BETA = _DC.STAND_LPF_BETA     # 원본: deploy_chain.py (0906 감사 B1)
+lpf_step = _DC.lpf_step                  # EMA 1차 한 스텝 — state None 이면 x 로 초기화 (점프 없음)
 
 #: 모드1 '채터': 인접 틱 속도 교대(양쪽 |v|≥CH_VMIN) ≥8회/0.5s — 주기-2
 #: 포화 발진(2차 사고 클래스, 스텝 0.7°/틱부터)을 0.2s 내 포착.

@@ -36,7 +36,11 @@ parser.add_argument("--com_z", type=float, default=0.0,
 parser.add_argument("--mass_kg", type=float, default=None,
                     help="실물 총질량 [kg] 고정 — payload 를 역산해 넣는다 (URDF base 10.491)")
 parser.add_argument("--deploy", type=str, default=None,
-                    help="실배포 래퍼 프리셋: new(슬루 인수·0810 수술) | old(블렌딩 1.5s)")
+                    help="실배포 프리셋: old(=실물 배포 경로 h3: 러너 슬루→LPF→블렌딩, 액션텀 훅, 관측 actions=raw) | "
+                         "old_h2(0905 이전 판정 래퍼: LPF→블렌딩→env 슬루, 관측 오염 — 대조군 전용) | "
+                         "new(슬루 인수·미배포 경로 — 근거로 인용 금지)")
+parser.add_argument("--nominal_delay", type=int, default=4,
+                    help="--nominal 의 액션 지연 [틱] (기본 4 = 실측 루프지연 4~8틱 중앙값; 0905 이전은 0 이었음)")
 parser.add_argument("--lpf", type=float, default=0.0,
                     help="브리지 stand LPF EMA beta (실물 0.27). 0=끔")
 parser.add_argument("--blend", type=float, default=0.0,
@@ -94,16 +98,23 @@ args_cli = parser.parse_args()
 # ── 실배포 프리셋 ────────────────────────────────────────────────────
 # 세대 판정은 **실제로 배포되는 것**과 같은 조건에서 해야 한다. v3~v9 승격은
 # 래퍼 없는 조건에서 결정됐는데, 실물 실패의 지배 요인이 그 래퍼였다.
-if args_cli.deploy in ("new", "old"):
-    args_cli.lpf = 0.27              # 브리지 STAND_LPF_BETA
+if args_cli.deploy in ("new", "old", "old_h2"):
     args_cli.land = True             # hang_stand 착지 자세에서 인수
     args_cli.blend_from = "zero"     # 트림0 착지
     if args_cli.deploy == "new":
-        args_cli.blend_mode = "slew"     # stage8 _step_toward 4°/틱
+        args_cli.lpf = 0.27              # 브리지 STAND_LPF_BETA
+        args_cli.blend_mode = "slew"     # stage8 _step_toward 4°/틱 (미배포 경로)
         args_cli.slew_deg = 4.0
-    else:
-        args_cli.blend_mode = "full"     # 종전 크로스페이드
+    elif args_cli.deploy == "old_h2":
+        args_cli.lpf = 0.27
+        args_cli.blend_mode = "full"     # 0905 이전 판정 래퍼 (LPF→블렌딩→env 슬루, 관측 오염) — 대조군
         args_cli.blend = 1.5
+    else:
+        # old = 실물 배포 경로 (0906 감사 B1·B2 정정): 래퍼 대신 deploy_chain.DeployChain 을 액션텀 훅으로.
+        # 상수(슬루 4°/틱·LPF β·블렌딩 s)는 deploy_chain 에서 import — 여기 인자는 이중 적용 방지를 위해 0.
+        args_cli.lpf = 0.0
+        args_cli.blend = 0.0
+        args_cli.blend_mode = "chain"
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -127,7 +138,7 @@ env_cfg = load_cfg_from_registry(args_cli.task, "env_cfg_entry_point")
 env_cfg.scene.num_envs = args_cli.num_envs
 if args_cli.usd:
     env_cfg.scene.robot.spawn.usd_path = args_cli.usd
-if args_cli.deploy in ("new", "old") and hasattr(env_cfg.actions.joint_pos, "lpf_beta_range") and not args_cli.keep_env_lpf:
+if args_cli.deploy in ("new", "old", "old_h2") and hasattr(env_cfg.actions.joint_pos, "lpf_beta_range") and not args_cli.keep_env_lpf:
     # v15+ 는 브리지 LPF(β 0.27)를 학습 env 액션텀에 내장한다(β 0.2~1 랜덤). 배포 판정은
     # 래퍼가 브리지 LPF 를 따로 씌우므로 env 쪽 LPF 는 꺼야 실제 배포(필터 1개)와 같다.
     # 0904 실측: 둘 다 켜면 위상지연 2배 → v15 가 3.75Hz 로 발산(E_smth 8.7e10, 100% 낙상).
@@ -162,8 +173,9 @@ if args_cli.nominal:
     env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
     env_cfg.events.actuator_gains.params["damping_distribution_params"] = (1.0, 1.0)
     if not args_cli.keep_delay:
-        env_cfg.actions.joint_pos.min_delay_steps = 0
-        env_cfg.actions.joint_pos.max_delay_steps = 0
+        # 0906 감사 B3: 명목 지연 0틱은 학습 하한(3)보다 낮고 실측(4~8틱)과 무관했다 → 기본 4틱 고정
+        env_cfg.actions.joint_pos.min_delay_steps = int(args_cli.nominal_delay)
+        env_cfg.actions.joint_pos.max_delay_steps = int(args_cli.nominal_delay)
     if hasattr(env_cfg.actions.joint_pos, "lpf_beta_range") and not args_cli.keep_env_lpf:
         env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)
     if hasattr(env_cfg.actions.joint_pos, "backlash_rad_range"):
@@ -363,11 +375,35 @@ else:
 _ASCALE = 0.25
 _tgt_filt = None
 _cmd_prev = None
+_chain = None
+if args_cli.blend_mode == "chain":
+    # ── 실물 배포 경로 (h3, 0906 감사 B1·B2) ─────────────────────────────────────
+    # raw → DeployChain(러너 슬루 4°/틱 → stand LPF β → 온셋 블렌딩) → 액션텀(지연 → 슬루=stage8 몫 → 백래시).
+    # env.step 에는 raw 를 넘겨 관측 actions(마지막 액션 5프레임)가 학습·실물과 같은 raw 로 남는다.
+    from rl_walking.deploy.deploy_chain import DeployChain, BLEND_S as _CH_BLEND, STAND_LPF_BETA as _CH_LPF  # noqa: E402
+    from rl_walking.deploy.policy_runner import SLEW_RAD as _CH_SLEW  # noqa: E402
+    _term = env.unwrapped.action_manager.get_term("joint_pos")
+    _chain = DeployChain(_DEF, _LAND, qpos0=_robot.data.joint_pos.clone(), stand=True)
+    _orig_process = _term.process_actions
+
+    def _hooked_process(a):
+        if torch.any(_term._needs_init):                      # 리셋된 env: 체인도 현재 qpos 에서 재시작
+            _ids = torch.nonzero(_term._needs_init).squeeze(-1)
+            _chain.reset(_ids, _robot.data.joint_pos)
+        out = _chain.step(a)                                  # 관절 타깃 [rad]
+        _orig_process((out - _DEF) / _ASCALE)                 # 액션텀: 지연 → 슬루(stage8) → 백래시
+        _term._raw_actions[:] = a                             # 보상·진단용 raw 도 정책 원출력
+
+    _term.process_actions = _hooked_process
+    print(f"[deploy] 배포 경로 h3: 러너 슬루 {math.degrees(_CH_SLEW):.1f}°/틱 → LPF β{_CH_LPF} → 블렌딩 {_CH_BLEND}s "
+          f"(액션텀 훅, 관측 actions=raw, env 액션텀 LPF OFF)")
 
 
 def _wrapper(a, step_i):
-    """정책 액션 → 실제 명령. 브리지와 같은 순서로 LPF·블렌딩을 건다."""
+    """정책 액션 → 실제 명령. 브리지와 같은 순서로 LPF·블렌딩을 건다 (h2 래퍼·new 경로용; chain 모드는 항등)."""
     global _tgt_filt
+    if args_cli.blend_mode == "chain":
+        return a
     tgt = _DEF + _ASCALE * a                                   # 관절 프레임 타깃
     if args_cli.lpf > 0.0:
         _tgt_filt = tgt.clone() if _tgt_filt is None else \
@@ -561,6 +597,10 @@ P(f"DR 분포 전방 드리프트 — {args_cli.task}")
 P("인자: " + " ".join(sys.argv[1:]))
 P(f"체크포인트: {resume_path}")
 P(f"{N} env × {args_cli.steps/50:.1f}s, 명령 전무(cmd=0), DR 켜짐")
+P("배포 경로: " + ("h3 chain — 러너 슬루→LPF→블렌딩, 관측 actions=raw (0906 정합)" if args_cli.blend_mode == "chain"
+                   else "h2 래퍼 — LPF→블렌딩→env 슬루, 관측 오염 (대조군)" if args_cli.deploy == "old_h2"
+                   else f"{args_cli.deploy or '없음'} (blend_mode={args_cli.blend_mode})")
+  + (f" | 명목 지연 {args_cli.nominal_delay}틱" if args_cli.nominal and not args_cli.keep_delay else ""))
 P("=" * 74)
 P(f"낙상(조기 종료): {int((death < args_cli.steps).sum())}/{N} "
   f"({100.0*(death < args_cli.steps).sum()/N:.1f}%)")

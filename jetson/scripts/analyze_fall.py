@@ -18,15 +18,21 @@ import json
 import math
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 
 BODY_WEIGHT_N = 172.9      # 실물 17.62kg(저울, 2026-09-04) × 9.81 — 구 117.7(12kg 추정) 폐기
+#: 0906 발력 어댑터 재보정(npc 0.01804→0.02650) 이전 블랙박스의 foot_n 은 참값의 117.7/172.9 배 —
+#: 첫 live 틱 timestamp 가 컷오프(2026-09-06 00:00 KST) 이전이면 ×1.469 자동 보정 (--foot_scale 로 강제).
+#: 백분율은 같은 카운트 앵커를 나누므로 보정 전후 모두 유효하다(4차 "90%" 는 90%).
+LEGACY_FOOT_SCALE = 172.9 / 117.7
+LEGACY_FOOT_CUTOFF = datetime(2026, 9, 6, tzinfo=timezone(timedelta(hours=9))).timestamp()
 #: 관절별 토크 한계[Nm] — 시뮬 액추에이터 설정(biped12_cfg.py)과 동일 축:
 #: AK70-10 25.0 / 발목롤 AK45-36 24.0. 블랙박스 tau_est_nm(0905 신설) 이 있을 때만 토크 요약.
 JOINT_ORDER = ["left_hip_f_joint", "right_hip_f_joint", "left_hip_a_joint", "right_hip_a_joint",
                "left_hip_r_joint", "right_hip_r_joint", "left_knee_joint", "right_knee_joint",
                "left_ankle_f_joint", "right_ankle_f_joint", "left_ankle_r_joint", "right_ankle_r_joint"]
 TAU_LIMIT_NM = [25.0] * 10 + [24.0, 24.0]
-TAU_SAT_FRAC = 0.9        # 시뮬 포화 지표와 같은 문턱(|τ| ≥ 0.9·한계)
+TAU_SAT_FRAC = 0.95       # 시뮬 명목 판정(eval_drift_dr 물리 실현성)과 같은 문턱(|τ| ≥ 0.95·한계) — 0905 감사 C1
 LOAD_STANDING = 85.0       # 이 % 이상이면 하중을 정책이 받고 있다고 본다
 LOAD_LOST = 50.0           # 이 % 아래로 떨어지면 줄/사람에게 넘어간 것
 LEAN_FALL_DELTA = 15.0     # 시작 자세 대비 이만큼 더 기울면 자립 종료
@@ -157,7 +163,7 @@ def torque_summary(rows):
     return out
 
 
-def analyze(path):
+def analyze(path, foot_scale=None):
     ticks, events, bad = load(path)
     if not ticks:
         raise SystemExit(f"[실패] 틱 레코드가 없습니다: {path}")
@@ -171,13 +177,15 @@ def analyze(path):
             f"       총 틱 {len(ticks)}개 — ARM_ALL 이 안 됐거나 브리지가 "
             f"--live 없이 떴을 수 있습니다.")
     t0 = armed[0]["timestamp"]
+    scale = foot_scale if foot_scale is not None else (
+        LEGACY_FOOT_SCALE if t0 < LEGACY_FOOT_CUTOFF else 1.0)
 
     rows = []
     for t in armed:
         rel = t["timestamp"] - t0
         fwd, lat, tilt = grav_to_angles(t["quat_wxyz"])
         fn = t.get("foot_n") or [0.0, 0.0]
-        load_pct = 100.0 * (float(fn[0]) + float(fn[1])) / BODY_WEIGHT_N
+        load_pct = 100.0 * scale * (float(fn[0]) + float(fn[1])) / BODY_WEIGHT_N
         rows.append({"t": rel, "fwd": fwd, "lat": lat, "tilt": tilt,
                      "load": load_pct, "contact": t.get("contact"),
                      "alpha": t.get("blend_alpha", 1.0),
@@ -281,7 +289,10 @@ def analyze(path):
         "events": [(e["timestamp"] - t0, e.get("event"), e.get("reason", ""))
                    for e in events if e["timestamp"] >= t0],
         "rows": rows,
-        "tau": torque_summary(rows),
+        "foot_scale": scale,
+        # 0905 감사 C2: 토크표는 자립 구간(t ≤ standing_s)만 — 낙상 후·STOP_ALL 홀드 틱을 넣으면
+        # 시뮬(생존 스텝만 집계)과 축이 어긋난다
+        "tau": torque_summary([r for r in rows if r["t"] <= standing_s]),
     }
 
 
@@ -342,7 +353,9 @@ def report(a):
           + (f"   ※ 낙상 시점 정책권한 alpha={a['alpha_at_fall']:.2f} "
              f"— 블렌딩 중 무너짐" if a["alpha_at_fall"] < 0.99 else ""))
     print(f"■ 발력 총합: 평균 {a['load_mean']:.0f}% / 최소 {a['load_min']:.0f}%"
-          f" / 최대 {a['load_max']:.0f}%  (체중 {BODY_WEIGHT_N:.0f}N 기준)")
+          f" / 최대 {a['load_max']:.0f}%  (체중 {BODY_WEIGHT_N:.0f}N 기준"
+          + (f", 구 어댑터 스케일 ×{a['foot_scale']:.3f} 보정" if abs(a["foot_scale"] - 1.0) > 1e-9 else "")
+          + ")")
     print("   (자립 구간 기준 — 낙상 후 구간 제외)")
     if a["depart_t"] is not None:
         print(f"   하중 이탈 개시: {a['depart_t']:.2f}s "
@@ -386,8 +399,8 @@ def report(a):
     else:
         print("■ 이벤트: 없음 (가드 무트립·STOP_ALL 없음)")
     if a.get("tau"):
-        print("■ 실물 토크 (stage8 torque_est, 자립 구간 전체) — 시뮬 명목 판정 표와 같은 축")
-        print("   관절                 |τ|피크  RMS   한계  포화%(≥90%)  샘플")
+        print(f"■ 실물 토크 (stage8 torque_est, 자립 구간 t≤{a['standing_s']:.1f}s 만) — 시뮬 명목 판정 표와 같은 축")
+        print(f"   관절                 |τ|피크  RMS   한계  포화%(≥{TAU_SAT_FRAC*100:.0f}%)  샘플")
         worst = None
         for name, peak, rms, sat, n in a["tau"]:
             k = JOINT_ORDER.index(name)
@@ -437,12 +450,14 @@ def main():
     p.add_argument("jsonl", help="rl_bridge 블랙박스 (~/rl_bridge_bb/*.jsonl)")
     p.add_argument("--compare", help="비교 대상 블랙박스 (예: v6b 5차)")
     p.add_argument("--csv", help="틱 시계열을 CSV로 저장")
+    p.add_argument("--foot_scale", type=float, default=None,
+                   help="foot_n 배율 강제 (기본: 0906 이전 블랙박스는 자동 ×1.469, 이후 1.0)")
     args = p.parse_args()
 
-    a = analyze(args.jsonl)
+    a = analyze(args.jsonl, args.foot_scale)
     report(a)
     if args.compare:
-        compare(a, analyze(args.compare))
+        compare(a, analyze(args.compare, args.foot_scale))
     if args.csv:
         with open(args.csv, "w") as f:
             f.write("t_s,fwd_deg,lat_deg,tilt_deg,load_pct,blend_alpha\n")

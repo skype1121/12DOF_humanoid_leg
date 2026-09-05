@@ -197,6 +197,9 @@ CHECKPOINTS = {
 CKPT_GAIT_FREQ = {"march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
                    "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
+#: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).
+#: 대체는 경고 로그로 드러낸다 (0905 감사 A1: 무언 대체 'stand_v7' = 10.49kg 자산 정책 탑승 경로).
+STAND_DEFAULT = "stand_v18b"
 
 # ---------------------------------------------------------------------------
 # 프레임 변환 (2026-07-27 실측 캘리브레이션 확정)
@@ -313,6 +316,32 @@ def load_frame_map():
     return FrameMap(path, dir_by, sz_by, mid_by, gains_by)
 
 
+def projected_gravity(quat_wxyz):
+    """world −z 를 body 프레임으로 (학습 obs 와 동일식). 직립·정합 IMU 면 (0,0,−1)."""
+    w, x, y, z = quat_wxyz
+    return (-2.0 * (x * z - w * y), -2.0 * (y * z + w * x), -(1.0 - 2.0 * (x * x + y * y)))
+
+
+#: 중력 정합 게이트 (0905 감사 A4): stand/walk/march 시작 시 |g−(0,0,−1)| 가 이 값을 넘으면 기동 거부.
+#: 장착보정 미적용 IMU 는 (±1,0,0) 근처(거리 1.41), 17.5° 이상 기운 착지는 0.3 을 넘는다(거리 = 2·sin(θ/2)).
+GRAV_GATE_TOL = 0.3
+GRAV_GATE_MAX_AGE_S = 0.5
+
+
+def gravity_gate(imu, imu_ts, now, tol=GRAV_GATE_TOL, max_age=GRAV_GATE_MAX_AGE_S):
+    """(통과 여부, 사유). imu = (gyro, quat_wxyz) 또는 None(미수신)."""
+    if imu is None:
+        return False, "IMU 미수신"
+    if now - imu_ts > max_age:
+        return False, f"IMU 스테일 (age {now - imu_ts:.2f}s > {max_age}s)"
+    g = projected_gravity(imu[1])
+    dist = math.sqrt(g[0] ** 2 + g[1] ** 2 + (g[2] + 1.0) ** 2)
+    if not math.isfinite(dist) or dist > tol:
+        return False, (f"중력벡터 정합 실패 |g−(0,0,−1)|={dist:.2f} > {tol} "
+                       f"(g=({g[0]:+.2f},{g[1]:+.2f},{g[2]:+.2f})) — IMU 장착보정 미적용 또는 기울어진 착지")
+    return True, f"중력 정합 OK (|g−(0,0,−1)|={dist:.2f})"
+
+
 class BridgeCore:
     """ROS 무관 코어 — 관측 → 12관절 목표각(rad, URDF 관절 프레임). 셀프테스트 공유.
 
@@ -342,11 +371,7 @@ class BridgeCore:
     def tick(self, gyro, quat_wxyz, qpos_rad, qvel_rad_s, contact2):
         """관측 → 목표각 12 [rad, 절대] (JOINT_ORDER 순)."""
         w, x, y, z = quat_wxyz
-        # projected gravity (world -z 를 body 프레임으로)
-        gx = -2.0 * (x * z - w * y)
-        gy = -2.0 * (y * z + w * x)
-        gz = -(1.0 - 2.0 * (x * x + y * y))
-        grav = (gx, gy, gz)
+        grav = projected_gravity(quat_wxyz)   # world -z 를 body 프레임으로 (게이트와 동일식)
         vx, vy, wz = self.cmd
         if self.heading_hold and abs(wz) < 1e-6:
             yaw = yaw_from_quat_wxyz(w, x, y, z)
@@ -477,21 +502,55 @@ def _selftest_policy_one(name):
     return dt, core.runner.backend, f"슬루 최대 {math.degrees(slew_max):.2f}°/틱, {info}"
 
 
-def _selftest_policy():
+def _selftest_policy(required=()):
     """(5) 목 센서(정지 직립) 500틱 — 유한성·리밋·주기 (관절 프레임 그대로).
 
     0905 감사(low): 'walk' 만 돌려 신규 stand_v14~ 등록(경로·로드·gait_freq·stand LPF 분기)이
     자가검증에서 한 번도 실행되지 않았다 → walk + 레지스트리의 stand_* 전부 순회, stand_* 인데
     CKPT_GAIT_FREQ 에 없으면 FAIL.
+    0905 감사 A5: 파일이 없는 등록 항목(미배포 세대)은 FAIL 이 아니라 SKIP 으로 집계 — 단 `required`
+    (기동 --checkpoint 와 STAND_DEFAULT)가 없으면 FAIL (배포 패키지 누락).
     """
     names = ["walk"] + [k for k in CHECKPOINTS if k.startswith("stand_")]
     missing_freq = [k for k in names if k.startswith("stand_") and k not in CKPT_GAIT_FREQ]
     assert not missing_freq, f"CKPT_GAIT_FREQ 누락: {missing_freq}"
-    res = []
+    assert STAND_DEFAULT in CHECKPOINTS and STAND_DEFAULT in CKPT_GAIT_FREQ, f"STAND_DEFAULT 미등록: {STAND_DEFAULT}"
+    res, skipped = [], []
+    backend = "-"
     for n in names:
+        d = CHECKPOINTS[n]
+        if not (os.path.exists(os.path.join(d, "policy.pt")) or os.path.exists(os.path.join(d, "policy.onnx"))):
+            skipped.append(n)
+            continue
         dt, backend, note = _selftest_policy_one(n)
         res.append(f"{n} {dt*1000:.2f}ms [{note}]")
-    return f"500틱 유한·슬루 준수 ×{len(names)}: " + "; ".join(res) + f" (50Hz 예산 20ms, 백엔드 {backend})"
+    need = [n for n in required if n in skipped or n not in CHECKPOINTS]
+    assert not need, f"필수 정책 파일 없음: {need} (배포 패키지 누락?) — SKIP 불가"
+    assert res, "실행된 정책이 없음"
+    skip_note = f" | SKIP {len(skipped)} 미배포: {', '.join(skipped)}" if skipped else ""
+    return (f"500틱 유한·슬루 준수 ×{len(res)}: " + "; ".join(res)
+            + f" (50Hz 예산 20ms, 백엔드 {backend}){skip_note}")
+
+
+def _selftest_grav_gate():
+    """(0905 감사 A4) 정합 IMU 통과 / 장착보정 미적용(−1,0,0) 거부 / 스테일·미수신 거부 / 15° 통과·20° 거부."""
+    now = 1000.0
+    ok, why = gravity_gate(((0, 0, 0), (1.0, 0.0, 0.0, 0.0)), now, now)
+    assert ok, why
+    s = math.sqrt(0.5)                      # y축 −90° 회전 → g = (−1,0,0): 장착보정 미적용 IMU 의 전형
+    g = projected_gravity((s, 0.0, -s, 0.0))
+    assert abs(g[0] + 1.0) < 1e-6 and abs(g[2]) < 1e-6, g
+    ok, why = gravity_gate(((0, 0, 0), (s, 0.0, -s, 0.0)), now, now)
+    assert not ok and "정합 실패" in why, why
+    ok, why = gravity_gate(((0, 0, 0), (1.0, 0.0, 0.0, 0.0)), now - 1.0, now)
+    assert not ok and "스테일" in why, why
+    ok, why = gravity_gate(None, 0.0, now)
+    assert not ok and "미수신" in why, why
+    for deg, expect in ((15.0, True), (20.0, False)):   # 거리 = 2·sin(θ/2): 0.26 / 0.35
+        h = math.radians(deg) / 2.0
+        ok, _ = gravity_gate(((0, 0, 0), (math.cos(h), 0.0, math.sin(h), 0.0)), now, now)
+        assert ok == expect, (deg, ok)
+    return "정합 통과 · (−1,0,0) 거부 · 스테일/미수신 거부 · 15° 통과/20° 거부"
 
 
 #: boot_pose_check 검증 저널 (젯슨 경로) — 프레임 게이트의 근거 자료
@@ -882,8 +941,9 @@ def _selftest_osc_guard():
             f"미트리거 / 과속 즉시 — 5케이스 통과")
 
 
-def run_selftest():
-    """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 정책 500틱."""
+def run_selftest(required=()):
+    """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 게이트 + 정책 500틱.
+    required: 파일이 반드시 있어야 하는 체크포인트(기동 --checkpoint, STAND_DEFAULT) — 없으면 FAIL."""
     tests = [("하드웨어맵", _selftest_hwmap),
              ("온셋 블렌딩", _selftest_blend),
              ("stand LPF", _selftest_stand_lpf),
@@ -891,8 +951,9 @@ def run_selftest():
              ("수치 앵커", _selftest_anchors),
              ("게인 정책", _selftest_gains),
              ("프레임 게이트", _selftest_frame_gate),
+             ("중력 게이트", _selftest_grav_gate),
              ("발진 가드", _selftest_osc_guard),
-             ("정책 500틱", _selftest_policy)]
+             ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:
         try:
@@ -925,7 +986,7 @@ def main():
     ap.add_argument("--checkpoint", default="walk", choices=list(CHECKPOINTS))
     args = ap.parse_args()
     if args.selftest:
-        return run_selftest()
+        return run_selftest(required=(args.checkpoint, STAND_DEFAULT))
 
     # 프레임 변환 상수 — 하드웨어맵 결함 시 여기서 하드 페일 (드라이런 포함 기동 차단)
     frames = load_frame_map()
@@ -1179,11 +1240,13 @@ def main():
                 march_family = {k for k in CHECKPOINTS if k.startswith("march")}
                 stand_family = {k for k in CHECKPOINTS if k.startswith("stand")}
                 if c == "stand":
-                    # 0803 부활: stand_v3 전용 정책 등록 (능동 균형 서기 —
-                    # 낙상 3.1%·가드재생 0트립·양발접촉 98.3%). 검증 사다리의
-                    # 1단: march 전에 stand 제로샷 확인.
+                    # 0803 부활: stand 전용 정책 가족 (능동 균형 서기). 검증 사다리의
+                    # 1단: march 전에 stand 제로샷 확인. 가족 밖이면 STAND_DEFAULT + 경고.
                     ck = args.checkpoint if args.checkpoint in stand_family \
-                        else "stand_v7"
+                        else STAND_DEFAULT
+                    if ck != args.checkpoint:
+                        self.get_logger().warn(
+                            f"--checkpoint {args.checkpoint} 는 stand 가족이 아님 → {ck} 로 대체 실행")
                 elif c == "march":
                     ck = args.checkpoint if args.checkpoint in march_family \
                         else "march_v5b"
@@ -1192,6 +1255,15 @@ def main():
                         if args.checkpoint in (
                             set(CHECKPOINTS) - march_family - stand_family) \
                         else "drv2"
+                # 중력 정합 게이트 (0905 감사 A4) — 장착보정 미적용 IMU 관측(±1,0,0)이 그대로
+                # 정책에 들어가는 경로 차단. 드라이런도 같은 게이트(관측 검증이 목적).
+                g_ok, g_why = gravity_gate(self.imu, self.imu_ts, time.time())
+                if not g_ok and not bool(d.get("force_gravity", False)):
+                    self.get_logger().error(
+                        f"[거부] RL {c} 시작 불가 — {g_why}. IMU 장착보정·착지 자세 확인. "
+                        "강제 시작: {\"cmd\": ..., \"force_gravity\": true}")
+                    return
+                self.get_logger().info(g_why)
                 # 라이브 (재)시작 = 가드·미분 상태 전부 리셋 (적대리뷰 A1·A2:
                 # 종전엔 osc_tripped 래치로 재개 시 가드 영구 사망 + prev_qpos
                 # 동결로 복귀 첫 틱 qvel 폭주)

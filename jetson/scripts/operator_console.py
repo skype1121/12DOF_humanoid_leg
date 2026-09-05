@@ -48,7 +48,20 @@ FOOT_TOPIC = "/humanoid/foot_force"
 BRIDGE_CMD_TOPIC = "/humanoid/rl_bridge_command"
 BRIDGE_DEBUG_TOPIC = "/humanoid/rl_bridge_debug"
 
-BODY_WEIGHT_N = 172.9        # 실물 17.62kg(저울 0904) — 발력 총합 %의 분모. 구 117.7 은 12kg 추정치(4차 "90%" 는 실제 61%)
+BODY_WEIGHT_N = 172.9        # 실물 17.62kg(저울 0904) — 발력 총합 %의 분모. 어댑터 npc 0.02650(0906 재보정) 과 짝.
+#: ⚠ 구 어댑터(npc 0.01804, 12kg 가정)와 짝지으면 완전 하중이 68% 로 나온다 — 착지 후 %가 70% 근처에서 안 오르면 구판 의심.
+#:    백분율은 카운트 앵커 대비라 4차 "90% 자립" 은 유효(0905 카드의 "실제 61%" 는 분모만 바꾼 오류 — 철회).
+
+#: 정책 드롭다운 — 첫 항목이 기본값(7차 데뷔 후보). 브리지 CHECKPOINTS 의 부분집합이어야 한다(selftest ⑧).
+CKPT_CHOICES = ["stand_v18b", "stand_v17", "stand_v15", "stand_v18", "stand_v16", "stand_v14",
+                "stand_v9", "stand_v8", "stand_v7", "march_v5b"]
+CKPT_DEFAULT = CKPT_CHOICES[0]
+
+
+def render_page():
+    """PAGE 의 정책 드롭다운을 CKPT_CHOICES 로 채운다 (구판은 정적 목록 stand_v8~ 로 기본값이 legacy stand_v7 였음)."""
+    return PAGE.replace("<!--CKPT_OPTIONS-->",
+                        "".join(f"<option>{c}</option>" for c in CKPT_CHOICES))
 STALE_SEC = 1.5              # 이보다 오래된 텔레메트리는 '끊김'으로 표시
 #: can_up.sh 는 sudo가 필요하다. 젯슨 계정 암호(공개본에서 기본값 제거)를 환경변수로
 #: 덮어쓸 수 있게 둔다 — 소스에 상수로 박아두지 않기 위함.
@@ -587,7 +600,7 @@ def act_trim(payload):
 
 
 def act_bridge_live(payload):
-    ckpt = str(payload.get("checkpoint", "stand_v7"))
+    ckpt = str(payload.get("checkpoint", CKPT_DEFAULT))
     _need(ckpt.replace("_", "").isalnum(), "체크포인트 이름이 올바르지 않습니다")
     return RUN.start("bridge",
                      [sys.executable, os.path.join(SCRIPTS, "rl_bridge_node.py"),
@@ -774,8 +787,7 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <pre id=log_stack>—</pre></section>
 
 <section><h2>2. 정책</h2><div class=row>
-<select id=ckpt><option>stand_v8</option><option>stand_v7</option><option>stand_v6</option>
-<option>stand_v5</option><option>stand_v3</option><option>march_v5b</option></select>
+<select id=ckpt><!--CKPT_OPTIONS--></select>
 <button data-a=bridge class=warn>브리지 live</button></div>
 <button data-a=stand class=go>stand 발사</button>
 <button data-a=march class=go>march 발사</button>
@@ -932,7 +944,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path in ("/", "/index.html"):
-            return self._send(200, PAGE, "text/html; charset=utf-8")
+            return self._send(200, render_page(), "text/html; charset=utf-8")
         if self.path == "/api/state":
             st = TEL.view()
             st["procs"] = RUN.snapshot()
@@ -995,9 +1007,29 @@ def selftest():
         if not os.path.isdir(p):
             fails.append(f"경로 없음: {p}")
     # ⑥ 발력 백분율 산식
-    got = round(100.0 * (58.85 + 58.85) / BODY_WEIGHT_N, 1)
+    got = round(100.0 * (86.45 + 86.45) / BODY_WEIGHT_N, 1)
     if got != 100.0:
         fails.append(f"발력 백분율 산식 오류: {got}")
+    # ⑧ 드롭다운 정책은 전부 브리지 CHECKPOINTS 에 있어야 하고 기본값은 데뷔 후보 (0905 감사 A1:
+    #    구판은 정적 목록 stand_v8~ 에 기본값 legacy stand_v7 — 10.49kg 자산 정책이 실물에 오르는 경로)
+    try:
+        bridge_py = os.path.join(SCRIPTS, "rl_bridge_node.py")
+        if not os.path.isfile(bridge_py):   # 젯슨 밖(개발 PC)에선 같은 폴더의 브리지로 대조
+            bridge_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rl_bridge_node.py")
+        src = open(bridge_py, encoding="utf-8").read()
+        body = src.split("CHECKPOINTS = {", 1)[1].split("\n}\n", 1)[0]
+        known = set(re.findall(r'^\s+"([A-Za-z0-9_]+)": os\.path\.join', body, re.M))
+        missing = [c for c in CKPT_CHOICES if c not in known]
+        if missing:
+            fails.append(f"드롭다운 정책이 브리지 CHECKPOINTS 에 없음: {missing}")
+        if CKPT_DEFAULT != "stand_v18b":
+            fails.append(f"기본 정책이 7차 데뷔 후보(stand_v18b)가 아님: {CKPT_DEFAULT}")
+        page = render_page()
+        if "<!--CKPT_OPTIONS-->" in page or f"<option>{CKPT_DEFAULT}</option>" not in page \
+                or page.index(f"<option>{CKPT_DEFAULT}</option>") != page.index("<select id=ckpt>") + len("<select id=ckpt>"):
+            fails.append("페이지 드롭다운 렌더 실패 (기본값이 첫 항목이 아님)")
+    except Exception as exc:
+        fails.append(f"브리지 CHECKPOINTS 대조 실패: {exc}")
     # ⑦ 세션 레코더 — 닫힌 상태에서 호출해도 예외가 없어야 하고(콘솔이 죽으면
     #    안 된다), 열면 타임라인에 실제로 기록되어야 한다
     try:

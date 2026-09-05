@@ -13,28 +13,40 @@ v2.1 (2026-08-02, 적대리뷰 반영):
   - 원리 유지: 실측 현재각 홀드(점프 없음) → 2s 게인 램프다운(회생 미미)
     → 제로게인+EXIT. --fast = 즉시 릴리즈 (버스 사망 직전 비상 전용).
 
-사용: python3 release_all.py [--channel can1] [--fast]
+v2.2 (2026-09-06, 배포 계약 감사 A3):
+  - 회수 순서 게이트: stage8 노드·hang_stand·브리지(--live) 프로세스가 살아 있으면
+    거부(종료코드 3). CLAUDE.md "줄 인장 → 스택 종료 → 그 다음에만 release_all" 이
+    코드로 강제되지 않아 같은 버스에 상반 명령이 겹칠 수 있었다. 탐지만 하고(pgrep)
+    종료는 절대 하지 않는다 — 콘솔이 띄운 것은 콘솔이 내린다. --force '<사유>' 로만 우회.
+  - CAN·디코더 import 를 main() 안으로 — --selftest 는 CAN 없는 PC 에서도 돈다.
+
+사용: python3 release_all.py [--channel can1] [--fast] [--force '<사유>'] | --selftest
 """
 import argparse
 import math
+import os
 import signal
+import subprocess
 import sys
 import time
 
 sys.path.insert(0, "/home/mama/rl_calib")
-import can  # noqa: E402
-
-from ak_mit_command import pack_ak_mit_command  # noqa: E402
-from ak_mit_decoder import decode_ak_mit_feedback  # noqa: E402
 
 ENTER = bytes([0xFF] * 7 + [0xFC])
 EXIT = bytes([0xFF] * 7 + [0xFD])
 IDS = list(range(1, 13))
-ZERO = pack_ak_mit_command(0.0, 0.0, 0.0, 0.0, 0.0)
 KP_SOFT = 12.0     # 홀드 시작 게인 — 스윙만 잡을 저강성 (하중 지지 불가 수준)
 KD_SOFT = 0.8
 RAMP_S = 2.0
 TICK = 0.02
+
+#: 회수 순서 게이트 — 이 패턴(pgrep -f, 정규식)의 프로세스가 살아 있으면 릴리즈 거부.
+STACK_PATTERNS = (
+    ("stage8 노드", r"stage8_12axis_mit_control_node"),
+    ("hang_stand", r"hang_stand\.py"),
+    ("브리지 live", r"rl_bridge_node\.py.*--live"),
+)
+GATE_EXIT_CODE = 3
 
 SIG = []
 
@@ -43,13 +55,83 @@ def on_signal(signum, frame):
     SIG.append(signum)
 
 
+def stack_alive(patterns=STACK_PATTERNS):
+    """살아 있는 스택 프로세스 [(라벨, [pid, ...]), ...] — 없으면 []. 탐지 전용(종료 없음)."""
+    me, parent = os.getpid(), os.getppid()
+    found = []
+    for label, pat in patterns:
+        r = subprocess.run(["pgrep", "-f", "--", pat], capture_output=True, text=True)
+        pids = [int(p) for p in r.stdout.split() if p.strip().isdigit()]
+        pids = [p for p in pids if p not in (me, parent)]
+        if pids:
+            found.append((label, pids))
+    return found
+
+
+def gate_or_die(force_reason=None):
+    """스택 생존 시 거부(SystemExit 3). --force '<사유>' 면 경고만 찍고 진행."""
+    alive = stack_alive()
+    if not alive:
+        return []
+    lines = "; ".join(f"{lab} pid {','.join(map(str, pids))}" for lab, pids in alive)
+    if force_reason:
+        print(f"[release_all] ⚠ 스택 생존 상태에서 --force 진행 (사유: {force_reason}): {lines}")
+        return alive
+    print(f"[release_all] 거부 — 스택이 살아 있음: {lines}")
+    print("  회수 순서: ① 줄 인장 → ② bash ~/rl_calib/stack_down.sh (콘솔: '스택 종료') → ③ release_all")
+    print("  같은 버스에 상반 명령이 겹치면 회생 과전압으로 SMPS 가 죽는다. 비상이면 --force '<사유>'")
+    raise SystemExit(GATE_EXIT_CODE)
+
+
+def selftest():
+    """CAN·ROS 불필요 — 가짜 stage8 프로세스(exec -a 위장)로 게이트 거부·통과 검증.
+    종료는 내가 띄운 명시 PID 만 (pkill 금지 원칙)."""
+    pre = stack_alive()
+    if pre:
+        print(f"[selftest] 실스택 생존 중 — '빈 상태' 검사 생략: {pre}")
+    else:
+        assert gate_or_die(None) == [], "빈 상태에서 오탐"
+    p = subprocess.Popen(["bash", "-c", "exec -a stage8_12axis_mit_control_node sleep 30"])
+    try:
+        time.sleep(0.3)
+        got = stack_alive()
+        assert any(lab == "stage8 노드" and p.pid in pids for lab, pids in got), f"가짜 stage8 미탐지: {got}"
+        try:
+            gate_or_die(None)
+        except SystemExit as e:
+            assert e.code == GATE_EXIT_CODE, e.code
+        else:
+            raise AssertionError("스택 생존인데 게이트가 통과시킴")
+        forced = gate_or_die("selftest 강제")
+        assert forced, "--force 경로가 진행하지 않음"
+    finally:
+        p.terminate()          # 명시 PID — 내가 띄운 가짜 프로세스만
+        p.wait(timeout=5)
+    time.sleep(0.2)
+    assert not any(p.pid in pids for _, pids in stack_alive()), "가짜 프로세스 잔존"
+    print("[selftest] release_all 게이트: 빈상태 통과 · 가짜 stage8 거부(exit 3) · --force 통과 — ALL PASS")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--channel", default="can1")
     ap.add_argument("--fast", action="store_true",
                     help="즉시 제로게인 (구버전) — 버스 사망 직전 비상 전용. "
                          "관절이 영점에서 멀면 자유낙하 스윙→회생으로 SMPS 트립 위험")
+    ap.add_argument("--force", metavar="사유", default=None,
+                    help="스택 생존 게이트 우회(사유 기록 필수) — 버스 사망 직전 비상 전용")
+    ap.add_argument("--selftest", action="store_true", help="CAN 없이 게이트 검증만")
     a = ap.parse_args()
+    if a.selftest:
+        return selftest()
+    gate_or_die(a.force)   # 스택 종료 선행 강제 (v2.2)
+
+    import can  # noqa: E402 — 게이트 통과 후에만 버스를 연다
+    from ak_mit_command import pack_ak_mit_command  # noqa: E402
+    from ak_mit_decoder import decode_ak_mit_feedback  # noqa: E402
+    ZERO = pack_ak_mit_command(0.0, 0.0, 0.0, 0.0, 0.0)
+
     for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(s, on_signal)
     bus = can.Bus(channel=a.channel, interface="socketcan")

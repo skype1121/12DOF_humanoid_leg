@@ -46,7 +46,7 @@ SAMPLE_S = 2.0            # 그 뒤 평균낼 구간
 ABORT_FWD_DEG = 8.0
 ABORT_LAT_DEG = 8.0
 ABORT_LOAD_PCT = 60.0
-BODY_WEIGHT_N = 117.7
+BODY_WEIGHT_N = 172.9     # 실물 17.62kg 저울(0904)×9.81 — 어댑터 npc 0.02650(0906) 과 같은 참값 축. 구 117.7 폐기
 #: 발목 굽힘은 좌우 거울 규약 — 순수 피치를 만들려면 부호를 반대로 준다
 ANKLE_F = {"left_ankle_f_joint": +1.0, "right_ankle_f_joint": -1.0}
 

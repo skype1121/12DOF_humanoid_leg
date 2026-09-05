@@ -13,8 +13,10 @@
 | 대조 | `stand_v17` (2026-09-04_21-48-32 / model_126997, md5 4dc9fd58…) | 구래퍼 com+16 10.9%(v18b 와 동률권), τ피크 41%, slip 0.9% | **19~21kg 로 학습**(link_mass_calib 상속) — 실물보다 무거운 몸을 기대 |
 | 예비 | `stand_v15` (16-43-02 / model_114999) | 자기환경 배포조건 최강 | 발 요차 24° 오리발 |
 
-6차(v7) 카드와 달라진 전제: **체중 172.9N**(저울 17.62kg — 4차 "90% 자립" 은 실제 61%). 블랙박스에
-`tau_est_nm`·`temp_raw` 신설 → `analyze_fall.py` 가 관절별 토크 피크/포화 표를 시뮬 명목 판정과 같은 축으로 낸다.
+6차(v7) 카드와 달라진 전제: **체중 172.9N**(저울 17.62kg). 발압력 어댑터 npc 를 0.01804→**0.02650** 으로 재보정
+(0906 — 0802 자립 카운트 앵커 6525 = 172.9N). 백분율은 카운트 앵커 대비라 **4차 "90% 자립" 은 유효**
+(0905 판의 "실제 61%" 는 분모만 바꾼 오류 — 철회). 블랙박스에 `tau_est_nm`·`temp_raw` 신설 →
+`analyze_fall.py` 가 관절별 토크 피크/포화(문턱 95%) 표를 **자립 구간만** 집계해 시뮬 명목 판정과 같은 축으로 낸다.
 
 ---
 
@@ -24,7 +26,9 @@
 - 낙하 후에는 전원을 안 껐어도 `boot_pose_check` 재판정 (m8 무전원사이클 시프트 전례).
 
 ## 운영 콘솔 (권장) — http://172.16.35.64:8800 (LAN) / http://100.80.46.80:8800 (tailscale)
-콘솔 상단 발력 총합% 표기는 172.9N 기준으로 갱신된 `operator_console.py` 여야 한다(아래 배포 목록). 구판이면 %가 1.47배 부풀려 나온다.
+콘솔 발력 총합% 는 **신 콘솔(분모 172.9N) + 신 어댑터(npc 0.02650)** 짝이어야 한다. 구 어댑터가 떠 있으면 완전 하중이
+**68%** 로 나와 착지 게이트(≥90%)를 영영 못 넘는다 — 그것이 곧 구판 검출이다. 콘솔 정책 드롭다운 기본값 = **stand_v18b**
+(구판은 stand_v7 — 구판 콘솔로 브리지를 띄우면 10.49kg 자산 정책이 올라간다. 콘솔 재기동 후 드롭다운 첫 항목을 확인).
 
 ## ⚠ 젯슨 스크립트 경로 (0808 실측)
 | 스크립트 | 위치 |
@@ -36,12 +40,18 @@
 로컬에서 `bash jetson/deploy_package.sh` → `deploy/stand_7차_<날짜>.tar.gz` + `MANIFEST.md5`. 젯슨에서:
 ```bash
 cd ~/humanoid_repo && tar xzf ~/stand_7차_*.tar.gz && LC_ALL=C md5sum -c --quiet deploy/MANIFEST.md5 && echo MD5_OK   # 한 줄도 안 뜨고 MD5_OK
-python3 jetson/scripts/rl_bridge_node.py --selftest                                   # ALL PASS (walk + stand_* 전부 순회)
+python3 jetson/scripts/rl_bridge_node.py --selftest --checkpoint stand_v18b   # ALL PASS — stand_v14 는 "SKIP 미배포" 표기가 정상
 python3 jetson/scripts/rl_bridge_node.py --selftest 2>&1 | grep -o "stand_v18b[^;]*"     # 등록·로드 확인
+python3 jetson/scripts/foot_force_adapter_node.py --selftest                   # 체중 앵커 172.9N (npc 0.02650)
+python3 jetson/scripts/release_all.py --selftest                               # 회수 순서 게이트
+# ~/rl_calib 사본 갱신 — 젯슨은 이 경로의 사본을 실행한다(0808 실측 표). 어댑터는 sensors_up.sh 가 띄우는 경로를 확인.
+diff ~/rl_calib/release_all.py jetson/scripts/release_all.py | head -5; cp jetson/scripts/release_all.py ~/rl_calib/release_all.py
+grep -n 'foot_force_adapter' ~/rl_calib/sensors_up.sh      # 그 경로의 파일에 NEWTON_PER_COUNT = 0.02650 이 있어야 한다
 ```
 패키지 내용: `models/stand_v15|v16|v17|v18*/policy.pt` → `logs/rsl_rl/biped12_stage4/<run>/exported/policy.pt` (브리지 CHECKPOINTS 경로),
-`jetson/scripts/{rl_bridge_node,analyze_fall,posture_probe,operator_console}.py`, `rl_walking/deploy/*.py`, `robot_runtime/*.py`.
-콘솔은 systemd 상시라 **콘솔 재기동 필요** (`sudo systemctl restart operator-console`).
+`jetson/scripts/{rl_bridge_node,analyze_fall,posture_probe,operator_console,foot_force_adapter_node,release_all,zero_kinematic_check}.py`,
+`rl_walking/deploy/*.py`, `robot_runtime/*.py`. 콘솔은 systemd 상시라 **콘솔 재기동 필요** (`sudo systemctl restart operator-console`).
+0906 변경(배포 계약 감사 A1~A5): 콘솔 드롭다운 기본 stand_v18b · 어댑터 npc 재보정 · release_all 회수 게이트 · 브리지 중력 게이트 · selftest SKIP.
 
 ## 0. 전원·게이트 (하나라도 실패 시 진행 금지)
 ```bash
@@ -52,6 +62,9 @@ bash ~/rl_calib/sensors_up.sh                               # IMU·발압력
 python3 ~/humanoid_repo/jetson/scripts/rl_bridge_node.py --selftest   # ALL PASS
 ```
 - 12/12 아니면 **배수 보정 우선**(`zero_anchor.py`), 재캡처는 최후. 하드웨어맵 갱신 시 **stage8 재기동 필수**.
+- **중력 게이트(0906 신설):** 브리지는 stand 명령 시 IMU 중력벡터가 (0,0,−1) 에서 0.3(≈17°) 넘게 벗어나면 기동을 거부한다
+  (`[거부] RL stand 시작 불가 — 중력벡터 정합 실패`). 장착보정 미적용 IMU 나 기울어진 착지의 검출이다 — 거부되면 IMU 보정 상태를
+  확인하고 **착지를 다시 한다**. `force_gravity` 는 벤치 전용, 실기에서 쓰지 않는다.
 - **패드 압축 실측(7차 신규, 1분):** 발을 든 상태에서 패드를 손가락으로 눌러 1mm 이상 들어가면 지면강성 1e4급 —
   시뮬(`--ground_k` 스윕)에서 k≤1e4 는 정책을 전멸시킨 조건이므로 **결과와 무관하게 기록**한다.
 
@@ -97,6 +110,8 @@ bash ~/rl_calib/stack_down.sh
 python3 ~/rl_calib/release_all.py
 ```
 release_all 과 stage8 armed 스트리밍 동시 실행 금지. 굽힌 관절 즉시 릴리즈 금지(회생 OVP 사망 전례). 프로세스 종료는 명시 PID 로만.
+**0906 부터 release_all 은 stage8·hang_stand·브리지(--live) 가 살아 있으면 거부(exit 3)한다** — 이 거부는 절차 위반 신호이지 버그가
+아니다. stack_down 후 재실행. `--force '<사유>'` 는 버스 사망 직전 비상 전용.
 
 ## 세션 후
 블랙박스를 `.scratch/bb/` 로 복사 → `analyze_fall.py` 토크표를 `reports/gen_v18b/README.md` 명목 관절표 옆에 붙여 sim↔real 토크 대조 기록.

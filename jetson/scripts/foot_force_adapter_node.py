@@ -27,14 +27,20 @@ OUT_TOPIC = "/humanoid/foot_force"
 QOS_DEPTH = 10  # 입력이 10Hz라 1초 버퍼면 충분
 ERR_LOG_EVERY = 20
 
-#: ★ 실측 보정 완료 (2026-08-02, 트림0 자립 스탠딩) ★
+#: ★ 실측 보정 (2026-08-02 카운트 앵커, 2026-09-06 체중 재보정) ★
 #: 절차: 무부하(매달림 0727) 카운트 = L328/R62 → 바이어스.
-#:       자립 스탠딩(줄·손 무접촉, 0802) 20표본 평균 = L3356/R3559 카운트.
-#:       체중 12.0kg×9.81 = 117.7N → npc = 117.7/((3356−328)+(3559−62)) = 0.01804.
-#:       검산: L 54.6N + R 63.1N = 117.7N (좌우 46/54% — 당시 IMU 좌우 1.1°와 일치).
+#:       자립 스탠딩(줄·손 무접촉, 0802) 20표본 평균 = L3356/R3559 카운트
+#:       → 순카운트 (3356−328)+(3559−62) = 6525 = 체중 1.0 의 앵커.
+#:       체중 = 17.62kg×9.81 = 172.9N (저울 실측 0904) → npc = 172.9/6525 = 0.02650.
+#:       검산: L 80.2N + R 92.7N = 172.9N (좌우 46/54% — 당시 IMU 좌우 1.1°와 일치).
+#: ⚠ 0802~0905 는 "12.0kg 추정 = 117.7N" 으로 npc 0.01804 를 썼다 — 보고 N 이 참값의 0.68배.
+#:    그 시절 블랙박스(foot_n)는 ×1.469 (analyze_fall 이 날짜로 자동 보정). 백분율(발력/체중)은
+#:    같은 카운트 앵커를 나누므로 구·신 모두 유효 — 4차 "90% 자립" 은 그대로 90% 다.
 #: 구 플레이스홀더 0.05는 2.8배 과대 — 접촉 임계 5N 판정이 통째로 틀어졌었음.
+#: 접촉 임계 5N(브리지 CONTACT_FORCE_THRESHOLD_N) = 시뮬 feet_contact threshold 5.0N 과 같은 참값 축
+#:    (구 스케일에선 실효 7.35N 이었음).
 #: ROS 파라미터 newton_per_count/left_bias_counts/right_bias_counts 로 override 가능.
-NEWTON_PER_COUNT = 0.01804
+NEWTON_PER_COUNT = 0.02650
 LEFT_BIAS_COUNTS = 328.0
 RIGHT_BIAS_COUNTS = 62.0
 
@@ -83,6 +89,12 @@ def selftest():
                         NEWTON_PER_COUNT * (100 - RIGHT_BIAS_COUNTS)), d["right_n"]
     assert d["calibrated"] is True
     assert math.isclose(d["timestamp"], 123.456)
+
+    # 1b) 체중 앵커: 0802 자립 스탠딩 카운트(L3356/R3559) → 172.9N (저울 17.62kg) ±0.3N
+    st = pressure_to_foot_force(
+        {"timestamp": 0.0, "left": [3356, 0, 0, 0], "right": [3559, 0, 0, 0]}, NEWTON_PER_COUNT)
+    tot = st["left_n"] + st["right_n"]
+    assert abs(tot - 172.9) < 0.3, f"체중 앵커 어긋남: {tot:.2f}N ≠ 172.9N (npc={NEWTON_PER_COUNT})"
 
     # 2) 계수 override 반영 확인 (바이어스 0으로 스케일만 검증)
     d2 = pressure_to_foot_force(json.loads(sample), 0.1, 0.0, 0.0)

@@ -980,6 +980,11 @@ def main():
             self.blend_from = None
             self.nocontact_t0 = None
             self.stage8_cmd_rel = {}
+            # 블랙박스 전용(제어 무관): stage8 피드백의 토크 추정·모터 온도 원값.
+            # 0905 — 시뮬 판정이 토크 피크/포화 %를 지표로 쓰므로 실물도 같은
+            # 축으로 대조할 수 있어야 한다 (실물 전류 기록 요구, 승윤님).
+            self.tau_est = {}
+            self.temp_raw = {}
             self.tgt_filt = None
             self.osc_tgt = OscGuard(JOINT_ORDER)
             self.prev_tgt = None
@@ -1060,6 +1065,14 @@ def main():
                         self.baseline[j] = float(b)   # 모터 프레임 deg
                     except (ValueError, TypeError):
                         pass
+                for key, store in (("feedback_torque_est", self.tau_est),
+                                   ("feedback_temperature_raw", self.temp_raw)):
+                    v = info.get(key)
+                    if v is not None:
+                        try:
+                            store[j] = float(v)
+                        except (ValueError, TypeError):
+                            pass
                 cr = info.get("commanded_relative_deg")
                 if cr is not None:
                     try:
@@ -1365,7 +1378,11 @@ def main():
                    # 자세 사후분석용 (0802 첫 march: 줄 걸림 vs 자체 기울어짐
                    # 구분에 IMU 부재가 병목이었음)
                    "quat_wxyz": [round(float(v), 5) for v in quat],
-                   "gyro_rad_s": [round(float(v), 4) for v in gyro]}
+                   "gyro_rad_s": [round(float(v), 4) for v in gyro],
+                   # 0905 신설(기록 전용): stage8 토크 추정[Nm]·온도 원값, JOINT_ORDER 순,
+                   # 미수신 관절은 None — 시뮬 토크 피크/포화 지표와 동일 축 대조용
+                   "tau_est_nm": [self.tau_est.get(j) for j in JOINT_ORDER],
+                   "temp_raw": [self.temp_raw.get(j) for j in JOINT_ORDER]}
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
             if not (self.live and self.armed):

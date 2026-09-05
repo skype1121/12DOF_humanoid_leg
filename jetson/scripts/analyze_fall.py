@@ -20,6 +20,13 @@ import os
 import sys
 
 BODY_WEIGHT_N = 172.9      # 실물 17.62kg(저울, 2026-09-04) × 9.81 — 구 117.7(12kg 추정) 폐기
+#: 관절별 토크 한계[Nm] — 시뮬 액추에이터 설정(biped12_cfg.py)과 동일 축:
+#: AK70-10 25.0 / 발목롤 AK45-36 24.0. 블랙박스 tau_est_nm(0905 신설) 이 있을 때만 토크 요약.
+JOINT_ORDER = ["left_hip_f_joint", "right_hip_f_joint", "left_hip_a_joint", "right_hip_a_joint",
+               "left_hip_r_joint", "right_hip_r_joint", "left_knee_joint", "right_knee_joint",
+               "left_ankle_f_joint", "right_ankle_f_joint", "left_ankle_r_joint", "right_ankle_r_joint"]
+TAU_LIMIT_NM = [25.0] * 10 + [24.0, 24.0]
+TAU_SAT_FRAC = 0.9        # 시뮬 포화 지표와 같은 문턱(|τ| ≥ 0.9·한계)
 LOAD_STANDING = 85.0       # 이 % 이상이면 하중을 정책이 받고 있다고 본다
 LOAD_LOST = 50.0           # 이 % 아래로 떨어지면 줄/사람에게 넘어간 것
 LEAN_FALL_DELTA = 15.0     # 시작 자세 대비 이만큼 더 기울면 자립 종료
@@ -124,6 +131,32 @@ def load(path):
     return ticks, events, bad
 
 
+def torque_summary(rows):
+    """관절별 |τ| 피크·RMS·포화 비율(틱 기준) — 시뮬 명목 판정의 물리 실현성 표와 같은 축.
+    tau_est_nm 이 한 틱도 없으면 None (구 블랙박스)."""
+    per = [[] for _ in JOINT_ORDER]
+    for r in rows:
+        tau = r.get("tau")
+        if not tau or len(tau) != len(JOINT_ORDER):
+            continue
+        for k, v in enumerate(tau):
+            if v is not None:
+                per[k].append(abs(float(v)))
+    if not any(per):
+        return None
+    out = []
+    for k, name in enumerate(JOINT_ORDER):
+        xs = per[k]
+        if not xs:
+            out.append((name, None, None, None, 0)); continue
+        lim = TAU_LIMIT_NM[k]
+        peak = max(xs)
+        rms = math.sqrt(sum(x * x for x in xs) / len(xs))
+        sat = 100.0 * sum(1 for x in xs if x >= TAU_SAT_FRAC * lim) / len(xs)
+        out.append((name, peak, rms, sat, len(xs)))
+    return out
+
+
 def analyze(path):
     ticks, events, bad = load(path)
     if not ticks:
@@ -147,7 +180,8 @@ def analyze(path):
         load_pct = 100.0 * (float(fn[0]) + float(fn[1])) / BODY_WEIGHT_N
         rows.append({"t": rel, "fwd": fwd, "lat": lat, "tilt": tilt,
                      "load": load_pct, "contact": t.get("contact"),
-                     "alpha": t.get("blend_alpha", 1.0)})
+                     "alpha": t.get("blend_alpha", 1.0),
+                     "tau": t.get("tau_est_nm")})
 
     dur = rows[-1]["t"]
 
@@ -247,6 +281,7 @@ def analyze(path):
         "events": [(e["timestamp"] - t0, e.get("event"), e.get("reason", ""))
                    for e in events if e["timestamp"] >= t0],
         "rows": rows,
+        "tau": torque_summary(rows),
     }
 
 
@@ -350,7 +385,23 @@ def report(a):
             print(f"   {t:6.2f}s  {ev}" + (f"  ({why})" if why else ""))
     else:
         print("■ 이벤트: 없음 (가드 무트립·STOP_ALL 없음)")
-    print()
+    if a.get("tau"):
+        print("■ 실물 토크 (stage8 torque_est, 자립 구간 전체) — 시뮬 명목 판정 표와 같은 축")
+        print("   관절                 |τ|피크  RMS   한계  포화%(≥90%)  샘플")
+        worst = None
+        for name, peak, rms, sat, n in a["tau"]:
+            k = JOINT_ORDER.index(name)
+            if peak is None:
+                print(f"   {name:<20} (기록 없음)"); continue
+            print(f"   {name:<20} {peak:6.2f} {rms:6.2f} {TAU_LIMIT_NM[k]:5.0f}   {sat:6.1f}%     {n}")
+            if worst is None or peak / TAU_LIMIT_NM[k] > worst[1]:
+                worst = (name, peak / TAU_LIMIT_NM[k])
+        if worst:
+            print(f"   → 피크/한계 최대 {worst[1]*100:.0f}% ({worst[0]}). 시뮬 명목(v15~v17) 46~64% 와 대조.")
+        print()
+    elif a["rows"]:
+        print("■ 실물 토크: 블랙박스에 tau_est_nm 없음 (0905 이전 브리지) — 토크 대조 불가")
+        print()
     grade, headline, action = verdict(a)
     print(f"■ 판정 [{grade}급] {headline}")
     print(f"   다음: {action}")

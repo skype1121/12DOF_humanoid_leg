@@ -182,6 +182,12 @@ CHECKPOINTS = {
     # (com+16 조건 최고 — 실물 CoM 재적합 +16mm 에 해당), 명목 0/64·추세 −0.04, 발 요차 2.7°, hip_r 포화 0%.
     "stand_v17": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-04_21-48-32/exported"),
+    # stand_v18 (0905): 정정 env(실질량 17.62kg·명목 노이즈 정정, 새 축 없음) — 판정 reports/gen_*/README.md
+    "stand_v18": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-09-05_17-57-21/exported"),
+    # stand_v18b (0905): 정정 env(실질량 17.62kg·명목 노이즈 정정, 새 축 없음) — 판정 reports/gen_*/README.md
+    "stand_v18b": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/exported"),
 }
 
 #: 체크포인트별 게이트 클록 주파수 [Hz] — 학습 클록과 반드시 일치 (불일치 =
@@ -189,7 +195,7 @@ CHECKPOINTS = {
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
 CKPT_GAIT_FREQ = {"march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
-                   "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1}
+                   "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 
 # ---------------------------------------------------------------------------

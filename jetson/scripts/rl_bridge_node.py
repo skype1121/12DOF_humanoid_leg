@@ -1125,6 +1125,10 @@ def main():
             self.tau_est = {}
             self.temp_raw = {}
             self.status_ts = 0.0     # 마지막 stage8 status 수신 시각 — 블랙박스 status_age_s (0905 감사 C4: tau_est 동결값 식별)
+            # stage8 soft 클램프 누적·거부 사유 (0905 감사 B7: 클램프 발생이 블랙박스에 없어 사후분석에서 보이지 않았음)
+            self.clamp_total = None
+            self.clamp_counts = {}
+            self.reject_reason = None
             self.tgt_filt = None
             self.osc_tgt = OscGuard(JOINT_ORDER)
             self.prev_tgt = None
@@ -1191,6 +1195,10 @@ def main():
                 return
             self.armed = bool(d.get("armed"))
             self.status_ts = time.time()
+            self.clamp_total = d.get("soft_clamp_total")
+            cc = d.get("soft_clamp_counts")
+            self.clamp_counts = cc if isinstance(cc, dict) else {}
+            self.reject_reason = d.get("last_reject_reason")
             js = d.get("joints") or {}
             if not isinstance(js, dict):
                 return
@@ -1536,7 +1544,11 @@ def main():
                    "tau_est_nm": [self.tau_est.get(j) for j in JOINT_ORDER],
                    "temp_raw": [self.temp_raw.get(j) for j in JOINT_ORDER],
                    # stage8 status 신선도 [s] — analyze_fall 이 0.1s 초과 틱의 tau_est 를 동결값으로 제외
-                   "status_age_s": round(now - self.status_ts, 3) if self.status_ts > 0.0 else None}
+                   "status_age_s": round(now - self.status_ts, 3) if self.status_ts > 0.0 else None,
+                   # stage8 soft 클램프 누적(총·관절별)·마지막 거부 사유 — 클램프/거부가 낙상과 겹치는지 사후분석 (감사 B7)
+                   "soft_clamp_total": self.clamp_total,
+                   "soft_clamp_counts": [self.clamp_counts.get(j) for j in JOINT_ORDER],
+                   "last_reject_reason": self.reject_reason}
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
             if not (self.live and self.armed):

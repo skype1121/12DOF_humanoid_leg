@@ -211,6 +211,30 @@ def _fit_lag(u, y, dt, max_d=LAG_MAX_TICKS, taus_ms=LAG_TAU_MS):
     return best
 
 
+def clamp_summary(rows, t_end):
+    """stage8 soft 클램프 증가분(자립 구간·전 구간)과 거부 사유 — 블랙박스에 없으면 None (0906 이전 브리지)."""
+    have = [r for r in rows if r.get("clamp") is not None]
+    if not have:
+        return None
+    stand = [r for r in have if r["t"] <= t_end]
+    def delta(seq):
+        if len(seq) < 2:
+            return 0, {}
+        d_tot = int(seq[-1]["clamp"]) - int(seq[0]["clamp"])
+        per = {}
+        a, b = seq[0].get("clamp_j") or [], seq[-1].get("clamp_j") or []
+        for k, name in enumerate(JOINT_ORDER):
+            if k < len(a) and k < len(b) and a[k] is not None and b[k] is not None and b[k] - a[k] > 0:
+                per[name] = int(b[k] - a[k])
+        return d_tot, per
+    d_stand, per_stand = delta(stand)
+    d_all, per_all = delta(have)
+    first_clamp_t = next((r["t"] for i, r in enumerate(have[1:], 1) if r["clamp"] > have[i - 1]["clamp"]), None)
+    rejects = sorted({str(r["reject"]) for r in have if r.get("reject")})
+    return {"stand": d_stand, "per_stand": per_stand, "all": d_all, "per_all": per_all,
+            "first_t": first_clamp_t, "rejects": rejects}
+
+
 def loop_delay_summary(rows, t_end):
     """관절별 루프지연 추정 — 자립 구간(t≤t_end)·블렌딩 완료(alpha≥0.99) 틱만. numpy 없으면 None."""
     if np is None:
@@ -299,7 +323,9 @@ def analyze(path, foot_scale=None):
                      "alpha": t.get("blend_alpha", 1.0),
                      "tau": t.get("tau_est_nm"),
                      "status_age": t.get("status_age_s"),    # stage8 status 신선도 (0906 감사 C4)
-                     "u": t.get("targets_deg_joint"), "q": t.get("qpos_rad"), "ts": t["timestamp"]})
+                     "u": t.get("targets_deg_joint"), "q": t.get("qpos_rad"), "ts": t["timestamp"],
+                     "clamp": t.get("soft_clamp_total"), "clamp_j": t.get("soft_clamp_counts"),
+                     "reject": t.get("last_reject_reason")})   # stage8 클램프·거부 (0906 감사 B7)
 
     dur = rows[-1]["t"]
 
@@ -407,6 +433,7 @@ def analyze(path, foot_scale=None):
         "tau_stale": sum(1 for r in rows if r["t"] <= standing_s
                          and r["status_age"] is not None and r["status_age"] > TAU_STALE_S),
         "lag": loop_delay_summary(rows, standing_s),
+        "clamp": clamp_summary(rows, standing_s),
     }
 
 
@@ -532,6 +559,16 @@ def report(a):
     elif a["rows"]:
         print("■ 실물 토크: 블랙박스에 tau_est_nm 없음 (0905 이전 브리지) — 토크 대조 불가")
         print()
+    cl = a.get("clamp")
+    if cl is None:
+        print("■ stage8 클램프/거부: 블랙박스에 없음 (0906 이전 브리지)")
+    else:
+        per = ", ".join(f"{n.replace('_joint', '')} +{v}" for n, v in sorted(cl["per_stand"].items(), key=lambda x: -x[1])) or "없음"
+        print(f"■ stage8 soft 클램프: 자립 구간 +{cl['stand']}회 ({per}) / 전 구간 +{cl['all']}회"
+              + (f", 첫 클램프 {cl['first_t']:.2f}s" if cl["first_t"] is not None else "")
+              + (f" · 거부 사유 {cl['rejects']}" if cl["rejects"] else " · 거부 없음"))
+        if cl["stand"] > 0:
+            print("   ⚠ 자립 중 클램프 = 정책 목표가 stage8 soft 경계 밖 — 시뮬 판정에는 없는 개입(감사 B7). 낙상 시각과 겹치면 경계표 재검토.")
     lag = a.get("lag")
     if lag is None:
         print("■ 루프지연 추정: numpy 없음 — 생략")

@@ -36,8 +36,9 @@
 | `boot_pose_check.py` `sensors_up.sh` `stack_down.sh` `release_all.py` `stage8_cmd.py` `can_up.sh` | `~/rl_calib/` |
 | `rl_bridge_node.py` `stage8_12axis_mit_control_node.py` `analyze_fall.py` `posture_probe.py` `operator_console.py` | `~/humanoid_repo/jetson/scripts/` |
 
-## −1. 배포 패키지 (젯슨 접속 가능해지면 — 현재 No route to host)
-로컬에서 `bash jetson/deploy_package.sh` → `deploy/stand_7차_<날짜>.tar.gz` + `MANIFEST.md5`. 젯슨에서:
+## −1. 배포 패키지 (젯슨 접속 가능해지면 — 0906 11시 현재도 No route to host)
+**원샷:** 로컬에서 `bash jetson/deploy_to_jetson.sh` (`--wait` 면 응답할 때까지 대기 후 자동 배포) — 아래 수동 절차를 순서대로 실행하고 실패 시 중단한다.
+수동: 로컬에서 `bash jetson/deploy_package.sh` → `deploy/stand_7차_<날짜>.tar.gz` + `MANIFEST.md5`. 젯슨에서:
 ```bash
 cd ~/humanoid_repo && tar xzf ~/stand_7차_*.tar.gz && LC_ALL=C md5sum -c --quiet deploy/MANIFEST.md5 && echo MD5_OK   # 한 줄도 안 뜨고 MD5_OK
 python3 jetson/scripts/rl_bridge_node.py --selftest --checkpoint stand_v18b   # ALL PASS — stand_v14 는 "SKIP 미배포" 표기가 정상

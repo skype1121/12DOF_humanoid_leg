@@ -211,6 +211,30 @@ def _fit_lag(u, y, dt, max_d=LAG_MAX_TICKS, taus_ms=LAG_TAU_MS):
     return best
 
 
+SETTLE_ALPHA = 0.05        # 이 α 미만 = 정책 권한 없음(홀드 자세)
+SETTLE_EXPECT = (-3.0, -1.0)   # 카드 기대 피치 대역 [deg]
+SETTLE_SOFT_DEG = -5.0     # 이보다 뒤로 처지면 유효 강성 의심
+
+
+def _settle_pose(rows):
+    """정책 인수 시 정착 자세: α<SETTLE_ALPHA 틱(없으면 첫 0.2s)의 피치·롤 평균과 첫 틱 값."""
+    sel = [r for r in rows if r["alpha"] < SETTLE_ALPHA] or [r for r in rows if r["t"] <= 0.2]
+    if not sel:
+        return None
+    fwd = sum(r["fwd"] for r in sel) / len(sel)
+    lat = sum(r["lat"] for r in sel) / len(sel)
+    lo, hi = SETTLE_EXPECT
+    if fwd <= SETTLE_SOFT_DEG:
+        note = f"⚠ 뒤로 {abs(fwd):.1f}° 처짐 — 실물 유효 강성이 시뮬 명목(kp150)보다 낮다는 신호(구조 컴플라이언스). 기대치는 h3g 가 아니라 h3(강성 DR 포함) 수치"
+    elif lo <= fwd <= hi:
+        note = "기대 대역 안(시뮬 명목 −1.9°·0804 실측 −1.7°) — 실물 강성 ≈ 명목, 기대치 = h3g"
+    elif fwd > 3.0:
+        note = "앞으로 기운 착지(+3° 초과) — 카드 게이트(±3°) 위반, 착지를 재는 세션"
+    else:
+        note = "기대 대역 근처"
+    return {"fwd": fwd, "lat": lat, "n": len(sel), "fwd0": rows[0]["fwd"], "note": note}
+
+
 def clamp_summary(rows, t_end):
     """stage8 soft 클램프 증가분(자립 구간·전 구간)과 거부 사유 — 블랙박스에 없으면 None (0906 이전 브리지)."""
     have = [r for r in rows if r.get("clamp") is not None]
@@ -434,6 +458,9 @@ def analyze(path, foot_scale=None):
                          and r["status_age"] is not None and r["status_age"] > TAU_STALE_S),
         "lag": loop_delay_summary(rows, standing_s),
         "clamp": clamp_summary(rows, standing_s),
+        # 인수 시 정착 자세 (0906): 블렌딩 α<0.05 구간은 정책 권한이 사실상 0 = stage8 홀드로 혼자 선 자세.
+        # 카드 기대 −1~−3°(시뮬 명목 −1.9°, 0804 실측 −1.7°); −5° 이하면 실물 유효 강성이 명목보다 낮다는 신호.
+        "settle": _settle_pose(rows),
     }
 
 
@@ -559,6 +586,9 @@ def report(a):
     elif a["rows"]:
         print("■ 실물 토크: 블랙박스에 tau_est_nm 없음 (0905 이전 브리지) — 토크 대조 불가")
         print()
+    st = a.get("settle")
+    if st:
+        print(f"■ 인수 시 정착 자세 (α<{SETTLE_ALPHA} {st['n']}틱 평균): 피치 {st['fwd']:+.2f}° (첫 틱 {st['fwd0']:+.2f}°), 롤 {st['lat']:+.2f}° — {st['note']}")
     cl = a.get("clamp")
     if cl is None:
         print("■ stage8 클램프/거부: 블랙박스에 없음 (0906 이전 브리지)")

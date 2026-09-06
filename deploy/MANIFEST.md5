@@ -1,5 +1,5 @@
 835942d385988a859941c3edfd474e25  ./config/joint_limits_12dof.json
-3ad7316e1b3ea202ee28c321166398d4  ./docs/stand_v18_7차_실행카드.md
+8bcd00fa81d9ea12a3a684f178dc3a03  ./docs/stand_v18_7차_실행카드.md
 0e670b805fd077b902e8d6e066c84833  ./jetson/calib_data/sim_default_stand_targets_20260727.json
 70b24140a1dbb1050242f71ac8124a2c  ./jetson/scripts/analyze_fall.py
 071a0d57c95885231177525e5885dcc0  ./jetson/scripts/foot_force_adapter_node.py

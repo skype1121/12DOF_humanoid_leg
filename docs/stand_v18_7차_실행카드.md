@@ -84,6 +84,14 @@ python3 ~/rl_calib/stage8_cmd.py ARM_ALL                         # 30초 내
 시뮬 판정 조건이 정확히 "트림0·평평 착지 인수"다.
 **정착 피치 기록(0906 신규):** ARM 뒤·정책 전, 혼자 선 상태의 IMU 피치를 적는다 — 기대 **−1~−3°**(시뮬 명목 −1.9°, 0804 실측 −1.7°).
 (사후에는 `analyze_fall.py` 가 "인수 시 정착 자세" 로 블렌딩 α<0.05 구간 평균을 자동 출력한다 — 5차 블랙박스 재분석: −1.7°/−2.3°, 0804 아침 세션은 첫 틱 −14.5° 로 기울어진 착지였음.)
+**무게중심 실측(0907 신규, 정책 전 1분):** 패드 8점 압력으로 압력중심을 잰다 — 정적 서기에서 압력중심 = 무게중심 지면투영이라 "+16mm" 가정이 측정값이 된다.
+```bash
+python3 ~/humanoid_repo/jetson/scripts/cop_from_pads.py --identify          # 패드를 하나씩 눌러 left[i]/right[i] 순서 확인 → --layout 에 기록 (필수, 한 번)
+python3 ~/humanoid_repo/jetson/scripts/cop_from_pads.py --live --seconds 5 --save ~/logs/pads_hang.jsonl --no-report   # 매달린 상태(무부하)
+python3 ~/humanoid_repo/jetson/scripts/cop_from_pads.py --live --seconds 10 --tare ~/logs/pads_hang.jsonl --layout lf,rf,lb,rb --sim_ref_mm -25.0   # 혼자 선 상태
+```
+시뮬 명목 모델의 무게중심 투영은 발목롤 축 기준 **−25.0mm(뒤)**, com+16 가정이면 −12.3mm. 실물 값이 −12 근처면 판정 가정(com+16)이 맞고, −25 근처면 모델 그대로,
+그보다 뒤면 후방 낙상 예측이 강화된다(D급 경로의 직접 근거).
 −5° 이하로 뒤로 처지면 실물 유효 강성이 시뮬 명목보다 낮다는 뜻(구조 컴플라이언스) → 그 경우 §4 기대치(h3g)가 아니라 h3(강성 DR 포함) 수치가 대표.
 
 **정책 투입 직전 소리 내어 읽는 5줄**

@@ -45,6 +45,8 @@ parser.add_argument("--settle_s", type=float, default=0.0,
 parser.add_argument("--ablate", type=str, default="",
                     help="DR 축 단독 제거(쉼표 목록): land_tilt(착지 롤/피치) com(base_com) mass(add_base_mass) calib(영점·IMU 편향) "
                          "asym(착지 비대칭) jpos(리셋 관절 어긋남) — 정착 안정성 원인 분리용")
+parser.add_argument("--cop", action="store_true",
+                    help="정착(--settle_s) 후 패드 8점 접촉력으로 압력중심(CoP) 전후[mm, 발목롤 축 기준 +앞] 출력 — 실물 cop_from_pads.py 의 기준값")
 parser.add_argument("--stiff_range", type=str, default=None,
                     help="actuator_gains 강성 DR 대역 덮어쓰기 'lo,hi' (학습 (0.2,1.1)). 정착 안정성 대역 스윕용")
 parser.add_argument("--settle_gate_deg", type=float, default=3.0,
@@ -513,6 +515,41 @@ if args_cli.land:
               f"블렌딩·슬루 시작점 = 정착 후 실측 자세 (무릎 평균 처짐 {math.degrees(float((_robot.data.joint_pos - _LAND).abs().mean())):.2f}°, "
               f"정착 후 피치 평균 {float(_pitch.mean()):+.2f}° [min {float(_pitch.min()):+.1f} max {float(_pitch.max()):+.1f}] "
               f"롤 |평균| {float(_roll.abs().mean()):.2f}°, 정착 중 종료 아님 = 40° 미만일 뿐)")
+        if args_cli.cop:
+            # 압력중심: 패드 바디(…_RA30P) 수직 접촉력 가중 평균의 world x − 양 발목롤 축 world x 평균 (yaw=0, +x=앞).
+            _cs0 = uenv.scene["contact_forces"]; _bn0 = list(_cs0.body_names); _rb0 = list(robot.data.body_names)
+            _pads = [k for k, n in enumerate(_bn0) if n.endswith("_RA30P")]
+            if len(_pads) == 8:
+                _bnames = _bn0
+                _Fz = _cs0.data.net_forces_w[:, _pads, 2].clamp_min(0.0)                   # (N,8)
+                _px = robot.data.body_pos_w[:, [_rb0.index(_bn0[k]) for k in _pads], 0]    # (N,8) world x
+                _ax = robot.data.body_pos_w[:, [_rb0.index("left_ankle_r_joint"), _rb0.index("right_ankle_r_joint")], 0].mean(1)
+                _ok = _Fz.sum(1) > 1.0
+                _cop = ((_Fz * _px).sum(1) / _Fz.sum(1).clamp_min(1e-6) - _ax) * 1000.0     # mm, +앞
+                _front = torch.tensor([("front" in _bnames[k]) for k in _pads], device=_Fz.device, dtype=_Fz.dtype)
+                _fs = (_Fz * _front).sum(1) / _Fz.sum(1).clamp_min(1e-6)
+                if _ok.any():
+                    print(f"[cop] 시뮬 압력중심(정착 후, 발목롤 축 기준 +앞): 평균 {float(_cop[_ok].mean()):+.1f}mm "
+                          f"[p5 {float(torch.quantile(_cop[_ok], 0.05)):+.1f} p95 {float(torch.quantile(_cop[_ok], 0.95)):+.1f}], "
+                          f"앞 패드 하중 {float(_fs[_ok].mean())*100:.0f}%, 접촉 env {int(_ok.sum())}/{N}, 총 수직력 평균 {float(_Fz.sum(1)[_ok].mean()):.0f}N "
+                          f"(com_fix={args_cli.com_fix})")
+                else:
+                    print("[cop] 접촉력 없음")
+            else:
+                print(f"[cop] 패드 바디가 접촉센서에 없음({len(_pads)}개, USD 에서 고정조인트 병합) — 질량중심 투영으로 대신 계산")
+            # 정적 서기에서 CoP = 질량중심의 지면 투영: 바디 질량 가중 world x − 발목롤 축 x (모델 기준값, +앞)
+            try:
+                _m = robot.root_physx_view.get_masses().to(robot.data.body_pos_w.device)       # (N,B)
+                _cpos = getattr(robot.data, "body_com_pos_w", None)
+                _cpos = _cpos if _cpos is not None else robot.data.body_pos_w
+                _comx = (_m * _cpos[:, :, 0]).sum(1) / _m.sum(1)
+                _axm = robot.data.body_pos_w[:, [_rb0.index("left_ankle_r_joint"), _rb0.index("right_ankle_r_joint")], 0].mean(1)
+                _d = (_comx - _axm) * 1000.0
+                print(f"[cop] 시뮬 질량중심 지면투영(정착 후, 발목롤 축 기준 +앞): 평균 {float(_d.mean()):+.1f}mm "
+                      f"[min {float(_d.min()):+.1f} max {float(_d.max()):+.1f}], 총질량 {float(_m.sum(1).mean()):.2f}kg (com_fix={args_cli.com_fix}) "
+                      f"→ 실물 cop_from_pads.py --sim_ref_mm 에 이 값을 넣는다")
+            except Exception as _e:  # noqa: BLE001
+                print(f"[cop] 질량중심 계산 실패: {_e}")
         if args_cli.settle_gate_deg > 0.0:
             _g = (_pitch.abs() <= args_cli.settle_gate_deg) & (_roll.abs() <= args_cli.settle_gate_deg) & ~_fell
             _gate_ok_np = _g.cpu().numpy()

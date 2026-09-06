@@ -40,6 +40,7 @@ done
 for f in jetson/scripts/rl_bridge_node.py jetson/scripts/analyze_fall.py jetson/scripts/posture_probe.py \
          jetson/scripts/operator_console.py docs/stand_v18_7차_실행카드.md \
          jetson/scripts/foot_force_adapter_node.py jetson/scripts/release_all.py jetson/scripts/zero_kinematic_check.py \
+         jetson/scripts/cop_from_pads.py \
          jetson/calib_data/sim_default_stand_targets_20260727.json; do   # selftest 수치 앵커 대조 파일
   mkdir -p "$STAGE/$(dirname "$f")"; cp "$f" "$STAGE/$f"
 done

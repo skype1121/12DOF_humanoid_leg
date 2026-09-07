@@ -1,11 +1,11 @@
 #!/bin/bash
 # 젯슨 배포 원샷 (0906): 패키지 scp → 풀기 → md5 → selftest 3종 → ~/rl_calib/release_all.py 갱신 → 어댑터 경로·상수 확인/갱신 → 콘솔 재기동
-#   bash jetson/deploy_to_jetson.sh [--host 172.16.35.64] [--pkg deploy/stand_7차_XXXX.tar.gz] [--wait] [--no-restart]
+#   bash jetson/deploy_to_jetson.sh [--host 172.16.35.89]   (젯슨은 DHCP — 0906 까지 .64, 0907 재부팅 후 .89; 안 잡히면 ssh-keyscan 으로 호스트키 대조) [--pkg deploy/stand_7차_XXXX.tar.gz] [--wait] [--no-restart]
 #   --wait : 젯슨이 응답할 때까지 60초마다 재시도한 뒤 배포 (승윤님 결정 후 백그라운드로 띄워 두는 용도)
 # 하는 일은 파일 복사·검증·콘솔 서비스 재기동뿐이다 — CAN·모터·stage8 에는 손대지 않는다. 실패 단계에서 즉시 중단(종료코드 ≠0).
 set -uo pipefail
 cd "$(dirname "$0")/.."
-HOST=172.16.35.64; PKG=""; WAIT=0; RESTART=1; PASS="${JETSON_PW:-}"
+HOST=172.16.35.89; PKG=""; WAIT=0; RESTART=1; PASS="${JETSON_PW:-}"
 while [ $# -gt 0 ]; do case "$1" in
   --host) HOST=$2; shift 2;; --pkg) PKG=$2; shift 2;; --wait) WAIT=1; shift;; --no-restart) RESTART=0; shift;;
   *) echo "인자 오류: $1"; exit 2;; esac; done
@@ -30,6 +30,8 @@ log "[4/7] 어댑터·release_all selftest (저장소 사본)"
 $SSH "cd ~/humanoid_repo && python3 jetson/scripts/foot_force_adapter_node.py --selftest && python3 jetson/scripts/release_all.py --selftest | tail -1" || { log "selftest FAIL — 중단"; exit 1; }
 log "[5/7] ~/rl_calib/release_all.py 갱신 (백업 후 복사, 게이트 selftest)"
 $SSH "cd ~/humanoid_repo && { [ -f ~/rl_calib/release_all.py ] && cp ~/rl_calib/release_all.py ~/rl_calib/release_all.py.bak_\$(date +%m%d_%H%M); } ; cp jetson/scripts/release_all.py ~/rl_calib/release_all.py && python3 ~/rl_calib/release_all.py --selftest | tail -1" || { log "release_all 갱신 실패 — 중단"; exit 1; }
+log "[5b/7] ~/rl_calib/boot_pose_check.py 갱신 (콘솔이 부르는 사본; △ 경고 판 — 허용치 8° 불변)"
+$SSH "cd ~/humanoid_repo && { [ -f ~/rl_calib/boot_pose_check.py ] && cp ~/rl_calib/boot_pose_check.py ~/rl_calib/boot_pose_check.py.bak_\$(date +%m%d_%H%M); } ; cp jetson/scripts/boot_pose_check.py ~/rl_calib/boot_pose_check.py && python3 -m py_compile ~/rl_calib/boot_pose_check.py && grep -c 'WARN' ~/rl_calib/boot_pose_check.py" || { log "boot_pose_check 갱신 실패 — 중단"; exit 1; }
 log "[6/7] 발압력 어댑터: sensors_up.sh 가 띄우는 경로의 NEWTON_PER_COUNT 확인 (0.02650 이어야 함)"
 $SSH 'grep -n "foot_force_adapter" ~/rl_calib/sensors_up.sh | head -3
 for f in $(grep -o "[^ \"]*foot_force_adapter_node\.py" ~/rl_calib/sensors_up.sh | sort -u); do

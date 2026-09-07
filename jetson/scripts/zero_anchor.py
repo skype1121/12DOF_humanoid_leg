@@ -334,8 +334,8 @@ def main():
         print("     브레이크 모드로 방치되는 붕괴 사고가 있었습니다.")
         print("  2) boot_pose_check 재실행으로 12/12 확인.")
         print("  3) 메인 PC 사본 동기화:")
-        print("     scp mama@172.16.35.64:~/rl_calib/robot_12dof_hardware_map.json"
-              " config/")
+        print("     scp mama@<젯슨IP>:~/rl_calib/robot_12dof_hardware_map.json"
+              " config/   (젯슨은 DHCP — 0907 기준 172.16.35.89, 콘솔 접속 주소와 동일)")
     return 0
 
 

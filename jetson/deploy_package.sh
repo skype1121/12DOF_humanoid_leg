@@ -56,4 +56,4 @@ cp "$STAGE/deploy/MANIFEST.md5" deploy/MANIFEST.md5
 OUT="deploy/stand_7차_$STAMP.tar.gz"
 tar czf "$OUT" -C "$STAGE" .
 echo "패키지: $OUT ($(du -h "$OUT" | cut -f1), 파일 $(wc -l < deploy/MANIFEST.md5)개)"
-echo "복사: scp $OUT mama@172.16.35.64:~/   → 젯슨에서 tar xzf + LC_ALL=C md5sum -c --quiet deploy/MANIFEST.md5 + --selftest"
+echo "복사: bash jetson/deploy_to_jetson.sh (또는 scp $OUT mama@<젯슨IP>:~/) → 젯슨에서 tar xzf + LC_ALL=C md5sum -c --quiet deploy/MANIFEST.md5 + --selftest"

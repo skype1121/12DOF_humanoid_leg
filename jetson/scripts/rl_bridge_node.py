@@ -1055,7 +1055,9 @@ def main():
     ap.add_argument("--frame-max-age", type=float,
                     default=FRAME_MAX_AGE_DEFAULT_S,
                     help="프레임 게이트 허용 최고령(초). 기본 3600")
-    ap.add_argument("--checkpoint", default="walk", choices=list(CHECKPOINTS))
+    ap.add_argument("--checkpoint", default=STAND_DEFAULT, choices=list(CHECKPOINTS),
+                    help="기본값은 배포 데뷔 정책(STAND_DEFAULT). 0907: 구 walk 는 젯슨에서 삭제돼 "
+                         "기본값으로 두면 selftest 가 필수 파일 없음으로 실패한다")
     args = ap.parse_args()
     if args.selftest:
         return run_selftest(required=(args.checkpoint, STAND_DEFAULT))

@@ -628,9 +628,13 @@ ACTIONS = {
         "--ref", "stand"]), "영점 판정 12/12"),
     "sensors":    (lambda p: act_gate("sensors", [
         "bash", os.path.join(CALIB, "sensors_up.sh")]), "센서 기동"),
+    # 0907: 체크포인트를 넘기지 않으면 브리지가 기본값(구 walk)을 **필수**로 로드해
+    # 실패한다 — 젯슨 구 자산 정리로 walk 는 더 이상 배포되지 않는다. 드롭다운 기본값을 넘긴다.
     "selftest":   (lambda p: act_gate("selftest", [
         sys.executable, os.path.join(SCRIPTS, "rl_bridge_node.py"),
-        "--selftest"]), "브리지 셀프테스트"),
+        "--selftest", "--checkpoint",
+        (p.get("checkpoint") if p.get("checkpoint") in CKPT_CHOICES
+         else CKPT_DEFAULT)]), "브리지 셀프테스트"),
     # 영점 재앵커 — 미리보기는 읽기 전용, 적용은 zero_anchor.py 가 자체 차단
     "zero_preview": (lambda p: RUN.start("zero", [
         sys.executable, os.path.join(SCRIPTS, "zero_anchor.py"),

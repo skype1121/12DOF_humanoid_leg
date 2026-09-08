@@ -246,3 +246,22 @@ def _selftest_posture():
     print("[selftest] 안정 자세 항: 대칭 부호(ankle_r 동부호)·발 배치 밴드 — PASS")
 if __name__ == "__main__":
     selftest()
+
+
+# ───────────── 몸통 피치 밴드 (0908 22:35, 승윤님 "몸체·머리는 수평을 잡고 싶다") ─────────────
+# S5k 까지의 정책은 CoM 후방을 '몸통 뒤로 17° 눕히기 + 골반 앞으로' 로 맞춘다 — 서긴 하지만 뒤꿈치 여유가 얇다.
+# 몸통 |피치| 가 band 안이면 0, 밖이면 초과분[rad] 선형 벌점. 수평 몸통 + 다리 전체 4~6° 앞기울임 해법을 유도.
+def torso_pitch_band(env, band_rad: float = 0.087, asset_cfg=None) -> torch.Tensor:
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    pg = asset.data.projected_gravity_b
+    pitch = torch.atan2(pg[:, 0], -pg[:, 2]).abs()
+    return (pitch - band_rad).clamp(min=0.0)
+
+
+def _selftest_pitch_band():
+    import math
+    for deg, want in ((0.0, 0.0), (4.0, 0.0), (17.0, math.radians(12.0)), (-17.0, math.radians(12.0))):
+        th = math.radians(deg); pg = torch.tensor([[math.sin(th), 0.0, -math.cos(th)]])
+        v = (torch.atan2(pg[:, 0], -pg[:, 2]).abs() - 0.087).clamp(min=0.0)
+        assert abs(float(v) - want) < 1e-4, (deg, float(v), want)
+    print("[selftest] 몸통 피치 밴드: 0/4° → 0, ±17° → 12° 초과분 — PASS")

@@ -211,3 +211,12 @@ class Biped12HangStandS5kEnvCfg(Biped12HangStandS5sEnvCfg):
         # 직립 유지: 골반 높이 목표 0.645m (무릎 0° 홀드 0.65 에서 약간 아래). 계단 계보에서 0 이던 가중치를 되살린다.
         self.rewards.base_height_l2.weight = -2.0
         self.rewards.base_height_l2.params["target_height"] = 0.645
+
+
+@configclass
+class Biped12HangStandS5uEnvCfg(Biped12HangStandS5kEnvCfg):
+    """S5u: S5k + **몸통 피치 밴드 ±5°** — 몸통·머리 수평(승윤님 0908 22:35). 다리 전체 앞기울임으로 CoM 을 맞추게 유도."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.torso_pitch_band = RewTerm(func=mdp_hang.torso_pitch_band, weight=-8.0, params={"band_rad": 0.087})

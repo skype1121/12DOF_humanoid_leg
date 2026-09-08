@@ -46,7 +46,7 @@ def _state(env):
         def z():
             return torch.zeros(N, device=dev)
 
-        st = {"r0": z(), "t_hold": z(), "t_rel": z(), "t": z(), "r": z(), "mass": z(),
+        st = {"r0": z(), "t_hold": z(), "t_rel": z(), "t": z(), "r": z(), "mass": z(), "lvl_k": z(), "lvl_c": z(),
               "bx": z(), "by": z(), "px": z(), "py": z(), "L": torch.ones(N, device=dev),
               "x0": z(), "y0": z(),
               "released_t": torch.full((N,), -1.0, device=dev),   # r 가 0 에 닿은 시각 (−1 = 아직)
@@ -76,13 +76,18 @@ def _apply(env, st, ids, asset_cfg):
     F_b = _quat_inv(asset.data.root_quat_w[ids], F_w)               # base 링크 프레임
     forces = F_b.unsqueeze(1)                                       # (n,1,3)
     positions = torch.stack([st["px"][ids], st["py"][ids], torch.zeros_like(Fz)], dim=-1).unsqueeze(1)
+    # 프레임 수평 유지 토크 (0908 22:40, 승윤님 "실물은 저 정도로 흔들리며 착지하지 않는다"): 실물 현가는 앞뒤 두 줄이
+    # 프레임을 수평으로 잡는다(오늘 착지 피치 −0.5°). 지지비 r 에 비례해 줄이 풀리면 사라진다. lvl_k=0 이면 종전과 동일.
+    pgv = asset.data.projected_gravity_b[ids]; w = asset.data.root_ang_vel_b[ids]
+    tau = _level_torque(pgv, w, st["lvl_k"][ids] * r, st["lvl_c"][ids] * r)
     asset.permanent_wrench_composer.set_forces_and_torques(
-        forces=forces, torques=torch.zeros_like(forces), positions=positions,
+        forces=forces, torques=tau.unsqueeze(1), positions=positions,
         body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
 
 
 def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0), release_range=(2.0, 8.0),
-                       rope_len_range=(1.0, 2.0), bias_frac=0.01, point_xy=0.03, asset_cfg=None):
+                       rope_len_range=(1.0, 2.0), bias_frac=0.01, point_xy=0.03, asset_cfg=None,
+                       level_gain_range=(0.0, 0.0), level_damp_range=(0.0, 0.0)):
     """mode="reset": 에피소드마다 지지 스케줄·로프 기하를 새로 뽑고 첫 지지력을 즉시 건다."""
     asset_cfg = asset_cfg or _base_cfg()
     st = _state(env)
@@ -100,6 +105,8 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
     st["by"][ids] = U(-bias_frac, bias_frac)
     st["px"][ids] = U(-point_xy, point_xy)
     st["py"][ids] = U(-point_xy, point_xy)
+    st["lvl_k"][ids] = U(*level_gain_range)      # 수평 유지 강성 [Nm/rad] (실물 두 줄 현가 ≈ 강함)
+    st["lvl_c"][ids] = U(*level_damp_range)      # 감쇠 [Nm·s/rad]
     st["t"][ids] = 0.0
     st["released_t"][ids] = -1.0
     st["touch_t"][ids] = -1.0
@@ -177,7 +184,9 @@ def selftest():
     st["t"] = torch.tensor([5.0, 4.0]); assert torch.allclose(_ratio(st), torch.tensor([0.0, 0.0]))
     st["t"] = torch.tensor([9.0, 9.0]); assert torch.allclose(_ratio(st), torch.tensor([0.0, 0.0])), "0 아래로 안 감"
     _selftest_posture()
-    print("[selftest] mdp_hang: 지지비 스케줄(유지·선형방출·하한0)·안정 자세 항 — ALL PASS")
+    _selftest_pitch_band()
+    _selftest_level()
+    print("[selftest] mdp_hang: 지지비 스케줄·안정 자세 항·피치 밴드·수평 유지 토크 — ALL PASS")
 
 
 
@@ -244,8 +253,6 @@ def _selftest_posture():
     f = lambda lat, lon: max(0, lo - lat) + max(0, lat - hi) + max(0, lon - ms)
     assert f(0.27, 0.0) == 0 and abs(f(0.36, 0.0) - 0.04) < 1e-9 and abs(f(0.27, 0.10) - 0.06) < 1e-9
     print("[selftest] 안정 자세 항: 대칭 부호(ankle_r 동부호)·발 배치 밴드 — PASS")
-if __name__ == "__main__":
-    selftest()
 
 
 # ───────────── 몸통 피치 밴드 (0908 22:35, 승윤님 "몸체·머리는 수평을 잡고 싶다") ─────────────
@@ -260,8 +267,30 @@ def torso_pitch_band(env, band_rad: float = 0.087, asset_cfg=None) -> torch.Tens
 
 def _selftest_pitch_band():
     import math
-    for deg, want in ((0.0, 0.0), (4.0, 0.0), (17.0, math.radians(12.0)), (-17.0, math.radians(12.0))):
+    for deg, want in ((0.0, 0.0), (4.0, 0.0), (17.0, math.radians(17.0) - 0.087), (-17.0, math.radians(17.0) - 0.087)):
         th = math.radians(deg); pg = torch.tensor([[math.sin(th), 0.0, -math.cos(th)]])
         v = (torch.atan2(pg[:, 0], -pg[:, 2]).abs() - 0.087).clamp(min=0.0)
         assert abs(float(v) - want) < 1e-4, (deg, float(v), want)
     print("[selftest] 몸통 피치 밴드: 0/4° → 0, ±17° → 12° 초과분 — PASS")
+
+def _level_torque(pg, w, k, c):
+    """몸통 프레임 복원 토크. pg=투영중력(수평이면 (0,0,−1)), w=각속도(body). 앞기울임(pg_x>0)→ −y 토크(고개 들기),
+    +x 롤(pg_y<0)→ −x 토크. τ = k·(pg_y, −pg_x, 0) − c·(w_x, w_y, 0)."""
+    zero = torch.zeros_like(k)
+    return torch.stack([k * pg[:, 1] - c * w[:, 0], -k * pg[:, 0] - c * w[:, 1], zero], dim=-1)
+
+
+def _selftest_level():
+    import math
+    th = math.radians(10.0)
+    pg = torch.tensor([[math.sin(th), 0.0, -math.cos(th)], [0.0, -math.sin(th), -math.cos(th)]])  # 앞기울임 / +x 롤
+    w = torch.zeros(2, 3); k = torch.tensor([100.0, 100.0]); c = torch.zeros(2)
+    tau = _level_torque(pg, w, k, c)
+    assert tau[0, 1] < 0 and abs(tau[0, 0]) < 1e-6, tau[0]      # 앞기울임 → 고개 드는(−y) 토크
+    assert tau[1, 0] < 0 and abs(tau[1, 1]) < 1e-6, tau[1]      # +x 롤 → −x 복원 토크
+    tau0 = _level_torque(pg, w, torch.zeros(2), c); assert float(tau0.abs().sum()) == 0.0, "게인 0 = 종전과 동일"
+    print("[selftest] 수평 유지 토크: 앞기울임→−y, +x롤→−x, 게인0→0 — PASS")
+
+
+if __name__ == "__main__":
+    selftest()

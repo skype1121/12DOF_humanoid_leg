@@ -553,12 +553,22 @@ def act_stage8_cmd(sub):
     return ok, msg
 
 
-def act_bridge_cmd(cmd):
+def bridge_cmd_payload(cmd, extra=None):
+    """브리지 명령 JSON. extra 는 명시 플래그만 (0908: stand 의 hang_arm — 접지 전 무접촉 허용, E·F 단계 전용)."""
+    d = {"cmd": cmd}
+    if extra:
+        d.update({k: v for k, v in extra.items() if v})
+    return d
+
+
+def act_bridge_cmd(cmd, extra=None):
     st = TEL.view()
     _need(st["bridge"]["live"] or cmd == "estop",
           "브리지가 live 상태가 아닙니다 — 먼저 브리지를 기동하세요")
-    ok = TEL.publish("bridge", {"cmd": cmd})
-    return ok, f"브리지 명령 발행: {cmd}" if ok else "발행 실패 (ROS 미연결)"
+    payload = bridge_cmd_payload(cmd, extra)
+    ok = TEL.publish("bridge", payload)
+    tag = cmd + (" [행잉 ARM]" if payload.get("hang_arm") else "")
+    return ok, f"브리지 명령 발행: {tag}" if ok else "발행 실패 (ROS 미연결)"
 
 
 def act_estop():
@@ -679,7 +689,8 @@ ACTIONS = {
                    ("policy_v8", "policy_v7", "zero", "knee_only", "ankle_only")
                    else "policy_v8")]), "정적 자세 시험"),
     # 정책
-    "stand":      (lambda p: act_bridge_cmd("stand"), "stand 발사"),
+    # 0908: hang_arm 체크 시에만 브리지 HangGuard 가 접지 전 무접촉을 허용한다(미체크 = 종전과 동일)
+    "stand":      (lambda p: act_bridge_cmd("stand", {"hang_arm": bool(p.get("hang_arm"))}), "stand 발사"),
     "march":      (lambda p: act_bridge_cmd("march"), "march 발사"),
     "estop":      (lambda p: act_estop(), "비상정지"),
     # 회수·판정
@@ -796,6 +807,7 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <select id=ckpt><!--CKPT_OPTIONS--></select>
 <button data-a=bridge class=warn>브리지 live</button></div>
 <button data-a=stand class=go>stand 발사</button>
+<label style="font-size:11px;color:#fbbf24;display:block;margin:4px 0"><input type=checkbox id=hang_arm> 행잉 ARM — 접지 전 무접촉 허용(최대 120s). 절차 E·F 단계 전용, 평소엔 끔</label>
 <button data-a=march class=go>march 발사</button>
 <div style="margin-top:8px;padding-top:8px;border-top:1px solid #2a2f3d">
 <div style="font-size:11px;color:#8b93a7;margin-bottom:6px">측정 — 정책 없이 stage8만 (ARM 후)</div>
@@ -824,6 +836,9 @@ async function act(a){
  if(a==='bridge')body.checkpoint=$('#ckpt').value;
  if(a==='posture')body.pose=$('#pose').value;
  if(a==='trim'){body.a=+$('#t_a').value;body.h=+$('#t_h').value;body.k=+$('#t_k').value;}
+ if(a==='stand'){body.hang_arm=$('#hang_arm').checked;
+   if(body.hang_arm&&!confirm('행잉 ARM — 접지 전 무접촉을 허용합니다(최대 120s).\n'
+     +'매달린 채 정책이 켜집니다. 절차 E·F 단계가 맞습니까?'))return;}
  if(a==='zero_recapture'){
    if(!confirm('영점 재캡처 — 지금 자세가 기준 자세(수평 매달림/정렬)가 확실합니까?\\n'
      +'현재 읽기가 그대로 새 앵커가 됩니다.'))return;
@@ -988,7 +1003,15 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, json.dumps({"ok": bool(ok), "message": msg}))
 
 
+def _selftest_hang_arm():
+    assert bridge_cmd_payload("stand") == {"cmd": "stand"}, "기본 = 종전과 동일 (플래그 없음)"
+    assert bridge_cmd_payload("stand", {"hang_arm": False}) == {"cmd": "stand"}, "False 는 보내지 않는다"
+    assert bridge_cmd_payload("stand", {"hang_arm": True}) == {"cmd": "stand", "hang_arm": True}
+    assert 'id=hang_arm' in PAGE and "body.hang_arm" in PAGE, "페이지 체크박스·JS 누락"
+
+
 def selftest():
+    _selftest_hang_arm()
     """조작반의 안전 계약을 검사 — 실기 전에 이것만 통과하면 된다."""
     fails = []
     # ① 화이트리스트 밖 액션은 거부되어야 한다

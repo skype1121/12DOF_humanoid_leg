@@ -180,9 +180,6 @@ def selftest():
     print("[selftest] mdp_hang: 지지비 스케줄(유지·선형방출·하한0)·안정 자세 항 — ALL PASS")
 
 
-if __name__ == "__main__":
-    selftest()
-
 
 # ───────────────── 안정 자세 보상 (0908 21:00, 승윤님 "좀 안정적인 자세면 좋겠는데") ─────────────────
 # 실물 유사 조건의 stand_hang_v1 종료 자세가 비대칭(왼힙굽힘 −18.7 vs 오른 +8.5, 발목 +17.3 vs −6.1)·엇갈림(앞뒤 33mm)이라
@@ -241,9 +238,11 @@ def _selftest_posture():
     q[0, names.index("left_ankle_r_joint")] = 0.1; q[0, names.index("right_ankle_r_joint")] = 0.1
     q[1, names.index("left_hip_f_joint")] = 0.2; q[1, names.index("right_hip_f_joint")] = 0.0
     val = torch.sum((q[:, li] + sg * q[:, ri]) ** 2, dim=1)
-    assert abs(val[0]) < 1e-9 and abs(val[1] - 0.04) < 1e-9, val
+    assert abs(val[0]) < 1e-6 and abs(val[1] - 0.04) < 1e-6, val  # float32
     # stance_shape 수학: 간격 0.27(밴드 안)·어긋남 0 → 0 ; 간격 0.36 → 0.04 ; 어긋남 0.10 → 0.06
     lo, hi, ms = 0.22, 0.32, 0.04
     f = lambda lat, lon: max(0, lo - lat) + max(0, lat - hi) + max(0, lon - ms)
     assert f(0.27, 0.0) == 0 and abs(f(0.36, 0.0) - 0.04) < 1e-9 and abs(f(0.27, 0.10) - 0.06) < 1e-9
     print("[selftest] 안정 자세 항: 대칭 부호(ankle_r 동부호)·발 배치 밴드 — PASS")
+if __name__ == "__main__":
+    selftest()

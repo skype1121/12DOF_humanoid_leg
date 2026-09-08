@@ -36,6 +36,7 @@ parser.add_argument("--usd", type=str, default="rl_walking/assets/usd_final3/bip
 parser.add_argument("--r0", type=str, default=None); parser.add_argument("--hold_s", type=str, default=None)
 parser.add_argument("--release_s", type=str, default=None); parser.add_argument("--clearance", type=str, default=None)
 parser.add_argument("--stand_s", type=float, default=5.0, help="지지 0 이후 생존 판정 시간 [s]")
+parser.add_argument("--no_push", action="store_true", help="푸시 외란 끔 (전이 능력과 푸시 강건성 분리 — 실물 윈치 시험엔 푸시가 없다)")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -120,6 +121,8 @@ if args_cli.nominal:
         env_cfg.events.physics_material.params["dynamic_friction_range"] = (0.6, 0.6)
     if getattr(env_cfg.events, "joint_armature", None):
         env_cfg.events.joint_armature.params["armature_distribution_params"] = (1.0, 1.0)
+    env_cfg.events.push_robot = None
+if args_cli.no_push:
     env_cfg.events.push_robot = None
 if args_cli.com_fix is not None and getattr(env_cfg.events, "base_com", None):
     env_cfg.events.base_com.params["com_range"] = {"x": (args_cli.com_fix, args_cli.com_fix), "y": (0.0, 0.0), "z": (0.0, 0.0)}
@@ -224,7 +227,7 @@ q_end = torch.rad2deg(last_q)
 out_lines = []
 P = out_lines.append
 P("=" * 74); P(f"Hanging-to-Stand 평가 — {args_cli.task}"); P(f"인자: {' '.join(sys.argv[1:])}")
-P(f"체크포인트: {resume_path}"); P(f"배포 경로: {chain_desc}"); P(f"env {N} × {T_s:.1f}s, DR {'OFF(명목)' if args_cli.nominal else 'ON'}, com_fix={args_cli.com_fix}")
+P(f"체크포인트: {resume_path}"); P(f"배포 경로: {chain_desc}"); P(f"env {N} × {T_s:.1f}s, DR {'OFF(명목)' if args_cli.nominal else 'ON'}, com_fix={args_cli.com_fix}, 푸시 {'OFF' if (args_cli.no_push or args_cli.nominal) else 'ON'}")
 P(f"지지 스케줄: r0 {_hp['r0_range']} 유지 {_hp['hold_range']}s 방출 {_hp['release_range']}s, 간격 z {env_cfg.events.reset_base.params['pose_range'].get('z')}")
 P("=" * 74)
 P(f"접지(양발 동시) 도달      : {int(touched.sum())}/{N} ({pct(touched):.1f}%)  평균 접지 시각 {float(touch_t[touched].mean()) if touched.any() else float('nan'):.2f}s")

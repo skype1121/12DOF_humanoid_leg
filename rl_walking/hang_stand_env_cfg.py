@@ -233,3 +233,17 @@ class Biped12HangStandS5rEnvCfg(Biped12HangStandS5uEnvCfg):
         p["level_gain_range"] = (50.0, 300.0)
         p["level_damp_range"] = (2.0, 10.0)
         p["point_xy"] = 0.01
+
+
+@configclass
+class Biped12HangStandS5vEnvCfg(Biped12HangStandS5rEnvCfg):
+    """S5v: S5r + **힙 회전(hip_r) 편차 벌점** — S5u 가 몸통 피치 밴드를 힙 회전 ±30°(관절 한계, V10 힙롤 편법 전례)로
+    우회했다. 0908 23:35."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import RewardTermCfg as _R
+        import isaaclab_tasks.manager_based.locomotion.velocity.mdp as _mdp
+        self.rewards.hip_r_deviation = _R(
+            func=_mdp.joint_deviation_l1, weight=-3.0,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_r_joint"])})

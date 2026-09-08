@@ -183,3 +183,17 @@ class Biped12HangStandS4mEnvCfg(Biped12HangStandS1EnvCfg):
         super().__post_init__()
         self.episode_length_s = 20.0
         _real_band_dr(self)
+
+
+@configclass
+class Biped12HangStandS5sEnvCfg(Biped12HangStandS4mEnvCfg):
+    """S5s: S4m + 안정 자세(좌우 대칭·발 배치 밴드·힙 편차 강화) — 0908 21:00 승윤님 요청."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.pose_symmetry = RewTerm(func=mdp_hang.pose_symmetry, weight=-3.0)
+        self.rewards.stance_shape = RewTerm(
+            func=mdp_hang.stance_shape, weight=-5.0,
+            params={"gap_range": (0.22, 0.32), "max_stagger": 0.04,
+                    "asset_cfg": SceneEntityCfg("robot", body_names=[".*_ankle_r_joint"])})
+        self.rewards.joint_deviation_hip.weight = -0.5

@@ -176,8 +176,74 @@ def selftest():
     st["t"] = torch.tensor([3.0, 3.0]); assert torch.allclose(_ratio(st), torch.tensor([0.3, 0.5]))
     st["t"] = torch.tensor([5.0, 4.0]); assert torch.allclose(_ratio(st), torch.tensor([0.0, 0.0]))
     st["t"] = torch.tensor([9.0, 9.0]); assert torch.allclose(_ratio(st), torch.tensor([0.0, 0.0])), "0 아래로 안 감"
-    print("[selftest] mdp_hang: 지지비 스케줄(유지·선형방출·하한0) — ALL PASS")
+    _selftest_posture()
+    print("[selftest] mdp_hang: 지지비 스케줄(유지·선형방출·하한0)·안정 자세 항 — ALL PASS")
 
 
 if __name__ == "__main__":
     selftest()
+
+
+# ───────────────── 안정 자세 보상 (0908 21:00, 승윤님 "좀 안정적인 자세면 좋겠는데") ─────────────────
+# 실물 유사 조건의 stand_hang_v1 종료 자세가 비대칭(왼힙굽힘 −18.7 vs 오른 +8.5, 발목 +17.3 vs −6.1)·엇갈림(앞뒤 33mm)이라
+# 흔들려 보인다. 토크·클램프는 문제 없음(포화 0%). 보상에 좌우 대칭·발 배치 밴드가 없어서 생긴 자세 → 두 항을 추가한다.
+_PAIRS = ("hip_f", "hip_a", "hip_r", "knee", "ankle_f", "ankle_r")
+_PAIR_SIGN = {"hip_f": 1.0, "hip_a": 1.0, "hip_r": 1.0, "knee": 1.0, "ankle_f": 1.0, "ankle_r": -1.0}  # symmetry.py: ankle_r 만 동부호
+
+
+def _pair_index(env, asset_cfg):
+    key = "_hang_pairs"
+    cache = getattr(env, key, None)
+    if cache is None:
+        names = list(env.scene[asset_cfg.name].data.joint_names)
+        li, ri, sg = [], [], []
+        for p in _PAIRS:
+            li.append(names.index(f"left_{p}_joint")); ri.append(names.index(f"right_{p}_joint")); sg.append(_PAIR_SIGN[p])
+        cache = (torch.tensor(li, device=env.device), torch.tensor(ri, device=env.device), torch.tensor(sg, device=env.device))
+        setattr(env, key, cache)
+    return cache
+
+
+def pose_symmetry(env, asset_cfg=None) -> torch.Tensor:
+    """좌우 대칭 편차 Σ(q_L + s·q_R)² [rad²] — s=+1(부호 반대 5쌍: 대칭이면 합 0), ankle_r 은 s=−1(동부호: 차 0)."""
+    asset_cfg = asset_cfg or _base_cfg()
+    q = env.scene[asset_cfg.name].data.joint_pos
+    li, ri, sg = _pair_index(env, asset_cfg)
+    return torch.sum((q[:, li] + sg * q[:, ri]) ** 2, dim=1)
+
+
+def stance_shape(env, gap_range=(0.22, 0.32), max_stagger: float = 0.04, asset_cfg=None) -> torch.Tensor:
+    """발 배치 벌점: 좌우 간격이 밴드 밖이면 초과분, 앞뒤 어긋남이 max_stagger 넘으면 초과분 [m] (진행방향 기준 투영)."""
+    asset_cfg = asset_cfg or _feet_body_cfg()
+    asset = env.scene[asset_cfg.name]
+    feet = asset.data.body_pos_w[:, asset_cfg.body_ids, :2]
+    d = feet[:, 0, :] - feet[:, 1, :]
+    h = asset.data.heading_w
+    lat = torch.abs(-torch.sin(h) * d[:, 0] + torch.cos(h) * d[:, 1])
+    lon = torch.abs(torch.cos(h) * d[:, 0] + torch.sin(h) * d[:, 1])
+    lo, hi = gap_range
+    return (lo - lat).clamp(min=0.0) + (lat - hi).clamp(min=0.0) + (lon - max_stagger).clamp(min=0.0)
+
+
+def _feet_body_cfg():
+    return SceneEntityCfg("robot", body_names=[".*_ankle_r_joint"])
+
+
+def _selftest_posture():
+    class _A:  # 최소 더미 — joint_names·joint_pos 만
+        pass
+    q = torch.zeros(2, 12)
+    names = [f"{s}_{p}_joint" for p in _PAIRS for s in ("left", "right")]
+    li = torch.tensor([names.index(f"left_{p}_joint") for p in _PAIRS]); ri = torch.tensor([names.index(f"right_{p}_joint") for p in _PAIRS])
+    sg = torch.tensor([_PAIR_SIGN[p] for p in _PAIRS])
+    # env0: 대칭 자세(hip_f L=+0.2,R=−0.2 · ankle_r L=R=+0.1) → 0 ; env1: 비대칭
+    q[0, names.index("left_hip_f_joint")] = 0.2; q[0, names.index("right_hip_f_joint")] = -0.2
+    q[0, names.index("left_ankle_r_joint")] = 0.1; q[0, names.index("right_ankle_r_joint")] = 0.1
+    q[1, names.index("left_hip_f_joint")] = 0.2; q[1, names.index("right_hip_f_joint")] = 0.0
+    val = torch.sum((q[:, li] + sg * q[:, ri]) ** 2, dim=1)
+    assert abs(val[0]) < 1e-9 and abs(val[1] - 0.04) < 1e-9, val
+    # stance_shape 수학: 간격 0.27(밴드 안)·어긋남 0 → 0 ; 간격 0.36 → 0.04 ; 어긋남 0.10 → 0.06
+    lo, hi, ms = 0.22, 0.32, 0.04
+    f = lambda lat, lon: max(0, lo - lat) + max(0, lat - hi) + max(0, lon - ms)
+    assert f(0.27, 0.0) == 0 and abs(f(0.36, 0.0) - 0.04) < 1e-9 and abs(f(0.27, 0.10) - 0.06) < 1e-9
+    print("[selftest] 안정 자세 항: 대칭 부호(ankle_r 동부호)·발 배치 밴드 — PASS")

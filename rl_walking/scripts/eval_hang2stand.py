@@ -181,6 +181,11 @@ ratio_trace = []; contact_trace = []; z_trace = []; pitch_trace = []
 last_q = torch.zeros_like(robot.data.joint_pos); last_contact = torch.zeros(N, 2, device=dev)
 _cs = uenv.scene["contact_forces"]; _bn = list(_cs.body_names)
 _fl = _bn.index("left_ankle_r_joint"); _fr = _bn.index("right_ankle_r_joint")
+# 물리 실현성 (0908 승윤님 "접지 자세가 실물로 될까"): 지지 0 이후 생존 스텝의 관절 토크 피크·RMS·포화(≥95% 한계), 발 간격
+_rb = list(robot.data.body_names); _bl, _br = _rb.index("left_ankle_r_joint"), _rb.index("right_ankle_r_joint")
+_nj = robot.data.joint_pos.shape[1]; _eff = robot.data.joint_effort_limits
+_tau_peak = torch.zeros(_nj, device=dev); _tau_rms2 = torch.zeros(_nj, device=dev); _tau_sat = torch.zeros(_nj, device=dev); _tau_n = 0
+_stance_w = []; _stance_dx = []
 t0 = time.time()
 for i in range(STEPS):
     with torch.inference_mode():
@@ -203,6 +208,13 @@ for i in range(STEPS):
     death_step[newly_dead] = i; pitch_death[newly_dead] = pitch[newly_dead]; roll_death[newly_dead] = roll[newly_dead]
     r_at_death[newly_dead] = st["r"][newly_dead]
     last_q[a_] = robot.data.joint_pos[a_]; last_contact[a_] = contact[a_]
+    _post = a_ & (st["r"] <= 0.0)
+    if _post.any():
+        _t = robot.data.applied_torque[_post].abs()
+        _tau_peak = torch.maximum(_tau_peak, _t.max(0).values); _tau_rms2 += (_t ** 2).sum(0)
+        _tau_sat += (_t >= 0.95 * _eff[_post]).float().sum(0); _tau_n += int(_post.sum())
+        _pw = robot.data.body_pos_w[_post][:, [_bl, _br], :]
+        _stance_w.append((_pw[:, 0, 1] - _pw[:, 1, 1]).abs().mean().item()); _stance_dx.append((_pw[:, 0, 0] - _pw[:, 1, 0]).abs().mean().item())
     alive &= ~term
     ratio_trace.append(st["r"].mean().item()); contact_trace.append(contact[alive].mean().item() if alive.any() else float("nan"))
     z_trace.append(robot.data.root_pos_w[alive, 2].mean().item() if alive.any() else float("nan"))
@@ -247,6 +259,11 @@ if _al.any():
         P(f"   {n:<22} {float(q_end[_al, k].mean()):+7.2f}")
 else:
     P("   (생존 env 없음)")
+if _tau_n > 0:
+    P("물리 실현성 — 지지 0 이후 생존 스텝 (AK 한계 대비): 관절 τ피크 /한계 τRMS 포화%")
+    for k, n in enumerate(jn):
+        P(f"   {n:<22} {float(_tau_peak[k]):6.2f} {float(_eff[0, k]):5.1f} {float((_tau_rms2[k] / _tau_n).sqrt()):6.2f} {100.0 * float(_tau_sat[k]) / _tau_n:5.1f}")
+    P(f"   발 간격(좌우, 발목롤 링크) 평균 {sum(_stance_w)/len(_stance_w)*1000:.0f} mm · 앞뒤 어긋남 {sum(_stance_dx)/len(_stance_dx)*1000:.0f} mm")
 P("시간축 (0.5s 간격): t  지지비  접촉비  base z  피치")
 for k in range(0, STEPS, 25):
     P(f"   {k/50:5.1f}  {ratio_trace[k]:5.2f}  {contact_trace[k]:5.2f}  {z_trace[k]:5.3f}  {pitch_trace[k]:+6.2f}")

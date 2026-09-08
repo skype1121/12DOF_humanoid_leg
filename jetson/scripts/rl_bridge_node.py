@@ -714,6 +714,77 @@ BLEND_S = _DC.BLEND_S
 #: (0803 실측: 재인장으로 들리자 접촉 [0,0] → 정책 공중 발버둥.
 #: 서기/제자리걸음 문맥에서 양발 무접촉 지속 = 들림·완전 공중 → 동결이 안전)
 LIFT_STOP_S = 0.6
+#: ── 행잉 ARM 리프트 가드 상태기 (0908, 승윤님 지시 Hanging-to-Stand) ──────────────────────
+#: 기존 리프트 가드(양발 무접촉 LIFT_STOP_S → 동결)는 0803 공중 발버둥 사고의 방지책이라 **삭제·완화하지 않는다**.
+#: stand 명령에 hang_arm:true 를 **명시**한 경우에만, 접촉을 한 번도 얻기 전(PRE_CONTACT_HANG_ALLOWED)
+#: 무접촉을 허용한다. 양발 접촉이 CONTACT_CONFIRM_S 지속되면 CONTACT_ACQUIRED — 그 뒤로는 기존 가드 그대로.
+#: PRE_CONTACT 에도 상한(HANG_MAX_S)이 있다. 상태는 앞으로만 간다(접촉 뒤 다시 들리면 기존과 동일하게 동결).
+#: 중력·발진·프레임·CAN 게이트는 무관·불변. hang_arm 이 없으면 종전과 비트 단위로 같은 동작이다(셀프테스트로 고정).
+HANG_MAX_S = 120.0            # 접지 없이 정책이 공중에 살아 있을 수 있는 최대 시간
+CONTACT_CONFIRM_S = 0.3       # 양발 접촉이 이만큼 지속돼야 '접지 획득'
+HANG_BODY_WEIGHT_N = 172.9    # 정보용(FREE_STAND 표시): 0904 저울 17.62kg — 콘솔 BODY_WEIGHT_N 과 같은 값
+FREE_STAND_LOAD_FRAC = 0.8
+
+
+class HangGuard:
+    """리프트 가드 상태기 — PRE_CONTACT_HANG_ALLOWED → CONTACT_ACQUIRED → FREE_STAND (되돌아가지 않음)."""
+
+    PRE_CONTACT = "PRE_CONTACT_HANG_ALLOWED"
+    CONTACT_ACQUIRED = "CONTACT_ACQUIRED"
+    FREE_STAND = "FREE_STAND"
+
+    def __init__(self, hang_mode=False, t0=None, lift_stop_s=LIFT_STOP_S, hang_max_s=HANG_MAX_S,
+                 confirm_s=CONTACT_CONFIRM_S, body_weight_n=HANG_BODY_WEIGHT_N, free_frac=FREE_STAND_LOAD_FRAC):
+        self.hang_mode = bool(hang_mode)
+        self.state = self.PRE_CONTACT if self.hang_mode else self.CONTACT_ACQUIRED
+        self.t0 = t0
+        self.lift_stop_s = float(lift_stop_s)
+        self.hang_max_s = float(hang_max_s)
+        self.confirm_s = float(confirm_s)
+        self.body_weight_n = float(body_weight_n)
+        self.free_frac = float(free_frac)
+        self.nocontact_t0 = None
+        self.contact_t0 = None
+        self._transitions = []
+
+    def _go(self, state, now):
+        self.state = state
+        self._transitions.append((state, now))
+
+    def pop_transitions(self):
+        out, self._transitions = self._transitions, []
+        return out
+
+    def update(self, now, contact2, foot_total_n=None):
+        """매 틱. 반환 None = 정상, 문자열 = 즉시 동결 사유 (호출자가 STOP_ALL)."""
+        both = contact2[0] > 0.0 and contact2[1] > 0.0
+        none = contact2[0] == 0.0 and contact2[1] == 0.0
+        if self.state == self.PRE_CONTACT:
+            if self.t0 is None:
+                self.t0 = now
+            if both:
+                if self.contact_t0 is None:
+                    self.contact_t0 = now
+                elif now - self.contact_t0 >= self.confirm_s:
+                    self._go(self.CONTACT_ACQUIRED, now)
+                    self.nocontact_t0 = None
+            else:
+                self.contact_t0 = None
+            if self.state == self.PRE_CONTACT and now - self.t0 >= self.hang_max_s:
+                return f"hang_guard: 행잉 허용 {self.hang_max_s:.0f}s 초과 — 접지 없음"
+            return None
+        # CONTACT_ACQUIRED / FREE_STAND — 종전 리프트 가드와 동일
+        if none:
+            if self.nocontact_t0 is None:
+                self.nocontact_t0 = now
+            elif now - self.nocontact_t0 >= self.lift_stop_s:
+                return f"lift_guard: 양발 무접촉 {self.lift_stop_s}s 지속"
+        else:
+            self.nocontact_t0 = None
+        if (self.state == self.CONTACT_ACQUIRED and foot_total_n is not None
+                and foot_total_n >= self.free_frac * self.body_weight_n):
+            self._go(self.FREE_STAND, now)
+        return None
 
 
 #: 온셋 블렌딩 가중치 — 스무스스텝 0→1 (양 끝 기울기 0, 단조증가). dur_s<=0 이면 즉시 1.0.
@@ -1012,6 +1083,49 @@ def _selftest_osc_guard():
             f"미트리거 / 과속 즉시 — 5케이스 통과")
 
 
+def _selftest_hang_guard():
+    """HangGuard: (1) hang_arm 없음 = 종전 리프트 가드와 동일, (2) 행잉 ARM 은 접지 전 무접촉 허용,
+    접지 0.3s 후 기존 가드 복원, 접지 뒤 재들림은 동결, 상한 초과 동결, 상태 역행 없음."""
+    def run(g, seq, dt=0.02):
+        """seq: [(지속초, contact2, foot_total)], 반환: (정지사유 or None, 정지 시각)."""
+        t = 0.0
+        for dur, c2, ft in seq:
+            n = int(round(dur / dt))
+            for _ in range(n):
+                t += dt
+                why = g.update(t, c2, ft)
+                if why:
+                    return why, t
+        return None, t
+    B, NONE, L = [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]
+    # (1) 종전 동작: 0.5s 무접촉은 통과, 0.6s 는 동결, 한 발이라도 닿으면 타이머 리셋
+    g = HangGuard(hang_mode=False)
+    assert g.state == HangGuard.CONTACT_ACQUIRED
+    assert run(g, [(1.0, B, 100.0), (0.5, NONE, 0.0), (0.5, L, 40.0), (0.5, NONE, 0.0)])[0] is None
+    why, t = run(HangGuard(hang_mode=False), [(0.2, B, 100.0), (0.7, NONE, 0.0)])
+    assert why and why.startswith("lift_guard") and abs(t - (0.2 + 0.6)) < 0.03, (why, t)
+    # (2) 행잉 ARM: 10s 무접촉도 허용, 한 발 접촉은 접지 아님, 양발 0.3s 로 접지 획득
+    g = HangGuard(hang_mode=True, t0=0.0)
+    assert g.state == HangGuard.PRE_CONTACT
+    assert run(g, [(10.0, NONE, 0.0), (1.0, L, 30.0), (0.2, B, 60.0), (0.5, NONE, 0.0)])[0] is None
+    assert g.state == HangGuard.PRE_CONTACT, "0.2s 접촉은 확인 시간 미달"
+    assert run(g, [(0.4, B, 60.0)])[0] is None and g.state == HangGuard.CONTACT_ACQUIRED
+    assert [s for s, _ in g.pop_transitions()] == [HangGuard.CONTACT_ACQUIRED]
+    # 접지 뒤 재들림 = 종전 가드 (0.6s → 동결), 상태 역행 없음
+    why, _ = run(g, [(0.3, B, 120.0), (0.7, NONE, 0.0)])
+    assert why and why.startswith("lift_guard") and g.state == HangGuard.CONTACT_ACQUIRED, why
+    # FREE_STAND 표시: 발력 ≥ 0.8·체중
+    g = HangGuard(hang_mode=True, t0=0.0)
+    run(g, [(0.4, B, 50.0), (0.1, B, 0.85 * HANG_BODY_WEIGHT_N)])
+    assert g.state == HangGuard.FREE_STAND
+    # 상한: 접지 없이 HANG_MAX_S 초과 → 동결
+    g = HangGuard(hang_mode=True, t0=0.0, hang_max_s=5.0)
+    why, t = run(g, [(6.0, NONE, 0.0)])
+    assert why and why.startswith("hang_guard") and abs(t - 5.0) < 0.03, (why, t)
+    return (f"hang_arm 없음=종전 동일(0.6s 동결) · 행잉 ARM 10s 무접촉 허용 · 접지 {CONTACT_CONFIRM_S}s 확인 · "
+            f"재들림 동결 · FREE_STAND 표시 · 상한 {HANG_MAX_S:.0f}s 동결 — 6케이스 통과")
+
+
 def run_selftest(required=()):
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 게이트 + 정책 500틱.
     required: 파일이 반드시 있어야 하는 체크포인트(기동 --checkpoint, STAND_DEFAULT) — 없으면 FAIL."""
@@ -1024,6 +1138,7 @@ def run_selftest(required=()):
              ("프레임 게이트", _selftest_frame_gate),
              ("중력 게이트", _selftest_grav_gate),
              ("발진 가드", _selftest_osc_guard),
+             ("행잉 가드", _selftest_hang_guard),
              ("학습 계약", lambda: _selftest_contract(required)),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
@@ -1120,6 +1235,7 @@ def main():
             self.blend_t0 = None
             self.blend_from = None
             self.nocontact_t0 = None
+            self.hang_guard = HangGuard(hang_mode=False)
             self.stage8_cmd_rel = {}
             # 블랙박스 전용(제어 무관): stage8 피드백의 토크 추정·모터 온도 원값.
             # 0905 — 시뮬 판정이 토크 피크/포화 %를 지표로 쓰므로 실물도 같은
@@ -1357,6 +1473,13 @@ def main():
                 self.blend_t0 = None
                 self.blend_from = None
                 self.nocontact_t0 = None
+                # 0908 행잉 ARM: stand + hang_arm:true 를 명시한 경우에만 접지 전 무접촉 허용
+                _hang = (c == "stand" and bool(d.get("hang_arm", False)))
+                self.hang_guard = HangGuard(hang_mode=_hang, t0=time.time())
+                if _hang:
+                    self.get_logger().warn(
+                        f"행잉 ARM — 접지 전 무접촉 허용(최대 {HANG_MAX_S:.0f}s), 양발 접촉 {CONTACT_CONFIRM_S}s 후 "
+                        "기존 리프트 가드 복원")
                 self.tgt_filt = None
                 self.osc_tgt = OscGuard(JOINT_ORDER)
                 self.prev_tgt = None
@@ -1445,19 +1568,20 @@ def main():
             gyro, quat = self.imu
             contact2 = [1.0 if self.foot[0] > CONTACT_FORCE_THRESHOLD_N else 0.0,
                         1.0 if self.foot[1] > CONTACT_FORCE_THRESHOLD_N else 0.0]
-            # 리프트 가드 — 양발 무접촉 LIFT_STOP_S 지속 시 동결 (발버둥 차단)
-            if self.live and contact2[0] == 0.0 and contact2[1] == 0.0:
-                if self.nocontact_t0 is None:
-                    self.nocontact_t0 = now
-                elif now - self.nocontact_t0 >= LIFT_STOP_S:
-                    self._bb_write({"timestamp": now, "event": "lift_guard"})
-                    self._stop_all(f"lift_guard: 양발 무접촉 {LIFT_STOP_S}s 지속")
-                    self.core.active = False
-                    self.get_logger().error(
-                        "리프트 가드 — 양발 무접촉 지속, 동결 홀드. 줄·발 확인!")
-                    return
-            else:
-                self.nocontact_t0 = None
+            # 리프트 가드 — 양발 무접촉 LIFT_STOP_S 지속 시 동결 (발버둥 차단).
+            # 0908: HangGuard 상태기로 이관. hang_arm 미명시면 종전과 동일 동작(셀프테스트 고정),
+            # hang_arm 명시면 접지 획득 전에만 무접촉 허용(상한 HANG_MAX_S).
+            _why = self.hang_guard.update(
+                now, contact2, (float(self.foot[0]) + float(self.foot[1])) if self.foot else None)
+            for _st, _t in self.hang_guard.pop_transitions():
+                self._bb_write({"timestamp": _t, "event": "hang_guard", "state": _st})
+                self.get_logger().info(f"행잉 가드 상태 → {_st}")
+            if self.live and _why:
+                self._bb_write({"timestamp": now, "event": "lift_guard", "why": _why})
+                self._stop_all(_why)
+                self.core.active = False
+                self.get_logger().error(f"리프트 가드 — {_why}. 동결 홀드. 줄·발 확인!")
+                return
             # 발진 가드 — 피드백 기반이라 정책 출력과 무관하게 몸의 발진을 감지.
             # 트리거 시 STOP_ALL(동결 홀드) 후 비활성: 이후 절차 = 줄 재인장 →
             # release_all.py (0802 프로토콜)
@@ -1534,6 +1658,7 @@ def main():
                    "qpos_rad": [round(v, 5) for v in qpos],
                    "qvel_rad_s": [round(v, 4) for v in qvel],
                    "contact": contact2,
+                   "hang_state": self.hang_guard.state,
                    "blend_alpha": round(alpha, 3),
                    "foot_n": [round(float(self.foot[0]), 2),
                               round(float(self.foot[1]), 2)],

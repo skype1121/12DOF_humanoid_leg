@@ -220,3 +220,16 @@ class Biped12HangStandS5uEnvCfg(Biped12HangStandS5kEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.torso_pitch_band = RewTerm(func=mdp_hang.torso_pitch_band, weight=-8.0, params={"band_rad": 0.087})
+
+
+@configclass
+class Biped12HangStandS5rEnvCfg(Biped12HangStandS5uEnvCfg):
+    """S5r: S5u + **실물 현가 재현** — 지지 중 프레임 수평 유지 토크(두 줄 앞뒤, 오늘 착지 피치 −0.5°), 작용점 오프셋 ±1cm.
+    0908 22:40 승윤님 "실물은 저 정도로 흔들리며 착지하지 않는다"."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        p = self.events.hang_support_reset.params
+        p["level_gain_range"] = (50.0, 300.0)
+        p["level_damp_range"] = (2.0, 10.0)
+        p["point_xy"] = 0.01

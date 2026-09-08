@@ -176,7 +176,9 @@ S1r +2500(v18b) → 평가 → S2r +2000 → 평가 → S3r +2000 → 평가 →
 
 # 다음 단계 (승윤님 결정 항목)
 - **젯슨 배포**: `stand_hang_v1` 은 로컬 레지스트리(`models/stand_hang_v1`, ONNX·md5)와 브리지·콘솔 등록·selftest 까지 됐고
-  **젯슨엔 안 올렸다.** 배포하면 `deploy_package.sh` 경로로, 콘솔 systemd 재시작 필요(행잉 ARM 체크박스도 그때 나타남).
+  **젯슨엔 안 올렸다.** 패키지는 조립해 둠: `deploy/stand_7차_20260908_2018.tar.gz` (13MB, 45파일, v15~v18b + stand_hang_v1,
+  MANIFEST.md5 커밋). 배포 = `bash jetson/deploy_to_jetson.sh` → 젯슨 md5 검증 → 콘솔 systemd 재시작(드롭다운·행잉 ARM 체크박스 반영)
+  → 젯슨 브리지 selftest `--checkpoint stand_hang_v1`.
 - **실물 절차** `docs/hang_to_stand_실물절차.md` A→F. 첫 시험은 A(70% 핸드오프, hang_arm 불필요) — 오늘 55% 고원에서 115초
   안정했던 조건과 같아 위험이 낮다. 기대치: 표의 실물 유사 행(98%)이 상한, 캘리브·접촉 임계가 대역을 벗어나는 만큼 내려간다.
 - 시뮬 후속(선택): 강성·CoM 을 실측으로 좁힌 뒤 재학습, 좌우 낙상(오른쪽 우세) 원인 = 발 횡폭 ±25mm·착지 롤 → 발 기하 검토.

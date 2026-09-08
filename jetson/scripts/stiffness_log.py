@@ -120,23 +120,35 @@ def analyze(rows, com_h_m=0.52, kp=NOMINAL_KP):
         out["fwd"] = ({"min": min(fwds), "max": max(fwds), "span": max(fwds) - min(fwds)}
                       if fwds else None)
 
-    # ── 관절별 k_ctrl = Δτ / Δ(cmd − act) ──
+    # ── 관절별 추종오차·k_ctrl ──
+    # **프레임 주의**: act 는 모터 절대각, cmd 는 베이스라인 상대각이다.
+    # 오차 = cmd − (act − base). 0908 에 이걸 cmd − act 로 잘못 빼서 관절마다
+    # 수십 도짜리 가짜 오차가 나왔다 — 베이스라인을 빼먹으면 프레임이 어긋난다.
     per = {}
     names = sorted({n for r in usable for n in r["joints"]})
     for nm in names:
-        xs, ys, taus = [], [], []
+        xs, ys, taus, loads, errs = [], [], [], [], []
         for r in usable:
             j = r["joints"].get(nm) or {}
-            if j.get("stale") or j.get("tau") is None or j.get("act") is None or j.get("cmd") is None:
+            if (j.get("stale") or j.get("tau") is None or j.get("act") is None
+                    or j.get("cmd") is None or j.get("base") is None):
                 continue
-            xs.append(math.radians(float(j["cmd"]) - float(j["act"])))
+            err = float(j["cmd"]) - (float(j["act"]) - float(j["base"]))
+            xs.append(math.radians(err))
             ys.append(float(j["tau"]))
             taus.append(abs(float(j["tau"])))
-        s, _, r2 = ols(xs, ys)
-        per[nm] = {"n": len(xs), "k_ctrl": s, "r2": r2,
+            errs.append(err)
+            loads.append(r["pct"])
+        k, _, r2 = ols(xs, ys)
+        # 하중이 늘 때 이 관절의 오차가 자라는가 = 처짐이 이 관절의 **모터측**에 있는가.
+        # 어느 관절도 안 자라는데 몸통만 기울면 처짐은 모든 엔코더의 하류(구조)다.
+        slope, _, r2l = ols(loads, errs)
+        per[nm] = {"n": len(xs), "k_ctrl": k, "r2": r2,
                    "tau_max": (max(taus) if taus else None),
-                   "err_span_deg": (round(math.degrees(max(xs) - min(xs)), 2)
-                                    if len(xs) >= 2 else None)}
+                   "err_max": (max(errs, key=abs) if errs else None),
+                   "err_per_pct": slope, "err_r2": r2l,
+                   "err_span_deg": (round(max(errs) - min(errs), 3)
+                                    if len(errs) >= 2 else None)}
     out["joints"] = per
 
     # ── k_body = Δ(발목굽힘 토크 합) / Δ(몸통 피치) ──
@@ -176,13 +188,15 @@ def report(a):
     if f:
         L.append(f"몸통 피치 {f['min']:+.2f}° ~ {f['max']:+.2f}°  (진폭 {f['span']:.2f}°)")
     L.append("")
-    L.append(f"{'관절':<22}{'n':>5}{'k_ctrl[Nm/rad]':>16}{'R²':>7}{'오차폭[°]':>10}{'|τ|max':>9}")
+    L.append("관절별 — err_per_pct 가 크면 그 관절의 **모터측**이 휜다;")
+    L.append("전 관절이 0 에 가까운데 몸통만 기울면 처짐은 엔코더 하류(구조·감속기)다.")
+    L.append(f"{'관절':<22}{'n':>5}{'오차/하중%[°]':>14}{'R²':>6}{'|오차|max':>10}"
+             f"{'오차폭':>8}{'|τ|max':>8}{'k_ctrl':>9}")
     for nm, j in a["joints"].items():
-        k = "—" if j["k_ctrl"] is None else f"{j['k_ctrl']:.1f}"
-        r2 = "—" if j["r2"] is None else f"{j['r2']:.2f}"
-        es = "—" if j["err_span_deg"] is None else f"{j['err_span_deg']:.2f}"
-        tm = "—" if j["tau_max"] is None else f"{j['tau_max']:.2f}"
-        L.append(f"{nm:<22}{j['n']:>5}{k:>16}{r2:>7}{es:>10}{tm:>9}")
+        f = lambda v, w, p=2: ("—".rjust(w) if v is None else f"{v:{w}.{p}f}")
+        L.append(f"{nm:<22}{j['n']:>5}{f(j['err_per_pct'],14,4)}{f(j['err_r2'],6)}"
+                 f"{f(j['err_max'],10,3)}{f(j['err_span_deg'],8,3)}"
+                 f"{f(j['tau_max'],8)}{f(j['k_ctrl'],9,1)}")
     kb = a["k_body"]
     L.append("")
     L.append("── 몸통 수준 실효 강성 (후크 기하와 무관한 판정은 아님 — 주석 참조) ──")
@@ -263,11 +277,15 @@ def selftest():
     assert imu_pitch_deg(None) is None and imu_pitch_deg([1, 0, 0]) is None
 
     r = row_from_msgs({"armed": True, "joints": {"left_ankle_f_joint": {
-        "latest_actual_deg": 1.0, "commanded_relative_deg": 2.0,
+        "latest_actual_deg": 1.0, "commanded_relative_deg": 2.0, "baseline_deg": 0.5,
         "feedback_torque_est": 4.0, "feedback_stale": False}}},
         {"quat": [1, 0, 0, 0]}, {"left_n": 80.0, "right_n": 92.9}, 1.234)
     assert r["pct"] == 100.0, r["pct"]
     assert r["joints"]["left_ankle_f_joint"]["tau"] == 4.0
+    assert r["joints"]["left_ankle_f_joint"]["base"] == 0.5, "base 를 기록해야 오차 프레임이 맞는다"
+    # 프레임 회귀 방지: base 를 빼먹으면 오차가 2−1=+1 로 나온다. 정답은 2−(1−0.5)=+1.5
+    _a = analyze([r] * 5)["joints"]["left_ankle_f_joint"]
+    assert abs(_a["err_max"] - 1.5) < 1e-9, _a["err_max"]
     assert r["fwd"] == 0.0 and r["armed"] is True
     assert row_from_msgs(None, None, None, 0.0)["joints"] == {}, "결측이어도 죽지 않는다"
 
@@ -276,7 +294,7 @@ def selftest():
     for k in range(40):
         fwd = 0.10 * k                       # 0 → 3.9°
         tau = -60.0 * math.radians(fwd) / 2  # 발목 1개 몫
-        js = {nm: {"latest_actual_deg": 0.0,
+        js = {nm: {"latest_actual_deg": 0.0, "baseline_deg": 0.0,
                    "commanded_relative_deg": math.degrees(tau / 150.0),
                    "feedback_torque_est": tau, "feedback_stale": False}
               for nm in ANKLE_PITCH}

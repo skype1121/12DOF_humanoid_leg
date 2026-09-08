@@ -136,3 +136,50 @@ class Biped12HangStandS3rEnvCfg(Biped12HangStandS3EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         _reduce_dr(self)
+
+
+# ─────────────────────── S4m: 혼합 스케줄 + 실측 대역 DR (0908 저녁 3차) ───────────────────────
+# 체인2 결과: 단계별 정책은 앞 단계를 잊는다(S3r 정책이 S2r 조건 84.4→71.9%). 실물 절차는 A(70% 핸드오프)~F(실제 행잉)를
+# 한 정책으로 밟아야 하므로 마지막 단계는 지지·간격·타이밍을 전 범위로 섞는다.
+# DR 은 V18 극단(강성 0.2·CoM +0.06)이 아니라 실측 대역으로 확대: 실물 관절은 안 휜다(0908 k_ctrl≈kp) → 강성 0.7~1.1,
+# 영점자세 CoM ≥26mm 후방 → x −0.08~0, boot_pose 잔차 ≤3.9°·IMU 롤 +2.6~3.1° → 캘리브 ±3°/IMU ±4°/롤 ±3.5°, 루프지연 4~8틱 → 3~8.
+# 전체 DR(S3 cfg)은 학습 목표가 아니라 스트레스 평가로만 쓴다(S1 전체DR 정체 재현 위험·비실측 극단).
+def _real_band_dr(cfg):
+    ev = cfg.events
+    ev.actuator_gains.params["stiffness_distribution_params"] = (0.7, 1.1)
+    ev.actuator_gains.params["damping_distribution_params"] = (0.7, 1.3)
+    if getattr(ev, "base_com", None):
+        ev.base_com.params["com_range"] = {"x": (-0.08, 0.0), "y": (-0.015, 0.015), "z": (0.0, 0.12)}
+    if getattr(ev, "add_base_mass", None):
+        _op = ev.add_base_mass.params.get("operation", "add")
+        ev.add_base_mass.params["mass_distribution_params"] = ((0.9, 1.1) if _op == "scale" else (0.0, 2.0))
+    if getattr(ev, "calib_bias", None):
+        p = ev.calib_bias.params
+        for k, half in (("joint_bias_rad", 0.052), ("imu_tilt_rad", 0.070), ("ankle_bias_rad", 0.070),
+                        ("knee_bias_rad", 0.052), ("imu_roll_rad", 0.061)):
+            if k in p and p[k] is not None:
+                p[k] = (-half, half)
+    if getattr(ev, "physics_material", None):
+        ev.physics_material.params["static_friction_range"] = (0.5, 1.1)
+        ev.physics_material.params["dynamic_friction_range"] = (0.4, 0.9)
+    if getattr(ev, "joint_friction", None):
+        ev.joint_friction.params["friction_distribution_params"] = (0.0, 0.1)
+    if getattr(ev, "push_robot", None):
+        ev.push_robot.params["velocity_range"] = {"x": (-0.25, 0.25), "y": (-0.25, 0.25)}
+    cfg.actions.joint_pos.min_delay_steps = 3
+    cfg.actions.joint_pos.max_delay_steps = 8
+
+
+@configclass
+class Biped12HangStandS4mEnvCfg(Biped12HangStandS1EnvCfg):
+    """S4m: 혼합 스케줄(A~F 전 범위) + 실측 대역 DR."""
+
+    r0_range = (0.5, 1.0)
+    hold_range = (0.5, 4.0)
+    release_range = (2.0, 10.0)
+    clearance_z = (0.0, 0.15)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.episode_length_s = 20.0
+        _real_band_dr(self)

@@ -197,3 +197,17 @@ class Biped12HangStandS5sEnvCfg(Biped12HangStandS4mEnvCfg):
             params={"gap_range": (0.22, 0.32), "max_stagger": 0.04,
                     "asset_cfg": SceneEntityCfg("robot", body_names=[".*_ankle_r_joint"])})
         self.rewards.joint_deviation_hip.weight = -0.5
+
+
+@configclass
+class Biped12HangStandS5kEnvCfg(Biped12HangStandS5sEnvCfg):
+    """S5k: S5s(대칭·발 배치) + **무릎 아주 약간(3~8°) 굽힘** + 골반 높이 유지 — 0908 22:05 승윤님 "아주 약간 무릎을 접은 안정 자세"."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        # 기존 밴드 8~16°(0.14~0.28rad) 는 웅크림을 만든다 → 3~8° 로 낮춤. 접촉 중인 다리만 적용(함수 내부 게이트).
+        self.rewards.knee_stance_flexion.params["band_rad"] = (0.05, 0.14)
+        self.rewards.knee_stance_flexion.weight = 4.0
+        # 직립 유지: 골반 높이 목표 0.645m (무릎 0° 홀드 0.65 에서 약간 아래). 계단 계보에서 0 이던 가중치를 되살린다.
+        self.rewards.base_height_l2.weight = -2.0
+        self.rewards.base_height_l2.params["target_height"] = 0.645

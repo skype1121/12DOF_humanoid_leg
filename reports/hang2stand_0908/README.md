@@ -12,7 +12,9 @@
   각속도·종료 접촉·관절각·시간축. `--hold`(고정 Kp) / 정책(h3 배포 체인). 산출물 `log_picture/hang2stand_<tag>.txt`.
 - **브리지** `HangGuard`: PRE_CONTACT_HANG_ALLOWED → CONTACT_ACQUIRED → FREE_STAND. `{"cmd":"stand","hang_arm":true}` 를
   명시할 때만 접지 전 무접촉 허용(상한 120s), 양발 접촉 0.3s 후 종전 리프트 가드(0.6s) 복원. hang_arm 없으면 종전과 동일
-  (셀프테스트 고정). 젯슨 미배포.
+  (셀프테스트 고정). **젯슨 배포 완료**(md5 e7dfa484…, 젯슨 selftest ALL PASS) — 다음 브리지 기동부터 적용.
+- **콘솔** `stand 발사` 옆 '행잉 ARM' 체크박스(bbe8f65): 체크 시에만 `hang_arm:true` 발행, 미체크 = 종전. 젯슨 파일은
+  갱신했으나 **콘솔 systemd 는 재시작 전까지 구 코드** — 다음 세션 시작 때 콘솔 재시작 필요(승윤님).
 - **실물 절차** `docs/hang_to_stand_실물절차.md`: A 70% → B 55% → C 30% → D 무부하 → E 작은 간격 → F 실제 행잉, abort 조건.
 
 ## 기준선 (S1, 64 env × 16s, DR ON, 지지 50~70% → 0.5~2s 유지 → 2~8s 방출)

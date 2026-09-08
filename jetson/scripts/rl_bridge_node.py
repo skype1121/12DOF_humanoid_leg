@@ -189,6 +189,10 @@ CHECKPOINTS = {
     # stand_v18b (0905): 정정 env(실질량 17.62kg·명목 노이즈 정정, 새 축 없음) — 판정 reports/gen_*/README.md
     "stand_v18b": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/exported"),
+    # stand_hang_v1 (0908 밤): Hanging-to-Stand S4m(혼합 지지 스케줄+실측 대역 DR, v18b 계보 웜스타트) —
+    # 관측 245 계약·클록 1.1Hz 동일. 판정 reports/hang2stand_0908/README.md. **젯슨 미배포(승윤님 결정 후).**
+    "stand_hang_v1": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-09-08_19-00-25/exported"),
 }
 
 #: 체크포인트별 게이트 클록 주파수 [Hz] — 학습 클록과 반드시 일치 (불일치 =
@@ -196,7 +200,7 @@ CHECKPOINTS = {
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
 CKPT_GAIT_FREQ = {"march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
-                   "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1}
+                   "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1, "stand_hang_v1": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 #: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).
 #: 대체는 경고 로그로 드러낸다 (0905 감사 A1: 무언 대체 'stand_v7' = 10.49kg 자산 정책 탑승 경로).

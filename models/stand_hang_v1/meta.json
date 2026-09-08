@@ -1,0 +1,18 @@
+{
+  "name": "stand_hang_v1",
+  "run": "2026-09-08_19-00-25",
+  "checkpoint": "model_129494.pt",
+  "checkpoint_md5": "67fd6ae6af2484bac356f6c59feb9f50",
+  "task": "Biped12-HangStand-S4m-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "S3r 127495 ← S2r 125496 ← S1r 123497 ← v18b 120998",
+  "summary": "Hanging-to-Stand S4m(혼합 스케줄+실측DR): 축소DR S1r 95.3/S2r 81.2/S3r 84.4, 실물유사(CoM −0.04·푸시OFF) 98.4, 자기조건 256env 61.7(v18b 55.9)",
+  "legacy": false,
+  "files": {
+    "policy.pt": "5628791a35bb745c40ec43db43877c26",
+    "policy.onnx": "37ba7a78485a495c9503595eecc4949e",
+    "env.yaml": "03e9f39dc39d86e8ccfa3c14bf499b08",
+    "agent.yaml": "2a2015e7f8320ddb28d6354d326a7bea"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-08_19-00-25"
+}

@@ -519,3 +519,16 @@ gym.register(
         "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12FlatPPORunnerCfg",
     },
 )
+
+
+# ── Hanging-to-Stand (0908 저녁): 보조지지 스케줄 커리큘럼 S1/S2/S3 — rl_walking/hang_stand_env_cfg.py ──
+for _stage in ("S1", "S2", "S3"):
+    gym.register(
+        id=f"Biped12-HangStand-{_stage}-v0",
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"rl_walking.hang_stand_env_cfg:Biped12HangStand{_stage}EnvCfg",
+            "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
+        },
+    )

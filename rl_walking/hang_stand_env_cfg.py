@@ -81,3 +81,58 @@ class Biped12HangStandS3EnvCfg(Biped12HangStandS1EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.episode_length_s = 20.0
+
+
+# ─────────────────────── 축소 DR 판 (0908 저녁 2차) ───────────────────────
+# S1(전체 DR) +1000it 중간 평가 51.6% (v18b 제로샷 59.4%) · 에피소드 길이 511→525 정체 = 학습 안 됨.
+# V18 전체 DR 을 처음부터 물린 것이 지시("처음부터 랜덤화 범위를 과도하게 넓히지 말고 curriculum 으로 확대") 위반.
+# 0906 정착 실험: 강성 0.2~0.4× 몸체는 어떤 정책으로도 못 서는 표본 → 학습 신호 오염. 축소 DR 로 S1r~S3r, 전체 DR 은 S4.
+def _reduce_dr(cfg):
+    ev = cfg.events
+    ev.actuator_gains.params["stiffness_distribution_params"] = (0.8, 1.1)
+    ev.actuator_gains.params["damping_distribution_params"] = (0.8, 1.2)
+    if getattr(ev, "base_com", None):
+        # 실물 추정: 영점자세 CoM 이 시뮬 명목보다 ≥26mm 뒤 (0908) → 후방 대역 유지, 전방·극단 제거
+        ev.base_com.params["com_range"] = {"x": (-0.06, 0.0), "y": (-0.01, 0.01), "z": (0.0, 0.10)}
+    if getattr(ev, "add_base_mass", None):
+        _op = ev.add_base_mass.params.get("operation", "add")
+        ev.add_base_mass.params["mass_distribution_params"] = ((0.95, 1.05) if _op == "scale" else (0.0, 1.0))
+    if getattr(ev, "calib_bias", None):
+        p = ev.calib_bias.params
+        for k, half in (("joint_bias_rad", 0.026), ("imu_tilt_rad", 0.035), ("ankle_bias_rad", 0.035),
+                        ("knee_bias_rad", 0.026), ("imu_roll_rad", 0.035)):
+            if k in p and p[k] is not None:
+                p[k] = (-half, half)
+    if getattr(ev, "physics_material", None):
+        ev.physics_material.params["static_friction_range"] = (0.6, 1.0)
+        ev.physics_material.params["dynamic_friction_range"] = (0.5, 0.8)
+    for name in ("stance_asym", "effort_scale"):
+        if getattr(ev, name, None) is not None:
+            setattr(ev, name, None)
+    if getattr(ev, "joint_friction", None):
+        ev.joint_friction.params["friction_distribution_params"] = (0.0, 0.05)
+    if getattr(ev, "push_robot", None):
+        ev.push_robot.params["velocity_range"] = {"x": (-0.15, 0.15), "y": (-0.15, 0.15)}
+
+
+@configclass
+class Biped12HangStandS1rEnvCfg(Biped12HangStandS1EnvCfg):
+    """S1 + 축소 DR."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _reduce_dr(self)
+
+
+@configclass
+class Biped12HangStandS2rEnvCfg(Biped12HangStandS2EnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        _reduce_dr(self)
+
+
+@configclass
+class Biped12HangStandS3rEnvCfg(Biped12HangStandS3EnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        _reduce_dr(self)

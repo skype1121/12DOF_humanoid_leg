@@ -104,9 +104,13 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
     st["released_t"][ids] = -1.0
     st["touch_t"][ids] = -1.0
     asset = env.scene[asset_cfg.name]
-    # 총질량: startup 질량 DR(add_base_mass) 반영 — PhysX 뷰는 CPU 텐서
-    masses = asset.root_physx_view.get_masses()
-    st["mass"][ids] = masses.sum(1).to(env.device)[ids]
+    # 총질량: startup 질량 DR(add_base_mass) 반영. PhysX 뷰 get_masses() 는 CPU readback 이라
+    # 매 리셋마다 부르면 4096env 학습이 ~7it/min 로 느려진다(0908 실측) — startup 뒤 불변이므로 1회 캐시.
+    cache = getattr(env, "_hang_mass_all", None)
+    if cache is None or cache.shape[0] != env.num_envs:
+        cache = asset.root_physx_view.get_masses().sum(1).to(env.device)
+        env._hang_mass_all = cache
+    st["mass"][ids] = cache[ids]
     pos = asset.data.root_pos_w[ids]
     st["x0"][ids] = pos[:, 0]
     st["y0"][ids] = pos[:, 1]

@@ -28,7 +28,13 @@ PAD_XYZ = {
     "lf": (+0.025125, +0.070601), "rf": (-0.024875, +0.070601),   # (lateral x, fore-aft z)
     "lb": (+0.025125, -0.050933), "rb": (-0.024875, -0.050933),
 }
-DEFAULT_LAYOUT = "lf,rf,lb,rb"
+#: 0908 --identify 실측 확정 (매달림, 8패드 개별 가압 130초 · 겹침 0 · 양발 동일 배선):
+#: left[0]=앞바깥 left[1]=뒤바깥 left[2]=앞안쪽 left[3]=뒤안쪽,
+#: right[0]=앞안쪽 right[1]=뒤안쪽 right[2]=앞바깥 right[3]=뒤바깥.
+#: 로봇 좌우로 옮기면 양발 모두 인덱스 순서 lf,lb,rf,rb 다.
+#: **종전 기본값 "lf,rf,lb,rb" 는 1·2번이 뒤바뀐 추정치였다** — 그대로 쓰면 뒤 패드를
+#: 앞으로 계산해 CoP 전후가 오염된다 (이 도구가 경고하던 바로 그 사고).
+DEFAULT_LAYOUT = "lf,lb,rf,rb"
 TOPIC = "/humanoid/pressure/data"
 
 
@@ -125,7 +131,10 @@ def tare_from(path):
 
 
 def selftest():
-    layout = parse_layout(DEFAULT_LAYOUT)
+    # 수학 검증용 고정 레이아웃 — **배포 기본값과 일부러 분리한다.** 예전엔 이 자리에
+    # DEFAULT_LAYOUT 을 썼는데, 그러면 기본값을 실측으로 고치는 순간 기대값이 같이
+    # 움직여 테스트가 아무것도 지키지 못한다 (0908 실제로 그렇게 깨졌다).
+    layout = parse_layout("lf,rf,lb,rb")
     # 앞 패드 2개에 300, 뒤 패드 2개에 100 → CoP z = (600·70.601 − 200·50.933)/800 = +40.22mm, 앞 하중 75%
     m = {"left": [300, 300, 100, 100], "right": [300, 300, 100, 100]}
     s = summarize([m] * 5, None, layout)
@@ -141,7 +150,10 @@ def selftest():
     # 좌우: 왼발만 하중 → left_share 1.0
     s4 = summarize([{"left": [100] * 4, "right": [0] * 4}] * 2, None, layout)
     assert abs(s4["left_share"] - 1.0) < 1e-9 and s4["right"] is None
-    print("[selftest] cop_from_pads: CoP 전후·앞 비율·바이어스 차감·레이아웃 순열·좌우 하중 — ALL PASS")
+    # 배포 기본값은 0908 --identify 실측값이어야 한다 (추정치로 되돌아가는 것 차단)
+    assert DEFAULT_LAYOUT == "lf,lb,rf,rb", DEFAULT_LAYOUT
+    print("[selftest] cop_from_pads: CoP 전후·앞 비율·바이어스 차감·레이아웃 순열·"
+          "좌우 하중·배포 기본값 — ALL PASS")
     return 0
 
 

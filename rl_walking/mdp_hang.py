@@ -454,7 +454,7 @@ def action_accel_l2(env) -> torch.Tensor:
 def settle_quiet_bonus(env, s_ang: float = 0.08, s_lin: float = 0.02, s_jvel: float = 0.06, s_acc: float = 0.05,
                        use_jvel: bool = True, use_acc: bool = True, asset_cfg=None, hold_s: float = 0.5, ramp_s: float = 1.0,
                        tilt_deg: float = 8.0, min_height: float = 0.60, sensor_cfg=None, threshold: float = 5.0,
-                       r_eps: float = 0.05) -> torch.Tensor:
+                       r_eps: float = 0.05, rational: bool = False) -> torch.Tensor:
     # (**kwargs 금지: Isaac Lab 매니저가 VAR_KEYWORD 를 '필수 인자 ramp_kw' 로 오인해 cfg 검증에서 죽는다 — 0909 S8ac 1차 실패)
     """정착 후에만 주는 **양(+)의 정숙 보너스** 0~1: settled 램프 × 평균[exp(−(ω/σω)²), exp(−(v/σv)²)[, exp(−(q̇rms/σq)²)][, exp(−(ä_rms/σa)²)]].
 
@@ -463,13 +463,18 @@ def settle_quiet_bonus(env, s_ang: float = 0.08, s_lin: float = 0.02, s_jvel: fl
     asset = env.scene[(asset_cfg or _base_cfg()).name]
     w = asset.data.root_ang_vel_b[:, :2].norm(dim=1)
     v = asset.data.root_lin_vel_b[:, :2].norm(dim=1)
-    terms = [torch.exp(-(w / s_ang) ** 2), torch.exp(-(v / s_lin) ** 2)]
+    # rational=True: 1/(1+(x/σ)²) — exp(−(x/σ)²) 는 x>2σ 에서 포화(기울기 0)해 학습환경(raw 액션, LPF 없음)의 운동 수준이
+    # σ 의 2~3배면 신호가 죽는다(0909 S8ac3: 보너스 0.015). rational 은 3σ 에서도 0.1·기울기 유지.
+    def g(x, sig):
+        z = (x / sig) ** 2
+        return 1.0 / (1.0 + z) if rational else torch.exp(-z)
+    terms = [g(w, s_ang), g(v, s_lin)]
     if use_jvel:
         qd = asset.data.joint_vel.pow(2).mean(1).sqrt()
-        terms.append(torch.exp(-(qd / s_jvel) ** 2))
+        terms.append(g(qd, s_jvel))
     if use_acc:
         acc = action_accel_l2(env).sqrt()
-        terms.append(torch.exp(-(acc / s_acc) ** 2))
+        terms.append(g(acc, s_acc))
     return torch.stack(terms, 1).mean(1) * settled_ramp(env, hold_s, ramp_s, tilt_deg, min_height, sensor_cfg, threshold, r_eps)
 
 
@@ -488,7 +493,9 @@ def _selftest_s8():
     # 정숙 보너스: σ 지점에서 e^-1, 0 에서 1, 3σ 에서 ~0 — 유계(0~1)
     for x, s_, want in ((0.0, 0.08, 1.0), (0.08, 0.08, math.exp(-1.0)), (0.24, 0.08, math.exp(-9.0))):
         assert abs(float(torch.exp(-(torch.tensor(x) / s_) ** 2)) - want) < 1e-6
-    print("[selftest] S8: EMA 스파이크 25%/지속 4프레임 68%·settled 램프 0.5s+1s·정숙 보너스 유계 — PASS")
+    # rational 형: σ 에서 0.5, 3σ 에서 0.1 (exp 는 3σ 에서 1e-4 로 포화)
+    r3 = 1.0 / (1.0 + 9.0); assert abs(r3 - 0.1) < 1e-9 and abs(1.0 / (1.0 + 1.0) - 0.5) < 1e-9
+    print("[selftest] S8: EMA 스파이크 25%/지속 4프레임 68%·settled 램프 0.5s+1s·정숙 보너스 유계(exp/rational) — PASS")
 
 
 if __name__ == "__main__":

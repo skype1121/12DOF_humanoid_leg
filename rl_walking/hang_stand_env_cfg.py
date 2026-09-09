@@ -489,3 +489,24 @@ class Biped12HangStandS8ac3EnvCfg(Biped12HangStandS8acEnvCfg):
         super().__post_init__()
         self.episode_length_s = 30.0
         self.rewards.settle_quiet_bonus.weight = 2.0
+
+
+@configclass
+class Biped12HangStandS8a3EnvCfg(Biped12HangStandS8aEnvCfg):
+    """S8a3(대조): S8a + 에피소드 30 s, 보너스 없음 — S8ac4 의 '에피소드 연장' 효과 분리용."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.episode_length_s = 30.0
+
+
+@configclass
+class Biped12HangStandS8ac4EnvCfg(Biped12HangStandS8ac3EnvCfg):
+    """S8ac4: S8ac3 + rational 형 보너스, σ = 현재 수준의 2배(ω 0.2·v 0.06·q̇ 0.12·ä 0.3).
+    진단(0909 19:20): 배포 체인 없이 잰 S8a 정상상태(ω 0.123·v 0.032·q̇ 0.074·ä 0.156)는 체인 있을 때와 같음 → 학습환경에서 보너스가 0.015 로
+    작았던 것은 LPF 차이가 아니라 exp 형이 DR 전 범위(CoM −0.08·푸시 3~8 s)의 운동 수준에서 포화한 탓. rational 은 0.5~4배 범위에서 기울기 유지."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.settle_quiet_bonus.params.update(
+            {"rational": True, "s_ang": 0.2, "s_lin": 0.06, "s_jvel": 0.12, "s_acc": 0.3})

@@ -510,3 +510,14 @@ class Biped12HangStandS8ac4EnvCfg(Biped12HangStandS8ac3EnvCfg):
         super().__post_init__()
         self.rewards.settle_quiet_bonus.params.update(
             {"rational": True, "s_ang": 0.2, "s_lin": 0.06, "s_jvel": 0.12, "s_acc": 0.3})
+
+
+@configclass
+class Biped12HangStandS8ac5EnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S8ac5: S8ac4 + torso_pitch_band 가중치 −25 → −60.
+    S8ac4 는 정착 피치가 −4.9° 까지 기울었다(보너스 0.028/step 이 밴드 벌점 0.017/step 을 이김 — 후방 CoM DR 에서 앞으로 기울면 CoP 가 중앙에 와 더 조용하다).
+    승윤님 자세 기준(−2~−3°) 을 지키려면 밴드 벌점이 보너스보다 커야 한다: 4.9° 에서 60×0.0335×0.02 = 0.040/step > 0.028."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.torso_pitch_band.weight = -60.0

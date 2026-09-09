@@ -37,6 +37,8 @@ parser.add_argument("--r0", type=str, default=None); parser.add_argument("--hold
 parser.add_argument("--release_s", type=str, default=None); parser.add_argument("--clearance", type=str, default=None)
 parser.add_argument("--stand_s", type=float, default=5.0, help="지지 0 이후 생존 판정 시간 [s]")
 parser.add_argument("--no_push", action="store_true", help="푸시 외란 끔 (전이 능력과 푸시 강건성 분리 — 실물 윈치 시험엔 푸시가 없다)")
+parser.add_argument("--noise_off", type=str, default="", help="관측 노이즈 채널 제거(쉼표): gyro,grav,jpos,jvel,contact,all — S8 원인 분해용")
+parser.add_argument("--noise_scale", type=float, default=1.0, help="남은 관측 노이즈 대역 스케일(0.25/0.5/0.75/1.0)")
 parser.add_argument("--no_obs_noise", action="store_true", help="관측 노이즈(enable_corruption) 끔 — 정책 고유 정지도 측정용(학습 노이즈 ±0.2rad/s 자이로 등이 잔떨림을 만드는지 분리)")
 parser.add_argument("--lpf_beta", type=float, default=None, help="배포 체인 stand LPF β 덮어쓰기 (기본 deploy_chain.STAND_LPF_BETA=0.27; 작을수록 더 부드러움) — 재학습 없이 스탠바이 흔들림을 잡는 배포측 레버 시험")
 parser.add_argument("--out_tag", type=str, default="")
@@ -128,6 +130,18 @@ if args_cli.no_push:
     env_cfg.events.push_robot = None
 if args_cli.no_obs_noise:
     env_cfg.observations.policy.enable_corruption = False
+_off = {t.strip() for t in args_cli.noise_off.split(",") if t.strip()}
+_P = env_cfg.observations.policy
+for _nm, _term in (("gyro", _P.base_ang_vel), ("grav", _P.projected_gravity), ("jpos", _P.joint_pos), ("jvel", _P.joint_vel)):
+    if _nm in _off or "all" in _off:
+        _term.noise = None
+    elif _term.noise is not None and args_cli.noise_scale != 1.0:
+        _term.noise.n_min = float(_term.noise.n_min) * args_cli.noise_scale
+        _term.noise.n_max = float(_term.noise.n_max) * args_cli.noise_scale
+if ("contact" in _off or "all" in _off) and "threshold_range" in _P.feet_contact.params:
+    _P.feet_contact.params["threshold_range"] = None
+if _off or args_cli.noise_scale != 1.0:
+    print(f"[noise] off={sorted(_off)} scale={args_cli.noise_scale}")
 if args_cli.com_fix is not None and getattr(env_cfg.events, "base_com", None):
     env_cfg.events.base_com.params["com_range"] = {"x": (args_cli.com_fix, args_cli.com_fix), "y": (0.0, 0.0), "z": (0.0, 0.0)}
 T_s = args_cli.seconds if args_cli.seconds else float(env_cfg.episode_length_s)
@@ -195,6 +209,7 @@ _st_w = torch.zeros(N, device=dev); _st_v = torch.zeros(N, device=dev); _st_qd2 
 _lift_cnt = torch.zeros(N, device=dev); _prev_both = torch.zeros(N, dtype=torch.bool, device=dev); _ever_both = torch.zeros(N, dtype=torch.bool, device=dev)
 _ss_w = torch.zeros(N, device=dev); _ss_v = torch.zeros(N, device=dev); _ss_qd2 = torch.zeros(N, device=dev); _ss_n = torch.zeros(N, device=dev); _ss_lift = torch.zeros(N, device=dev)
 _SS_FROM = STEPS - 150   # 마지막 3s = 정상상태(스탠바이) 구간
+_ss_ar2 = torch.zeros(N, device=dev); _ss_r2 = torch.zeros(N, device=dev); _ss_p2 = torch.zeros(N, device=dev); _ss_rpk = torch.zeros(N, device=dev); _ss_ppk = torch.zeros(N, device=dev); _prev_a = None
 t0 = time.time()
 for i in range(STEPS):
     with torch.inference_mode():
@@ -226,6 +241,11 @@ for i in range(STEPS):
         _ss = a_ & (st["r"] <= 0.0)
         _ss_w[_ss] += robot.data.root_ang_vel_b[_ss, :2].norm(dim=-1); _ss_v[_ss] += robot.data.root_lin_vel_b[_ss, :2].norm(dim=-1)
         _ss_qd2[_ss] += (robot.data.joint_vel[_ss] ** 2).mean(1); _ss_n[_ss] += 1.0; _ss_lift += _lift_evt
+        if _prev_a is not None:
+            _ss_ar2[_ss] += ((a - _prev_a)[_ss] ** 2).mean(1)
+        _ss_r2[_ss] += roll[_ss] ** 2; _ss_p2[_ss] += pitch[_ss] ** 2
+        _ss_rpk[_ss] = torch.maximum(_ss_rpk[_ss], roll[_ss].abs()); _ss_ppk[_ss] = torch.maximum(_ss_ppk[_ss], pitch[_ss].abs())
+    _prev_a = a.clone()
     _prev_both = _both_now.clone()
     if _post.any():
         _st_w[_post] += robot.data.root_ang_vel_b[_post, :2].norm(dim=-1); _st_v[_post] += robot.data.root_lin_vel_b[_post, :2].norm(dim=-1)
@@ -292,6 +312,8 @@ _ok2 = _ss_n > 0
 if _ok2.any():
     P(f"**정상상태(마지막 3s, 스탠바이)** env 평균: |각속도xy| {float((_ss_w[_ok2]/_ss_n[_ok2]).mean()):.3f} rad/s · |수평속도| {float((_ss_v[_ok2]/_ss_n[_ok2]).mean()):.3f} m/s · "
       f"관절속도 RMS {float(((_ss_qd2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.3f} rad/s · 발 들기 {float(_ss_lift.mean()):.2f}회/env")
+    P(f"   정상상태 추가: action-rate RMS {float(((_ss_ar2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.4f} · 롤 RMS {float(((_ss_r2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.2f}° 피크 {float(_ss_rpk[_ok2].mean()):.2f}° · "
+      f"피치 RMS {float(((_ss_p2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.2f}° 피크 {float(_ss_ppk[_ok2].mean()):.2f}°")
 P("시간축 (0.5s 간격): t  지지비  접촉비  base z  피치")
 for k in range(0, STEPS, 25):
     P(f"   {k/50:5.1f}  {ratio_trace[k]:5.2f}  {contact_trace[k]:5.2f}  {z_trace[k]:5.3f}  {pitch_trace[k]:+6.2f}")

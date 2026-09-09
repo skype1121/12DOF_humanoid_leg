@@ -189,6 +189,8 @@ _stance_w = []; _stance_dx = []
 # 정지도 (0909 승윤님 "착지 후 흔들림 불가"): 지지 0 이후 생존 스텝의 |ω_xy| 평균·|v_xy| 평균·관절속도 RMS·발 들기 횟수(양발 접촉 후 한 발 이탈 전이)
 _st_w = torch.zeros(N, device=dev); _st_v = torch.zeros(N, device=dev); _st_qd2 = torch.zeros(N, device=dev); _st_n = torch.zeros(N, device=dev)
 _lift_cnt = torch.zeros(N, device=dev); _prev_both = torch.zeros(N, dtype=torch.bool, device=dev); _ever_both = torch.zeros(N, dtype=torch.bool, device=dev)
+_ss_w = torch.zeros(N, device=dev); _ss_v = torch.zeros(N, device=dev); _ss_qd2 = torch.zeros(N, device=dev); _ss_n = torch.zeros(N, device=dev); _ss_lift = torch.zeros(N, device=dev)
+_SS_FROM = STEPS - 150   # 마지막 3s = 정상상태(스탠바이) 구간
 t0 = time.time()
 for i in range(STEPS):
     with torch.inference_mode():
@@ -214,7 +216,12 @@ for i in range(STEPS):
     _post = a_ & (st["r"] <= 0.0)
     _both_now = (contact[:, 0] > 0) & (contact[:, 1] > 0)
     _ever_both |= (a_ & _both_now)
-    _lift_cnt += (a_ & _ever_both & _prev_both & ~_both_now).float()
+    _lift_evt = (a_ & _ever_both & _prev_both & ~_both_now).float()
+    _lift_cnt += _lift_evt
+    if i >= _SS_FROM:
+        _ss = a_ & (st["r"] <= 0.0)
+        _ss_w[_ss] += robot.data.root_ang_vel_b[_ss, :2].norm(dim=-1); _ss_v[_ss] += robot.data.root_lin_vel_b[_ss, :2].norm(dim=-1)
+        _ss_qd2[_ss] += (robot.data.joint_vel[_ss] ** 2).mean(1); _ss_n[_ss] += 1.0; _ss_lift += _lift_evt
     _prev_both = _both_now.clone()
     if _post.any():
         _st_w[_post] += robot.data.root_ang_vel_b[_post, :2].norm(dim=-1); _st_v[_post] += robot.data.root_lin_vel_b[_post, :2].norm(dim=-1)
@@ -277,6 +284,10 @@ _ok = _st_n > 0
 if _ok.any():
     P(f"정지도 — 지지 0 이후 생존 스텝 env 평균: |각속도xy| {float((_st_w[_ok]/_st_n[_ok]).mean()):.3f} rad/s · |수평속도| {float((_st_v[_ok]/_st_n[_ok]).mean()):.3f} m/s · "
       f"관절속도 RMS {float(((_st_qd2[_ok]/_st_n[_ok]).sqrt()).mean()):.3f} rad/s · 발 들기 {float(_lift_cnt.mean()):.2f}회/env (양발 접촉 후)")
+_ok2 = _ss_n > 0
+if _ok2.any():
+    P(f"**정상상태(마지막 3s, 스탠바이)** env 평균: |각속도xy| {float((_ss_w[_ok2]/_ss_n[_ok2]).mean()):.3f} rad/s · |수평속도| {float((_ss_v[_ok2]/_ss_n[_ok2]).mean()):.3f} m/s · "
+      f"관절속도 RMS {float(((_ss_qd2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.3f} rad/s · 발 들기 {float(_ss_lift.mean()):.2f}회/env")
 P("시간축 (0.5s 간격): t  지지비  접촉비  base z  피치")
 for k in range(0, STEPS, 25):
     P(f"   {k/50:5.1f}  {ratio_trace[k]:5.2f}  {contact_trace[k]:5.2f}  {z_trace[k]:5.3f}  {pitch_trace[k]:+6.2f}")

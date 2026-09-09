@@ -306,3 +306,19 @@ class Biped12HangStandS7bEnvCfg(Biped12HangStandS7EnvCfg):
         self.rewards.still_after_contact.params["r_max"] = 0.3
         self.rewards.feet_lift_after_contact.weight = -1.5
         self.rewards.feet_lift_after_contact.params["r_max"] = 0.3
+
+
+@configclass
+class Biped12HangStandS7cEnvCfg(Biped12HangStandS6EnvCfg):
+    """S7c: v4(S6) + 정지 벌점을 **줄이 거의 풀린 뒤(r ≤ 0.3)** 에만, 대신 강하게(각속도·수평속도·관절속도 −3, 발 들기 −4).
+    S7(접촉 0.5s 뒤부터 전 구간)은 정지도 −25% 에 그치고 실제 행잉 93→74% 로 후퇴 — 하중 이전 중 자세 조정을 벌한 탓."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.still_after_contact = RewTerm(
+            func=mdp_hang.still_after_contact, weight=-3.0,
+            params={"min_s": 0.3, "w_ang": 1.0, "w_lin": 1.0, "w_jvel": 0.005, "r_max": 0.3})
+        self.rewards.feet_lift_after_contact = RewTerm(
+            func=mdp_hang.feet_lift_after_contact, weight=-4.0,
+            params={"min_s": 0.3, "sensor_cfg": _FEET_SENSOR_CFG, "threshold": 5.0, "r_max": 0.3})
+        self.rewards.action_rate_l2.weight = -0.4

@@ -400,9 +400,10 @@ def foot_load_total(env, sensor_cfg=None, gain_range=(0.7, 1.3), offset_range=(-
 
 
 # ── settled 상태(특권 정보로 판정, 관측엔 안 넣음) + 램프 ──
-def settled_ramp(env, hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float = 5.0, min_height: float = 0.60,
-                 sensor_cfg=None, threshold: float = 5.0) -> torch.Tensor:
-    """지지 0 & 양발 접촉 & |롤|,|피치|<tilt & 골반높이>min 이 hold_s 유지된 뒤 ramp_s 동안 0→1 로 오르는 가중치 (N,)."""
+def settled_ramp(env, hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float = 8.0, min_height: float = 0.60,
+                 sensor_cfg=None, threshold: float = 5.0, r_eps: float = 0.05) -> torch.Tensor:
+    """지지비 ≤ r_eps & 양발 접촉 & 기울기<tilt & 골반높이>min 이 hold_s 유지된 뒤 ramp_s 동안 0→1 로 오르는 가중치 (N,).
+    기본 tilt 8°·r_eps 0.05 (0909 S8ac 1차: tilt 5°·r≤0 이면 정착 피치 −4° + 잔류 지지비 0.01~0.03 에 게이트가 거의 안 열려 보너스 Episode_Reward 0.0025)."""
     st = _state(env)
     asset = env.scene["robot"]
     sensor_cfg = sensor_cfg or _feet_cfg()
@@ -410,7 +411,7 @@ def settled_ramp(env, hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float 
     both = (torch.norm(f, dim=-1) > threshold).all(dim=1)
     pg = asset.data.projected_gravity_b
     tilt = torch.rad2deg(torch.acos((-pg[:, 2]).clamp(-1.0, 1.0)))
-    ok = (st["r"] <= 0.0) & both & (tilt < tilt_deg) & (asset.data.root_pos_w[:, 2] > min_height)
+    ok = (st["r"] <= r_eps) & both & (tilt < tilt_deg) & (asset.data.root_pos_w[:, 2] > min_height)
     tmr = getattr(env, "_s8_settle_t", None)
     if tmr is None or tmr.shape[0] != ok.shape[0]:
         tmr = torch.zeros(ok.shape[0], device=ok.device); env._s8_settle_t = tmr
@@ -419,8 +420,8 @@ def settled_ramp(env, hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float 
 
 
 def settle_quiet(env, w_ang: float = 1.0, w_lin: float = 1.0, w_jvel: float = 0.0, w_acc: float = 0.0,
-                 asset_cfg=None, hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float = 5.0, min_height: float = 0.60,
-                 sensor_cfg=None, threshold: float = 5.0) -> torch.Tensor:
+                 asset_cfg=None, hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float = 8.0, min_height: float = 0.60,
+                 sensor_cfg=None, threshold: float = 5.0, r_eps: float = 0.05) -> torch.Tensor:
     """settled 램프 × (몸통 각속도² + 수평속도² + 관절속도² + 액션 2차차분²) — 착지 직후가 아니라 정착 후에만."""
     asset = env.scene[(asset_cfg or _base_cfg()).name]
     w = asset.data.root_ang_vel_b[:, :2]; v = asset.data.root_lin_vel_b[:, :2]
@@ -429,7 +430,7 @@ def settle_quiet(env, w_ang: float = 1.0, w_lin: float = 1.0, w_jvel: float = 0.
         val = val + w_jvel * (asset.data.joint_vel ** 2).sum(1)
     if w_acc > 0.0:
         val = val + w_acc * action_accel_l2(env)
-    return val * settled_ramp(env, hold_s, ramp_s, tilt_deg, min_height, sensor_cfg, threshold)
+    return val * settled_ramp(env, hold_s, ramp_s, tilt_deg, min_height, sensor_cfg, threshold, r_eps)
 
 
 def action_accel_l2(env) -> torch.Tensor:
@@ -452,7 +453,8 @@ def action_accel_l2(env) -> torch.Tensor:
 
 def settle_quiet_bonus(env, s_ang: float = 0.08, s_lin: float = 0.02, s_jvel: float = 0.06, s_acc: float = 0.05,
                        use_jvel: bool = True, use_acc: bool = True, asset_cfg=None, hold_s: float = 0.5, ramp_s: float = 1.0,
-                       tilt_deg: float = 5.0, min_height: float = 0.60, sensor_cfg=None, threshold: float = 5.0) -> torch.Tensor:
+                       tilt_deg: float = 8.0, min_height: float = 0.60, sensor_cfg=None, threshold: float = 5.0,
+                       r_eps: float = 0.05) -> torch.Tensor:
     # (**kwargs 금지: Isaac Lab 매니저가 VAR_KEYWORD 를 '필수 인자 ramp_kw' 로 오인해 cfg 검증에서 죽는다 — 0909 S8ac 1차 실패)
     """정착 후에만 주는 **양(+)의 정숙 보너스** 0~1: settled 램프 × 평균[exp(−(ω/σω)²), exp(−(v/σv)²)[, exp(−(q̇rms/σq)²)][, exp(−(ä_rms/σa)²)]].
 
@@ -468,7 +470,7 @@ def settle_quiet_bonus(env, s_ang: float = 0.08, s_lin: float = 0.02, s_jvel: fl
     if use_acc:
         acc = action_accel_l2(env).sqrt()
         terms.append(torch.exp(-(acc / s_acc) ** 2))
-    return torch.stack(terms, 1).mean(1) * settled_ramp(env, hold_s, ramp_s, tilt_deg, min_height, sensor_cfg, threshold)
+    return torch.stack(terms, 1).mean(1) * settled_ramp(env, hold_s, ramp_s, tilt_deg, min_height, sensor_cfg, threshold, r_eps)
 
 
 def _selftest_s8():

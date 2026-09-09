@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import math
 import torch
 
 try:  # 셀프테스트는 Isaac 없이 돈다 — 무거운 import 는 지연
@@ -431,7 +432,10 @@ def settle_quiet(env, w_ang: float = 1.0, w_lin: float = 1.0, w_jvel: float = 0.
 
 
 def action_accel_l2(env) -> torch.Tensor:
-    """액션 2차 차분 |a_t − 2a_{t−1} + a_{t−2}|² 평균 — 느린 보정은 두고 고주파 채터만 겨냥."""
+    """액션 2차 차분 |a_t − 2a_{t−1} + a_{t−2}|² 평균 — 느린 보정은 두고 고주파 채터만 겨냥. 스텝당 1회 계산(캐시)."""
+    step = int(env.common_step_counter)
+    if getattr(env, "_s8_acc_step", -1) == step:
+        return env._s8_acc_val
     am = env.action_manager
     a, a1 = am.action, am.prev_action
     a2 = getattr(env, "_s8_act_prev2", None)
@@ -441,7 +445,27 @@ def action_accel_l2(env) -> torch.Tensor:
     a2[fresh] = a1[fresh]
     val = ((a - 2.0 * a1 + a2) ** 2).mean(1)
     env._s8_act_prev2 = a1.clone()
+    env._s8_acc_step, env._s8_acc_val = step, val
     return val
+
+
+def settle_quiet_bonus(env, s_ang: float = 0.08, s_lin: float = 0.02, s_jvel: float = 0.06, s_acc: float = 0.05,
+                       use_jvel: bool = True, use_acc: bool = True, asset_cfg=None, **ramp_kw) -> torch.Tensor:
+    """정착 후에만 주는 **양(+)의 정숙 보너스** 0~1: settled 램프 × 평균[exp(−(ω/σω)²), exp(−(v/σv)²)[, exp(−(q̇rms/σq)²)][, exp(−(ä_rms/σa)²)]].
+
+    벌점(S7 계열)이 아니라 보너스인 이유: settled 게이트 뒤의 벌점은 '정착하지 않기'(발 들기·기울기)로 회피할 수 있지만,
+    보너스는 정착 자체를 유도하면서 정착 후 정숙만 추가로 보상한다. σ 는 목표치(ω 0.05·v 0.005·q̇ 0.04·ä 0.03) 근방에서 기울기가 살도록 잡음."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    w = asset.data.root_ang_vel_b[:, :2].norm(dim=1)
+    v = asset.data.root_lin_vel_b[:, :2].norm(dim=1)
+    terms = [torch.exp(-(w / s_ang) ** 2), torch.exp(-(v / s_lin) ** 2)]
+    if use_jvel:
+        qd = asset.data.joint_vel.pow(2).mean(1).sqrt()
+        terms.append(torch.exp(-(qd / s_jvel) ** 2))
+    if use_acc:
+        acc = action_accel_l2(env).sqrt()
+        terms.append(torch.exp(-(acc / s_acc) ** 2))
+    return torch.stack(terms, 1).mean(1) * settled_ramp(env, **ramp_kw)
 
 
 def _selftest_s8():
@@ -456,7 +480,10 @@ def _selftest_s8():
     for k in range(80):
         t += 0.02; w.append(min(1.0, max(0.0, (t - 0.5) / 1.0)))
     assert w[24] < 1e-6 and abs(w[49] - 0.5) < 0.03 and w[79] > 1 - 1e-6, (w[24], w[49], w[79])
-    print("[selftest] S8: EMA 스파이크 25%/지속 4프레임 68%·settled 램프 0.5s+1s — PASS")
+    # 정숙 보너스: σ 지점에서 e^-1, 0 에서 1, 3σ 에서 ~0 — 유계(0~1)
+    for x, s_, want in ((0.0, 0.08, 1.0), (0.08, 0.08, math.exp(-1.0)), (0.24, 0.08, math.exp(-9.0))):
+        assert abs(float(torch.exp(-(torch.tensor(x) / s_) ** 2)) - want) < 1e-6
+    print("[selftest] S8: EMA 스파이크 25%/지속 4프레임 68%·settled 램프 0.5s+1s·정숙 보너스 유계 — PASS")
 
 
 if __name__ == "__main__":

@@ -411,3 +411,65 @@ class Biped12HangStandS8nEnvCfg(Biped12HangStandS6EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         _scale_obs_noise(self, 0.5)
+
+
+def _add_settle_bonus(cfg, weight=1.0, use_jvel=True, use_acc=True):
+    """settled-only 정숙 보너스(양, 0~1) — 최대 +weight×0.02×정착시간. S7 계열의 강한 벌점(착지 직후부터·r_max 게이트)과 달리
+    지지 0·양발·기울기<5°·골반>0.6m 가 0.5s 유지된 뒤 1s 램프로만 켜진다(특권 게이트는 보상에만, 관측엔 없음)."""
+    cfg.rewards.settle_quiet_bonus = RewTerm(
+        func=mdp_hang.settle_quiet_bonus, weight=weight,
+        params={"use_jvel": use_jvel, "use_acc": use_acc, "sensor_cfg": _FEET_SENSOR_CFG})
+
+
+@configclass
+class Biped12HangStandS8anEnvCfg(Biped12HangStandS8aEnvCfg):
+    """S8an: raw+EMA 관측 + 학습 노이즈 50% (구조·대역 결합)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _scale_obs_noise(self, 0.5)
+
+
+@configclass
+class Biped12HangStandS8acEnvCfg(Biped12HangStandS8aEnvCfg):
+    """S8ac: S8a + settled-only 정숙 보너스(ω·v·q̇·ä 4항, +1.0)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _add_settle_bonus(self, 1.0, True, True)
+
+
+@configclass
+class Biped12HangStandS8acLEnvCfg(Biped12HangStandS8aEnvCfg):
+    """S8acL: S8a + 정숙 보너스 lite(ω·v 만) — 보너스 항 ablation."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _add_settle_bonus(self, 1.0, False, False)
+
+
+@configclass
+class Biped12HangStandS8ncEnvCfg(Biped12HangStandS8nEnvCfg):
+    """S8nc: S8n(노이즈 50%) + 정숙 보너스 4항."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _add_settle_bonus(self, 1.0, True, True)
+
+
+@configclass
+class Biped12HangStandS8ancEnvCfg(Biped12HangStandS8anEnvCfg):
+    """S8anc: raw+EMA + 노이즈 50% + 정숙 보너스 4항."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _add_settle_bonus(self, 1.0, True, True)
+
+
+@configclass
+class Biped12HangStandS8cEnvCfg(Biped12HangStandS6EnvCfg):
+    """S8c(대조): v4 관측·노이즈 그대로 + 정숙 보너스 4항 — 보상만의 효과."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _add_settle_bonus(self, 1.0, True, True)

@@ -217,6 +217,7 @@ _lift_cnt = torch.zeros(N, device=dev); _prev_both = torch.zeros(N, dtype=torch.
 _ss_w = torch.zeros(N, device=dev); _ss_v = torch.zeros(N, device=dev); _ss_qd2 = torch.zeros(N, device=dev); _ss_n = torch.zeros(N, device=dev); _ss_lift = torch.zeros(N, device=dev)
 _SS_FROM = STEPS - 150   # 마지막 3s = 정상상태(스탠바이) 구간
 _ss_ar2 = torch.zeros(N, device=dev); _ss_r2 = torch.zeros(N, device=dev); _ss_p2 = torch.zeros(N, device=dev); _ss_rpk = torch.zeros(N, device=dev); _ss_ppk = torch.zeros(N, device=dev); _prev_a = None
+_ss_aa2 = torch.zeros(N, device=dev); _ss_pm = torch.zeros(N, device=dev); _prev_a2 = None   # 액션 2차차분(채터 겨냥 보상의 직접 지표)·정착 피치 부호 평균
 t0 = time.time()
 for i in range(STEPS):
     with torch.inference_mode():
@@ -250,9 +251,11 @@ for i in range(STEPS):
         _ss_qd2[_ss] += (robot.data.joint_vel[_ss] ** 2).mean(1); _ss_n[_ss] += 1.0; _ss_lift += _lift_evt
         if _prev_a is not None:
             _ss_ar2[_ss] += ((a - _prev_a)[_ss] ** 2).mean(1)
-        _ss_r2[_ss] += roll[_ss] ** 2; _ss_p2[_ss] += pitch[_ss] ** 2
+            if _prev_a2 is not None:
+                _ss_aa2[_ss] += ((a - 2.0 * _prev_a + _prev_a2)[_ss] ** 2).mean(1)
+        _ss_r2[_ss] += roll[_ss] ** 2; _ss_p2[_ss] += pitch[_ss] ** 2; _ss_pm[_ss] += pitch[_ss]
         _ss_rpk[_ss] = torch.maximum(_ss_rpk[_ss], roll[_ss].abs()); _ss_ppk[_ss] = torch.maximum(_ss_ppk[_ss], pitch[_ss].abs())
-    _prev_a = a.clone()
+    _prev_a2 = None if _prev_a is None else _prev_a.clone(); _prev_a = a.clone()
     _prev_both = _both_now.clone()
     if _post.any():
         _st_w[_post] += robot.data.root_ang_vel_b[_post, :2].norm(dim=-1); _st_v[_post] += robot.data.root_lin_vel_b[_post, :2].norm(dim=-1)
@@ -320,7 +323,8 @@ if _ok2.any():
     P(f"**정상상태(마지막 3s, 스탠바이)** env 평균: |각속도xy| {float((_ss_w[_ok2]/_ss_n[_ok2]).mean()):.3f} rad/s · |수평속도| {float((_ss_v[_ok2]/_ss_n[_ok2]).mean()):.3f} m/s · "
       f"관절속도 RMS {float(((_ss_qd2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.3f} rad/s · 발 들기 {float(_ss_lift.mean()):.2f}회/env")
     P(f"   정상상태 추가: action-rate RMS {float(((_ss_ar2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.4f} · 롤 RMS {float(((_ss_r2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.2f}° 피크 {float(_ss_rpk[_ok2].mean()):.2f}° · "
-      f"피치 RMS {float(((_ss_p2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.2f}° 피크 {float(_ss_ppk[_ok2].mean()):.2f}°")
+      f"피치 RMS {float(((_ss_p2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.2f}° 피크 {float(_ss_ppk[_ok2].mean()):.2f}° · "
+      f"액션 2차차분 RMS {float(((_ss_aa2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.4f} · 정착 피치 평균 {float((_ss_pm[_ok2]/_ss_n[_ok2]).mean()):+.2f}°")
 P("시간축 (0.5s 간격): t  지지비  접촉비  base z  피치")
 for k in range(0, STEPS, 25):
     P(f"   {k/50:5.1f}  {ratio_trace[k]:5.2f}  {contact_trace[k]:5.2f}  {z_trace[k]:5.3f}  {pitch_trace[k]:+6.2f}")

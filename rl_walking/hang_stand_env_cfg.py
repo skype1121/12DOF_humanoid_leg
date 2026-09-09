@@ -476,3 +476,16 @@ class Biped12HangStandS8cEnvCfg(Biped12HangStandS6EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         _add_settle_bonus(self, 1.0, True, True)
+
+
+@configclass
+class Biped12HangStandS8ac3EnvCfg(Biped12HangStandS8acEnvCfg):
+    """S8ac3: S8ac + 에피소드 20→30 s + 보너스 +2.0.
+    진단(0909 19:07): 학습 에피소드 평균 9 s, survive_after_release 커버리지 8%(≈1.6 s/에피소드) → 정착 게이트(0.5 s 유지+1 s 램프) 뒤 시간이
+    ≈0.1 s 뿐이라 보너스가 리턴의 0.002%(게이트 완화 후에도 0.0005). 정착 후 정숙을 가르치려면 정착 구간이 학습에 존재해야 한다 —
+    지지 스케줄은 그대로 두고 에피소드만 10 s 늘려 방출 후 서 있는 시간을 확보한다. 평가는 20 s 태스크(S8a/S8aS1r/S8aS3r)로 동일 조건 비교."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.episode_length_s = 30.0
+        self.rewards.settle_quiet_bonus.weight = 2.0

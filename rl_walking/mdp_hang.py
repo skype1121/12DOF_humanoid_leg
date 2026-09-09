@@ -419,7 +419,8 @@ def settled_ramp(env, hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float 
 
 
 def settle_quiet(env, w_ang: float = 1.0, w_lin: float = 1.0, w_jvel: float = 0.0, w_acc: float = 0.0,
-                 asset_cfg=None, **ramp_kw) -> torch.Tensor:
+                 asset_cfg=None, hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float = 5.0, min_height: float = 0.60,
+                 sensor_cfg=None, threshold: float = 5.0) -> torch.Tensor:
     """settled 램프 × (몸통 각속도² + 수평속도² + 관절속도² + 액션 2차차분²) — 착지 직후가 아니라 정착 후에만."""
     asset = env.scene[(asset_cfg or _base_cfg()).name]
     w = asset.data.root_ang_vel_b[:, :2]; v = asset.data.root_lin_vel_b[:, :2]
@@ -428,7 +429,7 @@ def settle_quiet(env, w_ang: float = 1.0, w_lin: float = 1.0, w_jvel: float = 0.
         val = val + w_jvel * (asset.data.joint_vel ** 2).sum(1)
     if w_acc > 0.0:
         val = val + w_acc * action_accel_l2(env)
-    return val * settled_ramp(env, **ramp_kw)
+    return val * settled_ramp(env, hold_s, ramp_s, tilt_deg, min_height, sensor_cfg, threshold)
 
 
 def action_accel_l2(env) -> torch.Tensor:
@@ -450,7 +451,9 @@ def action_accel_l2(env) -> torch.Tensor:
 
 
 def settle_quiet_bonus(env, s_ang: float = 0.08, s_lin: float = 0.02, s_jvel: float = 0.06, s_acc: float = 0.05,
-                       use_jvel: bool = True, use_acc: bool = True, asset_cfg=None, **ramp_kw) -> torch.Tensor:
+                       use_jvel: bool = True, use_acc: bool = True, asset_cfg=None, hold_s: float = 0.5, ramp_s: float = 1.0,
+                       tilt_deg: float = 5.0, min_height: float = 0.60, sensor_cfg=None, threshold: float = 5.0) -> torch.Tensor:
+    # (**kwargs 금지: Isaac Lab 매니저가 VAR_KEYWORD 를 '필수 인자 ramp_kw' 로 오인해 cfg 검증에서 죽는다 — 0909 S8ac 1차 실패)
     """정착 후에만 주는 **양(+)의 정숙 보너스** 0~1: settled 램프 × 평균[exp(−(ω/σω)²), exp(−(v/σv)²)[, exp(−(q̇rms/σq)²)][, exp(−(ä_rms/σa)²)]].
 
     벌점(S7 계열)이 아니라 보너스인 이유: settled 게이트 뒤의 벌점은 '정착하지 않기'(발 들기·기울기)로 회피할 수 있지만,
@@ -465,7 +468,7 @@ def settle_quiet_bonus(env, s_ang: float = 0.08, s_lin: float = 0.02, s_jvel: fl
     if use_acc:
         acc = action_accel_l2(env).sqrt()
         terms.append(torch.exp(-(acc / s_acc) ** 2))
-    return torch.stack(terms, 1).mean(1) * settled_ramp(env, **ramp_kw)
+    return torch.stack(terms, 1).mean(1) * settled_ramp(env, hold_s, ramp_s, tilt_deg, min_height, sensor_cfg, threshold)
 
 
 def _selftest_s8():

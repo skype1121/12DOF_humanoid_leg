@@ -277,3 +277,19 @@ class Biped12HangStandS6EnvCfg(Biped12HangStandS5wEnvCfg):
                     "friction_distribution_params": (0.1, 0.6), "operation": "abs"})
         # 접촉 임계 DR — 관측 함수의 threshold_range (기본 None 이면 종전 5N 고정)
         self.observations.policy.feet_contact.params["threshold_range"] = (2.0, 20.0)
+
+
+@configclass
+class Biped12HangStandS7EnvCfg(Biped12HangStandS6EnvCfg):
+    """S7: S6 + **착지 후 정지** — 양발 접촉 0.5s 뒤 몸통 각속도²·수평속도²·관절속도² 벌점(−1.5), 발 들기 벌점(−2).
+    0909 13:05 승윤님 "착지 후 흔들흔들은 용납되지 않는다 — 안정적인 스탠바이 자세로 서 있어야"."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.still_after_contact = RewTerm(
+            func=mdp_hang.still_after_contact, weight=-1.5,
+            params={"min_s": 0.5, "w_ang": 1.0, "w_lin": 1.0, "w_jvel": 0.002})
+        self.rewards.feet_lift_after_contact = RewTerm(
+            func=mdp_hang.feet_lift_after_contact, weight=-2.0,
+            params={"min_s": 0.5, "sensor_cfg": _FEET_SENSOR_CFG, "threshold": 5.0})
+        self.rewards.action_rate_l2.weight = -0.4

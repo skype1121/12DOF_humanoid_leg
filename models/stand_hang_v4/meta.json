@@ -1,0 +1,18 @@
+{
+  "name": "stand_hang_v4",
+  "run": "2026-09-09_12-33-03",
+  "checkpoint": "model_136989.pt",
+  "checkpoint_md5": "aaefaaf146263097da46ba725f945047",
+  "task": "Biped12-HangStand-S6-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "S5w 135490(stand_hang_v3) ← S5v(v2) ← … ← S4m(v1) ← v18b",
+  "summary": "Hanging-to-Stand S6(v3 + 발목롤 마찰 0.1~0.6·접촉 임계 2~20N DR): 실물유사 256env 99.6, 실제행잉 93.0, 마찰·임계 조건 93.4(v3 89.8), 명목 98.4; 몸통 −2.7°·무릎 ∓6·발 261mm",
+  "legacy": false,
+  "files": {
+    "policy.pt": "67f2e3f530315e27fc78223a15f6953d",
+    "policy.onnx": "1c6384ae5661598ff37552746c30ea94",
+    "env.yaml": "c97e39ec119dcdafec4b054ae31e2390",
+    "agent.yaml": "ce331b7348b45ef46f42617793e3d9d5"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-09_12-33-03"
+}

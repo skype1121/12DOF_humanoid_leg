@@ -96,6 +96,27 @@ STAGE4_TERMS = (
 assert sum(d for _, d in STAGE4_TERMS) == FRAME_DIM
 assert FRAME_DIM * HISTORY_LEN == OBS_DIM_STAGE4
 
+#: S8a (0909) raw+EMA 확장 계약 — policy 그룹 **끝에** 두 항 추가. hang_stand_env_cfg._add_s8_obs /
+#: symmetry.policy_s8a / expand_checkpoint.py 와 동기. 245 모델은 그대로(레이아웃은 모델 입력 차원으로 자동 선택).
+STAGE4_TERMS_S8A = STAGE4_TERMS + (("gyro_ema", 3), ("joint_vel_ema", 12))
+OBS_DIM_S8A = HISTORY_LEN * sum(d for _, d in STAGE4_TERMS_S8A)      # 320
+EMA_ALPHA_S8A = 0.1                       # mdp_hang.gyro_ema/joint_vel_ema alpha (τ≈10틱=200ms)
+_TERMS_BY_DIM = {OBS_DIM_STAGE4: STAGE4_TERMS, OBS_DIM_S8A: STAGE4_TERMS_S8A}
+
+
+def _probe_obs_dim(net, candidates=(OBS_DIM_STAGE4, OBS_DIM_S8A)) -> int:
+    """모델이 받는 관측 차원 검출 — 0 벡터 추론을 후보 차원(245 → 320)으로 시도. 전부 실패 = 계약 밖 모델."""
+    errs = []
+    for d in candidates:
+        try:
+            out = np.asarray(net(np.zeros(d, np.float32)), dtype=np.float32).reshape(-1)
+            if out.shape == (ACT_DIM,):
+                return d
+            errs.append(f"{d}: 출력 {out.shape}")
+        except Exception as e:  # noqa: BLE001 — 차원 불일치 예외는 백엔드마다 다르다
+            errs.append(f"{d}: {type(e).__name__}")
+    raise RuntimeError(f"관측 차원 검출 실패 (후보 {candidates}): {errs}")
+
 #: 기본 모델 경로 (exported/ — policy.onnx 우선, 없으면 policy.pt)
 DEFAULT_MODEL_DIR_STAGE4 = (
     "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/"
@@ -229,15 +250,23 @@ class PolicyRunnerStage4:
     """
 
     def __init__(self, model_path=DEFAULT_MODEL_DIR_STAGE4, backend: str = "auto",
-                 gait_freq: float = GAIT_FREQ_HZ):
+                 gait_freq: float = GAIT_FREQ_HZ, obs_dim: int | None = None):
         """model_path: exported/ 디렉토리 또는 .onnx/.pt 파일 경로 (callable=스텁).
         backend: 'auto'(onnx 우선→torch 폴백) | 'onnx' | 'torch'.
         gait_freq: 클록 주파수 [Hz] — 반드시 체크포인트의 학습 클록과 일치
         (v5=1.1, 그 외=1.4). 불일치 = 위상 어긋난 관측 → 보행 파괴.
+        obs_dim: 245(기존) | 320(S8a raw+EMA). None = 모델에서 검출 (스텁은 245 기본).
         """
         self.gait_freq = float(gait_freq)
         self.backend, self._net = _load_backend(model_path, backend)
-        self._hist = {name: _TermHistory(dim) for name, dim in STAGE4_TERMS}
+        if obs_dim is None:
+            obs_dim = OBS_DIM_STAGE4 if self.backend == "stub" else _probe_obs_dim(self._net)
+        if int(obs_dim) not in _TERMS_BY_DIM:
+            raise ValueError(f"지원하지 않는 관측 차원 {obs_dim} (245 | 320)")
+        self.obs_dim = int(obs_dim)
+        self.terms = _TERMS_BY_DIM[self.obs_dim]
+        self._hist = {name: _TermHistory(dim) for name, dim in self.terms}
+        self._ema = {}                   # S8a: 항 → 현재 EMA (리셋 시 비움; 첫 틱 = 현재값 — mdp_hang._ema_state 와 동일)
         # 절대각 소프트 리밋 로드 (joint_limits_12dof.json — 표준lib 로더).
         # 실패 시 클램프 비활성 (기존 동작 유지) — 실물 배포에서는 반드시 활성 확인.
         try:
@@ -267,6 +296,7 @@ class PolicyRunnerStage4:
         self.last_obs = None
         self._prev_emitted = None
         self._tick = 0
+        self._ema = {}
         for h in self._hist.values():
             h.reset()
 
@@ -303,10 +333,17 @@ class PolicyRunnerStage4:
             "gait_clock": gait_clock_stage4(self._tick, self.gait_freq),
             "feet_contact": self._contact2(contact2),
         }
-        for name, _dim in STAGE4_TERMS:
+        if self.obs_dim == OBS_DIM_S8A:
+            # raw+EMA(α0.1): 첫 틱은 현재값으로 시작, 이후 (1−α)·prev + α·x — 시뮬 mdp_hang._ema_state 와 같은 수열
+            for name, src in (("gyro_ema", "base_ang_vel"), ("joint_vel_ema", "joint_vel")):
+                x = np.asarray(frames[src], dtype=np.float32)
+                prev = self._ema.get(name)
+                self._ema[name] = x.copy() if prev is None else (1.0 - EMA_ALPHA_S8A) * prev + EMA_ALPHA_S8A * x
+                frames[name] = self._ema[name]
+        for name, _dim in self.terms:
             self._hist[name].append(frames[name])
-        obs = np.concatenate([self._hist[name].flat() for name, _ in STAGE4_TERMS])
-        assert obs.shape == (OBS_DIM_STAGE4,) and obs.dtype == np.float32
+        obs = np.concatenate([self._hist[name].flat() for name, _ in self.terms])
+        assert obs.shape == (self.obs_dim,) and obs.dtype == np.float32
         return obs
 
     # ---------- 스텝 ----------
@@ -549,12 +586,50 @@ def _selftest_model() -> str:
             f"첫 틱 |Δ|max={np.abs(out - DEFAULT_POSE_RAD).max():.4f} rad ≤ 슬루)")
 
 
+def _selftest_s8a() -> str:
+    """(f) S8a 320 조립: 앞 245 는 245판과 비트 동일, 뒤 75 = EMA(α0.1) 이력(자이로 3·관절속도 12 × 5틀) 독립 산술 대조,
+    리셋 후 EMA 가 현재값으로 재시작. 모델 차원 검출(_probe_obs_dim)은 245/320 스텁으로 확인."""
+    def stub(obs):
+        return np.zeros(ACT_DIM, np.float32)
+
+    r245 = PolicyRunnerStage4(model_path=stub)
+    r320 = PolicyRunnerStage4(model_path=stub, obs_dim=OBS_DIM_S8A)
+    r245.reset(); r320.reset()
+    eg = ej = None; hist_g, hist_j = [], []
+    for k in range(7):
+        ins = _mk_inputs(k)
+        r245.step(*ins); r320.step(*ins)
+        g = np.asarray(ins[0], np.float32); j = np.asarray(ins[4], np.float32)
+        eg = g.copy() if eg is None else 0.9 * eg + 0.1 * g
+        ej = j.copy() if ej is None else 0.9 * ej + 0.1 * j
+        hist_g.append(eg.copy()); hist_j.append(ej.copy())
+    o = r320.last_obs
+    assert o.shape == (OBS_DIM_S8A,) and o.dtype == np.float32
+    assert np.array_equal(o[:OBS_DIM_STAGE4], r245.last_obs), "앞 245 가 245판과 다름"
+    exp = np.concatenate([np.stack(hist_g[-HISTORY_LEN:]).reshape(-1), np.stack(hist_j[-HISTORY_LEN:]).reshape(-1)])
+    assert np.allclose(o[OBS_DIM_STAGE4:], exp, atol=1e-6), "EMA 블록 불일치"
+    r320.reset(); ins9 = _mk_inputs(9); r320.step(*ins9)
+    o2 = r320.last_obs
+    assert np.allclose(o2[OBS_DIM_STAGE4:OBS_DIM_STAGE4 + 15], np.tile(np.asarray(ins9[0], np.float32), HISTORY_LEN)), \
+        "리셋 후 EMA 가 현재값으로 재시작하지 않음"
+    # 차원 검출: 320 만 받는 스텁 → 320, 245 만 받는 스텁 → 245
+    def only(d):
+        def f(obs):
+            if obs.shape != (d,):
+                raise ValueError("dim")
+            return np.zeros(ACT_DIM, np.float32)
+        return f
+    assert _probe_obs_dim(only(OBS_DIM_S8A)) == OBS_DIM_S8A and _probe_obs_dim(only(OBS_DIM_STAGE4)) == OBS_DIM_STAGE4
+    return "S8a 320 조립 OK (앞 245 비트동일·EMA α0.1 이력 일치·리셋 재시작·차원 검출 245/320)"
+
+
 def _run_selftest() -> int:
     tests = [("조립 골든", _selftest_golden),
              ("이력 백필", _selftest_backfill),
              ("클록 공식", _selftest_clock),
              ("슬루/입력검증", _selftest_slew),
-             ("모델 추론", _selftest_model)]
+             ("모델 추론", _selftest_model),
+             ("S8a 320 조립", _selftest_s8a)]
     failed = 0
     for name, fn in tests:
         try:

@@ -521,3 +521,12 @@ class Biped12HangStandS8ac5EnvCfg(Biped12HangStandS8ac4EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.torso_pitch_band.weight = -60.0
+
+
+@configclass
+class Biped12HangStandS8ac6EnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S8ac6: 밴드 가중치 −40 (S8ac4 −25: 피치 −4.9°·실제행잉 94.1 / S8ac5 −60: 피치 −2.4°·실제행잉 91.0 사이의 절충 탐색)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.torso_pitch_band.weight = -40.0

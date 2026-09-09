@@ -236,7 +236,7 @@ S5v + 피치 밴드 ±3°·가중 −25(3배) + 발 간격 24~32cm. 256 env, 푸
 
 # 다음 단계 (승윤님 결정 항목)
 - **젯슨 배포**: **권장 `stand_hang_v3`(S5w: 몸통 수평·어깨너비·무릎 약간, 실물유사 100·실제행잉 94.1)**; 대안 v2(S5v)·v1(S4m). 셋 다 로컬 레지스트리(`models/`, ONNX·md5)와 브리지·콘솔 등록·selftest 까지 됐고
-  **젯슨엔 안 올렸다.** 패키지는 조립해 둠: `deploy/stand_7차_20260909_1203.tar.gz` (v15~v18b + hang_v1·v2·v3,
+  **젯슨엔 안 올렸다.** 패키지는 조립해 둠: `deploy/stand_7차_20260909_1202.tar.gz` (v15~v18b + hang_v1·v2·v3,
   MANIFEST.md5 커밋). 배포 = `bash jetson/deploy_to_jetson.sh` → 젯슨 md5 검증 → 콘솔 systemd 재시작(드롭다운·행잉 ARM 체크박스 반영)
   → 젯슨 브리지 selftest `--checkpoint stand_hang_v1`.
 - **실물 절차** `docs/hang_to_stand_실물절차.md` A→F. 첫 시험은 A(70% 핸드오프, hang_arm 불필요) — 오늘 55% 고원에서 115초

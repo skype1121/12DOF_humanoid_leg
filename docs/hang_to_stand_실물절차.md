@@ -6,7 +6,7 @@
       대안 `stand_hang_v2`(S5v: 98.4/88.3, 몸통 −9°), `stand_hang_v1`(S4m: 98.0/87.1, 비대칭 웅크림).
       256 env: 실물 유사(접지·지지 50~70%→0·푸시 OFF·CoM −0.04) **98.0%** (v18b 72.7), 실제 행잉 **87.1%** (70.7), 작은 간격 89.1 (75.0).
       낙상 방향 편중 없음. 각 단계는 **이전 단계 2회 연속 성공** 후에만 진행.
-배포 전 필요(승윤님 결정): 패키지 `deploy/stand_7차_20260909_1203.tar.gz`(v15~v18b + hang_v1·v2·v3) → `deploy_to_jetson.sh` 로 젯슨에 복사 → 콘솔 systemd 재시작(드롭다운 `stand_hang_v1`·행잉 ARM 체크박스 반영)
+배포 전 필요(승윤님 결정): 패키지 `deploy/stand_7차_20260909_1202.tar.gz`(v15~v18b + hang_v1·v2·v3) → `deploy_to_jetson.sh` 로 젯슨에 복사 → 콘솔 systemd 재시작(드롭다운 `stand_hang_v1`·행잉 ARM 체크박스 반영)
       → 젯슨 브리지 selftest `--checkpoint stand_hang_v3` ALL PASS 확인. 콘솔 드롭다운에서 `stand_hang_v3` 선택(기본값은 v18b 그대로).
 
 ## 공통 (0단계, 매 세션)

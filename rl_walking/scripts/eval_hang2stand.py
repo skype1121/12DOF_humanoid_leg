@@ -37,6 +37,7 @@ parser.add_argument("--r0", type=str, default=None); parser.add_argument("--hold
 parser.add_argument("--release_s", type=str, default=None); parser.add_argument("--clearance", type=str, default=None)
 parser.add_argument("--stand_s", type=float, default=5.0, help="지지 0 이후 생존 판정 시간 [s]")
 parser.add_argument("--no_push", action="store_true", help="푸시 외란 끔 (전이 능력과 푸시 강건성 분리 — 실물 윈치 시험엔 푸시가 없다)")
+parser.add_argument("--no_obs_noise", action="store_true", help="관측 노이즈(enable_corruption) 끔 — 정책 고유 정지도 측정용(학습 노이즈 ±0.2rad/s 자이로 등이 잔떨림을 만드는지 분리)")
 parser.add_argument("--lpf_beta", type=float, default=None, help="배포 체인 stand LPF β 덮어쓰기 (기본 deploy_chain.STAND_LPF_BETA=0.27; 작을수록 더 부드러움) — 재학습 없이 스탠바이 흔들림을 잡는 배포측 레버 시험")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
@@ -125,6 +126,8 @@ if args_cli.nominal:
     env_cfg.events.push_robot = None
 if args_cli.no_push:
     env_cfg.events.push_robot = None
+if args_cli.no_obs_noise:
+    env_cfg.observations.policy.enable_corruption = False
 if args_cli.com_fix is not None and getattr(env_cfg.events, "base_com", None):
     env_cfg.events.base_com.params["com_range"] = {"x": (args_cli.com_fix, args_cli.com_fix), "y": (0.0, 0.0), "z": (0.0, 0.0)}
 T_s = args_cli.seconds if args_cli.seconds else float(env_cfg.episode_length_s)
@@ -256,7 +259,7 @@ q_end = torch.rad2deg(last_q)
 out_lines = []
 P = out_lines.append
 P("=" * 74); P(f"Hanging-to-Stand 평가 — {args_cli.task}"); P(f"인자: {' '.join(sys.argv[1:])}")
-P(f"체크포인트: {resume_path}"); P(f"배포 경로: {chain_desc}"); P(f"env {N} × {T_s:.1f}s, DR {'OFF(명목)' if args_cli.nominal else 'ON'}, com_fix={args_cli.com_fix}, 푸시 {'OFF' if (args_cli.no_push or args_cli.nominal) else 'ON'}")
+P(f"체크포인트: {resume_path}"); P(f"배포 경로: {chain_desc}"); P(f"env {N} × {T_s:.1f}s, DR {'OFF(명목)' if args_cli.nominal else 'ON'}, com_fix={args_cli.com_fix}, 푸시 {'OFF' if (args_cli.no_push or args_cli.nominal) else 'ON'}, 관측노이즈 {'OFF' if args_cli.no_obs_noise else 'ON'}")
 P(f"지지 스케줄: r0 {_hp['r0_range']} 유지 {_hp['hold_range']}s 방출 {_hp['release_range']}s, 간격 z {env_cfg.events.reset_base.params['pose_range'].get('z')}")
 P("=" * 74)
 P(f"접지(양발 동시) 도달      : {int(touched.sum())}/{N} ({pct(touched):.1f}%)  평균 접지 시각 {float(touch_t[touched].mean()) if touched.any() else float('nan'):.2f}s")

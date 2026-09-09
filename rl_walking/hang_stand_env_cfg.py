@@ -259,3 +259,21 @@ class Biped12HangStandS5wEnvCfg(Biped12HangStandS5vEnvCfg):
         self.rewards.torso_pitch_band.weight = -25.0
         self.rewards.torso_pitch_band.params["band_rad"] = 0.052
         self.rewards.stance_shape.params["gap_range"] = (0.24, 0.32)
+
+
+@configclass
+class Biped12HangStandS6EnvCfg(Biped12HangStandS5wEnvCfg):
+    """S6: S5w + 실물 잔여 위험 2축 DR — (1) 발목롤(AK45-36, 역구동 불가) 관절 마찰 0.1~0.6, (2) 접촉 임계 2~20N env 별
+    (실물 패드 감도 제각각·캡 이탈). 0909 12:10 승윤님 "80% 까지 올릴 수 있나" — 시뮬에서 담을 수 있는 두 축."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import EventTermCfg as _E
+        import isaaclab_tasks.manager_based.locomotion.velocity.mdp as _mdp
+        # 전역 joint_friction(startup, 0~0.1) 뒤에 발목롤만 덮어쓴다 (startup 항은 정의 순서대로 적용)
+        self.events.ankle_r_friction = _E(
+            func=_mdp.randomize_joint_parameters, mode="startup",
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_r_joint"]),
+                    "friction_distribution_params": (0.1, 0.6), "operation": "abs"})
+        # 접촉 임계 DR — 관측 함수의 threshold_range (기본 None 이면 종전 5N 고정)
+        self.observations.policy.feet_contact.params["threshold_range"] = (2.0, 20.0)

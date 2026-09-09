@@ -47,6 +47,7 @@ def feet_contact_binary(
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
     threshold: float = 5.0,
     delay_steps: int = 0,
+    threshold_range: tuple | None = None,
 ) -> torch.Tensor:
     """발 접촉 이진 관측 (N, 2) — [왼발, 오른발] 순서, 법선힘 노름 > threshold[N].
 
@@ -56,7 +57,19 @@ def feet_contact_binary(
     """
     sensor = env.scene.sensors[sensor_cfg.name]
     forces = sensor.data.net_forces_w[:, sensor_cfg.body_ids, :]  # (N, 2, 3)
-    now = (torch.norm(forces, dim=-1) > threshold).to(torch.float32)
+    if threshold_range is not None:
+        # 0909 S6: 접촉 임계 env 별 랜덤(실물 패드 감도 제각각·캡 상태). 리셋 env 는 calib_bias 가 남긴
+        # _contact_reset_ids 로 재추출 — 아래 지연 버퍼 초기화와 같은 id 를 쓴다(소비는 아래에서).
+        thr = getattr(env, "_contact_thr", None)
+        if thr is None or thr.shape[0] != forces.shape[0]:
+            thr = torch.empty(forces.shape[0], device=forces.device).uniform_(*threshold_range)
+            env._contact_thr = thr
+        rid0 = getattr(env, "_contact_reset_ids", None)
+        if rid0 is not None and len(rid0) > 0:
+            thr[rid0] = torch.empty(len(rid0), device=forces.device).uniform_(*threshold_range)
+        now = (torch.norm(forces, dim=-1) > thr.unsqueeze(1)).to(torch.float32)
+    else:
+        now = (torch.norm(forces, dim=-1) > threshold).to(torch.float32)
     if delay_steps <= 0:
         return now
     # 실물 발압력(RA30P)은 10Hz — 접촉 관측이 최대 100ms(5틱) 묵는다. 시뮬은

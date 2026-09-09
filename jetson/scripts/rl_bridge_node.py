@@ -210,9 +210,10 @@ CHECKPOINTS = {
     # 관측 320 은 policy_runner_stage4 가 모델 입력 차원으로 자동 선택(EMA 는 러너 내부 계산) — 브리지 코드 변경 없음. **젯슨 미배포(승윤님 결정 후).**
     "stand_hang_v5": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-09_19-15-42/exported"),
-    # stand_hang_v5p (0909 21:00, S8ac5): v5 + 몸통 밴드 −60 → 자세 기준 복귀(몸통 −2.4°); 실제행잉 91.0·정숙은 v5 보다 덜함. 자세 우선 대안. 젯슨 미배포.
+    # stand_hang_v5p (0909 21:30, S8ac6): v5 + 몸통 밴드 −40 → v4 자세(몸통 −2.9°·무릎 ∓6°·발 간격 272mm) 그대로 + S8 정숙(ω −40%·v −65%).
+    # 실제행잉 92.6(v4 동등, v5 94.1). 자세 우선 대안. (S8ac5 밴드 −60 은 전 지표 열세로 폐기.) 젯슨 미배포.
     "stand_hang_v5p": os.path.join(
-        REPO, "logs/rsl_rl/biped12_stage4/2026-09-09_20-20-17/exported"),
+        REPO, "logs/rsl_rl/biped12_stage4/2026-09-09_20-50-01/exported"),
 }
 
 #: 체크포인트별 게이트 클록 주파수 [Hz] — 학습 클록과 반드시 일치 (불일치 =

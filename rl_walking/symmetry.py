@@ -81,6 +81,17 @@ _POLICY_TERMS = (
     ("feet_contact", 2, (1, 0), (1.0, 1.0)),
 )
 _CRITIC_TERMS = (("base_lin_vel", 3, (0, 1, 2), (1.0, -1.0, 1.0)),)
+# S8 (0909): raw+EMA 관측·발 하중 합을 policy 그룹 **끝에** 추가 (cfg __post_init__ 에서 추가 → 선언 순서상 마지막).
+# 레이아웃은 차원으로 선택한다 — 245/260 = 기존, 325/340 = S8. 기존 정책·브리지 계약(245)은 불변.
+_S8_EXTRA_TERMS = (
+    ("gyro_ema", 3, (0, 1, 2), (-1.0, 1.0, -1.0)),
+    ("joint_vel_ema", 12, tuple(_JOINT_PERM), tuple(_JOINT_SIGN)),
+    ("foot_load_total", 1, (0,), (1.0,)),
+)
+_POLICY_TERMS_S8 = _POLICY_TERMS + _S8_EXTRA_TERMS
+S8_EXTRA_DIM = HISTORY_LEN * sum(d for _, d, _, _ in _S8_EXTRA_TERMS)   # 80
+POLICY_OBS_DIM_S8 = POLICY_OBS_DIM + S8_EXTRA_DIM                        # 325
+CRITIC_OBS_DIM_S8 = POLICY_OBS_DIM_S8 + CRITIC_GROUP_DIM                 # 340
 
 
 def build_perm_sign(terms, history: int) -> tuple[torch.Tensor, torch.Tensor]:
@@ -101,6 +112,7 @@ def build_perm_sign(terms, history: int) -> tuple[torch.Tensor, torch.Tensor]:
 # 그룹키 → (terms, 이력, 기대 차원). rollout 미니배치 TensorDict의 키와 일치해야 한다.
 _GROUP_SPECS = {
     "policy": (_POLICY_TERMS, HISTORY_LEN, POLICY_OBS_DIM),
+    "policy_s8": (_POLICY_TERMS_S8, HISTORY_LEN, POLICY_OBS_DIM_S8),
     "critic": (_CRITIC_TERMS, HISTORY_LEN, CRITIC_GROUP_DIM),
     "actions": (
         (("actions", NUM_JOINTS, tuple(_JOINT_PERM), tuple(_JOINT_SIGN)),),
@@ -124,6 +136,8 @@ def _perm_sign_for(kind: str, device: torch.device) -> tuple[torch.Tensor, torch
 
 def _mirror(x: torch.Tensor, kind: str) -> torch.Tensor:
     """부호 있는 순열 적용 — 마지막 차원에 대해 (배치/시간 등 앞 차원 불문)."""
+    if kind == "policy" and x.shape[-1] == POLICY_OBS_DIM_S8:
+        kind = "policy_s8"                      # S8 레이아웃 자동 선택 (차원 기준)
     terms, history, dim = _GROUP_SPECS[kind]
     if x.shape[-1] != dim:
         raise ValueError(

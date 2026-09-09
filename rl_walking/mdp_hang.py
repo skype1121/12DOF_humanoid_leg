@@ -187,7 +187,8 @@ def selftest():
     _selftest_pitch_band()
     _selftest_level()
     _selftest_still()
-    print("[selftest] mdp_hang: 지지비 스케줄·안정 자세 항·피치 밴드·수평 유지 토크·착지 후 정지 — ALL PASS")
+    _selftest_s8()
+    print("[selftest] mdp_hang: 지지비 스케줄·안정 자세 항·피치 밴드·수평 유지 토크·착지 후 정지·S8 — ALL PASS")
 
 
 
@@ -332,6 +333,130 @@ def _selftest_still():
     st["t"] = torch.tensor([3.0, 1.2, 3.0, 2.0]); m3 = (st["touch_t"] >= 0.0) & (st["r"] <= 0.3) & (st["released_t"] >= 0.0) & ((st["t"] - st["released_t"]) >= 1.0)
     assert m3.tolist() == [False, False, True, False], "방출 후 1.5s 는 스탠바이"
     print("[selftest] 착지 후 정지 마스크: 미접지/0.2s/1.0s → F/F/T — PASS")
+
+
+# ═══════════════ S8 (0909 16:40~): 관측 개선(raw+EMA)·발 하중·settled 정숙 보상 ═══════════════
+# 실물 정지 노이즈(0908): 자이로 std 0.006, 관절속도 std 0.03~0.18 rad/s. 학습 균일노이즈(±0.2 / ±1.5)는 그 10~20배.
+# S7 계열(강한 속도 벌점)은 전이 능력을 깎았다 → 벌점이 아니라 **관측**을 바꾼다: 정책이 '한 프레임 튐'과 '지속 변화'를
+# 구분하도록 raw 와 EMA(시정수 ~4프레임)를 함께 준다. EMA 는 노이즈 낀 신호의 EMA 여야 실물과 같다(관측 매니저의 노이즈는
+# 함수 뒤에 더해지므로 여기서 직접 노이즈를 넣고 EMA 한다; 이 항들은 cfg 에서 noise=None).
+
+def _ema_state(env, key, x, alpha):
+    st = getattr(env, key, None)
+    if st is None or st.shape != x.shape:
+        st = x.clone(); setattr(env, key, st)
+    fresh = env.episode_length_buf <= 1        # 리셋 직후 = 현재값으로 재시작
+    st[fresh] = x[fresh]
+    st.mul_(1.0 - alpha).add_(alpha * x)
+    return st
+
+
+def gyro_ema(env, alpha: float = 0.25, noise: float = 0.2, asset_cfg=None) -> torch.Tensor:
+    """노이즈 낀 자이로의 EMA (3). 실물 브리지에서도 같은 식으로 계산 가능."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    x = asset.data.root_ang_vel_b
+    if noise > 0.0:
+        x = x + (torch.rand_like(x) * 2.0 - 1.0) * noise
+    return _ema_state(env, "_s8_gyro_ema", x, alpha).clone()
+
+
+def joint_vel_ema(env, alpha: float = 0.25, noise: float = 1.5, asset_cfg=None) -> torch.Tensor:
+    """노이즈 낀 관절속도의 EMA (12)."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    x = asset.data.joint_vel
+    if noise > 0.0:
+        x = x + (torch.rand_like(x) * 2.0 - 1.0) * noise
+    return _ema_state(env, "_s8_jvel_ema", x, alpha).clone()
+
+
+def foot_load_total(env, sensor_cfg=None, gain_range=(0.7, 1.3), offset_range=(-0.05, 0.05), noise: float = 0.03,
+                    delay_steps: int = 5, clip_max: float = 1.5) -> torch.Tensor:
+    """양발 수직력 합 / 체중 (1). 실물 = (left_n+right_n)/172.9 (전역 교정된 합만 신뢰, 좌우 비율은 안 쓴다).
+    env 별 게인·오프셋(패드 감도), 노이즈, 5틱 지연(RA30P 10Hz)."""
+    sensor_cfg = sensor_cfg or _feet_cfg()
+    f = env.scene.sensors[sensor_cfg.name].data.net_forces_w[:, sensor_cfg.body_ids, 2].clamp(min=0.0).sum(1)
+    st = _state(env)
+    mass = st["mass"] if float(st["mass"].max()) > 0 else torch.full_like(f, 17.62)
+    load = f / (mass * G)
+    N = load.shape[0]
+    g = getattr(env, "_s8_load_gain", None)
+    if g is None or g.shape[0] != N:
+        g = torch.empty(N, device=load.device).uniform_(*gain_range); env._s8_load_gain = g
+        env._s8_load_off = torch.empty(N, device=load.device).uniform_(*offset_range)
+    fresh = env.episode_length_buf <= 1
+    if fresh.any():
+        g[fresh] = torch.empty(int(fresh.sum()), device=load.device).uniform_(*gain_range)
+        env._s8_load_off[fresh] = torch.empty(int(fresh.sum()), device=load.device).uniform_(*offset_range)
+    y = (load * g + env._s8_load_off + (torch.rand_like(load) * 2.0 - 1.0) * noise).clamp(0.0, clip_max)
+    if delay_steps > 0:
+        buf = getattr(env, "_s8_load_buf", None)
+        if buf is None or buf.shape[0] != delay_steps or buf.shape[1] != N:
+            buf = y.unsqueeze(0).repeat(delay_steps, 1).clone(); env._s8_load_buf = buf; env._s8_load_idx = 0
+        buf[:, fresh] = y[fresh].unsqueeze(0)
+        i = env._s8_load_idx; out = buf[i].clone(); buf[i] = y; env._s8_load_idx = (i + 1) % delay_steps
+        y = out
+    return y.unsqueeze(1)
+
+
+# ── settled 상태(특권 정보로 판정, 관측엔 안 넣음) + 램프 ──
+def settled_ramp(env, hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float = 5.0, min_height: float = 0.60,
+                 sensor_cfg=None, threshold: float = 5.0) -> torch.Tensor:
+    """지지 0 & 양발 접촉 & |롤|,|피치|<tilt & 골반높이>min 이 hold_s 유지된 뒤 ramp_s 동안 0→1 로 오르는 가중치 (N,)."""
+    st = _state(env)
+    asset = env.scene["robot"]
+    sensor_cfg = sensor_cfg or _feet_cfg()
+    f = env.scene.sensors[sensor_cfg.name].data.net_forces_w[:, sensor_cfg.body_ids, :]
+    both = (torch.norm(f, dim=-1) > threshold).all(dim=1)
+    pg = asset.data.projected_gravity_b
+    tilt = torch.rad2deg(torch.acos((-pg[:, 2]).clamp(-1.0, 1.0)))
+    ok = (st["r"] <= 0.0) & both & (tilt < tilt_deg) & (asset.data.root_pos_w[:, 2] > min_height)
+    tmr = getattr(env, "_s8_settle_t", None)
+    if tmr is None or tmr.shape[0] != ok.shape[0]:
+        tmr = torch.zeros(ok.shape[0], device=ok.device); env._s8_settle_t = tmr
+    tmr[:] = torch.where(ok, tmr + env.step_dt, torch.zeros_like(tmr))
+    return ((tmr - hold_s) / max(ramp_s, 1e-3)).clamp(0.0, 1.0)
+
+
+def settle_quiet(env, w_ang: float = 1.0, w_lin: float = 1.0, w_jvel: float = 0.0, w_acc: float = 0.0,
+                 asset_cfg=None, **ramp_kw) -> torch.Tensor:
+    """settled 램프 × (몸통 각속도² + 수평속도² + 관절속도² + 액션 2차차분²) — 착지 직후가 아니라 정착 후에만."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    w = asset.data.root_ang_vel_b[:, :2]; v = asset.data.root_lin_vel_b[:, :2]
+    val = w_ang * (w * w).sum(1) + w_lin * (v * v).sum(1)
+    if w_jvel > 0.0:
+        val = val + w_jvel * (asset.data.joint_vel ** 2).sum(1)
+    if w_acc > 0.0:
+        val = val + w_acc * action_accel_l2(env)
+    return val * settled_ramp(env, **ramp_kw)
+
+
+def action_accel_l2(env) -> torch.Tensor:
+    """액션 2차 차분 |a_t − 2a_{t−1} + a_{t−2}|² 평균 — 느린 보정은 두고 고주파 채터만 겨냥."""
+    am = env.action_manager
+    a, a1 = am.action, am.prev_action
+    a2 = getattr(env, "_s8_act_prev2", None)
+    if a2 is None or a2.shape != a.shape:
+        a2 = a1.clone(); env._s8_act_prev2 = a2
+    fresh = env.episode_length_buf <= 1
+    a2[fresh] = a1[fresh]
+    val = ((a - 2.0 * a1 + a2) ** 2).mean(1)
+    env._s8_act_prev2 = a1.clone()
+    return val
+
+
+def _selftest_s8():
+    # EMA: 한 프레임 튐은 25% 만 반영, 지속 입력은 4프레임 후 68%
+    x0 = torch.zeros(2, 3); st = x0.clone()
+    for k in range(4):
+        st = st * 0.75 + 0.25 * torch.ones(2, 3)
+    assert abs(float(st[0, 0]) - (1 - 0.75 ** 4)) < 1e-6
+    spike = torch.zeros(3); spike = spike * 0.75 + 0.25 * torch.tensor([1.0, 0, 0]); assert abs(float(spike[0]) - 0.25) < 1e-9
+    # settled 램프: 조건 0.5s 유지 후 1s 램프
+    t = 0.0; w = []
+    for k in range(80):
+        t += 0.02; w.append(min(1.0, max(0.0, (t - 0.5) / 1.0)))
+    assert w[24] < 1e-6 and abs(w[49] - 0.5) < 0.03 and w[79] > 1 - 1e-6, (w[24], w[49], w[79])
+    print("[selftest] S8: EMA 스파이크 25%/지속 4프레임 68%·settled 램프 0.5s+1s — PASS")
 
 
 if __name__ == "__main__":

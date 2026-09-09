@@ -338,3 +338,32 @@ class Biped12HangStandS7dEnvCfg(Biped12HangStandS6EnvCfg):
             func=mdp_hang.feet_lift_after_contact, weight=-4.0,
             params={"min_s": 0.3, "sensor_cfg": _FEET_SENSOR_CFG, "threshold": 5.0, "r_max": 0.0, "after_release_s": 1.0})
         self.rewards.action_rate_l2.weight = -0.4
+
+
+# ═══════════════ S8 (0909 저녁): raw+EMA 관측 · 발 하중 합 · settled 정숙 (승윤님 지시) ═══════════════
+from isaaclab.managers import ObservationTermCfg as _ObsTerm
+
+
+def _add_s8_obs(cfg, gyro_noise=0.2, jvel_noise=1.5, alpha=0.25, foot_load=True):
+    """policy 그룹 **끝에** raw+EMA 채널(노이즈는 함수 안에서 넣고 EMA; cfg noise=None)·발 하중 합 추가. 이력 5, 평탄화.
+    레이아웃: 245 + 5×(3+12[+1]) — symmetry.py policy_s8, expand_checkpoint.py 와 동기."""
+    P = cfg.observations.policy
+    P.gyro_ema = _ObsTerm(func=mdp_hang.gyro_ema, params={"alpha": alpha, "noise": gyro_noise}, clip=(-20.0, 20.0),
+                          history_length=5, flatten_history_dim=True)
+    P.joint_vel_ema = _ObsTerm(func=mdp_hang.joint_vel_ema, params={"alpha": alpha, "noise": jvel_noise}, clip=(-60.0, 60.0),
+                               history_length=5, flatten_history_dim=True)
+    if foot_load:
+        P.foot_load_total = _ObsTerm(func=mdp_hang.foot_load_total, params={"sensor_cfg": _FEET_SENSOR_CFG},
+                                     history_length=5, flatten_history_dim=True)
+
+
+@configclass
+class Biped12HangStandS8aEnvCfg(Biped12HangStandS6EnvCfg):
+    """S8a: v4(S6) 환경 + raw+EMA 자이로/관절속도 + 발 하중 합 관측 (보상 불변). 노이즈 대역은 ablation 후 조정."""
+
+    gyro_noise = 0.2
+    jvel_noise = 1.5
+
+    def __post_init__(self):
+        super().__post_init__()
+        _add_s8_obs(self, gyro_noise=self.gyro_noise, jvel_noise=self.jvel_noise, alpha=0.25, foot_load=True)

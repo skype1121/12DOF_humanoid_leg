@@ -294,32 +294,33 @@ def _selftest_level():
 
 
 # ───────── 착지 후 정지 (0909 13:05, 승윤님 "착지 후 흔들흔들은 용납되지 않아 — 안정적인 스탠바이 자세로 서 있어야") ─────────
-def _touched_mask(env, min_s: float):
+def _touched_mask(env, min_s: float, r_max: float = 1.0):
+    """양발 접촉 min_s 경과 & 지지비 ≤ r_max (기본 1.0 = 지지비 무관). r_max<1 이면 줄이 거의 풀린 뒤에만 정지를 요구."""
     st = _state(env)
-    return (st["touch_t"] >= 0.0) & ((st["t"] - st["touch_t"]) >= min_s)
+    return (st["touch_t"] >= 0.0) & ((st["t"] - st["touch_t"]) >= min_s) & (st["r"] <= r_max)
 
 
 def still_after_contact(env, min_s: float = 0.5, w_ang: float = 1.0, w_lin: float = 1.0, w_jvel: float = 0.002,
-                        asset_cfg=None) -> torch.Tensor:
+                        asset_cfg=None, r_max: float = 1.0) -> torch.Tensor:
     """양발 접촉 min_s 뒤부터: 몸통 각속도(xy)²·수평속도²·관절속도² 합 — 서 있는 동안의 잔보정·흔들림을 벌한다."""
     asset = env.scene[(asset_cfg or _base_cfg()).name]
     w = asset.data.root_ang_vel_b[:, :2]; v = asset.data.root_lin_vel_b[:, :2]; qd = asset.data.joint_vel
     val = w_ang * (w * w).sum(1) + w_lin * (v * v).sum(1) + w_jvel * (qd * qd).sum(1)
-    return val * _touched_mask(env, min_s).to(torch.float32)
+    return val * _touched_mask(env, min_s, r_max).to(torch.float32)
 
 
-def feet_lift_after_contact(env, min_s: float = 0.5, sensor_cfg=None, threshold: float = 5.0) -> torch.Tensor:
+def feet_lift_after_contact(env, min_s: float = 0.5, sensor_cfg=None, threshold: float = 5.0, r_max: float = 1.0) -> torch.Tensor:
     """양발이 닿은 뒤(min_s) 한 발이라도 떨어지면 1 — 착지 후 발 들썩임·스텝 차단."""
     sensor_cfg = sensor_cfg or _feet_cfg()
     f = env.scene.sensors[sensor_cfg.name].data.net_forces_w[:, sensor_cfg.body_ids, :]
     both = (torch.norm(f, dim=-1) > threshold).all(dim=1)
-    return (~both).to(torch.float32) * _touched_mask(env, min_s).to(torch.float32)
+    return (~both).to(torch.float32) * _touched_mask(env, min_s, r_max).to(torch.float32)
 
 
 def _selftest_still():
-    st = {"touch_t": torch.tensor([-1.0, 1.0, 1.0]), "t": torch.tensor([3.0, 1.2, 2.0])}
-    m = (st["touch_t"] >= 0.0) & ((st["t"] - st["touch_t"]) >= 0.5)
-    assert m.tolist() == [False, False, True], m
+    st = {"touch_t": torch.tensor([-1.0, 1.0, 1.0, 1.0]), "t": torch.tensor([3.0, 1.2, 2.0, 2.0]), "r": torch.tensor([0.0, 0.0, 0.0, 0.6])}
+    m = (st["touch_t"] >= 0.0) & ((st["t"] - st["touch_t"]) >= 0.5) & (st["r"] <= 0.3)
+    assert m.tolist() == [False, False, True, False], m
     print("[selftest] 착지 후 정지 마스크: 미접지/0.2s/1.0s → F/F/T — PASS")
 
 

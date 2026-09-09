@@ -293,3 +293,16 @@ class Biped12HangStandS7EnvCfg(Biped12HangStandS6EnvCfg):
             func=mdp_hang.feet_lift_after_contact, weight=-2.0,
             params={"min_s": 0.5, "sensor_cfg": _FEET_SENSOR_CFG, "threshold": 5.0})
         self.rewards.action_rate_l2.weight = -0.4
+
+
+@configclass
+class Biped12HangStandS7bEnvCfg(Biped12HangStandS7EnvCfg):
+    """S7b: 정지 벌점을 **줄이 거의 풀린 뒤(r ≤ 0.3)** 로 게이트 + 가중 완화(−1.0/−1.5) — S7 이 방출 중에도 정지를 요구해
+    완주율이 0.6→0.09 로 급락한 경우의 대안(하중 이전 중엔 자세 조정이 정당하다)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.still_after_contact.weight = -1.0
+        self.rewards.still_after_contact.params["r_max"] = 0.3
+        self.rewards.feet_lift_after_contact.weight = -1.5
+        self.rewards.feet_lift_after_contact.params["r_max"] = 0.3

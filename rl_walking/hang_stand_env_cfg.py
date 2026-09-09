@@ -247,3 +247,15 @@ class Biped12HangStandS5vEnvCfg(Biped12HangStandS5rEnvCfg):
         self.rewards.hip_r_deviation = _R(
             func=_mdp.joint_deviation_l1, weight=-3.0,
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_r_joint"])})
+
+
+@configclass
+class Biped12HangStandS5wEnvCfg(Biped12HangStandS5vEnvCfg):
+    """S5w: S5v + **몸통 수평 강제**(피치 밴드 ±3°, 가중 −25 = 3배) + 발 간격 어깨너비 중심(24~32cm).
+    0909 00:05 승윤님 "고관절은 머리를 수평, 보폭은 어깨너비, 무릎은 약간 굽힌 안정 자세" — 기구·토크상 가능(실측 범위), 보상만 약했다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.torso_pitch_band.weight = -25.0
+        self.rewards.torso_pitch_band.params["band_rad"] = 0.052
+        self.rewards.stance_shape.params["gap_range"] = (0.24, 0.32)

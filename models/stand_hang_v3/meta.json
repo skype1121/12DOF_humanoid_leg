@@ -1,0 +1,18 @@
+{
+  "name": "stand_hang_v3",
+  "run": "2026-09-09_11-34-22",
+  "checkpoint": "model_135490.pt",
+  "checkpoint_md5": "faab22c679a2e61b1304454494c580cb",
+  "task": "Biped12-HangStand-S5w-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "S5v 133991(stand_hang_v2) ← S5u ← S5k ← S4m 129494(stand_hang_v1) ← S3r ← S2r ← S1r ← v18b",
+  "summary": "Hanging-to-Stand S5w(몸통 수평 ±3°·어깨너비·무릎 약간·대칭·현가 수평): 실물유사 256env 100, 실제행잉 94.1, 혼합조건 93.0, 명목 100; 몸통 −2.3°·무릎 ∓5·발 266mm·포화 0%",
+  "legacy": false,
+  "files": {
+    "policy.pt": "eaf5ac1984af54b3c369e9a5d14967c8",
+    "policy.onnx": "e3f97db547357ed2eaf0778349402e79",
+    "env.yaml": "6f16ea3b6bbc0df467c07b09938fe192",
+    "agent.yaml": "6492205e44f3e107ab6f4e3dbc16f44f"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-09_11-34-22"
+}

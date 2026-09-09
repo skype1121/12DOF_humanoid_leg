@@ -1,0 +1,18 @@
+{
+  "name": "stand_hang_v5",
+  "run": "2026-09-09_19-15-42",
+  "checkpoint": "model_139987.pt",
+  "checkpoint_md5": "c38ff6a14d75055f78a0ba8a60be3ec8",
+  "task": "Biped12-HangStand-S8ac4-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "S8a(raw+EMA 320차원, v4 확장 웜스타트 138488) ← stand_hang_v4(S6 136989)",
+  "summary": "S8ac4: raw+EMA(α0.1) 자이로·관절속도 관측(320) + 정착 후 정숙 보너스(rational σ2배, 30s). 1024env 실물유사 99.7·실제행잉 94.8·S6 98.5; v4 대비 ω −41%·v −80%·q̇ −36%·발들기 0, action-rate −9%(실물 노이즈 0 에서 −48%); 정착 피치 −4.9°(후방 CoM 적응 자세), 무릎 ∓5.5°·발 간격 273mm. 배포 계약 320(러너 자동 검출)",
+  "legacy": false,
+  "files": {
+    "policy.pt": "2a20b7b1cd4ec3da4428edb9a859ce0b",
+    "policy.onnx": "fd6ba6a2da8f9b4331e6a66d03357668",
+    "env.yaml": "2e8aa287cb79844b124ecc3b52f3e386",
+    "agent.yaml": "9586eabc80506496e0a8163771e95768"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-09_19-15-42"
+}

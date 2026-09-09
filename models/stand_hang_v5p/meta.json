@@ -1,0 +1,18 @@
+{
+  "name": "stand_hang_v5p",
+  "run": "2026-09-09_20-20-17",
+  "checkpoint": "model_139987.pt",
+  "checkpoint_md5": "b745d32356fa674ac215653e1971767a",
+  "task": "Biped12-HangStand-S8ac5-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "S8a(raw+EMA 320차원) ← stand_hang_v4",
+  "summary": "S8ac5: S8ac4 + torso_pitch_band −60 (자세 기준 복귀: 몸통 −2.4°·무릎 ∓5.5°·발 간격 268mm). 256env 실물유사 99.6·실제행잉 91.0·S6 98.4; v 0.019~0.027(S8ac4 0.012~0.016)·action-rate v4 수준. 자세 우선 대안",
+  "legacy": false,
+  "files": {
+    "policy.pt": "9ad5cb9627c94df9c8518f443b9c82ec",
+    "policy.onnx": "757ee89f41b9027916afbbb54c9d3920",
+    "env.yaml": "927dca190212ad99a730085ea029480f",
+    "agent.yaml": "9586eabc80506496e0a8163771e95768"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-09_20-20-17"
+}

@@ -416,9 +416,12 @@ class Biped12HangStandS8nEnvCfg(Biped12HangStandS6EnvCfg):
 def _add_settle_bonus(cfg, weight=1.0, use_jvel=True, use_acc=True):
     """settled-only 정숙 보너스(양, 0~1) — 최대 +weight×0.02×정착시간. S7 계열의 강한 벌점(착지 직후부터·r_max 게이트)과 달리
     지지 0·양발·기울기<5°·골반>0.6m 가 0.5s 유지된 뒤 1s 램프로만 켜진다(특권 게이트는 보상에만, 관측엔 없음)."""
+    # σ 는 '현재 수준 ≈ e⁻¹ 지점' 으로 잡아 기울기를 살린다(S8a 정상상태: ω 0.10~0.12, v 0.023~0.028, q̇ 0.06, 액션 2차차분 RMS ≈ √3×0.088 ≈ 0.15).
+    # s_acc 0.05 면 exp(−9)≈0 으로 포화해 학습 신호가 죽는다.
     cfg.rewards.settle_quiet_bonus = RewTerm(
         func=mdp_hang.settle_quiet_bonus, weight=weight,
-        params={"use_jvel": use_jvel, "use_acc": use_acc, "sensor_cfg": _FEET_SENSOR_CFG})
+        params={"use_jvel": use_jvel, "use_acc": use_acc, "sensor_cfg": _FEET_SENSOR_CFG,
+                "s_ang": 0.08, "s_lin": 0.02, "s_jvel": 0.06, "s_acc": 0.15})
 
 
 @configclass

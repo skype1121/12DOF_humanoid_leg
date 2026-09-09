@@ -37,6 +37,7 @@ parser.add_argument("--r0", type=str, default=None); parser.add_argument("--hold
 parser.add_argument("--release_s", type=str, default=None); parser.add_argument("--clearance", type=str, default=None)
 parser.add_argument("--stand_s", type=float, default=5.0, help="지지 0 이후 생존 판정 시간 [s]")
 parser.add_argument("--no_push", action="store_true", help="푸시 외란 끔 (전이 능력과 푸시 강건성 분리 — 실물 윈치 시험엔 푸시가 없다)")
+parser.add_argument("--lpf_beta", type=float, default=None, help="배포 체인 stand LPF β 덮어쓰기 (기본 deploy_chain.STAND_LPF_BETA=0.27; 작을수록 더 부드러움) — 재학습 없이 스탠바이 흔들림을 잡는 배포측 레버 시험")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -155,7 +156,7 @@ if use_chain:
     from rl_walking.deploy.deploy_chain import DeployChain, BLEND_S, STAND_LPF_BETA  # noqa: E402
     from rl_walking.deploy.policy_runner import SLEW_RAD  # noqa: E402
     _term = uenv.action_manager.get_term("joint_pos")
-    _chain = DeployChain(_DEF, _LAND, qpos0=robot.data.joint_pos.clone(), stand=True)
+    _chain = DeployChain(_DEF, _LAND, qpos0=robot.data.joint_pos.clone(), stand=True, **({"lpf_beta": args_cli.lpf_beta} if args_cli.lpf_beta is not None else {}))
     _orig = _term.process_actions
 
     def _hooked(a):
@@ -167,7 +168,7 @@ if use_chain:
         _term._raw_actions[:] = a
 
     _term.process_actions = _hooked
-    chain_desc = f"h3 chain: 러너 슬루 {math.degrees(SLEW_RAD):.1f}°/틱 → LPF β{STAND_LPF_BETA} → 블렌딩 {BLEND_S}s"
+    chain_desc = f"h3 chain: 러너 슬루 {math.degrees(SLEW_RAD):.1f}°/틱 → LPF β{args_cli.lpf_beta if args_cli.lpf_beta is not None else STAND_LPF_BETA} → 블렌딩 {BLEND_S}s"
 
 # ── 기록 (첫 에피소드만 — 종료 후 자동 리셋된 env 의 새 에피소드는 무시) ──
 alive = torch.ones(N, dtype=torch.bool, device=dev)

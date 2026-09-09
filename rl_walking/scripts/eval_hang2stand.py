@@ -138,6 +138,13 @@ for _nm, _term in (("gyro", _P.base_ang_vel), ("grav", _P.projected_gravity), ("
     elif _term.noise is not None and args_cli.noise_scale != 1.0:
         _term.noise.n_min = float(_term.noise.n_min) * args_cli.noise_scale
         _term.noise.n_max = float(_term.noise.n_max) * args_cli.noise_scale
+for _nm, _ch in (("gyro_ema", "gyro"), ("joint_vel_ema", "jvel")):          # S8 raw+EMA 항: 내부 노이즈도 같은 규칙
+    _t = getattr(_P, _nm, None)
+    if _t is not None and "noise" in _t.params:
+        if _ch in _off or "all" in _off or args_cli.no_obs_noise:
+            _t.params["noise"] = 0.0
+        else:
+            _t.params["noise"] = float(_t.params["noise"]) * args_cli.noise_scale
 if ("contact" in _off or "all" in _off) and "threshold_range" in _P.feet_contact.params:
     _P.feet_contact.params["threshold_range"] = None
 if _off or args_cli.noise_scale != 1.0:

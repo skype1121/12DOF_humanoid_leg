@@ -344,9 +344,10 @@ class Biped12HangStandS7dEnvCfg(Biped12HangStandS6EnvCfg):
 from isaaclab.managers import ObservationTermCfg as _ObsTerm
 
 
-def _add_s8_obs(cfg, gyro_noise=0.2, jvel_noise=1.5, alpha=0.25, foot_load=True):
-    """policy 그룹 **끝에** raw+EMA 채널(노이즈는 함수 안에서 넣고 EMA; cfg noise=None)·발 하중 합 추가. 이력 5, 평탄화.
-    레이아웃: 245 + 5×(3+12[+1]) — symmetry.py policy_s8, expand_checkpoint.py 와 동기."""
+def _add_s8_obs(cfg, gyro_noise=0.2, jvel_noise=1.5, alpha=0.1, foot_load=False):
+    """policy 그룹 **끝에** raw+EMA 채널(노이즈는 함수 안에서 넣고 EMA; cfg noise=None)[·발 하중 합] 추가. 이력 5, 평탄화.
+    레이아웃: 245 + 5×(3+12) = 320 (S8a) / +5 = 325 (S8b) — symmetry.py policy_s8a/b, expand_checkpoint.py 와 동기.
+    α=0.1 (τ≈10틱=200ms, 백색 노이즈 std ×0.23) — 이력 5틀(100ms) 창 밖의 정보를 주기 위해 창보다 느리게 잡는다."""
     P = cfg.observations.policy
     P.gyro_ema = _ObsTerm(func=mdp_hang.gyro_ema, params={"alpha": alpha, "noise": gyro_noise}, clip=(-20.0, 20.0),
                           history_length=5, flatten_history_dim=True)
@@ -357,13 +358,56 @@ def _add_s8_obs(cfg, gyro_noise=0.2, jvel_noise=1.5, alpha=0.25, foot_load=True)
                                      history_length=5, flatten_history_dim=True)
 
 
+def _scale_obs_noise(cfg, scale):
+    """학습 관측 노이즈 대역 스케일 (자이로·중력·관절위치·관절속도). 실물 정지 std 의 10~20배인 대역을 좁힐 때."""
+    P = cfg.observations.policy
+    for name in ("base_ang_vel", "projected_gravity", "joint_pos", "joint_vel"):
+        t = getattr(P, name)
+        if t.noise is not None:
+            t.noise.n_min = float(t.noise.n_min) * scale
+            t.noise.n_max = float(t.noise.n_max) * scale
+
+
 @configclass
 class Biped12HangStandS8aEnvCfg(Biped12HangStandS6EnvCfg):
-    """S8a: v4(S6) 환경 + raw+EMA 자이로/관절속도 + 발 하중 합 관측 (보상 불변). 노이즈 대역은 ablation 후 조정."""
-
-    gyro_noise = 0.2
-    jvel_noise = 1.5
+    """S8a: v4(S6) 환경 + raw+EMA(α0.1) 자이로/관절속도 관측 (보상·노이즈 불변). 승윤님 1순위 기대 구조."""
 
     def __post_init__(self):
         super().__post_init__()
-        _add_s8_obs(self, gyro_noise=self.gyro_noise, jvel_noise=self.jvel_noise, alpha=0.25, foot_load=True)
+        _add_s8_obs(self, alpha=0.1, foot_load=False)
+
+
+@configclass
+class Biped12HangStandS8aS1rEnvCfg(Biped12HangStandS1rEnvCfg):
+    """S8a 정책의 실물유사(S1r) 평가 조건 — S1r 그대로 + S8a 관측."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _add_s8_obs(self, alpha=0.1, foot_load=False)
+
+
+@configclass
+class Biped12HangStandS8aS3rEnvCfg(Biped12HangStandS3rEnvCfg):
+    """S8a 정책의 실제 행잉(S3r) 평가 조건 — S3r 그대로 + S8a 관측."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _add_s8_obs(self, alpha=0.1, foot_load=False)
+
+
+@configclass
+class Biped12HangStandS8bEnvCfg(Biped12HangStandS6EnvCfg):
+    """S8b: S8a + 발 하중 합 관측(정규화, 게인·오프셋·지연 DR). 실물은 패드 합만 신뢰 가능(패드별 감도 다름) — 변형 arm."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _add_s8_obs(self, alpha=0.1, foot_load=True)
+
+
+@configclass
+class Biped12HangStandS8nEnvCfg(Biped12HangStandS6EnvCfg):
+    """S8n: v4 관측 그대로, 학습 노이즈 대역 50% (자이로 ±0.1·중력 ±0.025·관절위치 ±0.005·관절속도 ±0.75 — 실물 std 의 2~10배 유지)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _scale_obs_noise(self, 0.5)

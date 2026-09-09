@@ -522,7 +522,7 @@ gym.register(
 
 
 # ── Hanging-to-Stand (0908 저녁): 보조지지 스케줄 커리큘럼 S1/S2/S3 — rl_walking/hang_stand_env_cfg.py ──
-for _stage in ("S1", "S2", "S3", "S1r", "S2r", "S3r", "S4m", "S5s", "S5k", "S5u", "S5r", "S5v", "S5w", "S6", "S7", "S7b", "S7c", "S7d", "S8a"):   # *r = 축소 DR (0908 2차), S4m = 혼합 스케줄+실측 대역 DR (3차)
+for _stage in ("S1", "S2", "S3", "S1r", "S2r", "S3r", "S4m", "S5s", "S5k", "S5u", "S5r", "S5v", "S5w", "S6", "S7", "S7b", "S7c", "S7d", "S8a", "S8aS1r", "S8aS3r", "S8b", "S8n"):   # *r = 축소 DR (0908 2차), S4m = 혼합 스케줄+실측 대역 DR (3차)
     gym.register(
         id=f"Biped12-HangStand-{_stage}-v0",
         entry_point="isaaclab.envs:ManagerBasedRLEnv",

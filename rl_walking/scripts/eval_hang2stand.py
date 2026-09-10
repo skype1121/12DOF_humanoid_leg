@@ -42,6 +42,7 @@ parser.add_argument("--noise_scale", type=float, default=1.0, help="남은 관�
 parser.add_argument("--no_obs_noise", action="store_true", help="관측 노이즈(enable_corruption) 끔 — 정책 고유 정지도 측정용(학습 노이즈 ±0.2rad/s 자이로 등이 잔떨림을 만드는지 분리)")
 parser.add_argument("--lpf_beta", type=float, default=None, help="배포 체인 stand LPF β 덮어쓰기 (기본 deploy_chain.STAND_LPF_BETA=0.27; 작을수록 더 부드러움) — 재학습 없이 스탠바이 흔들림을 잡는 배포측 레버 시험")
 parser.add_argument("--imu_roll_bias_deg", type=float, default=None, help="IMU 롤 장착 편향을 전 env 상수로 고정 [deg] (0910 실물 재현: 실물 콘솔 lat +1.0~1.4°)")
+parser.add_argument("--com_fix_y", type=float, default=0.0, help="횡 CoM 고정 편심 [m] (0910 진단: 실물 편하중 재현)")
 parser.add_argument("--calib_fixed", type=str, default="", help="관절 고정 편향 주입 'left_ankle_r_joint:3.6,right_hip_r_joint:3.4' [deg] — 실측 좌우 비대칭 재현")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
@@ -160,7 +161,8 @@ if args_cli.imu_roll_bias_deg is not None and getattr(env_cfg.events, "calib_bia
     env_cfg.events.calib_bias.params["imu_roll_rad"] = (_rb, _rb)
     print(f"[imu] 롤 편향 고정 {args_cli.imu_roll_bias_deg:+.2f}°")
 if args_cli.com_fix is not None and getattr(env_cfg.events, "base_com", None):
-    env_cfg.events.base_com.params["com_range"] = {"x": (args_cli.com_fix, args_cli.com_fix), "y": (0.0, 0.0), "z": (0.0, 0.0)}
+    _cy = getattr(args_cli, "com_fix_y", 0.0) or 0.0
+    env_cfg.events.base_com.params["com_range"] = {"x": (args_cli.com_fix, args_cli.com_fix), "y": (_cy, _cy), "z": (0.0, 0.0)}
 T_s = args_cli.seconds if args_cli.seconds else float(env_cfg.episode_length_s)
 env_cfg.episode_length_s = T_s + 1.0      # 평가 창 안에서 time_out 이 끼지 않게
 
@@ -230,6 +232,11 @@ _ss_ar2 = torch.zeros(N, device=dev); _ss_r2 = torch.zeros(N, device=dev); _ss_p
 _ss_aa2 = torch.zeros(N, device=dev); _ss_pm = torch.zeros(N, device=dev); _prev_a2 = None   # 액션 2차차분(채터 겨냥 보상의 직접 지표)·정착 피치 부호 평균
 _air_q = torch.zeros(N, 12, device=dev); _air_n = torch.zeros(N, device=dev)   # 0910: 공중(지지비>0.9) 관절각 평균 — 실물 공중 비대칭(왼 힙a +11 vs 오른 +6) 대조
 _jn = list(robot.joint_names); _jidx = {n: i for i, n in enumerate(_jn)}
+try:
+    from rl_walking.mdp_hang import _feet_cfg as _fcfg
+    _fc = _fcfg(); _fc.resolve(env.unwrapped.scene); _FEET = _fc.name; _FEET_IDS = _fc.body_ids
+except Exception:
+    _FEET, _FEET_IDS = None, None
 t0 = time.time()
 for i in range(STEPS):
     with torch.inference_mode():
@@ -340,6 +347,13 @@ if _ok2.any():
     P(f"   정상상태 추가: action-rate RMS {float(((_ss_ar2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.4f} · 롤 RMS {float(((_ss_r2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.2f}° 피크 {float(_ss_rpk[_ok2].mean()):.2f}° · "
       f"피치 RMS {float(((_ss_p2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.2f}° 피크 {float(_ss_ppk[_ok2].mean()):.2f}° · "
       f"액션 2차차분 RMS {float(((_ss_aa2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.4f} · 정착 피치 평균 {float((_ss_pm[_ok2]/_ss_n[_ok2]).mean()):+.2f}°")
+    _flz = robot.data.net_forces_w if False else None  # (placeholder)
+    try:
+        _fs = env.unwrapped.scene.sensors[_FEET].data.net_forces_w[:, _FEET_IDS, 2].clamp(min=0.0)
+        _fl = float(_fs[_ok2, 0].mean()); _fr = float(_fs[_ok2, 1].mean())
+        P(f"정상상태 하중: 왼 {_fl:.0f}N / 오른 {_fr:.0f}N · 불균형 {abs(_fl-_fr)/max(_fl+_fr,1):.2f}")
+    except Exception as _e:
+        pass
 _okA = _air_n > 0
 if _okA.any():
     _mq = torch.rad2deg((_air_q[_okA] / _air_n[_okA, None]).mean(0))

@@ -81,8 +81,8 @@ ssh mama@172.16.35.89 'cd ~/humanoid_repo && python3 jetson/scripts/foot_force_a
 | 질문 | 데이터 | 시뮬 기대치 |
 |---|---|---|
 | 1 어느 축이 먼저 흔들리나 | 블랙박스 gyro xyz·rp_deg vs 발력 % 시간축 | 접지 직후 피치, 롤은 0.4~0.8° RMS |
-| 2 발목롤 stuck | qpos[5,11] vs targets_deg_joint[5,11] 추종오차·tau_est 부호 반전 없이 정체 | 시뮬 DR 마찰 0.1~0.6 |
-| 3 발목피치가 CoM 을 앞으로 | qpos[4,10] 변화 vs rp_deg 피치·CoP(패드) 전진 | 정착 피치 −4.9°, CoP 발 중앙 |
+| 2 발목롤 stuck | qpos[10,11] vs targets_deg_joint[10,11] (JOINT_ORDER 좌우 교대: 발목롤 = 10,11) 추종오차·tau_est 부호 반전 없이 정체 | 시뮬 DR 마찰 0.1~0.6 |
+| 3 발목피치가 CoM 을 앞으로 | qpos[8,9](발목피치) 변화 vs rp_deg 피치·CoP(패드) 전진 | 정착 피치 −4.9°, CoP 발 중앙 |
 | 4 FSR 접촉 타이밍 | foot_n>5 N 시각 vs 패드 원값 상승 vs 영상 | 시뮬 임계 2~20 N DR·5틱 지연 |
 | 5 자이로 노이즈 | 정지 구간 gyro std | 실측 0.006 rad/s(학습 ±0.2) |
 | 6 액션 채터 | raw_action 스텝 차 RMS(정착 3 s) | 시뮬 0.083(노이즈 하)·0.004(노이즈 0) |

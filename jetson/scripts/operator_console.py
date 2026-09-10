@@ -301,11 +301,32 @@ class Runner:
         self.procs = {}          # key -> Proc
         self.lock = threading.Lock()
 
+    # 0910 현장: 콘솔 재기동 뒤엔 자식 추적이 사라져 같은 노드를 두 번 띄울 수 있었다(센서 어댑터·stage8·브리지 중복 = 같은 버스/토픽 이중 발행).
+    # 추적 밖 프로세스도 명령행 패턴으로 검출해 거부한다. 종료는 콘솔이 띄운 것만(명시 PID) — 정리는 스택 종료 버튼.
+    DUP_GUARD = {"stage8": ["stage8_12axis_mit_control_node.py"], "hang_stand": ["hang_stand.py"],
+                 "bridge": ["rl_bridge_node.py"], "sensors": ["imu_adapter_node.py", "foot_force_adapter_node.py"]}
+
+    @staticmethod
+    def _foreign_pids(patterns):
+        found = []
+        for pat in patterns:
+            try:
+                out = subprocess.run(["pgrep", "-f", pat], capture_output=True, text=True, timeout=3).stdout.split()
+            except (OSError, subprocess.TimeoutExpired):
+                out = []
+            found += [int(x) for x in out if x.isdigit() and int(x) != os.getpid()]
+        return sorted(set(found))
+
     def start(self, key, argv, cwd=None):
         with self.lock:
             old = self.procs.get(key)
             if old is not None and old.alive:
                 return False, f"{key} 이미 실행 중 (pid {old.p.pid})"
+            if key in self.DUP_GUARD:
+                pids = self._foreign_pids(self.DUP_GUARD[key])
+                if pids:
+                    return False, (f"{key} 이미 실행 중 (pid {pids}, 콘솔 추적 밖) — 중복 기동 안 함. "
+                                   "정리하려면 스택 종료(센서는 그대로 써도 됨)")
             env = dict(os.environ)
             env.setdefault("PYTHONUNBUFFERED", "1")
             try:

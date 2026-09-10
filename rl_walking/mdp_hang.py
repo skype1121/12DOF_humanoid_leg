@@ -51,7 +51,10 @@ def _state(env):
               "bx": z(), "by": z(), "px": z(), "py": z(), "L": torch.ones(N, device=dev),
               "x0": z(), "y0": z(),
               "released_t": torch.full((N,), -1.0, device=dev),   # r 가 0 에 닿은 시각 (−1 = 아직)
-              "touch_t": torch.full((N,), -1.0, device=dev)}      # 양발 첫 동시 접촉 시각
+              "touch_t": torch.full((N,), -1.0, device=dev),      # 양발 첫 동시 접촉 시각
+              # 0911 케이블 지지 모델 (cable_on=True 일 때 _cable_apply 사용)
+              "cable_on": False, "hx": z(), "hy": z(), "hz": z(), "ax": z(), "ay": z(), "az": z(),
+              "cbl_k": z(), "cbl_c": z(), "cbl_tmax": z(), "cbl_L0": torch.ones(N, device=dev), "cbl_d0": z(), "cbl_slack": z()}
         env._hang = st
     return st
 
@@ -63,8 +66,40 @@ def _ratio(st):
     return r.clamp(min=0.0)
 
 
+def _cable_tension(dist, L, k, c, ddist, tmax):
+    """순수 스칼라 장력: T = clip(k·(dist−L), 0, tmax) + c·max(0,ddist). dist≤L(슬랙)이면 0. (Isaac 무관 — 셀프테스트용)"""
+    stretch = (dist - L).clamp(min=0.0)
+    T = (k * stretch + c * ddist.clamp(min=0.0)).clamp(min=0.0)
+    return torch.minimum(T, torch.as_tensor(tmax, dtype=T.dtype, device=T.device))
+
+
+def _cable_apply(env, st, ids, asset_cfg):
+    """길이 제약 케이블 지지(0911 v6, Codex 메타 §2): 고정 월드 앵커 A ↔ 몸통 후크 H(base 위 hz).
+    윈치 길이 L(t)=L0−δ0(초기 프리텐션)+payout(t); payout 은 r(t) 로 증가(r0→0 에 걸쳐 δ0+여유). 장력 T=clip(k·(|A−H|−L),0,Tmax)+감쇠, 방향 후크→앵커.
+    후크가 CoM 위라 몸이 기울면 발 주위 모멘트 발생 = 기존 수직힘 모델에 없던 '자세→장력→회전' 결합. 수평유지 토크 없음(케이블 대체)."""
+    asset = env.scene[asset_cfg.name]
+    r = st["r"][ids]; m = st["mass"][ids]
+    pos = asset.data.root_pos_w[ids]; quat = asset.data.root_quat_w[ids]
+    hook_b = torch.stack([st["hx"][ids], st["hy"][ids], st["hz"][ids]], dim=-1)
+    H = pos + _quat_fwd(quat, hook_b)
+    A = torch.stack([st["ax"][ids], st["ay"][ids], st["az"][ids]], dim=-1)
+    rope = A - H; dist = torch.norm(rope, dim=-1).clamp(min=1e-4); dirw = rope / dist.unsqueeze(-1)
+    payout = (1.0 - (r / st["r0"][ids].clamp(min=1e-3)).clamp(0.0, 1.0)) * (st["cbl_d0"][ids] + st["cbl_slack"][ids])
+    L = st["cbl_L0"][ids] - st["cbl_d0"][ids] + payout
+    v = asset.data.root_lin_vel_w[ids] if hasattr(asset.data, "root_lin_vel_w") else torch.zeros_like(pos)
+    ddist = -(dirw * v).sum(-1)
+    T = _cable_tension(dist, L, st["cbl_k"][ids], st["cbl_c"][ids], ddist, st["cbl_tmax"][ids])
+    F_w = T.unsqueeze(-1) * dirw
+    F_b = _quat_inv(quat, F_w)
+    asset.permanent_wrench_composer.set_forces_and_torques(
+        forces=F_b.unsqueeze(1), torques=None, positions=hook_b.unsqueeze(1),
+        body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
+
+
 def _apply(env, st, ids, asset_cfg):
     """지지력을 base 링크 프레임으로 넣는다. ids: long tensor."""
+    if bool(st.get("cable_on", False)):
+        return _cable_apply(env, st, ids, asset_cfg)
     asset = env.scene[asset_cfg.name]
     r = st["r"][ids]
     Fz = r * st["mass"][ids] * G                                    # 수직 지지력 [N], 세계 +z
@@ -88,7 +123,10 @@ def _apply(env, st, ids, asset_cfg):
 
 def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0), release_range=(2.0, 8.0),
                        rope_len_range=(1.0, 2.0), bias_frac=0.01, point_xy=0.03, asset_cfg=None,
-                       level_gain_range=(0.0, 0.0), level_damp_range=(0.0, 0.0)):
+                       level_gain_range=(0.0, 0.0), level_damp_range=(0.0, 0.0),
+                       cable=False, hook_z_range=(0.25, 0.40), anchor_x_range=(-0.05, 0.05), anchor_y_range=(-0.05, 0.05),
+                       anchor_h_range=(1.0, 1.6), cbl_k_range=(1500.0, 3000.0), cbl_c_range=(20.0, 120.0),
+                       cbl_slack_range=(0.05, 0.15)):
     """mode="reset": 에피소드마다 지지 스케줄·로프 기하를 새로 뽑고 첫 지지력을 즉시 건다."""
     asset_cfg = asset_cfg or _base_cfg()
     st = _state(env)
@@ -108,6 +146,20 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
     st["py"][ids] = U(-point_xy, point_xy)
     st["lvl_k"][ids] = U(*level_gain_range)      # 수평 유지 강성 [Nm/rad] (실물 두 줄 현가 ≈ 강함)
     st["lvl_c"][ids] = U(*level_damp_range)      # 감쇠 [Nm·s/rad]
+    if cable:
+        st["cable_on"] = True
+        asset0 = env.scene[asset_cfg.name]
+        p0 = asset0.data.root_pos_w[ids]                     # 리셋 시 base 월드 위치
+        st["hx"][ids] = 0.0; st["hy"][ids] = 0.0; st["hz"][ids] = U(*hook_z_range)   # 후크(토르소 위)
+        st["ax"][ids] = p0[:, 0] + U(*anchor_x_range)        # 고정 앵커 = 초기 후크 위 + 오프셋(앞뒤 포함)
+        st["ay"][ids] = p0[:, 1] + U(*anchor_y_range)
+        st["az"][ids] = p0[:, 2] + st["hz"][ids] + U(*anchor_h_range)
+        st["cbl_k"][ids] = U(*cbl_k_range); st["cbl_c"][ids] = U(*cbl_c_range); st["cbl_slack"][ids] = U(*cbl_slack_range)
+        # 초기 |A−H0| (수직 근사 = anchor_h) 를 L0 로, 프리텐션 δ0 = r0·m·g / k (수직서 T_z≈T)
+        st["cbl_L0"][ids] = torch.norm(torch.stack([st["ax"][ids]-p0[:,0], st["ay"][ids]-p0[:,1],
+                                                    st["az"][ids]-(p0[:,2]+st["hz"][ids])], -1), dim=-1)
+        st["cbl_d0"][ids] = (st["r0"][ids] * st["mass"][ids] * G / st["cbl_k"][ids])
+        st["cbl_tmax"][ids] = st["mass"][ids] * G * 1.5
     st["t"][ids] = 0.0
     st["released_t"][ids] = -1.0
     st["touch_t"][ids] = -1.0
@@ -187,6 +239,7 @@ def selftest():
     _selftest_posture()
     _selftest_pitch_band()
     _selftest_level()
+    _selftest_cable()
     _selftest_still()
     _selftest_s8()
     print("[selftest] mdp_hang: 지지비 스케줄·안정 자세 항·피치 밴드·수평 유지 토크·착지 후 정지·S8 — ALL PASS")
@@ -300,6 +353,20 @@ def _level_torque(pg, w, k, c):
     +x 롤(pg_y<0)→ −x 토크. τ = k·(pg_y, −pg_x, 0) − c·(w_x, w_y, 0)."""
     zero = torch.zeros_like(k)
     return torch.stack([k * pg[:, 1] - c * w[:, 0], -k * pg[:, 0] - c * w[:, 1], zero], dim=-1)
+
+
+def _selftest_cable():
+    # 슬랙(dist<L)=0, 타이트(dist>L) 프리텐션, Tmax 클립, 감쇠 단방향
+    d=torch.tensor([1.0, 1.086, 1.2, 1.086]); L=torch.tensor([1.1, 1.0, 1.0, 1.0]); k=torch.tensor([2000.0]*4)
+    c=torch.tensor([100.0]*4); dd=torch.tensor([0.0, 0.0, 0.0, 0.5]); tmax=torch.tensor([300.0]*4)
+    T=_cable_tension(d, L, k, c, dd, tmax)
+    assert float(T[0])==0.0, "슬랙(dist<L) 장력 0"
+    assert abs(float(T[1])-172.0)<1.0, ("프리텐션 δ0=0.086→~172N", float(T[1]))
+    assert float(T[2])==300.0, "Tmax 클립"
+    assert abs(float(T[3])-(172.0+50.0))<1.0, ("감쇠 +c·ddist", float(T[3]))
+    # 감쇠는 멀어질 때만(ddist>0)
+    assert abs(float(_cable_tension(torch.tensor([1.086]),torch.tensor([1.0]),torch.tensor([2000.0]),torch.tensor([100.0]),torch.tensor([-0.5]),torch.tensor([300.0]))[0])-172.0)<1.0
+    print("[selftest] 케이블 장력: 슬랙 0·프리텐션 172N·Tmax 클립·감쇠 단방향 — PASS")
 
 
 def _selftest_level():

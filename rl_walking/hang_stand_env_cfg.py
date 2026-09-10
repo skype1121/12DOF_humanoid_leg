@@ -578,3 +578,15 @@ class Biped12HangStandS10aEnvCfg(Biped12HangStandS8ac4EnvCfg):
         _extend_back_com(self, -0.10)                                  # v6c2: −0.12 는 희석 → −0.10(실물 구간 커버)
         self.rewards.torso_pitch_band.params["fwd_band_rad"] = 0.21   # 앞(음수) 12°까지 무벌 (부호 수정판)
         # 뒤 밴드는 기존 band_rad(S5w=0.052=3°) 유지. 앞으로 기울여 서는 해법 허용.
+
+
+@configclass
+class Biped12HangStandCableS3rEnvCfg(Biped12HangStandS3rEnvCfg):
+    """케이블 지지 모델(0911) — S3r(실제 행잉) 조건에 길이제약 케이블 적용. v5 재현 게이트 전용(학습 아님).
+    이 환경에서 v5 가 실물 궤적(방출 중 발력 저하 + p1축 회전 + 정책 준정지)을 재현하는지 확인 후에만 케이블 기반 학습."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.hang_support_reset.params["cable"] = True
+        # 앵커 앞뒤 오프셋 범위를 넓혀(±0.08) 실물 후크 기하 불확실성 포함
+        self.events.hang_support_reset.params["anchor_x_range"] = (-0.08, 0.08)

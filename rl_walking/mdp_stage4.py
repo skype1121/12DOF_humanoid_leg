@@ -399,6 +399,7 @@ def resample_calib_bias(
     knee_bias_rad: tuple | None = None,        # v15: 무릎 별도 대역 (좌우 다리 길이차 ≈ 무릎각 편향)
     imu_lag_steps: tuple | None = None,        # v17: IMU 자세 지연 [틱] env별 정수 (0~3)
     imu_roll_rad: tuple | None = None,         # v18: IMU 롤 장착 편향 (0905 감사: 피치만 있었음, 실측 롤 +2.6~3.1°)
+    fixed_bias_deg: dict | None = None,        # v6(0910): 관절별 고정 편향[deg] — 실측 좌우 비대칭(발목롤·힙회전)을 상수로. 랜덤 대역 위에 덮어씀
 ):
     """에피소드마다 관측 상수 편향을 새로 뽑는다 (mode="reset" 이벤트).
 
@@ -420,6 +421,10 @@ def resample_calib_bias(
         cols = [i for i, n in enumerate(names) if n.endswith(key)]
         env._calib_joint_bias[ids[:, None], torch.tensor(cols, device=env.device)] = torch.empty(
             len(ids), len(cols), device=env.device).uniform_(*rng)
+    if fixed_bias_deg:
+        for jn, dv in fixed_bias_deg.items():
+            if jn in names:
+                env._calib_joint_bias[ids, names.index(jn)] = math.radians(float(dv))
     env._calib_imu_tilt[ids] = torch.empty(
         len(ids), device=env.device).uniform_(*imu_tilt_rad)
     if imu_lag_steps is not None:

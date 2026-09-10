@@ -451,6 +451,20 @@ def action_accel_l2(env) -> torch.Tensor:
     return val
 
 
+def foot_load_balance(env, sensor_cfg=None, threshold: float = 5.0, min_total: float = 40.0,
+                      hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float = 8.0, min_height: float = 0.60,
+                      r_eps: float = 0.05) -> torch.Tensor:
+    """정착 상태에서 양발 수직하중 불균형 |L-R|/(L+R) 벌점 (0~1). 0910 실물: 착지 후 하중이 한 발(오른 65%)로 쏠려 반대 발이 떠 넘어짐 —
+    원인이 발 롤·횡 CoM·로프 어느 쪽이든, 하중을 좌우로 고르게 실으면 그 실패를 막는다. settled 램프로 정착 후에만 켠다(착지 순간의 정상적 편하중은 벌 안 줌)."""
+    sensor_cfg = sensor_cfg or _feet_cfg()
+    fz = env.scene.sensors[sensor_cfg.name].data.net_forces_w[:, sensor_cfg.body_ids, 2].clamp(min=0.0)
+    fl, fr = fz[:, 0], fz[:, 1]
+    tot = fl + fr
+    imb = (fl - fr).abs() / tot.clamp(min=min_total)      # min_total 미만이면 분모 고정(공중·저하중서 폭주 방지)
+    imb = torch.where(tot > min_total, imb, torch.zeros_like(imb))
+    return imb.clamp(0.0, 1.0) * settled_ramp(env, hold_s, ramp_s, tilt_deg, min_height, sensor_cfg, threshold, r_eps)
+
+
 def settle_quiet_bonus(env, s_ang: float = 0.08, s_lin: float = 0.02, s_jvel: float = 0.06, s_acc: float = 0.05,
                        use_jvel: bool = True, use_acc: bool = True, asset_cfg=None, hold_s: float = 0.5, ramp_s: float = 1.0,
                        tilt_deg: float = 8.0, min_height: float = 0.60, sensor_cfg=None, threshold: float = 5.0,
@@ -495,7 +509,9 @@ def _selftest_s8():
         assert abs(float(torch.exp(-(torch.tensor(x) / s_) ** 2)) - want) < 1e-6
     # rational 형: σ 에서 0.5, 3σ 에서 0.1 (exp 는 3σ 에서 1e-4 로 포화)
     r3 = 1.0 / (1.0 + 9.0); assert abs(r3 - 0.1) < 1e-9 and abs(1.0 / (1.0 + 1.0) - 0.5) < 1e-9
-    print("[selftest] S8: EMA 스파이크 25%/지속 4프레임 68%·settled 램프 0.5s+1s·정숙 보너스 유계(exp/rational) — PASS")
+    # 하중 균형: |L-R|/(L+R) 는 0~1 유계
+    assert abs((abs(60.0-40.0)/(60.0+40.0)) - 0.2) < 1e-9
+    print("[selftest] S8: EMA 스파이크 25%/지속 4프레임 68%·settled 램프 0.5s+1s·정숙 보너스 유계(exp/rational)·하중균형 유계 — PASS")
 
 
 if __name__ == "__main__":

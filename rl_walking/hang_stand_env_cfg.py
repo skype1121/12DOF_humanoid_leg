@@ -530,3 +530,21 @@ class Biped12HangStandS8ac6EnvCfg(Biped12HangStandS8ac4EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.torso_pitch_band.weight = -40.0
+
+
+@configclass
+class Biped12HangStandS9aEnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S9a(v6 후보): S8ac4 + (1) 횡 CoM DR 확대 ±0.03m (실물 좌우 편심·발 롤), (2) 발목롤 마찰 좌우 비대칭 확대 0.05~0.8,
+    (3) 발 하중 좌우 균형 벌점(정착 게이트). 0910 실물 A1: 착지 후 하중이 오른발로 쏠려(32/58N) 왼발 떠 넘어짐 — 관측 편향으론 재현 안 됨(물리·하중 원인).
+    settle_quiet_bonus·raw+EMA 관측·정숙성(실물서 우수 확인)은 그대로 유지."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev = self.events
+        if getattr(ev, "base_com", None):
+            cr = dict(ev.base_com.params["com_range"]); cr["y"] = (-0.03, 0.03); ev.base_com.params["com_range"] = cr
+        if getattr(ev, "ankle_r_friction", None):
+            ev.ankle_r_friction.params["friction_distribution_params"] = (0.05, 0.8)
+        self.rewards.foot_load_balance = RewTerm(
+            func=mdp_hang.foot_load_balance, weight=-2.0,
+            params={"sensor_cfg": _FEET_SENSOR_CFG})

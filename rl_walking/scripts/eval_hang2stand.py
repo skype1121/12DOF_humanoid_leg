@@ -42,6 +42,7 @@ parser.add_argument("--noise_scale", type=float, default=1.0, help="남은 관�
 parser.add_argument("--no_obs_noise", action="store_true", help="관측 노이즈(enable_corruption) 끔 — 정책 고유 정지도 측정용(학습 노이즈 ±0.2rad/s 자이로 등이 잔떨림을 만드는지 분리)")
 parser.add_argument("--lpf_beta", type=float, default=None, help="배포 체인 stand LPF β 덮어쓰기 (기본 deploy_chain.STAND_LPF_BETA=0.27; 작을수록 더 부드러움) — 재학습 없이 스탠바이 흔들림을 잡는 배포측 레버 시험")
 parser.add_argument("--imu_roll_bias_deg", type=float, default=None, help="IMU 롤 장착 편향을 전 env 상수로 고정 [deg] (0910 실물 재현: 실물 콘솔 lat +1.0~1.4°)")
+parser.add_argument("--calib_fixed", type=str, default="", help="관절 고정 편향 주입 'left_ankle_r_joint:3.6,right_hip_r_joint:3.4' [deg] — 실측 좌우 비대칭 재현")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -150,6 +151,10 @@ if ("contact" in _off or "all" in _off) and "threshold_range" in _P.feet_contact
     _P.feet_contact.params["threshold_range"] = None
 if _off or args_cli.noise_scale != 1.0:
     print(f"[noise] off={sorted(_off)} scale={args_cli.noise_scale}")
+if args_cli.calib_fixed and getattr(env_cfg.events, "calib_bias", None):
+    _fb = {kv.split(":")[0]: float(kv.split(":")[1]) for kv in args_cli.calib_fixed.split(",") if ":" in kv}
+    env_cfg.events.calib_bias.params["fixed_bias_deg"] = _fb
+    print(f"[calib] 고정 편향 주입 {_fb}")
 if args_cli.imu_roll_bias_deg is not None and getattr(env_cfg.events, "calib_bias", None):
     _rb = math.radians(args_cli.imu_roll_bias_deg)
     env_cfg.events.calib_bias.params["imu_roll_rad"] = (_rb, _rb)

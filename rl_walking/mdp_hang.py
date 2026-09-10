@@ -452,8 +452,8 @@ def action_accel_l2(env) -> torch.Tensor:
 
 
 def foot_load_balance(env, sensor_cfg=None, threshold: float = 5.0, min_total: float = 40.0,
-                      hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float = 8.0, min_height: float = 0.60,
-                      r_eps: float = 0.05) -> torch.Tensor:
+                      gate: str = "contact", hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float = 8.0,
+                      min_height: float = 0.60, r_eps: float = 0.05) -> torch.Tensor:
     """정착 상태에서 양발 수직하중 불균형 |L-R|/(L+R) 벌점 (0~1). 0910 실물: 착지 후 하중이 한 발(오른 65%)로 쏠려 반대 발이 떠 넘어짐 —
     원인이 발 롤·횡 CoM·로프 어느 쪽이든, 하중을 좌우로 고르게 실으면 그 실패를 막는다. settled 램프로 정착 후에만 켠다(착지 순간의 정상적 편하중은 벌 안 줌)."""
     sensor_cfg = sensor_cfg or _feet_cfg()
@@ -461,8 +461,12 @@ def foot_load_balance(env, sensor_cfg=None, threshold: float = 5.0, min_total: f
     fl, fr = fz[:, 0], fz[:, 1]
     tot = fl + fr
     imb = (fl - fr).abs() / tot.clamp(min=min_total)      # min_total 미만이면 분모 고정(공중·저하중서 폭주 방지)
-    imb = torch.where(tot > min_total, imb, torch.zeros_like(imb))
-    return imb.clamp(0.0, 1.0) * settled_ramp(env, hold_s, ramp_s, tilt_deg, min_height, sensor_cfg, threshold, r_eps)
+    imb = torch.where(tot > min_total, imb, torch.zeros_like(imb)).clamp(0.0, 1.0)
+    if gate == "contact":
+        # 0910 v6b: 정착 게이트(지지0·0.5s) 대신 양발 접촉이면 항상 — 줄 풀리는 하중이전 구간(한 발 빠짐이 실제 일어나는 곳)을 커버.
+        both = (torch.norm(env.scene.sensors[sensor_cfg.name].data.net_forces_w[:, sensor_cfg.body_ids, :], dim=-1) > threshold).all(dim=1).float()
+        return imb * both
+    return imb * settled_ramp(env, hold_s, ramp_s, tilt_deg, min_height, sensor_cfg, threshold, r_eps)
 
 
 def settle_quiet_bonus(env, s_ang: float = 0.08, s_lin: float = 0.02, s_jvel: float = 0.06, s_acc: float = 0.05,

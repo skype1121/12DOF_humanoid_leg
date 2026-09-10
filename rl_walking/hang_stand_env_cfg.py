@@ -548,3 +548,14 @@ class Biped12HangStandS9aEnvCfg(Biped12HangStandS8ac4EnvCfg):
         self.rewards.foot_load_balance = RewTerm(
             func=mdp_hang.foot_load_balance, weight=-2.0,
             params={"sensor_cfg": _FEET_SENSOR_CFG})
+
+
+@configclass
+class Biped12HangStandS9bEnvCfg(Biped12HangStandS9aEnvCfg):
+    """S9b(v6b): S9a 의 하중균형 보상을 정착 게이트→양발접촉 게이트로(줄 풀리는 하중이전 구간 커버, v6a 버그 수정)·가중치 −4.
+    0910: v6a 는 하중균형 보상이 정착 후에만 켜져 실제 한발빠짐 구간(줄 걸린 이전)에 신호가 없었다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.foot_load_balance.weight = -4.0
+        self.rewards.foot_load_balance.params["gate"] = "contact"

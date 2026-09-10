@@ -722,6 +722,13 @@ ACTIONS = {
     "release":    (lambda p: RUN.start("release", [
         sys.executable, os.path.join(CALIB, "release_all.py")]), "릴리즈"),
     "analyze":    (lambda p: act_analyze(), "최신 로그 판정"),
+    # 운영 윈치 이벤트(0910 A4) — 동작 없이 세션 타임라인에 시각 기록만. 블랙박스(wall 시각)와 사후 정렬해 '방출/재인장/슬랙'을 판별.
+    "op_release_start": (lambda p: (True, "기록: 방출 시작"), "▶ 방출 시작"),
+    "op_release_stop":  (lambda p: (True, "기록: 방출 정지"), "⏸ 방출 정지"),
+    "op_retension":     (lambda p: (True, "기록: 재인장"), "↥ 재인장"),
+    "op_slack_done":    (lambda p: (True, "기록: 줄 완전 슬랙"), "✓ 슬랙 완료"),
+    "op_touchdown":     (lambda p: (True, "기록: 착지"), "▼ 착지"),
+    "op_note":          (lambda p: (True, f"기록: {str(p.get('note',''))[:80]}"), "메모"),
     # 세션 — 자동 개시/종료가 있지만 사람이 명시로 잡을 수 있어야 한다
     "session_start": (lambda p: (True, f"기록 시작: "
                                  f"{SESSION.ensure('수동 시작', manual=True)}"),
@@ -807,6 +814,13 @@ button[title]:hover{outline:1px solid #3b82f6}
 <span class=pill id=p_live>bridge</span><span class=pill id=p_ckpt>ckpt</span>
 <span class=pill id=p_contact>접촉</span><span class=pill id=p_hang>가드</span>
 <span class=pill id=p_can>CAN</span></div>
+<div class=row style="margin-top:8px;gap:6px;align-items:center">
+<span class=gd style="margin:0 4px 0 0">윈치 이벤트(기록용):</span>
+<button data-a=op_touchdown title="착지 순간 기록 — 블랙박스와 정렬" style="margin:0">▼ 착지</button>
+<button data-a=op_release_start title="윈치 방출 시작 기록" style="margin:0">▶ 방출 시작</button>
+<button data-a=op_release_stop title="윈치 방출 정지 기록" style="margin:0">⏸ 정지</button>
+<button data-a=op_retension title="윈치 재인장(줄 다시 당김) 기록 — 사후에 재긴장 vs 기하 긴장 구분" style="margin:0">↥ 재인장</button>
+<button data-a=op_slack_done title="줄 완전히 느슨해진 순간 기록" style="margin:0">✓ 슬랙 완료</button></div>
 <pre id=events style=max-height:96px>이벤트 없음</pre></section>
 
 <section class=flow><h2>절차 — 위에서 아래로 순서대로 (다음 차례가 밝게 표시됨)</h2>

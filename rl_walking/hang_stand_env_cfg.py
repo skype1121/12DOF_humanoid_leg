@@ -559,3 +559,22 @@ class Biped12HangStandS9bEnvCfg(Biped12HangStandS9aEnvCfg):
         super().__post_init__()
         self.rewards.foot_load_balance.weight = -4.0
         self.rewards.foot_load_balance.params["gate"] = "contact"
+
+
+def _extend_back_com(cfg, x_back):
+    ev = cfg.events
+    if getattr(ev, "base_com", None):
+        cr = dict(ev.base_com.params["com_range"]); cr["x"] = (x_back, 0.0); ev.base_com.params["com_range"] = cr
+
+
+@configclass
+class Biped12HangStandS10aEnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S10a(v6c): S8ac4 + 뒤 CoM 능동균형. (1) com_x −0.08→−0.12(실물 구간), (2) torso_pitch_band 비대칭
+    (앞 12°까지 무벌·뒤 3° 엄격 — CoM 뒤일 때 앞으로 기울여 발 위로). S8ac4 정숙·raw+EMA·settle 유지.
+    근거(0910): 홀드 0/256(정적불안정=능동균형 필수)·v5 com sweep −0.04→−0.10 = 91.8→43.4% 급락·실물 CoM ≥26mm 뒤."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _extend_back_com(self, -0.12)
+        self.rewards.torso_pitch_band.params["fwd_band_rad"] = 0.21   # 앞 12° 무벌
+        # 뒤 밴드는 기존 band_rad(S5w=0.052=3°) 유지. 앞으로 기울여 서는 해법 허용.

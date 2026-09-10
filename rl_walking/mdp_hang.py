@@ -261,11 +261,18 @@ def _selftest_posture():
 # ───────────── 몸통 피치 밴드 (0908 22:35, 승윤님 "몸체·머리는 수평을 잡고 싶다") ─────────────
 # S5k 까지의 정책은 CoM 후방을 '몸통 뒤로 17° 눕히기 + 골반 앞으로' 로 맞춘다 — 서긴 하지만 뒤꿈치 여유가 얇다.
 # 몸통 |피치| 가 band 안이면 0, 밖이면 초과분[rad] 선형 벌점. 수평 몸통 + 다리 전체 4~6° 앞기울임 해법을 유도.
-def torso_pitch_band(env, band_rad: float = 0.087, asset_cfg=None) -> torch.Tensor:
+def torso_pitch_band(env, band_rad: float = 0.087, fwd_band_rad: float | None = None, asset_cfg=None) -> torch.Tensor:
+    """몸통 피치 밴드 벌점. 기본은 |피치|>band 대칭.
+    fwd_band_rad 를 주면 **비대칭**: 앞기울임(pg_x>0, CoM 을 발 위로 가져오는 방향)은 fwd_band 까지 무벌, 뒤기울임은 band_rad.
+    (0911 v6: 실물 CoM 이 발 뒤라 앞으로 기울여야 서는데 대칭 밴드가 그 해법을 벌줬음 — 앞은 관대, 뒤는 엄격.)"""
     asset = env.scene[(asset_cfg or _base_cfg()).name]
     pg = asset.data.projected_gravity_b
-    pitch = torch.atan2(pg[:, 0], -pg[:, 2]).abs()
-    return (pitch - band_rad).clamp(min=0.0)
+    pitch = torch.atan2(pg[:, 0], -pg[:, 2])          # 부호: 앞기울임(pg_x>0)=+
+    if fwd_band_rad is None:
+        return (pitch.abs() - band_rad).clamp(min=0.0)
+    fwd = (pitch - fwd_band_rad).clamp(min=0.0)        # 앞으로 fwd_band 초과분
+    back = (-pitch - band_rad).clamp(min=0.0)          # 뒤로 band 초과분
+    return fwd + back
 
 
 def _selftest_pitch_band():
@@ -274,7 +281,15 @@ def _selftest_pitch_band():
         th = math.radians(deg); pg = torch.tensor([[math.sin(th), 0.0, -math.cos(th)]])
         v = (torch.atan2(pg[:, 0], -pg[:, 2]).abs() - 0.087).clamp(min=0.0)
         assert abs(float(v) - want) < 1e-4, (deg, float(v), want)
-    print("[selftest] 몸통 피치 밴드: 0/4° → 0, ±17° → 12° 초과분 — PASS")
+    # 비대칭: 앞(+) 관대(fwd 12°)·뒤(−) 엄격(3°)
+    import math as _m
+    def pv(deg, fwd, back):
+        th=_m.radians(deg); pg=torch.tensor([[_m.sin(th),0.0,-_m.cos(th)]])
+        pit=torch.atan2(pg[:,0],-pg[:,2]); return float((pit-fwd).clamp(min=0.0)+(-pit-back).clamp(min=0.0))
+    assert abs(pv(+8, _m.radians(12), 0.052)-0.0)<1e-4       # 앞 8° 무벌
+    assert abs(pv(-8, _m.radians(12), 0.052)-(_m.radians(8)-0.052))<1e-4  # 뒤 8° 벌
+    assert abs(pv(+16,_m.radians(12), 0.052)-(_m.radians(16)-_m.radians(12)))<1e-4  # 앞 16° 초과분
+    print("[selftest] 몸통 피치 밴드: 대칭 0/4°→0·±17°→초과분, 비대칭 앞8°→0·뒤8°→벌·앞16°→초과분 — PASS")
 
 def _level_torque(pg, w, k, c):
     """몸통 프레임 복원 토크. pg=투영중력(수평이면 (0,0,−1)), w=각속도(body). 앞기울임(pg_x>0)→ −y 토크(고개 들기),

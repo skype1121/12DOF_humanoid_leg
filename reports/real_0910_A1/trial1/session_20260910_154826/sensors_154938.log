@@ -1,0 +1,12 @@
+15:49:38   종료: PID 11852 (imu_adapter_node.py)
+15:49:39   종료: PID 11852 (imu_adapter_node.py)
+15:49:39   종료: PID 11822 (pressure_serial_node)
+15:49:39   종료: PID 11822 (pressure_serial_node)
+15:49:39   종료: PID 11821 (imu_node)
+15:49:39   종료: PID 11821 (imu_node)
+15:49:39   종료: PID 11853 (foot_force_adapter_node.py)
+15:49:39   종료: PID 11853 (foot_force_adapter_node.py)
+15:49:54 [sensors_up] OK — imu·foot_force 실데이터 확인
+15:49:54   IMU:  A message was lost!!!
+15:49:54   FOOT: {"timestamp": 1789022994.1069076, "left_n": 10.5735, "right_n": 0.0, "
+[종료] 반환코드 0

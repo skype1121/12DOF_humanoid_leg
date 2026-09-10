@@ -1,0 +1,18 @@
+16:29:22 [Stage8-12Axis] command topic = /humanoid/stage8_12axis_mit_command
+16:29:22 [Stage8-12Axis] status topic = /humanoid/stage8_12axis_mit_status
+16:29:22 [Stage8-12Axis] CAN channel = can1
+16:29:22 [Stage8-12Axis] REAL_CAN_WRITE_ENABLED = True
+16:29:22 [Stage8-12Axis] ALLOWED_JOINTS = ['left_hip_f_joint', 'left_hip_a_joint', 'left_hip_r_joint', 'left_knee_joint', 'left_ankle_f_joint', 'left_ankle_r_joint', 'right_hip_f_joint', 'right_hip_a_joint', 'right_hip_r_joint', 'right_knee_joint', 'right_ankle_f_joint', 'right_ankle_r_joint']
+16:29:22 [Stage8-12Axis] 12-axis MIT control node started
+16:31:13 [takeover] 인수 전 RX 백로그 278프레임 폐기
+16:31:13 [takeover] hold 0s 최대괴리 +0.00° (-)
+16:31:14 [takeover] hold 1s 최대괴리 -0.05° (right_ankle_r_joint)
+16:31:15 [takeover] hold 2s 최대괴리 -0.05° (right_ankle_r_joint)
+16:31:16 [takeover] hold 3s 최대괴리 -0.05° (right_ankle_r_joint)
+16:31:17 [takeover] hold 4s 최대괴리 -0.05° (right_ankle_r_joint)
+16:31:18 [takeover] hold 5s 최대괴리 -0.05° (right_ankle_r_joint)
+16:31:19 [takeover] hold 6s 최대괴리 -0.05° (right_ankle_r_joint)
+16:31:20 [takeover] hold 7s 최대괴리 -0.05° (right_ankle_r_joint)
+16:31:21 [takeover] hold 8s 최대괴리 -0.05° (right_ankle_r_joint)
+16:31:22 [takeover] hold 9s 최대괴리 -0.05° (right_ankle_r_joint)
+[종료] 반환코드 0

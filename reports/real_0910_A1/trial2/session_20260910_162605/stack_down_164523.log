@@ -1,0 +1,4 @@
+16:45:23 종료: PID 18249 (stage8_12axis_mit_control_node.py)
+16:45:23 종료: PID 18398 (rl_bridge_node.py)
+16:45:25 [stack_down] OK
+[종료] 반환코드 0

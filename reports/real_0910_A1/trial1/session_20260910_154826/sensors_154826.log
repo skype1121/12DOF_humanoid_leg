@@ -1,0 +1,6 @@
+15:48:27   종료: PID 10707 (imu_node)
+15:48:27   종료: PID 10707 (imu_node)
+15:48:42 [sensors_up] OK — imu·foot_force 실데이터 확인
+15:48:42   IMU:  A message was lost!!!
+15:48:42   FOOT: {"timestamp": 1789022921.6838088, "left_n": 10.6, "right_n": 0.0, "lef
+[종료] 반환코드 0

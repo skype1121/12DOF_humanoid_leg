@@ -757,7 +757,7 @@ BLEND_S = _DC.BLEND_S
 #: 순간 무접촉을 중단시킴 → 스텝 완료 여유 부여. 들림 발버둥 차단은 유지)
 #: (0803 실측: 재인장으로 들리자 접촉 [0,0] → 정책 공중 발버둥.
 #: 서기/제자리걸음 문맥에서 양발 무접촉 지속 = 들림·완전 공중 → 동결이 안전)
-LIFT_STOP_S = 0.6
+LIFT_STOP_S = 1.0   # 0910 승윤님 지시: 0.6→1.0s (A1 3회에서 두 발 이탈 후 0.6s 에 동결 — 회복 여유 부여)
 #: ── 행잉 ARM 리프트 가드 상태기 (0908, 승윤님 지시 Hanging-to-Stand) ──────────────────────
 #: 기존 리프트 가드(양발 무접촉 LIFT_STOP_S → 동결)는 0803 공중 발버둥 사고의 방지책이라 **삭제·완화하지 않는다**.
 #: stand 명령에 hang_arm:true 를 **명시**한 경우에만, 접촉을 한 번도 얻기 전(PRE_CONTACT_HANG_ALLOWED)
@@ -1145,9 +1145,9 @@ def _selftest_hang_guard():
     # (1) 종전 동작: 0.5s 무접촉은 통과, 0.6s 는 동결, 한 발이라도 닿으면 타이머 리셋
     g = HangGuard(hang_mode=False)
     assert g.state == HangGuard.CONTACT_ACQUIRED
-    assert run(g, [(1.0, B, 100.0), (0.5, NONE, 0.0), (0.5, L, 40.0), (0.5, NONE, 0.0)])[0] is None
-    why, t = run(HangGuard(hang_mode=False), [(0.2, B, 100.0), (0.7, NONE, 0.0)])
-    assert why and why.startswith("lift_guard") and abs(t - (0.2 + 0.6)) < 0.03, (why, t)
+    assert run(g, [(1.0, B, 100.0), (LIFT_STOP_S - 0.1, NONE, 0.0), (0.5, L, 40.0), (LIFT_STOP_S - 0.1, NONE, 0.0)])[0] is None
+    why, t = run(HangGuard(hang_mode=False), [(0.2, B, 100.0), (LIFT_STOP_S + 0.1, NONE, 0.0)])
+    assert why and why.startswith("lift_guard") and abs(t - (0.2 + LIFT_STOP_S)) < 0.03, (why, t)
     # (2) 행잉 ARM: 10s 무접촉도 허용, 한 발 접촉은 접지 아님, 양발 0.3s 로 접지 획득
     g = HangGuard(hang_mode=True, t0=0.0)
     assert g.state == HangGuard.PRE_CONTACT
@@ -1156,7 +1156,7 @@ def _selftest_hang_guard():
     assert run(g, [(0.4, B, 60.0)])[0] is None and g.state == HangGuard.CONTACT_ACQUIRED
     assert [s for s, _ in g.pop_transitions()] == [HangGuard.CONTACT_ACQUIRED]
     # 접지 뒤 재들림 = 종전 가드 (0.6s → 동결), 상태 역행 없음
-    why, _ = run(g, [(0.3, B, 120.0), (0.7, NONE, 0.0)])
+    why, _ = run(g, [(0.3, B, 120.0), (LIFT_STOP_S + 0.1, NONE, 0.0)])
     assert why and why.startswith("lift_guard") and g.state == HangGuard.CONTACT_ACQUIRED, why
     # FREE_STAND 표시: 발력 ≥ 0.8·체중
     g = HangGuard(hang_mode=True, t0=0.0)
@@ -1166,7 +1166,7 @@ def _selftest_hang_guard():
     g = HangGuard(hang_mode=True, t0=0.0, hang_max_s=5.0)
     why, t = run(g, [(6.0, NONE, 0.0)])
     assert why and why.startswith("hang_guard") and abs(t - 5.0) < 0.03, (why, t)
-    return (f"hang_arm 없음=종전 동일(0.6s 동결) · 행잉 ARM 10s 무접촉 허용 · 접지 {CONTACT_CONFIRM_S}s 확인 · "
+    return (f"hang_arm 없음=종전 동일({LIFT_STOP_S}s 동결) · 행잉 ARM 10s 무접촉 허용 · 접지 {CONTACT_CONFIRM_S}s 확인 · "
             f"재들림 동결 · FREE_STAND 표시 · 상한 {HANG_MAX_S:.0f}s 동결 — 6케이스 통과")
 
 
@@ -1271,6 +1271,7 @@ def main():
             self.imu = None
             self.imu_ts = 0.0
             self.foot = None
+            self.foot_contact = None     # 0910: 패드 단위 접지 (어댑터 필드), None=구판 합산 규칙
             self.foot_ts = 0.0
             self.baseline = {}
             self.armed = False
@@ -1449,6 +1450,9 @@ def main():
                 d = json.loads(msg.data)
                 self.foot = (float(d["left_n"]), float(d["right_n"]))
                 self.foot_raw_sum = [d.get("left_raw_sum"), d.get("right_raw_sum")]
+                # 0910: 어댑터가 패드 단위 접지(4개 중 하나라도)를 주면 그것을 우선 — 없으면 합산 5N 규칙(구판 어댑터 호환)
+                self.foot_contact = ((bool(d["left_contact"]), bool(d["right_contact"]))
+                                     if "left_contact" in d and "right_contact" in d else None)
                 self.foot_ts = float(d.get("timestamp", time.time()))
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 pass
@@ -1616,8 +1620,11 @@ def main():
                         self.qpos_hold_ticks[k] = 1
             self.prev_qpos = qpos
             gyro, quat = self.imu
-            contact2 = [1.0 if self.foot[0] > CONTACT_FORCE_THRESHOLD_N else 0.0,
-                        1.0 if self.foot[1] > CONTACT_FORCE_THRESHOLD_N else 0.0]
+            if getattr(self, "foot_contact", None) is not None:
+                contact2 = [1.0 if self.foot_contact[0] else 0.0, 1.0 if self.foot_contact[1] else 0.0]
+            else:
+                contact2 = [1.0 if self.foot[0] > CONTACT_FORCE_THRESHOLD_N else 0.0,
+                            1.0 if self.foot[1] > CONTACT_FORCE_THRESHOLD_N else 0.0]
             # 리프트 가드 — 양발 무접촉 LIFT_STOP_S 지속 시 동결 (발버둥 차단).
             # 0908: HangGuard 상태기로 이관. hang_arm 미명시면 종전과 동일 동작(셀프테스트 고정),
             # hang_arm 명시면 접지 획득 전에만 무접촉 허용(상한 HANG_MAX_S).

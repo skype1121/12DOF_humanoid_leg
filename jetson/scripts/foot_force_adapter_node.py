@@ -43,11 +43,16 @@ ERR_LOG_EVERY = 20
 NEWTON_PER_COUNT = 0.02650
 LEFT_BIAS_COUNTS = 328.0
 RIGHT_BIAS_COUNTS = 62.0
+#: 0910 승윤님: 접지 판정은 '4개 패드 중 하나라도 눌리면 접지' (합산 5N 규칙은 발이 모서리로 닿을 때 왼발을 너무 일찍 비접촉으로 판정 →
+#: 정책이 "왼발 떴다" 입력을 받고 반응, A1 3회 공통). 패드별 (count − pad_bias) > PAD_CONTACT_COUNTS 면 그 패드 눌림. 80 counts ≈ 2.1 N.
+PAD_CONTACT_COUNTS = 80.0
 
 
 def pressure_to_foot_force(raw, newton_per_count,
                            left_bias=LEFT_BIAS_COUNTS,
-                           right_bias=RIGHT_BIAS_COUNTS):
+                           right_bias=RIGHT_BIAS_COUNTS,
+                           pad_contact_counts=PAD_CONTACT_COUNTS,
+                           left_pad_bias=None, right_pad_bias=None):
     """압력 JSON dict → foot_force dict (순수 함수, ROS 비의존).
 
     필수: timestamp(숫자), left/right(각 4개 숫자 리스트).
@@ -61,12 +66,23 @@ def pressure_to_foot_force(raw, newton_per_count,
         raise ValueError(f"left/right 길이 오류: {len(left)}/{len(right)} (4 필요)")
     left_sum = sum(int(v) for v in left)
     right_sum = sum(int(v) for v in right)
+    lpb = list(left_pad_bias) if left_pad_bias else [0.0] * 4
+    rpb = list(right_pad_bias) if right_pad_bias else [0.0] * 4
+    if len(lpb) != 4 or len(rpb) != 4:
+        raise ValueError("pad bias 길이 오류 (4 필요)")
+    l_on = [int(int(v) - float(b) > pad_contact_counts) for v, b in zip(left, lpb)]
+    r_on = [int(int(v) - float(b) > pad_contact_counts) for v, b in zip(right, rpb)]
     return {
         "timestamp": float(raw["timestamp"]),
         "left_n": newton_per_count * max(0.0, left_sum - left_bias),
         "right_n": newton_per_count * max(0.0, right_sum - right_bias),
         "left_raw_sum": left_sum,
         "right_raw_sum": right_sum,
+        # 0910: 패드 단위 접지 — 하나라도 눌리면 True (브리지 contact2 가 이 필드를 우선 사용)
+        "left_contact": bool(any(l_on)),
+        "right_contact": bool(any(r_on)),
+        "left_pads_on": int(sum(l_on)),
+        "right_pads_on": int(sum(r_on)),
         "calibrated": True,
     }
 
@@ -126,7 +142,17 @@ def selftest():
         else:
             raise AssertionError(f"손상 입력이 통과됨: {bad}")
 
-    print("[selftest] foot_force_adapter: 합산·뉴턴 스케일·손상입력 거부 ALL PASS")
+    # 4) 패드 단위 접지(0910): 한 패드만 눌려도 True, 예압 패드는 pad_bias 로 상쇄, 전부 무부하면 False
+    o = pressure_to_foot_force({"timestamp": 1.0, "left": [0, 0, 700, 0], "right": [0, 0, 0, 0]}, 0.0265, 700.0, 0.0,
+                               80.0, [0, 0, 700, 0], None)
+    assert o["left_contact"] is False and o["right_contact"] is False and o["left_pads_on"] == 0, o
+    o = pressure_to_foot_force({"timestamp": 1.0, "left": [0, 0, 700, 150], "right": [0, 90, 0, 0]}, 0.0265, 700.0, 0.0,
+                               80.0, [0, 0, 700, 0], None)
+    assert o["left_contact"] is True and o["left_pads_on"] == 1 and o["right_contact"] is True and o["right_pads_on"] == 1, o
+    o = pressure_to_foot_force({"timestamp": 1.0, "left": [0, 0, 760, 0], "right": [0, 0, 0, 0]}, 0.0265, 700.0, 0.0,
+                               80.0, [0, 0, 700, 0], None)
+    assert o["left_contact"] is False, "예압 패드 +60 카운트 요동은 접지 아님"
+    print("[selftest] foot_force_adapter: 합산·뉴턴 스케일·손상입력 거부·패드 단위 접지(하나라도 눌리면 True, 예압 상쇄) ALL PASS")
     return 0
 
 
@@ -150,6 +176,9 @@ def main():
     node.declare_parameter("newton_per_count", NEWTON_PER_COUNT)
     node.declare_parameter("left_bias_counts", LEFT_BIAS_COUNTS)
     node.declare_parameter("right_bias_counts", RIGHT_BIAS_COUNTS)
+    node.declare_parameter("pad_contact_counts", PAD_CONTACT_COUNTS)
+    node.declare_parameter("left_pad_bias", [0.0, 0.0, 0.0, 0.0])    # 패드별 무부하 카운트(예압 패드 타어) — 0910 왼[2] 700
+    node.declare_parameter("right_pad_bias", [0.0, 0.0, 0.0, 0.0])
     qos = QoSProfile(depth=QOS_DEPTH)
     pub = node.create_publisher(String, OUT_TOPIC, qos)
     stat = {"ok": 0, "err": 0}
@@ -160,8 +189,11 @@ def main():
         npc = float(node.get_parameter("newton_per_count").value)
         lb = float(node.get_parameter("left_bias_counts").value)
         rb = float(node.get_parameter("right_bias_counts").value)
+        pcc = float(node.get_parameter("pad_contact_counts").value)
+        lpb = [float(v) for v in node.get_parameter("left_pad_bias").value]
+        rpb = [float(v) for v in node.get_parameter("right_pad_bias").value]
         try:
-            out = pressure_to_foot_force(json.loads(msg.data), npc, lb, rb)
+            out = pressure_to_foot_force(json.loads(msg.data), npc, lb, rb, pcc, lpb, rpb)
         except Exception as e:
             stat["err"] += 1
             if stat["err"] % ERR_LOG_EVERY == 1:  # 1·21·41…번째만 로그

@@ -563,7 +563,9 @@ def bridge_cmd_payload(cmd, extra=None):
 
 def act_bridge_cmd(cmd, extra=None):
     st = TEL.view()
-    _need(st["bridge"]["live"] or cmd == "estop",
+    # 0910 A1 현장 버그: 브리지는 stand 이후에만 debug 토픽을 내므로 '토픽 기준 live' 로는 첫 stand 를 영영 못 보낸다.
+    # 콘솔이 띄운 브리지 프로세스가 살아 있으면(RUN 추적) 허용. 실물에선 ros2 CLI(/tmp/fire_stand.sh)로 우회했었음.
+    _need(st["bridge"]["live"] or RUN.alive("bridge") or cmd == "estop",
           "브리지가 live 상태가 아닙니다 — 먼저 브리지를 기동하세요")
     payload = bridge_cmd_payload(cmd, extra)
     ok = TEL.publish("bridge", payload)

@@ -41,6 +41,7 @@ parser.add_argument("--noise_off", type=str, default="", help="관측 노이즈 
 parser.add_argument("--noise_scale", type=float, default=1.0, help="남은 관측 노이즈 대역 스케일(0.25/0.5/0.75/1.0)")
 parser.add_argument("--no_obs_noise", action="store_true", help="관측 노이즈(enable_corruption) 끔 — 정책 고유 정지도 측정용(학습 노이즈 ±0.2rad/s 자이로 등이 잔떨림을 만드는지 분리)")
 parser.add_argument("--lpf_beta", type=float, default=None, help="배포 체인 stand LPF β 덮어쓰기 (기본 deploy_chain.STAND_LPF_BETA=0.27; 작을수록 더 부드러움) — 재학습 없이 스탠바이 흔들림을 잡는 배포측 레버 시험")
+parser.add_argument("--imu_roll_bias_deg", type=float, default=None, help="IMU 롤 장착 편향을 전 env 상수로 고정 [deg] (0910 실물 재현: 실물 콘솔 lat +1.0~1.4°)")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -149,6 +150,10 @@ if ("contact" in _off or "all" in _off) and "threshold_range" in _P.feet_contact
     _P.feet_contact.params["threshold_range"] = None
 if _off or args_cli.noise_scale != 1.0:
     print(f"[noise] off={sorted(_off)} scale={args_cli.noise_scale}")
+if args_cli.imu_roll_bias_deg is not None and getattr(env_cfg.events, "calib_bias", None):
+    _rb = math.radians(args_cli.imu_roll_bias_deg)
+    env_cfg.events.calib_bias.params["imu_roll_rad"] = (_rb, _rb)
+    print(f"[imu] 롤 편향 고정 {args_cli.imu_roll_bias_deg:+.2f}°")
 if args_cli.com_fix is not None and getattr(env_cfg.events, "base_com", None):
     env_cfg.events.base_com.params["com_range"] = {"x": (args_cli.com_fix, args_cli.com_fix), "y": (0.0, 0.0), "z": (0.0, 0.0)}
 T_s = args_cli.seconds if args_cli.seconds else float(env_cfg.episode_length_s)
@@ -218,6 +223,8 @@ _ss_w = torch.zeros(N, device=dev); _ss_v = torch.zeros(N, device=dev); _ss_qd2 
 _SS_FROM = STEPS - 150   # 마지막 3s = 정상상태(스탠바이) 구간
 _ss_ar2 = torch.zeros(N, device=dev); _ss_r2 = torch.zeros(N, device=dev); _ss_p2 = torch.zeros(N, device=dev); _ss_rpk = torch.zeros(N, device=dev); _ss_ppk = torch.zeros(N, device=dev); _prev_a = None
 _ss_aa2 = torch.zeros(N, device=dev); _ss_pm = torch.zeros(N, device=dev); _prev_a2 = None   # 액션 2차차분(채터 겨냥 보상의 직접 지표)·정착 피치 부호 평균
+_air_q = torch.zeros(N, 12, device=dev); _air_n = torch.zeros(N, device=dev)   # 0910: 공중(지지비>0.9) 관절각 평균 — 실물 공중 비대칭(왼 힙a +11 vs 오른 +6) 대조
+_jn = list(robot.joint_names); _jidx = {n: i for i, n in enumerate(_jn)}
 t0 = time.time()
 for i in range(STEPS):
     with torch.inference_mode():
@@ -245,6 +252,9 @@ for i in range(STEPS):
     _ever_both |= (a_ & _both_now)
     _lift_evt = (a_ & _ever_both & _prev_both & ~_both_now).float()
     _lift_cnt += _lift_evt
+    _air = a_ & (st["r"] > 0.9)
+    if _air.any():
+        _air_q[_air] += robot.data.joint_pos[_air]; _air_n[_air] += 1.0
     if i >= _SS_FROM:
         _ss = a_ & (st["r"] <= 0.0)
         _ss_w[_ss] += robot.data.root_ang_vel_b[_ss, :2].norm(dim=-1); _ss_v[_ss] += robot.data.root_lin_vel_b[_ss, :2].norm(dim=-1)
@@ -325,6 +335,13 @@ if _ok2.any():
     P(f"   정상상태 추가: action-rate RMS {float(((_ss_ar2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.4f} · 롤 RMS {float(((_ss_r2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.2f}° 피크 {float(_ss_rpk[_ok2].mean()):.2f}° · "
       f"피치 RMS {float(((_ss_p2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.2f}° 피크 {float(_ss_ppk[_ok2].mean()):.2f}° · "
       f"액션 2차차분 RMS {float(((_ss_aa2[_ok2]/_ss_n[_ok2]).sqrt()).mean()):.4f} · 정착 피치 평균 {float((_ss_pm[_ok2]/_ss_n[_ok2]).mean()):+.2f}°")
+_okA = _air_n > 0
+if _okA.any():
+    _mq = torch.rad2deg((_air_q[_okA] / _air_n[_okA, None]).mean(0))
+    def _J(n): return float(_mq[_jidx[n]])
+    P(f"공중 자세(지지비>0.9, 관절각 평균°): 힙a L {_J('left_hip_a_joint'):+.1f} / R {_J('right_hip_a_joint'):+.1f} · 힙f L {_J('left_hip_f_joint'):+.1f} / R {_J('right_hip_f_joint'):+.1f} · "
+      f"힙r L {_J('left_hip_r_joint'):+.1f} / R {_J('right_hip_r_joint'):+.1f} · 무릎 L {_J('left_knee_joint'):+.1f} / R {_J('right_knee_joint'):+.1f} · 발목f L {_J('left_ankle_f_joint'):+.1f} / R {_J('right_ankle_f_joint'):+.1f}"
+      f"   (실물 0910 공중: 힙a +11/+6 · 힙f −10/−0.5 · 힙r +3/+8 · 무릎 −0.6/−10)")
 P("시간축 (0.5s 간격): t  지지비  접촉비  base z  피치")
 for k in range(0, STEPS, 25):
     P(f"   {k/50:5.1f}  {ratio_trace[k]:5.2f}  {contact_trace[k]:5.2f}  {z_trace[k]:5.3f}  {pitch_trace[k]:+6.2f}")

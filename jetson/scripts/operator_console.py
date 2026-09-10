@@ -837,7 +837,7 @@ async function act(a){
  if(a==='posture')body.pose=$('#pose').value;
  if(a==='trim'){body.a=+$('#t_a').value;body.h=+$('#t_h').value;body.k=+$('#t_k').value;}
  if(a==='stand'){body.hang_arm=$('#hang_arm').checked;
-   if(body.hang_arm&&!confirm('행잉 ARM — 접지 전 무접촉을 허용합니다(최대 120s).\n'
+   if(body.hang_arm&&!confirm('행잉 ARM — 접지 전 무접촉을 허용합니다(최대 120s).\\n'
      +'매달린 채 정책이 켜집니다. 절차 E·F 단계가 맞습니까?'))return;}
  if(a==='zero_recapture'){
    if(!confirm('영점 재캡처 — 지금 자세가 기준 자세(수평 매달림/정렬)가 확실합니까?\\n'

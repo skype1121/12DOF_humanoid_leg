@@ -298,7 +298,10 @@ touched = touch_t >= 0
 released = rel_t >= 0
 t_final = STEPS / 50.0
 surv_after = torch.where(fell, death_step.float() / 50.0, torch.full_like(rel_t, t_final)) - rel_t
-stand5 = released & (~fell | (surv_after >= args_cli.stand_s))
+# 0911 Codex 지적 수정: '안 넘어짐(~fell)'만으로 성공 처리하면 방출이 늦어 방출 후 stand_s 를 못 채운 env 도 성공으로 셈.
+# 성공 = 방출 도달 & 방출 후 stand_s 이상 생존(넘어지지 않고). 방출 후 stand_s 미만은 '미검증'으로 성공 제외.
+stand5 = released & (~fell) & (surv_after >= args_cli.stand_s)
+_inconcl = int((released & (~fell) & (surv_after < args_cli.stand_s)).sum())  # 방출은 됐으나 관측창이 짧아 미검증
 def pct(x): return 100.0 * float(x.float().mean())
 def dirs(p, r):
     m = ~torch.isnan(p)
@@ -317,6 +320,7 @@ P("=" * 74)
 P(f"접지(양발 동시) 도달      : {int(touched.sum())}/{N} ({pct(touched):.1f}%)  평균 접지 시각 {float(touch_t[touched].mean()) if touched.any() else float('nan'):.2f}s")
 P(f"지지 0 도달(살아서)        : {int(released.sum())}/{N} ({pct(released):.1f}%)  평균 방출완료 시각 {float(rel_t[released].mean()) if released.any() else float('nan'):.2f}s  그때 피치 {float(pitch_at_rel[released].mean()) if released.any() else float('nan'):+.2f}°")
 P(f"**지지 0 이후 {args_cli.stand_s:.0f}s 생존**   : {int(stand5.sum())}/{N} ({pct(stand5):.1f}%)   ← 핵심 지표")
+P(f"**지지 0 이후 {args_cli.stand_s:.0f}s 생존**(미검증 {_inconcl}: 방출 후 관측창 <{args_cli.stand_s:.0f}s)")
 P(f"낙상(조기 종료)            : {int(fell.sum())}/{N} ({pct(fell):.1f}%)  방향 뒤 {b} · 앞 {fw} · 왼 {l} · 오른 {rgt}")
 if fell.any():
     P(f"   낙상 시 지지비 평균 {float(r_at_death[fell].mean()):.2f}, 낙상 시각 평균 {float(death_step[fell].float().mean())/50:.2f}s, "

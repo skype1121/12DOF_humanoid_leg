@@ -267,11 +267,11 @@ def torso_pitch_band(env, band_rad: float = 0.087, fwd_band_rad: float | None = 
     (0911 v6: 실물 CoM 이 발 뒤라 앞으로 기울여야 서는데 대칭 밴드가 그 해법을 벌줬음 — 앞은 관대, 뒤는 엄격.)"""
     asset = env.scene[(asset_cfg or _base_cfg()).name]
     pg = asset.data.projected_gravity_b
-    pitch = torch.atan2(pg[:, 0], -pg[:, 2])          # 부호: 앞기울임(pg_x>0)=+
+    pitch = torch.atan2(pg[:, 0], -pg[:, 2])          # 실측 부호: 앞기울임 = 음수(v5 정착 −4.9°), 뒤기울임 = 양수
     if fwd_band_rad is None:
         return (pitch.abs() - band_rad).clamp(min=0.0)
-    fwd = (pitch - fwd_band_rad).clamp(min=0.0)        # 앞으로 fwd_band 초과분
-    back = (-pitch - band_rad).clamp(min=0.0)          # 뒤로 band 초과분
+    fwd = (-pitch - fwd_band_rad).clamp(min=0.0)       # 앞(음수)으로 fwd_band 초과분 — 관대(fwd_band 큼)
+    back = (pitch - band_rad).clamp(min=0.0)           # 뒤(양수)로 band 초과분 — 엄격(band 작음)
     return fwd + back
 
 
@@ -286,10 +286,14 @@ def _selftest_pitch_band():
     def pv(deg, fwd, back):
         th=_m.radians(deg); pg=torch.tensor([[_m.sin(th),0.0,-_m.cos(th)]])
         pit=torch.atan2(pg[:,0],-pg[:,2]); return float((pit-fwd).clamp(min=0.0)+(-pit-back).clamp(min=0.0))
-    assert abs(pv(+8, _m.radians(12), 0.052)-0.0)<1e-4       # 앞 8° 무벌
-    assert abs(pv(-8, _m.radians(12), 0.052)-(_m.radians(8)-0.052))<1e-4  # 뒤 8° 벌
-    assert abs(pv(+16,_m.radians(12), 0.052)-(_m.radians(16)-_m.radians(12)))<1e-4  # 앞 16° 초과분
-    print("[selftest] 몸통 피치 밴드: 대칭 0/4°→0·±17°→초과분, 비대칭 앞8°→0·뒤8°→벌·앞16°→초과분 — PASS")
+    def pv2(deg, fwd, back):
+        th=_m.radians(deg); pg=torch.tensor([[_m.sin(th),0.0,-_m.cos(th)]])
+        pit=torch.atan2(pg[:,0],-pg[:,2]); return float((-pit-fwd).clamp(min=0.0)+(pit-back).clamp(min=0.0))
+    # 앞기울임 = 음수 deg. 앞 −8°→무벌(fwd 12°), 뒤 +8°→벌(back 3°), 앞 −16°→초과분
+    assert abs(pv2(-8, _m.radians(12), 0.052)-0.0)<1e-4, pv2(-8,_m.radians(12),0.052)
+    assert abs(pv2(+8, _m.radians(12), 0.052)-(_m.radians(8)-0.052))<1e-4
+    assert abs(pv2(-16,_m.radians(12), 0.052)-(_m.radians(16)-_m.radians(12)))<1e-4
+    print("[selftest] 몸통 피치 밴드: 비대칭 앞(−)8°→무벌·뒤(+)8°→벌·앞16°→초과분(부호 수정) — PASS")
 
 def _level_torque(pg, w, k, c):
     """몸통 프레임 복원 토크. pg=투영중력(수평이면 (0,0,−1)), w=각속도(body). 앞기울임(pg_x>0)→ −y 토크(고개 들기),

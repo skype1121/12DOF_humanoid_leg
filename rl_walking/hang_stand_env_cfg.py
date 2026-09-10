@@ -575,6 +575,6 @@ class Biped12HangStandS10aEnvCfg(Biped12HangStandS8ac4EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        _extend_back_com(self, -0.12)
-        self.rewards.torso_pitch_band.params["fwd_band_rad"] = 0.21   # 앞 12° 무벌
+        _extend_back_com(self, -0.10)                                  # v6c2: −0.12 는 희석 → −0.10(실물 구간 커버)
+        self.rewards.torso_pitch_band.params["fwd_band_rad"] = 0.21   # 앞(음수) 12°까지 무벌 (부호 수정판)
         # 뒤 밴드는 기존 band_rad(S5w=0.052=3°) 유지. 앞으로 기울여 서는 해법 허용.

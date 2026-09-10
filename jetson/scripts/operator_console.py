@@ -756,6 +756,8 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 .chk{font-size:11px;color:#fbbf24}
 input[type=number]{width:58px;background:#12141a;color:#e6e8ef;border:1px solid #333a4d;border-radius:5px;padding:4px;margin-right:4px}
 button[title]:hover{outline:1px solid #3b82f6}
+@media(min-width:1100px){main{grid-template-columns:minmax(520px,1.15fr) minmax(360px,1fr)}}
+.step .msg{max-width:46%}
 </style></head><body>
 <header><h1>실기 운영 콘솔</h1><span id=conn class=pill>연결 중…</span>
 <span id=sess class="pill dim">세션 —</span>

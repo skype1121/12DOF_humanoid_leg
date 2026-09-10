@@ -118,8 +118,10 @@ def _probe_obs_dim(net, candidates=(OBS_DIM_STAGE4, OBS_DIM_S8A)) -> int:
     raise RuntimeError(f"관측 차원 검출 실패 (후보 {candidates}): {errs}")
 
 #: 기본 모델 경로 (exported/ — policy.onnx 우선, 없으면 policy.pt)
-DEFAULT_MODEL_DIR_STAGE4 = (
-    "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/"
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 0910: PC 절대경로 → 저장소 상대(젯슨 ~/humanoid_repo 에서도 유효). 브리지는 항상 명시 경로를 넘기므로 런타임 영향 없음(selftest 기본값).
+DEFAULT_MODEL_DIR_STAGE4 = os.path.join(
+    _REPO_ROOT, "logs/rsl_rl/biped12_stage4/"
     "2026-07-26_14-53-03/exported"
 )
 
@@ -567,7 +569,15 @@ def _selftest_slew() -> str:
 
 def _selftest_model() -> str:
     """(e) 실제 Stage4 체크포인트 로드 + 1회 추론 (245 입력 수용·유한성·슬루 한도)."""
-    r = PolicyRunnerStage4(DEFAULT_MODEL_DIR_STAGE4, backend="auto")
+    model_dir = DEFAULT_MODEL_DIR_STAGE4
+    if not os.path.isdir(model_dir):
+        # 젯슨엔 walk 기본 정책이 미배포일 수 있다 — 배포된 exported 중 최신(정렬 마지막)으로 대체 (0910 A1 배포에서 FAIL 난 경로)
+        import glob
+        cands = sorted(glob.glob(os.path.join(_REPO_ROOT, "logs/rsl_rl/biped12_stage4/*/exported/policy.pt")))
+        if not cands:
+            raise FileNotFoundError(f"배포된 exported/policy.pt 없음 (기본 {model_dir})")
+        model_dir = os.path.dirname(cands[-1])
+    r = PolicyRunnerStage4(model_dir, backend="auto")
     r.reset()
     out = r.step(
         gyro_rad_s=np.zeros(3),
@@ -581,8 +591,8 @@ def _selftest_model() -> str:
     assert np.all(np.isfinite(out)), "추론 출력에 NaN/Inf"
     assert np.all(np.abs(out - DEFAULT_POSE_RAD) <= SLEW_RAD + 1e-6), \
         "첫 틱 출력이 슬루 한도(기준점=qpos)를 벗어남"
-    assert r.last_obs.shape == (OBS_DIM_STAGE4,), "관측 245 아님"
-    return (f"모델 로드+추론 OK (백엔드={r.backend}, 관측 245→출력 12 유한, "
+    assert r.last_obs.shape == (r.obs_dim,), f"관측 {r.obs_dim} 아님: {r.last_obs.shape}"
+    return (f"모델 로드+추론 OK (백엔드={r.backend}, {os.path.basename(os.path.dirname(model_dir))} 관측 {r.obs_dim}→출력 12 유한, "
             f"첫 틱 |Δ|max={np.abs(out - DEFAULT_POSE_RAD).max():.4f} rad ≤ 슬루)")
 
 

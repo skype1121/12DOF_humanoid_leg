@@ -743,6 +743,19 @@ max-height:230px;overflow:auto;font-size:11.5px;margin:8px 0 0;white-space:pre-w
 .pill{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid #333a4d}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:#242938;
 border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;display:none;z-index:20}
+.flow .grp{margin:12px 0 4px;font-size:13px;font-weight:600;color:#c7cbd6}.flow .grp:first-of-type{margin-top:0}
+.gd{font-weight:400;color:#8b93a7;font-size:11.5px;margin-left:6px}
+.step{display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:8px;border:1px solid transparent}
+.step.next{border-color:#3b82f6;background:#141a2b}
+.step .n{width:22px;height:22px;border-radius:50%;background:#242938;color:#8b93a7;font-size:11px;display:flex;align-items:center;justify-content:center;flex:none}
+.step.next .n{background:#3b82f6;color:#fff}
+.step button{margin:0;min-width:150px}
+.step .st{font-size:11px;padding:2px 9px;border-radius:99px;border:1px solid #333a4d;color:#8b93a7;flex:none}
+.st.prog{color:#fbbf24;border-color:#7a5b1e}.st.ok{color:#4ade80;border-color:#1e6b4a}.st.run{color:#4ade80;border-color:#1e6b4a}.st.fail{color:#f87171;border-color:#7a1e2b}
+.step .msg{font-size:11.5px;color:#8b93a7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chk{font-size:11px;color:#fbbf24}
+input[type=number]{width:58px;background:#12141a;color:#e6e8ef;border:1px solid #333a4d;border-radius:5px;padding:4px;margin-right:4px}
+button[title]:hover{outline:1px solid #3b82f6}
 </style></head><body>
 <header><h1>실기 운영 콘솔</h1><span id=conn class=pill>연결 중…</span>
 <span id=sess class="pill dim">세션 —</span>
@@ -769,185 +782,201 @@ border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;disp
 <div class=row style=margin-top:10px>
 <span class=pill id=p_arm>stage8</span><span class=pill id=p_base>baseline</span>
 <span class=pill id=p_live>bridge</span><span class=pill id=p_ckpt>ckpt</span>
-<span class=pill id=p_contact>접촉</span>
+<span class=pill id=p_contact>접촉</span><span class=pill id=p_hang>가드</span>
 <span class=pill id=p_can>CAN</span></div>
 <pre id=events style=max-height:96px>이벤트 없음</pre></section>
 
-<section><h2>0. 게이트</h2>
-<button data-a=can_up>CAN 브링업</button>
-<button data-a=boot_pose>영점 판정 12/12</button>
-<button data-a=sensors>센서 기동</button>
-<button data-a=selftest>브리지 셀프테스트</button>
-<div style="margin-top:8px;padding-top:8px;border-top:1px solid #2a2f3d">
-<div class=k style="font-size:11px;color:#8b93a7;margin-bottom:6px">영점 재앵커 — 스택 내린 상태에서만</div>
-<button data-a=zero_preview>미리보기</button>
-<button data-a=zero_multiple class=warn>배수 보정</button>
-<button data-a=zero_recapture class=warn>재캡처</button></div>
-<pre id=log_gate>—</pre></section>
+<section class=flow><h2>절차 — 위에서 아래로 순서대로 (다음 차례가 밝게 표시됨)</h2>
+<div class=grp>0. 게이트 <span class=gd>전원·통신·영점·센서 — 하나라도 실패면 진행 금지</span></div>
+<div class=step data-a=can_up><span class=n>1</span><button data-a=can_up title="peak_usb 드라이버 로드 + can1 1Mbps 기동 (부팅 후 1회, sudo)">CAN 브링업</button><span class=st>대기</span><span class=msg></span></div>
+<div class=step data-a=sensors><span class=n>2</span><button data-a=sensors title="IMU·발압력 어댑터 기동 — 판정 지표 신선(초록) 확인. 이미 떠 있으면 다시 누르지 말 것(중복)">센서 기동</button><span class=st>대기</span><span class=msg></span></div>
+<div class=step data-a=boot_pose><span class=n>3</span><button data-a=boot_pose title="제로게인 읽기로 12모터 영점 일치 판정(허용 8°). 홀드 중엔 누르지 말 것 — 같은 버스에 제로게인 프레임을 보내 홀드가 풀림">영점 판정 12/12</button><span class=st>대기</span><span class=msg></span></div>
+<div class=step data-a=selftest><span class=n>4</span><button data-a=selftest title="브리지 셀프테스트(하드웨어맵·게이트·가드·학습 계약·정책 로드). 홀드 중엔 누르지 말 것">브리지 셀프테스트</button><span class=st>대기</span><span class=msg></span></div>
 
-<section><h2>1. 기립 → 무장</h2>
-<button data-a=stage8 class=warn>stage8 선기동</button>
-<button data-a=hang_stand class=warn>hang_stand</button>
-<div style="margin:6px 0;padding:6px 0;border-top:1px solid #2a2f3d">
-<div style="font-size:11px;color:#8b93a7;margin-bottom:4px">트림 — 공중에서 스탠바이 자세 만들기 (0.5°/s)</div>
-<button data-a=trim_preset class=warn>정책 평형 자세 (a+12.5 h+6.4 k+10.4)</button>
-<button data-a=trim_zero>트림 0</button><br>
-<span style=font-size:12px;color:#8b93a7>수동: </span>
-<input id=t_a type=number step=0.5 value=0 style="width:58px;background:#12141a;color:#e6e8ef;border:1px solid #333a4d;border-radius:5px;padding:4px">
-<input id=t_h type=number step=0.5 value=0 style="width:58px;background:#12141a;color:#e6e8ef;border:1px solid #333a4d;border-radius:5px;padding:4px">
-<input id=t_k type=number step=0.5 value=0 style="width:58px;background:#12141a;color:#e6e8ef;border:1px solid #333a4d;border-radius:5px;padding:4px">
-<button data-a=trim>적용 (발목/힙/무릎)</button></div>
-<button data-a=gain_ramp class=warn>게인 램프 kp150</button>
-<button data-a=ground>접지 선언</button>
-<button data-a=handoff class=warn>핸드오프</button><br>
-<button data-a=baseline>베이스라인</button>
-<button data-a=arm class=warn>ARM</button>
-<button data-a=disarm>DISARM</button>
-<pre id=log_stack>—</pre></section>
+<div class=grp>1. 공중 홀드 <span class=gd>매달린 채 스탠드 자세를 kp150 으로 잡는다</span></div>
+<div class=step data-a=stage8><span class=n>5</span><button data-a=stage8 class=warn title="stage8 제어 노드를 인수 대기 모드로 띄운다 (토크 없음, 핸드오프 때 넘겨받음)">stage8 선기동</button><span class=st>대기</span><span class=msg></span></div>
+<div class=step data-a=hang_stand><span class=n>6</span><button data-a=hang_stand class=warn title="기립 스크립트: 현재각→스탠드 자세 kp20 에어램프(6 s) 후 유지. 트림 0">hang_stand 홀드</button><span class=st>대기</span><span class=msg></span></div>
+<div class=step data-a=gain_ramp><span class=n>7</span><button data-a=gain_ramp class=warn title="kp20→kp150 8 s 램프 (전 모터 오차 3° 미만일 때만 수락). 반드시 착지 전 공중에서">게인 램프 kp150</button><span class=st>대기</span><span class=msg></span></div>
 
-<section><h2>2. 정책</h2><div class=row>
-<select id=ckpt><!--CKPT_OPTIONS--></select>
-<button data-a=bridge class=warn>브리지 live</button></div>
-<button data-a=stand class=go>stand 발사</button>
-<label style="font-size:11px;color:#fbbf24;display:block;margin:4px 0"><input type=checkbox id=hang_arm> 행잉 ARM — 접지 전 무접촉 허용(최대 120s). 절차 E·F 단계 전용, 평소엔 끔</label>
-<button data-a=march class=go>march 발사</button>
-<div style="margin-top:8px;padding-top:8px;border-top:1px solid #2a2f3d">
-<div style="font-size:11px;color:#8b93a7;margin-bottom:6px">측정 — 정책 없이 stage8만 (ARM 후)</div>
-<button data-a=zero_kin class=warn>영점 기구학 검증</button><br>
-<select id=pose><option value=policy_v8>정책 평형 자세(v8)</option>
-<option value=policy_v7>정책 평형 자세(v7)</option>
-<option value=knee_only>무릎만</option><option value=ankle_only>발목만</option>
-<option value=zero>전 관절 0 복귀</option></select>
-<button data-a=posture class=warn>자세 진입</button></div>
-<pre id=log_bridge>—</pre></section>
+<div class=grp>2. 착지 · 인계 <span class=gd>윈치로 발끝 연직선에 평평하게 착지 → 발력 30~50% 에서 멈춘 뒤</span></div>
+<div class=step data-a=ground><span class=n>8</span><button data-a=ground title="접지 선언: hang_stand 의 무부하 스톨가드 해제 (착지 후, 또는 공중 발사 절차 때는 인계 직전)">접지 선언</button><span class=st>대기</span><span class=msg></span></div>
+<div class=step data-a=handoff><span class=n>9</span><button data-a=handoff class=warn title="hang_stand 가 릴리즈 없이 종료 → 모터는 현 자세·kp150 유지, stage8 이 인수 (접지 선언 + kp150 + stage8 대기 필요)">핸드오프</button><span class=st>대기</span><span class=msg></span></div>
+<div class=step data-a=baseline><span class=n>10</span><button data-a=baseline title="stage8 베이스라인 12/12 캡처 (현재 각도를 기준점으로)">베이스라인 12/12</button><span class=st>대기</span><span class=msg></span></div>
+<div class=step data-a=arm><span class=n>11</span><button data-a=arm class=warn title="ARM_ALL — stage8 이 명령 스트리밍 시작 (토크 유지 상태로 정책 대기)">ARM</button><span class=st>대기</span><span class=msg></span></div>
 
-<section><h2>3. 회수 · 판정</h2>
-<button data-a=stack_down>스택 종료</button>
-<button data-a=release class=warn>릴리즈</button>
-<button data-a=analyze>최신 로그 판정</button>
-<button data-a=session_end>세션 종료</button>
-<pre id=log_tail>—</pre></section>
+<div class=grp>3. 정책 <span class=gd>체크포인트 선택 → 브리지 → 발사. 공중 발사는 행잉 ARM 체크(접지 전 무접촉 120 s 허용)</span></div>
+<div class=step data-a=bridge><span class=n>12</span><select id=ckpt title="배포된 정책 체크포인트"><!--CKPT_OPTIONS--></select> <button data-a=bridge class=warn title="선택한 정책으로 RL 브리지를 LIVE 로 띄운다 (stand 전까지 대기, 블랙박스 기록 시작)">브리지 live</button><span class=st>대기</span><span class=msg></span></div>
+<div class=step data-a=stand><span class=n>13</span><button data-a=stand class=go title="stand 명령 발행 — 중력 게이트 통과 시 블렌딩 1.5 s 후 정책 제어 시작">stand 발사</button>
+<label class=chk title="체크 시 접지 전 무접촉을 최대 120 s 허용(HangGuard). 매달린 채 발사할 때만"><input type=checkbox id=hang_arm> 행잉 ARM</label><span class=st>대기</span><span class=msg></span></div>
+
+<div class=grp>4. 회수 <span class=gd>줄 인장 → 스택 종료 → 그 다음에만 릴리즈 (동시 실행 금지)</span></div>
+<div class=step data-a=stack_down><span class=n>14</span><button data-a=stack_down title="브리지·stage8·hang_stand 종료 (콘솔이 띄운 것만, 명시 PID)">스택 종료</button><span class=st>대기</span><span class=msg></span></div>
+<div class=step data-a=release><span class=n>15</span><button data-a=release class=warn title="12모터 2 s 게인 램프다운 → 제로게인 + MIT 해제(무토크). 스택이 살아 있으면 거부(exit 3)">릴리즈</button><span class=st>대기</span><span class=msg></span></div>
+<div class=step data-a=session_end><span class=n>16</span><button data-a=session_end title="세션 기록(타임라인) 닫기">세션 종료</button><span class=st>대기</span><span class=msg></span></div>
+<div class=step data-a=analyze><span class=n>17</span><button data-a=analyze title="최신 블랙박스 analyze_fall.py 판정(A~D 등급·토크표)">최신 로그 판정</button><span class=st>대기</span><span class=msg></span></div>
+</section>
+
+<section><h2>실행 로그 <span class=gd id=log_key>—</span></h2><pre id=log_main style=max-height:420px>—</pre>
+<details style="margin-top:10px"><summary style="cursor:pointer;color:#8b93a7;font-size:12px">고급 (트림·영점·측정·march) — 절차 밖 도구</summary>
+<div style="margin-top:8px">
+<div class=gd style="margin:6px 0">트림 (hang_stand 홀드 중, 0.5°/s)</div>
+<button data-a=trim_zero title="발목·힙·무릎 트림 전부 0 (Hanging-to-Stand 정책은 0 이 기본)">트림 0</button>
+<button data-a=trim_preset class=warn title="v18b 계열 평형 자세 트림 a+12.5 h+6.4 k+10.4 — Hanging-to-Stand 정책엔 쓰지 않음">정책 평형 자세(v8)</button>
+<span style=font-size:12px;color:#8b93a7> 수동: </span>
+<input id=t_a type=number step=0.5 value=0 title="발목 [°]"><input id=t_h type=number step=0.5 value=0 title="힙 [°]"><input id=t_k type=number step=0.5 value=0 title="무릎 [°]">
+<button data-a=trim title="입력한 발목/힙/무릎 트림 적용">적용</button>
+<div class=gd style="margin:10px 0 6px">영점 재앵커 — 스택 내린 상태에서만. 배수 보정이 항상 우선, 재캡처는 기준 자세일 때만</div>
+<button data-a=zero_preview title="현재 읽기 vs 앵커 비교 (쓰기 없음)">미리보기</button>
+<button data-a=zero_multiple class=warn title="36°/10° 배수 프레임 시프트만 보정 (안전)">배수 보정</button>
+<button data-a=zero_recapture class=warn title="현재 읽기를 새 영점으로 씀 — 가장 위험한 쓰기, 백업 자동">재캡처</button>
+<div class=gd style="margin:10px 0 6px">측정 (정책 없이 stage8 만, ARM 후)</div>
+<button data-a=zero_kin class=warn title="발목 ±3° 스윕으로 영점 오차 절편 추정">영점 기구학 검증</button>
+<select id=pose title="자세 프로브 목표"><option value=policy_v8>정책 평형 자세(v8)</option><option value=policy_v7>정책 평형 자세(v7)</option><option value=knee_only>무릎만</option><option value=ankle_only>발목만</option><option value=zero>전 관절 0 복귀</option></select>
+<button data-a=posture class=warn title="stage8 홀드만으로 목표 자세 진입">자세 진입</button>
+<div class=gd style="margin:10px 0 6px">기타</div>
+<button data-a=march class=go title="march 정책 발사 (보행 계열 체크포인트 전용)">march 발사</button>
+<button data-a=disarm title="DISARM_ALL — stage8 스트리밍 중단(동결 홀드)">DISARM</button>
+<button data-a=session_start title="세션 기록 수동 시작">기록 시작</button>
+</div></details></section>
 </main><div id=toast></div>
 <script>
 const $=s=>document.querySelector(s);
 function toast(m,bad){const t=$('#toast');t.textContent=m;
 t.style.borderColor=bad?'#c0243a':'#3a4256';t.style.display='block';
 clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',4200);}
+// 액션 → 감시할 프로세스 키. null = 즉시 응답형
+const PROC={can_up:null,sensors:'sensors',boot_pose:'boot_pose',selftest:'selftest',
+ stage8:'stage8',hang_stand:'hang_stand',gain_ramp:'hang_stand',ground:'hang_stand',handoff:'hang_stand',
+ baseline:'stage8_baseline',arm:'stage8_arm',disarm:'stage8_disarm',bridge:'bridge',stand:null,march:null,
+ stack_down:'stack_down',release:'release',analyze:'analyze',zero_preview:'zero',zero_multiple:'zero',zero_recapture:'zero',
+ zero_kin:'zerokin',posture:'posture',trim:null,trim_preset:null,trim_zero:null,session_start:null,session_end:null,estop:null};
+const DAEMON=new Set(['stage8','hang_stand','bridge']);
+const FLOW=['can_up','sensors','boot_pose','selftest','stage8','hang_stand','gain_ramp','ground','handoff','baseline','arm','bridge','stand','stack_down','release','session_end','analyze'];
+const pending={};   // action → {t0, key, pid0, phase}
+const done={};      // action → 'ok'|'fail'|'run'
+let lastKey=null, lastState=null;
+function setSt(a,cls,txt,msg){
+ document.querySelectorAll('.step[data-a="'+a+'"]').forEach(el=>{
+  const s=el.querySelector('.st'); s.className='st '+cls; s.textContent=txt;
+  const m=el.querySelector('.msg'); m.textContent=msg?msg.slice(0,90):''; m.title=msg||'';});
+ if(cls==='ok'||cls==='run')done[a]=cls; else if(cls==='fail')done[a]='fail'; else if(cls==='idle')delete done[a];
+ markNext();}
+function markNext(){
+ let next=null;
+ for(const a of FLOW){ if(done[a]==='ok'||done[a]==='run')continue; next=a; break; }
+ document.querySelectorAll('.step').forEach(el=>el.classList.toggle('next',el.dataset.a===next));}
 async function act(a){
  const body={action:a};
  if(a==='bridge')body.checkpoint=$('#ckpt').value;
  if(a==='posture')body.pose=$('#pose').value;
  if(a==='trim'){body.a=+$('#t_a').value;body.h=+$('#t_h').value;body.k=+$('#t_k').value;}
  if(a==='stand'){body.hang_arm=$('#hang_arm').checked;
-   if(body.hang_arm&&!confirm('행잉 ARM — 접지 전 무접촉을 허용합니다(최대 120s).\\n'
-     +'매달린 채 정책이 켜집니다. 절차 E·F 단계가 맞습니까?'))return;}
+   if(body.hang_arm&&!confirm('행잉 ARM: 접지 전 무접촉 120 s 허용. 매달린 채 발사가 맞습니까?'))return;}
  if(a==='zero_recapture'){
-   if(!confirm('영점 재캡처 — 지금 자세가 기준 자세(수평 매달림/정렬)가 확실합니까?\\n'
-     +'현재 읽기가 그대로 새 앵커가 됩니다.'))return;
-   if(!confirm('한 번 더 확인합니다. 잘못 잡으면 이후 boot_pose_check 조차\\n'
-     +'틀린 기준에 대해 통과합니다. 진행할까요?'))return;}
- else if(['arm','handoff','bridge','stand','march','release','zero_multiple',
-   'posture','zero_kin','gain_ramp','trim','trim_preset'].includes(a)){ if(!confirm(a+' — 실행할까요?'))return;}
- try{const r=await fetch('/api/action',{method:'POST',
-   headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-  const j=await r.json();toast(j.message,!j.ok);}catch(e){toast(''+e,true);}}
-document.querySelectorAll('button[data-a]').forEach(b=>
- b.onclick=()=>act(b.dataset.a));
+   if(!confirm('영점 재캡처: 지금 자세가 기준 자세(수평 매달림·정렬)가 확실합니까? 현재 읽기가 새 앵커가 됩니다.'))return;
+   if(!confirm('한 번 더: 잘못 잡으면 이후 영점 판정도 틀린 기준에 통과합니다. 진행?'))return;}
+ else if(['arm','handoff','release','zero_multiple','posture','zero_kin','gain_ramp','trim','trim_preset','march'].includes(a)){ if(!confirm(a+' — 실행할까요?'))return;}
+ const key=PROC[a]; const P=(lastState&&lastState.procs)||{};
+ pending[a]={t0:Date.now(),key,pid0:(key&&P[key])?P[key].pid:null,phase:'sent'};
+ if(key)lastKey=key;
+ setSt(a,'prog','진행 중…','');
+ try{const r=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json(); toast(j.message,!j.ok);
+  if(!j.ok){setSt(a,'fail','실패',j.message);delete pending[a];return;}
+  pending[a].msg=j.message;
+  if(!key){ // 즉시 응답형
+   if(a==='stand'||a==='march'){pending[a].phase='verify';}
+   else{setSt(a,'ok','성공',j.message);delete pending[a];}
+  }
+ }catch(e){toast(''+e,true);setSt(a,'fail','실패',''+e);delete pending[a];}}
+document.querySelectorAll('button[data-a]').forEach(b=>b.onclick=()=>act(b.dataset.a));
 $('#estop').onclick=()=>act('estop');
+function judge(s){ // 폴링마다 대기 중인 액션 판정
+ const P=s.procs||{}; const now=Date.now();
+ for(const a of Object.keys(pending)){
+  const p=pending[a]; const dt=(now-p.t0)/1000;
+  if(p.phase==='verify'){ // stand/march: 4 s 안에 브리지 armed
+   if(s.bridge.live&&s.bridge.armed){setSt(a,'ok','성공','정책 제어 중 · ckpt '+s.bridge.checkpoint);delete pending[a];}
+   else if(dt>6){setSt(a,'fail','실패','브리지가 armed 로 안 넘어감 — 중력 게이트/접촉/live 확인');delete pending[a];}
+   continue;}
+  const pr=P[p.key]; if(!pr)continue;
+  const fresh=(p.pid0==null)||(pr.pid!==p.pid0)||['gain_ramp','ground','handoff'].includes(a);
+  if(!fresh)continue;
+  const last=(pr.lines||[]).filter(l=>l.trim()).slice(-1)[0]||'';
+  if(a==='gain_ramp'){ const hit=(pr.lines||[]).some(l=>/운용대기|하중유지/.test(l)&&/kp150/.test(l));
+   if(hit){setSt(a,'ok','성공','kp150 운용대기');delete pending[a];}
+   else if((pr.lines||[]).some(l=>/거부/.test(l))||dt>25||!pr.alive){setSt(a,'fail','실패',last);delete pending[a];}
+   continue;}
+  if(a==='ground'){ setSt(a,'ok','성공','접지 선언됨 (스톨가드 해제)');delete pending[a];continue;}
+  if(a==='handoff'){ if(!pr.alive&&(pr.rc===3||(pr.lines||[]).some(l=>/\[핸드오프\]/.test(l)))){setSt(a,'ok','성공','인계 완료 — 모터 kp150 유지, stage8 인수');delete pending[a];}
+   else if((pr.lines||[]).some(l=>/핸드오프 거부/.test(l))||dt>15){setSt(a,'fail','실패',(pr.lines||[]).filter(l=>/핸드오프 거부/.test(l)).slice(-1)[0]||'시간 초과 — 접지 선언·kp150·stage8 대기 확인');delete pending[a];}
+   continue;}
+  if(pr.alive){ if(DAEMON.has(p.key)&&dt>4){setSt(a,'run','실행 중',last);delete pending[a];} else setSt(a,'prog','진행 중…',last); continue;}
+  // 종료됨
+  if(pr.rc===0||(p.key==='hang_stand'&&pr.rc===3)){
+   const bad=(pr.lines||[]).some(l=>/불일치|FAIL|\[거부됨\]|실패/.test(l)&&!/0 ·|불량 0/.test(l));
+   setSt(a,bad?'fail':'ok',bad?'실패':'성공',(pr.lines||[]).filter(l=>/\[OK\]|ALL PASS|완료|불일치|FAIL|거부|실패/.test(l)).slice(-1)[0]||last);
+  } else setSt(a,'fail','실패 rc='+pr.rc,last);
+  delete pending[a];
+ }
+ // 데몬 상태 반영(클릭 없이도): 죽으면 표시
+ for(const a of ['stage8','hang_stand','bridge']){ const pr=P[PROC[a]]; if(!pr||pending[a])continue;
+  if(pr.alive&&done[a]!=='run'&&done[a]!=='ok')setSt(a,'run','실행 중','');
+  if(!pr.alive&&done[a]==='run'){ if(a==='hang_stand'&&pr.rc===3)setSt(a,'ok','인계 완료',''); else if(pr.rc===0)setSt(a,'idle','종료',''); else setSt(a,'fail','종료 rc='+pr.rc,(pr.lines||[]).slice(-1)[0]||''); }
+ }}
 function cls(v,g,m){return v>=g?'ok':(v>=m?'mid':'bad');}
-// 기울기 시각화: 십자선 위의 점. 바깥 원 = 10°(넘어가기 시작하는 대역),
-// 안쪽 원 = 3°. 점이 위=앞으로, 왼쪽=왼쪽으로 기울어짐.
 function drawTilt(I,fresh){
  const c=$('#tiltmap'),x=c.getContext('2d'),W=c.width,H=c.height,cx=W/2,cy=H/2,R=W/2-10;
- x.clearRect(0,0,W,H);
- x.strokeStyle='#2a2f3d';x.lineWidth=1;
+ x.clearRect(0,0,W,H);x.strokeStyle='#2a2f3d';x.lineWidth=1;
  [R,R*0.3].forEach(r=>{x.beginPath();x.arc(cx,cy,r,0,7);x.stroke();});
  x.beginPath();x.moveTo(cx-R,cy);x.lineTo(cx+R,cy);x.moveTo(cx,cy-R);x.lineTo(cx,cy+R);x.stroke();
  x.fillStyle='#6b7280';x.font='9px system-ui';x.textAlign='center';
- x.fillText('앞',cx,cy-R-2);x.fillText('뒤',cx,cy+R+8);
- x.textAlign='right';x.fillText('왼',cx-R-3,cy+3);
- x.textAlign='left';x.fillText('오',cx+R+3,cy+3);
- if(!I)return;
- const s=R/10, px=cx-(I.lat||0)*s, py=cy-(I.fwd||0)*s;
- const t=Math.hypot(I.fwd||0,I.lat||0);
+ x.fillText('앞',cx,cy-R-2);x.fillText('뒤',cx,cy+R+8);x.textAlign='right';x.fillText('왼',cx-R-3,cy+3);x.textAlign='left';x.fillText('오',cx+R+3,cy+3);
+ if(!I)return; const s=R/10, px=cx-(I.lat||0)*s, py=cy-(I.fwd||0)*s; const t=Math.hypot(I.fwd||0,I.lat||0);
  const col=!fresh?'#6b7280':(t<3?'#4ade80':(t<6?'#fbbf24':'#f87171'));
- x.strokeStyle=col;x.lineWidth=1.5;x.beginPath();x.moveTo(cx,cy);x.lineTo(px,py);x.stroke();
- x.fillStyle=col;x.beginPath();x.arc(px,py,5,0,7);x.fill();
-}
+ x.strokeStyle=col;x.lineWidth=1.5;x.beginPath();x.moveTo(cx,cy);x.lineTo(px,py);x.stroke();x.fillStyle=col;x.beginPath();x.arc(px,py,5,0,7);x.fill();}
 async function poll(){
- try{const s=await (await fetch('/api/state')).json();
-  $('#conn').textContent=s.ros?'ROS 연결됨':'ROS 없음';
-  $('#conn').className='pill '+(s.ros?'ok':'bad');
+ try{const s=await (await fetch('/api/state')).json(); lastState=s;
+  $('#conn').textContent=s.ros?'ROS 연결됨':'ROS 없음';$('#conn').className='pill '+(s.ros?'ok':'bad');
   const S=s.session||{};
-  $('#sess').textContent=S.active
-    ?('● '+S.name.replace('session_','')+'  '+Math.floor(S.dur/60)+'분 '
-      +S.samples+'샘플'+(S.manual?' (수동)':'')
-      +(S.idle>60?'  유휴 '+Math.floor(S.idle/60)+'분':''))
-    :'기록 대기 (조작하면 자동 시작)';
+  $('#sess').textContent=S.active?('● '+S.name.replace('session_','')+'  '+Math.floor(S.dur/60)+'분 '+S.samples+'샘플'+(S.manual?' (수동)':'')):'기록 대기 (조작하면 자동 시작)';
   $('#sess').className='pill '+(S.active?'ok':'dim');
   const f=s.foot,fr=s.fresh;
-  $('#pct').textContent=fr.foot?f.pct.toFixed(0)+'%':'—';
-  $('#pct').className='v '+(fr.foot?cls(f.pct,85,50):'dim');
+  $('#pct').textContent=fr.foot?f.pct.toFixed(0)+'%':'—';$('#pct').className='v '+(fr.foot?cls(f.pct,85,50):'dim');
   $('#feet').textContent=fr.foot?f.left_n.toFixed(0)+' / '+f.right_n.toFixed(0)+' N':'—';
-  // IMU는 끊겨도 마지막 값을 계속 보여준다 (dim 처리 + 경과 초 표시).
   const I=s.imu;
-  $('#fwd').textContent=I?(I.fwd>0?'+':'')+I.fwd+'°':'—';
-  $('#fwd').className='v '+(I?(fr.imu?cls(8-Math.abs(I.fwd),4,0):'dim'):'dim');
-  $('#lat').textContent=I?(I.lat>0?'+':'')+I.lat+'°':'—';
-  $('#lat').className='v '+(I&&fr.imu?'':'dim');
-  $('#tilt').textContent=I?I.tilt+'°':'—';
-  $('#tilt').className='v '+(I&&fr.imu?'':'dim');
-  $('#imu_age').textContent=I&&I.age!=null?(fr.imu?'수신중':(I.age+'초 전 끊김')):'없음';
-  $('#imu_age').className=fr.imu?'ok':'bad';
-  // 각도를 방향 말로 — 부호 규약: fwd>0 앞으로, lat>0 왼쪽으로 (0809 검증)
-  const word=(v,pos,neg)=>Math.abs(v)<0.35?'거의 수평':
-    (v>0?pos:neg)+' '+Math.abs(v).toFixed(1)+'°';
+  $('#fwd').textContent=I?(I.fwd>0?'+':'')+I.fwd+'°':'—';$('#fwd').className='v '+(I?(fr.imu?cls(8-Math.abs(I.fwd),4,0):'dim'):'dim');
+  $('#lat').textContent=I?(I.lat>0?'+':'')+I.lat+'°':'—';$('#lat').className='v '+(I&&fr.imu?'':'dim');
+  $('#tilt').textContent=I?I.tilt+'°':'—';$('#tilt').className='v '+(I&&fr.imu?'':'dim');
+  $('#imu_age').textContent=I&&I.age!=null?(fr.imu?'수신중':(I.age+'초 전 끊김')):'없음';$('#imu_age').className=fr.imu?'ok':'bad';
+  const word=(v,pos,neg)=>Math.abs(v)<0.35?'거의 수평':(v>0?pos:neg)+' '+Math.abs(v).toFixed(1)+'°';
   const cl=v=>Math.abs(v)<3?'ok':(Math.abs(v)<6?'mid':'bad');
-  if(I){
-    $('#t_fwd').textContent=word(I.fwd,'앞으로','뒤로');
-    $('#t_fwd').className=fr.imu?cl(I.fwd):'dim';
-    $('#t_lat').textContent=word(I.lat,'왼쪽으로','오른쪽으로');
-    $('#t_lat').className=fr.imu?cl(I.lat):'dim';
-    $('#t_yaw').textContent=(I.yaw>0?'+':'')+(I.yaw!=null?I.yaw.toFixed(0):'—')+'°';
-    $('#t_yaw').className=fr.imu?'':'dim';
-    const g=I.gyro||[];
-    const mag=Math.hypot(g[0]||0,g[1]||0,g[2]||0);
-    $('#imu_gyro').textContent=mag<0.02?'정지':mag.toFixed(2)+' rad/s';
-  }else{['t_fwd','t_lat','t_yaw'].forEach(k=>{$('#'+k).textContent='—';$('#'+k).className='dim';});}
+  if(I){$('#t_fwd').textContent=word(I.fwd,'앞으로','뒤로');$('#t_fwd').className=fr.imu?cl(I.fwd):'dim';
+   $('#t_lat').textContent=word(I.lat,'왼쪽으로','오른쪽으로');$('#t_lat').className=fr.imu?cl(I.lat):'dim';
+   $('#t_yaw').textContent=(I.yaw>0?'+':'')+(I.yaw!=null?I.yaw.toFixed(0):'—')+'°';$('#t_yaw').className=fr.imu?'':'dim';
+   const g=I.gyro||[];const mag=Math.hypot(g[0]||0,g[1]||0,g[2]||0);$('#imu_gyro').textContent=mag<0.02?'정지':mag.toFixed(2)+' rad/s';}
+  else{['t_fwd','t_lat','t_yaw'].forEach(k=>{$('#'+k).textContent='—';$('#'+k).className='dim';});}
   const C=s.can||{};
   if(C.busoff==null){$('#p_can').textContent='CAN —';$('#p_can').className='pill dim';}
-  else{
-    const bad=C.rate60>0;
-    $('#p_can').textContent='CAN '+(C.state||'?')
-      +(bad?('  ⚠ bus-off +'+C.rate60+'/60s'):('  bus-off '+C.busoff));
-    $('#p_can').className='pill '+(bad?'bad':'ok');
-    if(bad&&!window._canWarned){window._canWarned=1;
-      toast('CAN bus-off 발생 중 — 모터 통신이 끊기고 있습니다. 즉시 중단하세요',true);}
-    if(!bad)window._canWarned=0;
-  }
+  else{const bad=C.rate60>0;$('#p_can').textContent='CAN '+(C.state||'?')+(bad?('  ⚠ bus-off +'+C.rate60+'/60s'):('  bus-off '+C.busoff));$('#p_can').className='pill '+(bad?'bad':'ok');
+   if(bad&&!window._canWarned){window._canWarned=1;toast('CAN bus-off 발생 중 — 모터 통신이 끊기고 있습니다. 즉시 중단하세요',true);} if(!bad)window._canWarned=0;}
   drawTilt(I,fr.imu);
   $('#blend').textContent=s.bridge.blend!=null?(+s.bridge.blend).toFixed(2):'—';
-  $('#p_arm').textContent='stage8 '+(s.stage8.armed?'ARMED':(s.stage8.waiting?'대기':'—'));
-  $('#p_arm').className='pill '+(s.stage8.armed?'ok':'dim');
-  $('#p_base').textContent='baseline '+s.stage8.baseline+'/12';
-  $('#p_base').className='pill '+(s.stage8.baseline===12?'ok':'dim');
-  $('#p_live').textContent='bridge '+(s.bridge.live?'LIVE':'—');
-  $('#p_live').className='pill '+(s.bridge.live?'ok':'dim');
-  $('#p_ckpt').textContent=s.bridge.checkpoint||'ckpt —';
-  const c=s.bridge.contact;
-  $('#p_contact').textContent='접촉 '+(c?('L'+(c[0]>0.5?'●':'○')+' R'+(c[1]>0.5?'●':'○')):'—');
-  $('#p_contact').className='pill '+(c&&c[0]>0.5&&c[1]>0.5?'ok':'dim');
-  $('#events').textContent=s.events.length?s.events.join('\\n'):'이벤트 없음';
-  const P=s.procs||{};
-  const pick=(ks)=>{for(const k of ks){if(P[k])return '['+k+' pid'+P[k].pid+
-    (P[k].alive?' 실행중':' 종료 rc='+P[k].rc)+']\\n'+P[k].lines.join('\\n');}return '—';};
-  $('#log_gate').textContent=pick(['boot_pose','selftest','sensors']);
-  $('#log_stack').textContent=pick(['hang_stand','stage8','stage8_arm','stage8_baseline']);
-  $('#log_bridge').textContent=pick(['zerokin','posture','bridge']);
-  $('#log_tail').textContent=pick(['analyze','release','stack_down']);
+  $('#p_arm').textContent='stage8 '+(s.stage8.armed?'ARMED':(s.stage8.waiting?'대기':'—'));$('#p_arm').className='pill '+(s.stage8.armed?'ok':'dim');
+  $('#p_base').textContent='baseline '+s.stage8.baseline+'/12';$('#p_base').className='pill '+(s.stage8.baseline===12?'ok':'dim');
+  const brAlive=!!(s.procs&&s.procs.bridge&&s.procs.bridge.alive);
+  $('#p_live').textContent='bridge '+(s.bridge.armed?'정책 제어 중':(s.bridge.live||brAlive?'LIVE 대기':'—'));$('#p_live').className='pill '+(s.bridge.armed?'ok':(brAlive?'mid':'dim'));
+  $('#p_ckpt').textContent=s.bridge.checkpoint||('ckpt '+$('#ckpt').value);
+  const c=s.bridge.contact;$('#p_contact').textContent='접촉 '+(c?('L'+(c[0]>0.5?'●':'○')+' R'+(c[1]>0.5?'●':'○')):'—');$('#p_contact').className='pill '+(c&&c[0]>0.5&&c[1]>0.5?'ok':'dim');
+  const ev=s.events||[]; const lastEv=ev.length?ev[ev.length-1]:'';
+  $('#p_hang').textContent=/stop_all|lift_guard|osc_guard/.test(lastEv)?'가드 정지: '+lastEv.slice(9,60):'가드 정상';$('#p_hang').className='pill '+(/stop_all|lift_guard|osc_guard/.test(lastEv)?'bad':'dim');
+  $('#events').textContent=ev.length?ev.join('\\n'):'이벤트 없음';
+  const P=s.procs||{}; const k=lastKey&&P[lastKey]?lastKey:Object.keys(P).sort((x,y)=>(P[x].age-P[y].age))[0];
+  if(k&&P[k]){$('#log_key').textContent=k+' pid '+P[k].pid+(P[k].alive?' 실행중':' 종료 rc='+P[k].rc);$('#log_main').textContent=P[k].lines.join('\\n')||'(출력 없음)';}
+  judge(s);
  }catch(e){$('#conn').textContent='콘솔 연결 끊김';$('#conn').className='pill bad';}
 }
-setInterval(poll,500);poll();
+setInterval(poll,500);poll();markNext();
 </script></body></html>"""
 
 
@@ -1053,11 +1082,12 @@ def selftest():
         missing = [c for c in CKPT_CHOICES if c not in known]
         if missing:
             fails.append(f"드롭다운 정책이 브리지 CHECKPOINTS 에 없음: {missing}")
-        if CKPT_DEFAULT != "stand_v18b":
-            fails.append(f"기본 정책이 7차 데뷔 후보(stand_v18b)가 아님: {CKPT_DEFAULT}")
+        if CKPT_DEFAULT != "stand_hang_v5":   # 0910: 실물 첫 후보 v5 (승윤님 확정 0909 밤)
+            fails.append(f"기본 정책이 실물 첫 후보(stand_hang_v5, 승윤님 확정 0909)가 아님: {CKPT_DEFAULT}")
         page = render_page()
+        _sel = page.index("<select id=ckpt"); _sel_end = page.index(">", _sel) + 1
         if "<!--CKPT_OPTIONS-->" in page or f"<option>{CKPT_DEFAULT}</option>" not in page \
-                or page.index(f"<option>{CKPT_DEFAULT}</option>") != page.index("<select id=ckpt>") + len("<select id=ckpt>"):
+                or page.index(f"<option>{CKPT_DEFAULT}</option>") != _sel_end:
             fails.append("페이지 드롭다운 렌더 실패 (기본값이 첫 항목이 아님)")
     except Exception as exc:
         fails.append(f"브리지 CHECKPOINTS 대조 실패: {exc}")

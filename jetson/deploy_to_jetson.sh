@@ -26,6 +26,13 @@ $SSH "cd ~/humanoid_repo && tar xzf ~/$B && LC_ALL=C md5sum -c --quiet deploy/MA
 log "[3/7] 브리지 selftest (--checkpoint stand_v18b)"
 $SSH "cd ~/humanoid_repo && python3 jetson/scripts/rl_bridge_node.py --selftest --checkpoint stand_v18b 2>&1 | grep -E '^\[(PASS|FAIL)\]|^selftest:' | cut -c1-150"
 $SSH "cd ~/humanoid_repo && python3 jetson/scripts/rl_bridge_node.py --selftest --checkpoint stand_v18b 2>&1 | grep -q '^selftest: ALL PASS'" || { log "브리지 selftest FAIL — 중단"; exit 1; }
+log "[3b/7] 브리지 selftest (--checkpoint stand_hang_v5: 관측 320 계약·지연 3~8틱) + 러너 selftest(320 조립)"
+$SSH "cd ~/humanoid_repo && python3 jetson/scripts/rl_bridge_node.py --selftest --checkpoint stand_hang_v5 2>&1 | grep -E '학습 계약|^selftest:' | cut -c1-160"
+$SSH "cd ~/humanoid_repo && python3 jetson/scripts/rl_bridge_node.py --selftest --checkpoint stand_hang_v5 2>&1 | grep -q '^selftest: ALL PASS'" || { log "브리지 selftest(v5) FAIL — 중단"; exit 1; }
+$SSH "cd ~/humanoid_repo && python3 rl_walking/deploy/policy_runner_stage4.py --selftest 2>&1 | grep -E 'S8a|^selftest:' | cut -c1-140"
+$SSH "cd ~/humanoid_repo && python3 rl_walking/deploy/policy_runner_stage4.py --selftest 2>&1 | grep -q '^selftest: ALL PASS'" || { log "러너 selftest FAIL — 중단"; exit 1; }
+log "[3c/7] v5 policy.pt md5 = models/stand_hang_v5/meta.json 대조"
+$SSH "cd ~/humanoid_repo && md5sum logs/rsl_rl/biped12_stage4/2026-09-09_19-15-42/exported/policy.pt | cut -c1-32" | grep -q "$(python3 -c "import json;print(json.load(open('models/stand_hang_v5/meta.json'))['files']['policy.pt'])")" && log "v5 md5 일치" || { log "v5 policy.pt md5 불일치 — 중단"; exit 1; }
 log "[4/7] 어댑터·release_all selftest (저장소 사본)"
 $SSH "cd ~/humanoid_repo && python3 jetson/scripts/foot_force_adapter_node.py --selftest && python3 jetson/scripts/release_all.py --selftest | tail -1" || { log "selftest FAIL — 중단"; exit 1; }
 log "[5/7] ~/rl_calib/release_all.py 갱신 (백업 후 복사, 게이트 selftest)"

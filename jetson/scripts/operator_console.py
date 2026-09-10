@@ -55,7 +55,7 @@ BODY_WEIGHT_N = 172.9        # 실물 17.62kg(저울 0904) — 발력 총합 %�
 #: 정책 드롭다운 — 첫 항목이 기본값(7차 데뷔 후보). 브리지 CHECKPOINTS 의 부분집합이어야 한다(selftest ⑧).
 #: 0907: stand_v14 제거 — 패키지 GENS(v15~v18b)에 없어 젯슨에 파일이 없다(선택 시 로드 실패). 젯슨 구 자산 정리로
 #: walk/march/drv2/march_drv2/march_v3/stand_v3/v5/v6 도 삭제됨 — 젯슨 잔존 = v15~v18b + v7/v8/v9/march_v5b.
-CKPT_CHOICES = ["stand_v18b", "stand_hang_v5", "stand_hang_v5p", "stand_hang_v4", "stand_hang_v3", "stand_hang_v2", "stand_hang_v1", "stand_v17", "stand_v15", "stand_v18", "stand_v16",
+CKPT_CHOICES = ["stand_v18b", "stand_hang_v5", "stand_hang_v4", "stand_hang_v3", "stand_hang_v2", "stand_hang_v1", "stand_v17", "stand_v15", "stand_v18", "stand_v16",
                 "stand_v9", "stand_v8", "stand_v7", "march_v5b"]
 CKPT_DEFAULT = CKPT_CHOICES[0]
 

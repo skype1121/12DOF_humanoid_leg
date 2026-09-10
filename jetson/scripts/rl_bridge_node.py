@@ -354,6 +354,16 @@ GRAV_GATE_TOL = 0.3
 GRAV_GATE_MAX_AGE_S = 0.5
 
 
+def _roll_pitch_deg(quat_wxyz):
+    """IMU 쿼터니언 → (롤, 피치)[deg] — 시뮬 mdp_hang.torso 식과 같은 정의(투영중력 pg: roll=atan2(pg_y,−pg_z), pitch=atan2(pg_x,−pg_z)).
+    A1 기록 전용(0910). 판정용 각도는 콘솔 fwd/lat 와 대조해 부호를 확정한 뒤 쓴다."""
+    try:
+        g = projected_gravity(tuple(float(v) for v in quat_wxyz))
+        return [round(math.degrees(math.atan2(g[1], -g[2])), 3), round(math.degrees(math.atan2(g[0], -g[2])), 3)]
+    except Exception:  # noqa: BLE001 — 기록 실패가 제어를 막으면 안 된다
+        return None
+
+
 def gravity_gate(imu, imu_ts, now, tol=GRAV_GATE_TOL, max_age=GRAV_GATE_MAX_AGE_S):
     """(통과 여부, 사유). imu = (gyro, quat_wxyz) 또는 None(미수신)."""
     if imu is None:
@@ -556,6 +566,15 @@ def _selftest_policy(required=()):
     skip_note = f" | SKIP {len(skipped)} 미배포: {', '.join(skipped)}" if skipped else ""
     return (f"500틱 유한·슬루 준수 ×{len(res)}: " + "; ".join(res)
             + f" (50Hz 예산 20ms, 백엔드 {backend}){skip_note}")
+
+
+def _selftest_roll_pitch():
+    """(A1 기록) 직립 → (0,0); y축 +10° 회전 쿼터니언 → 피치 ±10°(부호는 정의상 pg_x 기준), 롤 0; 잘못된 입력 → None."""
+    rp = _roll_pitch_deg((1.0, 0.0, 0.0, 0.0)); assert rp is not None and abs(rp[0]) < 1e-6 and abs(rp[1]) < 1e-6, rp
+    h = math.radians(5.0); rp = _roll_pitch_deg((math.cos(h), 0.0, math.sin(h), 0.0))
+    assert rp is not None and abs(abs(rp[1]) - 10.0) < 1e-3 and abs(rp[0]) < 1e-3, rp
+    assert _roll_pitch_deg(None) is None
+    return f"직립 (0,0) · y축 10° → 피치 {rp[1]:+.1f}° 롤 {rp[0]:.1f}° · 불량 입력 None"
 
 
 def _selftest_grav_gate():
@@ -1162,6 +1181,7 @@ def run_selftest(required=()):
              ("게인 정책", _selftest_gains),
              ("프레임 게이트", _selftest_frame_gate),
              ("중력 게이트", _selftest_grav_gate),
+             ("롤/피치 기록", _selftest_roll_pitch),
              ("발진 가드", _selftest_osc_guard),
              ("행잉 가드", _selftest_hang_guard),
              ("학습 계약", lambda: _selftest_contract(required)),
@@ -1257,6 +1277,9 @@ def main():
             self.stopped_for_stale = False
             self.osc = OscGuard(JOINT_ORDER)
             self.osc_tripped = None
+            self.stop_reason = None      # A1 기록: 마지막 STOP_ALL 사유
+            self.grav_last = None        # A1 기록: 마지막 stand 명령 시 중력 게이트 [ok, why]
+            self.foot_raw_sum = None     # A1 기록: 어댑터 원카운트 합 [L, R]
             self.blend_t0 = None
             self.blend_from = None
             self.nocontact_t0 = None
@@ -1425,6 +1448,7 @@ def main():
             try:
                 d = json.loads(msg.data)
                 self.foot = (float(d["left_n"]), float(d["right_n"]))
+                self.foot_raw_sum = [d.get("left_raw_sum"), d.get("right_raw_sum")]
                 self.foot_ts = float(d.get("timestamp", time.time()))
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 pass
@@ -1483,6 +1507,7 @@ def main():
                 # 중력 정합 게이트 (0905 감사 A4) — 장착보정 미적용 IMU 관측(±1,0,0)이 그대로
                 # 정책에 들어가는 경로 차단. 드라이런도 같은 게이트(관측 검증이 목적).
                 g_ok, g_why = gravity_gate(self.imu, self.imu_ts, time.time())
+                self.grav_last = [bool(g_ok), g_why]
                 if not g_ok and not bool(d.get("force_gravity", False)):
                     self.get_logger().error(
                         f"[거부] RL {c} 시작 불가 — {g_why}. IMU 장착보정·착지 자세 확인. "
@@ -1700,6 +1725,17 @@ def main():
                    # stage8 soft 클램프 누적(총·관절별)·마지막 거부 사유 — 클램프/거부가 낙상과 겹치는지 사후분석 (감사 B7)
                    "soft_clamp_total": self.clamp_total,
                    "soft_clamp_counts": [self.clamp_counts.get(j) for j in JOINT_ORDER],
+                   # A1 기록 보강(0910, 기록 전용 — 승윤님 A-stage 요구 필드): 정책 관측 벡터(러너가 이번 틱에 조립한 245/320 그대로),
+                   # raw 액션(아핀·슬루·블렌딩 전), IMU 롤/피치, 가드·정지 상태, 어댑터 원카운트 합. 패드 8채널 원값은 cop_from_pads.py --live --save 로 별도 기록.
+                   "obs": ([round(float(v), 4) for v in self.core.runner.last_obs]
+                           if getattr(self.core.runner, "last_obs", None) is not None else None),
+                   "raw_action": [round(float(v), 4) for v in self.core.runner.last_action],
+                   "rp_deg": _roll_pitch_deg(quat),
+                   "osc_tripped": self.osc_tripped,
+                   "stopped_for_stale": self.stopped_for_stale,
+                   "stop_reason": self.stop_reason,
+                   "grav_gate": self.grav_last,
+                   "foot_raw_sum": self.foot_raw_sum,
                    "last_reject_reason": self.reject_reason}
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
@@ -1745,6 +1781,7 @@ def main():
                 self.get_logger().error("블랙박스 기록 실패 — 기록 중단 (제어는 계속)")
 
         def _stop_all(self, reason):
+            self.stop_reason = str(reason)
             self.get_logger().warning(f"STOP_ALL ({reason})")
             # 안전동작 먼저, 기록은 다음 (적대리뷰 A3: 순서 역전 금지)
             if self.live:

@@ -169,13 +169,22 @@ def end_state(ticks):
     return rows, verdict
 
 
-def report(bb_path, timeline_path=None, pads_path=None, out=print):
+def report(bb_path, timeline_path=None, pads_path=None, out=print, ref="stop"):
     ticks, events = load_bb(bb_path)
     if not ticks:
         out("정책 틱 0 — live 구간 없음"); return
     t0 = ticks[0]["timestamp"]; tN = ticks[-1]["timestamp"]
     segs, stop = segments(ticks, events)
-    stop_ts = stop["timestamp"] if stop else tN
+    # 기준 시각: stop(마지막 정지, 기본) | support_gone(시뮬 덤프의 지지 소멸 첫 틱) | contact(첫 양발 접촉)
+    if ref == "support_gone":
+        _r = next((t for t in ticks if t.get("support_gone")), None)
+        stop_ts = _r["timestamp"] if _r else (stop["timestamp"] if stop else tN)
+    elif ref == "contact":
+        _r = next((t for t in ticks if tuple(t.get("contact") or (0, 0)) == (1.0, 1.0)), None)
+        stop_ts = _r["timestamp"] if _r else (stop["timestamp"] if stop else tN)
+    else:
+        stop_ts = stop["timestamp"] if stop else tN
+    out(f"[기준 시각] ref={ref} → {stop_ts - t0:.1f}s (첫 틱 기준); 아래 '정지 기준' 상대시각은 이 기준이다")
     out(f"# 시도 분석: {bb_path.split('/')[-1]}")
     stops = [e for e in events if e.get("event") == "stop_all"]
     out(f"정책 틱 {len(ticks)}개, {time.strftime('%H:%M:%S', time.localtime(t0))}~{time.strftime('%H:%M:%S', time.localtime(tN))} ({tN - t0:.1f}s), "
@@ -287,10 +296,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("bb", nargs="?"); ap.add_argument("--timeline"); ap.add_argument("--pads")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--ref", choices=("stop", "support_gone", "contact"), default="stop",
+                    help="상대시각 기준: stop(마지막 정지) | support_gone(시뮬 덤프 지지 소멸) | contact(첫 양발 접촉)")
     a = ap.parse_args()
     if a.selftest: sys.exit(selftest())
     if not a.bb: ap.error("rl_bridge_*.jsonl 필요 (또는 --selftest)")
-    report(a.bb, a.timeline, a.pads)
+    report(a.bb, a.timeline, a.pads, ref=a.ref)
 
 
 if __name__ == "__main__":

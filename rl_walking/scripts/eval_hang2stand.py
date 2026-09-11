@@ -373,7 +373,10 @@ def _dump_step(i, a, roll, pitch, contact, term, st):
         fh.write(_json.dumps(row) + "\n")
         if bool(term[k]):
             fh.write(_json.dumps({"timestamp": _ts, "event": "stop_all", "reason": "sim: terminated(fell)"}) + "\n")
+            fh.flush()          # DR 조건은 앱 종료가 네이티브라 버퍼가 유실된다 — 즉시 flush
             _dump_dead[k] = True
+        elif i % 50 == 0:
+            fh.flush()
 
 
 t0 = time.time()
@@ -433,6 +436,9 @@ for i in range(STEPS):
     z_trace.append(robot.data.root_pos_w[alive, 2].mean().item() if alive.any() else float("nan"))
     pitch_trace.append(pitch[alive].mean().item() if alive.any() else float("nan"))
 
+for _fh in _DUMP:            # 덤프 파일 닫기 (앱 종료 전에 — 네이티브 종료로 유실 방지)
+    try: _fh.flush(); _fh.close()
+    except OSError: pass
 # ── 지표 ──
 fell = death_step >= 0
 touched = touch_t >= 0

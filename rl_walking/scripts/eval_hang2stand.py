@@ -55,6 +55,10 @@ parser.add_argument("--dump_envs", type=int, default=0,
                     help="처음 N개 env 의 시계열을 실물 블랙박스 형식으로 log_picture/simbb_<tag>_env<i>.jsonl 에 기록 "
                          "(jetson/scripts/analyze_hang2stand_trial.py 로 시뮬/실물 '최초 이상 발생 순서' 비교, 0911)")
 parser.add_argument("--calib_fixed", type=str, default="", help="관절 고정 편향 주입 'left_ankle_r_joint:3.6,right_hip_r_joint:3.4' [deg] — 실측 좌우 비대칭 재현")
+parser.add_argument("--anchor_x", type=float, default=None, help="[케이블 태스크] 앵커 전후 오프셋 고정 [m] (+앞) — 줄 모멘트(후크 비연직) 가설 H2b 스윕용")
+parser.add_argument("--anchor_y", type=float, default=None, help="[케이블 태스크] 앵커 좌우 오프셋 고정 [m]")
+parser.add_argument("--anchor_h", type=float, default=None, help="[케이블 태스크] 앵커 높이(후크 위) 고정 [m] (기본 DR 1.0~1.6)")
+parser.add_argument("--hook_z", type=float, default=None, help="[케이블 태스크] 후크 높이(base 위) 고정 [m] (기본 DR 0.25~0.40)")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -106,6 +110,11 @@ _hp = env_cfg.events.hang_support_reset.params
 if args_cli.r0: _hp["r0_range"] = _pair(args_cli.r0)
 if args_cli.hold_s: _hp["hold_range"] = _pair(args_cli.hold_s)
 if args_cli.release_s: _hp["release_range"] = _pair(args_cli.release_s)
+for _nm, _key in (("anchor_x", "anchor_x_range"), ("anchor_y", "anchor_y_range"), ("anchor_h", "anchor_h_range"), ("hook_z", "hook_z_range")):
+    _v = getattr(args_cli, _nm)
+    if _v is not None:
+        assert _hp.get("cable", False), f"--{_nm} 는 케이블 태스크(cable=True)에서만 의미가 있다"
+        _hp[_key] = (float(_v), float(_v))
 if args_cli.clearance: env_cfg.events.reset_base.params["pose_range"]["z"] = _pair(args_cli.clearance)
 if args_cli.nominal:
     for _k in ("roll", "pitch"):

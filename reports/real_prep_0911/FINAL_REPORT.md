@@ -63,6 +63,9 @@
 - **워밍업 로그**: 타임아웃이 나면 시험 중단이 맞다(원인 미수정 상태에서 재시도 금지).
 - **젯슨 정책루프 지연 재측정**(블랙박스로 `realdata_model_id.md` §5 방법): 중앙이 8틱을 넘거나 status_age 가 자주 0.1 s 를 넘으면, 정책 변경보다 젯슨 측 지연·status 전달 경로 점검이 먼저다(시뮬: 9틱 외란 하 70→38 %, 12틱 명목 62 %). v5d 는 승격되지 않았으므로(§8.4) 지연 여유는 v5 그대로(명목 9틱까지, 외란 하 9틱 38 %) — 이번 시험에서 정책 쪽 지연 레버는 없다.
 
+- **stage8 status 갭 판별(젯슨, 무접촉 읽기)**: 인수 홀드 후 유휴 30 s 전후로 `ip -details -s link show can0`(bus-error·restarts·state) + `ros2 topic hz /humanoid/stage8_12axis_mit_status` + stage8 status 의 `can_last_error`. 카운터가 늘면 배선/버스(H-D1) → 커넥터 점검이 워밍업보다 먼저; 안 늘고 hz 만 낮으면 실행기 CPU(H-D2); C++ hz 는 정상인데 브리지만 stale 이면 구독자 쪽(H-D3). 상세 `hypotheses_and_field_checks.md` §E. 소프트웨어 완화는 이번 시험 뒤에(배포 변경).
+- 젯슨 지연 예산(`realdata_model_id.md` §5.1, COMPUTED): 소프트웨어 레버 ≈1~1.5틱, 나머지 ≈4틱은 모터 응답 — 정책 재학습으로 얻을 것은 없고(v5d), 젯슨 정렬로 얻을 것도 1.5틱이 상한.
+
 ## 8. 수치 부록
 - v5 평가표 전체: `sim_eval_v5.md` (조건 A~H, 결과 파일 `log_picture/hang2stand_<tag>.txt` 기준).
 - 패키지(최신): `deploy/stand_7차_20260912_0015.tar.gz` (6.8 MB, 44 파일, `deploy/MANIFEST.md5` 44 항목; 0911 23:16 판은 호환검수 R3~R8 반영 전, 23:37 판은 실행카드·콘솔 부록 갱신 전이라 폐기 — 코드·정책 md5 는 23:37 판과 동일). 핵심 md5(앞 16자리): `rl_bridge_node.py` 4562106ff344d74d · `console_state.py` b7ae160bb457d4ab · `operator_console.py` de2cc58a63943cb2 · `console_ui.html` c4f14b701ad6fb68 · `stand_hang_v5/policy.pt` 2a20b7b1cd4ec3da (= `logs/…/2026-09-09_19-15-42/exported/policy.pt`, actor 가중치 8/8 텐서 = model_139987). v5d 불채택(§8.4)이므로 정책은 v5 그대로; 이 패키지가 최종이다.

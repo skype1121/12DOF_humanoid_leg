@@ -55,3 +55,12 @@
 - 브리지 워밍업 완료 로그가 stand 후 4 s 내에 뜨는지.
 - 줄이 완전히 느슨한 상태를 영상으로 남길 수 있는 카메라 위치.
 - Isaac 시뮬 결과는 실물 성공 확률이 아니다.
+
+## E. stage8 유휴 시 status 갭 — 코드 검토로 좁힌 가설 (0912, 젯슨 무접촉; 원시 캡처는 세션 중 ssh 로 본 것이라 로컬에 없음 → 재분석 불가)
+코드 사실(MEASURED, `stage8_12axis_mit_control_node.py`): 단일 스레드 rclpy 실행기 위에 제어 타이머 50 Hz(`control_tick`) + status 타이머 100 Hz(`publish_status` = 전체 status json 직렬화) + 명령 콜백(5 ms 캡 status 발행). 인수 홀드 중 `control_tick` 은 12관절 각각 `_maybe_write_frame` → `bus.send(timeout=0.2)`. `can_up.sh` 는 txqueuelen 1000·restart-ms 100.
+| 가설 | 근거 | 현장 판별(젯슨, 무접촉 읽기) |
+|---|---|---|
+| **H-D1 CAN 송신 정체**: 버스 에러(error-passive/bus-off, 커넥터 반접촉 — 과거 '허브 반접촉 = 전체 전멸' 패턴)로 `send` 가 프레임마다 최대 0.2 s 블로킹 → 12관절 × 0.2 = **틱당 최대 2.4 s** 동안 실행기가 잠겨 status 타이머 굶음; restart-ms 100 으로 자동 복구되면 다시 100 Hz 로 쏟아짐(=버스트). 측정 갭 2.9~3.2 s 와 크기가 맞음(COMPUTED, 우연일 수 있음) | 갭이 있던 0911 은 정책 구동 없이 홀드만 하던 상태 = 이 경로 | 유휴 홀드 전후 `ip -details -s link show can0` 의 bus-error·restarts·state 증가 여부; stage8 status `can_status`/`can_last_error`(`Timeout`) 기록; `candump -t d can0` 에서 홀드 프레임 간격에 같은 갭이 있는지 |
+| **H-D2 실행기 CPU 포화**: 100 Hz 직렬화(수 KB) + 50 Hz 12 송신 + 폴링이 파이썬 단일 스레드에서 밀려 status 가 15~21 Hz 로 내려감 | 버스트 안 주기(15~21 Hz)가 100 Hz 에 못 미친 것과 일관; 그러나 수 초 갭은 설명 못 함 | `top -H -p <stage8 PID>` 한 스레드 ~100 %; CAN 카운터는 증가 없음 |
+| **H-D3 측정 구독자 인공물**: 세션 중 ssh 파이썬 구독자가 스스로 느렸을 가능성 | 측정 도구의 처리율을 검증하지 않았음 | `ros2 topic hz /humanoid/stage8_12axis_mit_status` (C++ 도구) 로 재측정 |
+정책 구동 중(0910)엔 status_age < 0.03 s 였으므로 위 어느 것이든 **정책이 돌기 시작하면 사라지거나 약해지는 성질**이다 — 워밍업 4 s 유예가 실제로 이것을 덮는지는 현장 워밍업 로그가 답한다. 소프트웨어 완화 후보(배포하지 않음, 승윤님·Codex 검토 필요): (a) `send` 타임아웃 0.2 → 0.02 s(정체 시 블로킹 대신 드롭 — 실패 거동이 바뀌므로 검토 필수), (b) status 발행을 별도 스레드/콜백 그룹으로 분리, (c) 100 Hz 직렬화 부담 축소. **이번 시험 전에는 바꾸지 않는다.**

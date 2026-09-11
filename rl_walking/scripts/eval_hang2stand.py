@@ -43,6 +43,12 @@ parser.add_argument("--no_obs_noise", action="store_true", help="관측 노이�
 parser.add_argument("--lpf_beta", type=float, default=None, help="배포 체인 stand LPF β 덮어쓰기 (기본 deploy_chain.STAND_LPF_BETA=0.27; 작을수록 더 부드러움) — 재학습 없이 스탠바이 흔들림을 잡는 배포측 레버 시험")
 parser.add_argument("--imu_roll_bias_deg", type=float, default=None, help="IMU 롤 장착 편향을 전 env 상수로 고정 [deg] (0910 실물 재현: 실물 콘솔 lat +1.0~1.4°)")
 parser.add_argument("--com_fix_y", type=float, default=0.0, help="횡 CoM 고정 편심 [m] (0910 진단: 실물 편하중 재현)")
+parser.add_argument("--contact_perturb", type=str, default="none",
+                    help="actor 접촉 obs 교란(정답·물리·보상 불변, 0911 접촉 의존도 평가): "
+                         "none/hold(10Hz S&H)/delay3(60ms)/realistic(S&H+한발누락)/onefoot(오른발 버스트0)/"
+                         "chatter(랜덤 플립)/both1/both0(진단 고정 대조군)")
+parser.add_argument("--perturb_seed", type=int, default=0, help="접촉 교란 RNG seed (독립 seed 평가용)")
+parser.add_argument("--seed", type=int, default=None, help="env/torch seed 덮어쓰기 (독립 seed 평가용; 기본 agent_cfg.seed 고정 → 같은 설정은 결정론적 동일 결과)")
 parser.add_argument("--calib_fixed", type=str, default="", help="관절 고정 편향 주입 'left_ankle_r_joint:3.6,right_hip_r_joint:3.4' [deg] — 실측 좌우 비대칭 재현")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
@@ -71,6 +77,9 @@ agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
 env_cfg = load_cfg_from_registry(args_cli.task, "env_cfg_entry_point")
 env_cfg.scene.num_envs = args_cli.num_envs
 env_cfg.seed = agent_cfg.seed
+if args_cli.seed is not None:   # 독립 seed 평가(0911): 기본은 agent_cfg.seed 고정 → 같은 설정은 결정론적 동일 결과
+    env_cfg.seed = int(args_cli.seed); agent_cfg.seed = int(args_cli.seed)
+    print(f"[seed] env/agent seed = {args_cli.seed}")
 if args_cli.usd:
     env_cfg.scene.robot.spawn.usd_path = args_cli.usd
 use_chain = (not args_cli.hold) and (not args_cli.no_chain)
@@ -160,9 +169,18 @@ if args_cli.imu_roll_bias_deg is not None and getattr(env_cfg.events, "calib_bia
     _rb = math.radians(args_cli.imu_roll_bias_deg)
     env_cfg.events.calib_bias.params["imu_roll_rad"] = (_rb, _rb)
     print(f"[imu] 롤 편향 고정 {args_cli.imu_roll_bias_deg:+.2f}°")
-if args_cli.com_fix is not None and getattr(env_cfg.events, "base_com", None):
-    _cy = getattr(args_cli, "com_fix_y", 0.0) or 0.0
-    env_cfg.events.base_com.params["com_range"] = {"x": (args_cli.com_fix, args_cli.com_fix), "y": (_cy, _cy), "z": (0.0, 0.0)}
+if getattr(env_cfg.events, "base_com", None) and (args_cli.com_fix is not None or args_cli.com_fix_y):
+    if args_cli.com_fix is not None:
+        # 종전 동작 유지: x 고정 + y 고정(com_fix_y, 기본 0) + z 0  (results_table 비교 호환)
+        _cy = args_cli.com_fix_y or 0.0
+        env_cfg.events.base_com.params["com_range"] = {"x": (args_cli.com_fix, args_cli.com_fix), "y": (_cy, _cy), "z": (0.0, 0.0)}
+    else:
+        # ★정정(0911, COMY_FIX): --com_fix_y 단독은 종전엔 --com_fix 없이는 통째로 무시됐다(죽은 인자 —
+        # ±0.01/±0.02 4런이 기준선과 자릿수까지 동일해 발견). x·z 는 env 범위 유지, y 만 고정.
+        _cr = dict(env_cfg.events.base_com.params.get("com_range", {}))
+        _cr["y"] = (args_cli.com_fix_y, args_cli.com_fix_y)
+        env_cfg.events.base_com.params["com_range"] = _cr
+    print(f"[com] base_com com_range = {env_cfg.events.base_com.params['com_range']}")
 T_s = args_cli.seconds if args_cli.seconds else float(env_cfg.episode_length_s)
 env_cfg.episode_length_s = T_s + 1.0      # 평가 창 안에서 time_out 이 끼지 않게
 
@@ -237,9 +255,86 @@ try:
     _fc = _fcfg(); _fc.resolve(env.unwrapped.scene); _FEET = _fc.name; _FEET_IDS = _fc.body_ids
 except Exception:
     _FEET, _FEET_IDS = None, None
+
+# ── 접촉 obs 교란 (0911 접촉 의존도 평가) — actor 관측의 feet_contact 슬라이스만 변조.
+#    보상(feet_contact_gated)·종료·평가 정답은 센서를 직접 읽으므로 불변 = 교란은 actor 에만. ──
+_cs_lo = _cs_hi = None
+try:
+    _om = uenv.observation_manager
+    _terms = _om.active_terms["policy"]; _dims = _om.group_obs_term_dim["policy"]
+    _off = 0; _layout = []
+    for _nm, _dm in zip(_terms, _dims):
+        _d = _dm[0] if isinstance(_dm, (list, tuple)) else int(_dm)
+        _layout.append((_nm, _off, _d))
+        if _nm == "feet_contact":
+            _cs_lo, _cs_hi = _off, _off + _d
+        _off += _d
+    if args_cli.contact_perturb != "none":
+        print(f"[obs 레이아웃] policy dim={_off}, feet_contact 슬라이스={_cs_lo}:{_cs_hi} "
+              f"(항 {len(_terms)}개). 교란={args_cli.contact_perturb} seed={args_cli.perturb_seed}")
+        if _cs_lo is None:
+            print("[경고] feet_contact 항을 못 찾음 — 교란 미적용")
+except Exception as _e:
+    print(f"[경고] obs 레이아웃 조회 실패: {_e} — 교란 미적용")
+
+
+class ContactPerturb:
+    """actor 접촉 obs 교란기. obs[:, cs:ce] (L/R 이진 접촉)만 변조. 정답/물리/보상 불변."""
+    def __init__(self, mode, N, dev, cs, ce, seed=0):
+        self.mode, self.N, self.dev, self.cs, self.ce = mode, N, dev, cs, ce
+        self.g = torch.Generator(device="cpu"); self.g.manual_seed(int(seed))
+        self.held = None; self.buf = []; self.every = 5   # 50Hz→10Hz S&H
+
+    def _rand(self, shape, p):
+        return (torch.rand(shape, generator=self.g).to(self.dev) < p)
+
+    def __call__(self, obs, i):
+        if self.mode == "none" or self.cs is None:
+            return obs
+        # rsl_rl 래퍼는 TensorDict(키 'policy')를 준다 — 텐서 슬라이싱은 TensorDict 에 못 쓰므로
+        # 'policy' 텐서만 꺼내 변조하고 다시 담는다 (critic 키 등은 불변).
+        td = None
+        t = obs
+        if not torch.is_tensor(obs):
+            td = obs
+            t = obs["policy"]
+        c = t[:, self.cs:self.ce]
+        p = c.clone()
+        if self.mode == "both1":
+            p[:] = 1.0
+        elif self.mode == "both0":
+            p[:] = 0.0
+        elif self.mode == "hold":
+            if self.held is None or i % self.every == 0:
+                self.held = c.clone()
+            p = self.held.clone()
+        elif self.mode == "delay3":
+            self.buf.append(c.clone())
+            if len(self.buf) > 3:
+                p = self.buf.pop(0)
+        elif self.mode == "onefoot":            # 오른발(idx1) 2s 주기·앞 0.3s 0 오판 (실물 오른발 언로드 모사)
+            if (i % 100) < 15:
+                p[:, 1] = 0.0
+        elif self.mode == "chatter":            # 랜덤 단발 누락(양발 각 8%/스텝 0)
+            p = p * (~self._rand(c.shape, 0.08)).float()
+        elif self.mode == "realistic":          # 10Hz S&H + 지터 + 한발 짧은 누락(각 3%/스텝)
+            if self.held is None or i % self.every == 0:
+                self.held = c.clone()
+            p = self.held.clone() * (~self._rand(c.shape, 0.03)).float()
+        t = t.clone()
+        t[:, self.cs:self.ce] = p
+        if td is not None:
+            td = td.clone()
+            td["policy"] = t
+            return td
+        return t
+
+
+_cperturb = ContactPerturb(args_cli.contact_perturb, N, dev, _cs_lo, _cs_hi, args_cli.perturb_seed)
 t0 = time.time()
 for i in range(STEPS):
     with torch.inference_mode():
+        obs = _cperturb(obs, i)          # actor 접촉 obs 교란(정답/물리 불변) — none 이면 무변
         a = torch.zeros(N, 12, device=dev) if policy is None else policy(obs)
         obs, _, dones, _ = env.step(a)
     st = uenv._hang

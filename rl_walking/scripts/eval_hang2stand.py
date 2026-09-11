@@ -233,7 +233,7 @@ _ss_aa2 = torch.zeros(N, device=dev); _ss_pm = torch.zeros(N, device=dev); _prev
 _air_q = torch.zeros(N, 12, device=dev); _air_n = torch.zeros(N, device=dev)   # 0910: 공중(지지비>0.9) 관절각 평균 — 실물 공중 비대칭(왼 힙a +11 vs 오른 +6) 대조
 _jn = list(robot.joint_names); _jidx = {n: i for i, n in enumerate(_jn)}
 try:
-    from rl_walking.mdp_hang import _feet_cfg as _fcfg
+    from rl_walking.mdp_hang import _feet_cfg as _fcfg, _support_gone_mask
     _fc = _fcfg(); _fc.resolve(env.unwrapped.scene); _FEET = _fc.name; _FEET_IDS = _fc.body_ids
 except Exception:
     _FEET, _FEET_IDS = None, None
@@ -259,7 +259,7 @@ for i in range(STEPS):
     death_step[newly_dead] = i; pitch_death[newly_dead] = pitch[newly_dead]; roll_death[newly_dead] = roll[newly_dead]
     r_at_death[newly_dead] = st["r"][newly_dead]
     last_q[a_] = robot.data.joint_pos[a_]; last_contact[a_] = contact[a_]
-    _post = a_ & (st["r"] <= 0.0)
+    _post = a_ & _support_gone_mask(st)   # item 4c: 케이블이면 실제 장력<=eps (힘 모델은 r<=0 동일)
     _both_now = (contact[:, 0] > 0) & (contact[:, 1] > 0)
     _ever_both |= (a_ & _both_now)
     _lift_evt = (a_ & _ever_both & _prev_both & ~_both_now).float()
@@ -268,7 +268,7 @@ for i in range(STEPS):
     if _air.any():
         _air_q[_air] += robot.data.joint_pos[_air]; _air_n[_air] += 1.0
     if i >= _SS_FROM:
-        _ss = a_ & (st["r"] <= 0.0)
+        _ss = a_ & _support_gone_mask(st)   # item 4c: 실제 지지 소멸 (스케줄 아님)
         _ss_w[_ss] += robot.data.root_ang_vel_b[_ss, :2].norm(dim=-1); _ss_v[_ss] += robot.data.root_lin_vel_b[_ss, :2].norm(dim=-1)
         _ss_qd2[_ss] += (robot.data.joint_vel[_ss] ** 2).mean(1); _ss_n[_ss] += 1.0; _ss_lift += _lift_evt
         if _prev_a is not None:

@@ -54,7 +54,9 @@ def _state(env):
               "touch_t": torch.full((N,), -1.0, device=dev),      # 양발 첫 동시 접촉 시각
               # 0911 케이블 지지 모델 (cable_on=True 일 때 _cable_apply 사용)
               "cable_on": False, "hx": z(), "hy": z(), "hz": z(), "ax": z(), "ay": z(), "az": z(),
-              "cbl_k": z(), "cbl_c": z(), "cbl_tmax": z(), "cbl_L0": torch.ones(N, device=dev), "cbl_d0": z(), "cbl_slack": z()}
+              "cbl_k": z(), "cbl_c": z(), "cbl_tmax": z(), "cbl_L0": torch.ones(N, device=dev), "cbl_d0": z(), "cbl_slack": z(),
+              # 케이블 실제 상태 기록 (item 4c: 지지 제거를 스케줄 r 이 아니라 실제 장력으로 판정)
+              "cbl_T": z(), "cbl_dist": z()}
         env._hang = st
     return st
 
@@ -73,10 +75,19 @@ def _qrot(q, v):
     return v + w * t + torch.cross(u, t, dim=-1)
 
 
+_CABLE_T_EPS = 1.0   # 지지 소멸 판정 장력 임계 [N] — 이보다 작으면 줄이 사실상 안 잡음(체중 172.9N 대비 <1%)
+
+
 def _cable_tension(dist, L, k, c, ddist, tmax):
-    """순수 스칼라 장력: T = clip(k·(dist−L), 0, tmax) + c·max(0,ddist). dist≤L(슬랙)이면 0. (Isaac 무관 — 셀프테스트용)"""
-    stretch = (dist - L).clamp(min=0.0)
-    T = (k * stretch + c * ddist.clamp(min=0.0)).clamp(min=0.0)
+    """순수 스칼라 장력: 팽팽할 때만 T = clip(k·(dist−L) + c·max(0,ddist), 0, tmax). (Isaac 무관 — 셀프테스트용)
+
+    ★정정(2026-09-11, item 4b): 종전엔 슬랙(dist≤L)이라 stretch=0 이어도 감쇠항 c·ddist 가
+    남아 '느슨한 줄이 장력을 내는' 물리 오류가 있었다. 줄은 밀지 못하므로 stretch≤0 이면
+    스프링·감쇠 모두 0 으로 게이트한다. 감쇠는 팽팽(stretch>0)하고 멀어질 때(ddist>0)만 저항."""
+    stretch = dist - L
+    taut = (stretch > 0.0).to(dist.dtype)
+    T = taut * (k * stretch.clamp(min=0.0) + c * ddist.clamp(min=0.0))
+    T = T.clamp(min=0.0)
     return torch.minimum(T, torch.as_tensor(tmax, dtype=T.dtype, device=T.device))
 
 
@@ -98,6 +109,8 @@ def _cable_apply(env, st, ids, asset_cfg):
     T = _cable_tension(dist, L, st["cbl_k"][ids], st["cbl_c"][ids], ddist, st["cbl_tmax"][ids])
     ramp = (st["t"][ids] / 1.0).clamp(0.0, 1.0)          # 첫 1s 램프인: 스폰 낙하 착지 충격(시뮬 인공물) 제거
     T = T * ramp
+    st["cbl_T"][ids] = T.detach()                        # item 4c: 실제 적용 장력 기록 (지지 소멸·재긴장 판정·로깅용)
+    st["cbl_dist"][ids] = dist.detach()
     F_w = T.unsqueeze(-1) * dirw
     F_b = _quat_inv(quat, F_w)
     asset.permanent_wrench_composer.set_forces_and_torques(
@@ -128,6 +141,24 @@ def _apply(env, st, ids, asset_cfg):
     asset.permanent_wrench_composer.set_forces_and_torques(
         forces=forces, torques=tau.unsqueeze(1), positions=positions,
         body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
+
+
+def _support_gone_mask(st):
+    """지지 소멸 여부(bool, per-env). item 4c 정정.
+
+    힘 모델(cable_on=False): Fz=r·m·g 이므로 r<=0 이면 지지력 정확히 0 → r<=0.
+    케이블 모델: 스케줄 r<=0(윈치 최대 방출) **그리고** 실제 장력 T<=eps(줄 슬랙)일 때만 소멸.
+      - 종전 r<=0 단독은 케이블이 여전히 팽팽(dist>L)해도 '지지 제거'로 오판했다.
+      - 첫 1s 램프인(T*ramp)으로 T≈0 인 구간은 r 이 아직 높아(홀드) 오탐되지 않는다.
+      - 슬랙 후 몸이 기울어 재긴장(T>eps)하면 다시 False → 자립 보상/판정에서 그 구간 제외."""
+    if bool(st.get("cable_on", False)):
+        return (st["r"] <= 0.0) & (st["cbl_T"] <= _CABLE_T_EPS)
+    return st["r"] <= 0.0
+
+
+def support_gone(env) -> torch.Tensor:
+    """지지 소멸 여부(per-env bool) — 평가·로깅에서 스케줄이 아니라 실제 지지로 판정할 때 사용."""
+    return _support_gone_mask(_state(env))
 
 
 def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0), release_range=(2.0, 8.0),
@@ -196,14 +227,15 @@ def hang_support_step(env, env_ids, asset_cfg=None, sensor_cfg=None, threshold: 
            else torch.as_tensor(env_ids, device=env.device, dtype=torch.long))
     st["t"][ids] += env.step_dt
     st["r"] = _ratio(st)
-    newly = (st["r"] <= 0.0) & (st["released_t"] < 0.0)
-    st["released_t"][newly] = st["t"][newly]
     sensor = env.scene.sensors[sensor_cfg.name]
     f = sensor.data.net_forces_w[:, sensor_cfg.body_ids, :]
     both = (torch.norm(f, dim=-1) > threshold).all(dim=1)
     nt = both & (st["touch_t"] < 0.0)
     st["touch_t"][nt] = st["t"][nt]
-    _apply(env, st, ids, asset_cfg)
+    _apply(env, st, ids, asset_cfg)                     # 케이블이면 여기서 cbl_T 갱신
+    # 지지 소멸 시각 — 힘 모델 r<=0, 케이블 실제 장력<=eps (item 4c). _apply 뒤라 cbl_T 최신.
+    newly = _support_gone_mask(st) & (st["released_t"] < 0.0)
+    st["released_t"][newly] = st["t"][newly]
 
 
 # ───────────────────────────── 보상 ─────────────────────────────
@@ -213,8 +245,11 @@ def hang_ratio(env) -> torch.Tensor:
 
 
 def survive_after_release(env) -> torch.Tensor:
-    """지지 0 이후 살아 있는 매 스텝 +1 — '자유 기립 생존' 을 강하게."""
-    return (_state(env)["r"] <= 0.0).to(torch.float32)
+    """지지 소멸 이후 살아 있는 매 스텝 +1 — '자유 기립 생존' 을 강하게.
+
+    item 4c: 힘 모델은 r<=0, 케이블은 실제 장력<=eps 일 때만 카운트(재긴장 구간 제외).
+    힘 모델 동작은 종전(r<=0)과 동일 — v5 보상 불변."""
+    return _support_gone_mask(_state(env)).to(torch.float32)
 
 
 def hang_quiet(env, r_min: float = 0.5, asset_cfg=None) -> torch.Tensor:
@@ -375,12 +410,20 @@ def _selftest_cable():
     assert abs(float(T[3])-(172.0+50.0))<1.0, ("감쇠 +c·ddist", float(T[3]))
     # 감쇠는 멀어질 때만(ddist>0)
     assert abs(float(_cable_tension(torch.tensor([1.086]),torch.tensor([1.0]),torch.tensor([2000.0]),torch.tensor([100.0]),torch.tensor([-0.5]),torch.tensor([300.0]))[0])-172.0)<1.0
+    # ★회귀(item 4b): 슬랙(dist<L)인데 멀어지는 중(ddist>0) — 감쇠가 장력을 만들면 안 됨(줄은 밀지 못한다)
+    assert float(_cable_tension(torch.tensor([0.9]),torch.tensor([1.0]),torch.tensor([2000.0]),torch.tensor([100.0]),torch.tensor([0.5]),torch.tensor([300.0]))[0])==0.0, "슬랙+ddist>0 장력 0 (감쇠 누출 버그 부재)"
     # _qrot: 항등 쿼터니언·z축 90° 회전(x→y)
     import math as _m
     assert torch.allclose(_qrot(torch.tensor([[1.,0,0,0]]), torch.tensor([[1.,2,3]])), torch.tensor([[1.,2,3]]), atol=1e-6)
     qz=torch.tensor([[_m.cos(_m.pi/4),0,0,_m.sin(_m.pi/4)]])  # z 90°
     assert torch.allclose(_qrot(qz, torch.tensor([[1.,0,0]])), torch.tensor([[0.,1,0]]), atol=1e-5)
-    print("[selftest] 케이블 장력: 슬랙 0·프리텐션 172N·Tmax 클립·감쇠 단방향·_qrot 회전 — PASS")
+    # item 4c: 지지 소멸 판정 — 힘 모델 r<=0 ; 케이블 r<=0 AND 실제 장력<=eps
+    stf = {"cable_on": False, "r": torch.tensor([0.5, 0.0, -0.1])}
+    assert torch.equal(_support_gone_mask(stf), torch.tensor([False, True, True])), "힘 모델 지지소멸=r<=0"
+    stc = {"cable_on": True, "r": torch.tensor([0.5, 0.0, 0.0, 0.0]), "cbl_T": torch.tensor([200.0, 200.0, 0.5, 5.0])}
+    assert torch.equal(_support_gone_mask(stc), torch.tensor([False, False, True, False])), \
+        "케이블 지지소멸: r>0→F, r=0&팽팽→F(재긴장), r=0&슬랙→T"
+    print("[selftest] 케이블 장력: 슬랙 0·프리텐션 172N·Tmax 클립·감쇠 단방향(슬랙누출 0)·_qrot·지지소멸(힘/케이블) — PASS")
 
 
 def _selftest_level():

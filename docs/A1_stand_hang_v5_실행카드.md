@@ -24,7 +24,7 @@
 | 콘솔 회귀 | `python3 -m pytest -q tests/test_operator_console.py` | 35 passed |
 | 콘솔 모의 | `python3 jetson/scripts/operator_console.py --demo --port 8811` → 절차 클릭 | 정상·정지·회수 전이 (`reports/real_prep_0911/console_mock_validation.md`) |
 | 패키지 | `GENS="stand_v18b stand_hang_v4 stand_hang_v5" bash jetson/deploy_package.sh` | `deploy/stand_7차_<stamp>.tar.gz` + `deploy/MANIFEST.md5` |
-| 풀기 검증(Claude 수행, 0911_2337 완료) | 임시 트리에 tar xzf → `LC_ALL=C md5sum -c --quiet deploy/MANIFEST.md5` → 하드웨어맵 링크 후 `--selftest --checkpoint stand_hang_v5` | MD5_OK · ALL PASS · policy md5 `2a20b7b1…` |
+| 풀기 검증(Claude 수행 — 최신 패키지 stamp·결과는 `reports/real_prep_0911/FINAL_REPORT.md` §5) | 임시 트리에 tar xzf → `LC_ALL=C md5sum -c --quiet deploy/MANIFEST.md5` → 하드웨어맵 링크 후 `--selftest --checkpoint stand_hang_v5` | MD5_OK · ALL PASS · policy md5 `2a20b7b1…` |
 
 ## 2. 젯슨 반영 (승윤님 실행 — 파일 복사·md5·selftest·콘솔 재기동만; CAN·모터 무접촉)
 ```bash

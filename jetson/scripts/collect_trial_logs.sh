@@ -23,7 +23,8 @@ BB="$OUT/rl_bridge_${STAMP}.jsonl"; TL=$(ls "$OUT"/session_*/timeline.jsonl 2>/d
   python3 jetson/scripts/analyze_hang2stand_trial.py "$BB" ${TL:+--timeline "$TL"} 2>&1; echo '```'
   echo "## 2. 로그 재생 계약 검증 (replay_bridge_log — 출력·계약, 폐루프 성능 아님)"; echo '```'
   PYTHONPATH=. python3 rl_walking/deploy/replay_bridge_log.py "$BB" --model models/stand_hang_v5 --gait_freq 1.1 2>&1 | tail -6; echo '```'
-  echo "## 3. 낙하 등급 (analyze_fall — 성공 판정 아님)"; echo '```'
+  echo "## 3. 낙하 등급 (analyze_fall — 성공 판정 아님)"
+  echo "> ⚠ 이 등급은 지지 줄·보조 여부를 모른다. 0910 trial1(윈치에 매달린 채 260 s 안정)도 'A급 완전 성공'으로 나온다. 낙하 여부·자세 진단으로만 읽고, 자립 성공은 §끝의 규칙(모든 줄 느슨·무보조 확인 이후 관측 + 영상)으로만 판정한다."; echo '```'
   python3 jetson/scripts/analyze_fall.py "$BB" 2>&1 | tail -25; echo '```'
   P=$(ls "$OUT"/pads_*.jsonl 2>/dev/null | head -1)
   if [ -n "$P" ]; then echo "## 4. 패드 진단 (analyze_cop_transfer — 미보정, 원인·성공 판정 금지)"; echo '```'; python3 jetson/scripts/analyze_cop_transfer.py "$P" "$BB" --every 5 2>&1 | tail -30; echo '```'; fi

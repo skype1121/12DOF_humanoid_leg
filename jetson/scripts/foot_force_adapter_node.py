@@ -173,6 +173,8 @@ def main():
 
     rclpy.init()
     node = Node("foot_force_adapter")
+    node.declare_parameter("left_npc_scale", 1.0)   # 0911: per-foot 스케일(왼발 저평가 보정 — 균형스탠스 표본으로 정함, 기본 1.0=무변화)
+    node.declare_parameter("right_npc_scale", 1.0)
     node.declare_parameter("newton_per_count", NEWTON_PER_COUNT)
     node.declare_parameter("left_bias_counts", LEFT_BIAS_COUNTS)
     node.declare_parameter("right_bias_counts", RIGHT_BIAS_COUNTS)
@@ -187,6 +189,7 @@ def main():
         # 파라미터를 매 콜백 재조회 (10Hz라 저렴) — 보정 작업 중
         # `ros2 param set … newton_per_count X` 가 즉시 반영되게 함
         npc = float(node.get_parameter("newton_per_count").value)
+        lsc = float(node.get_parameter("left_npc_scale").value); rsc = float(node.get_parameter("right_npc_scale").value)
         lb = float(node.get_parameter("left_bias_counts").value)
         rb = float(node.get_parameter("right_bias_counts").value)
         pcc = float(node.get_parameter("pad_contact_counts").value)
@@ -194,6 +197,7 @@ def main():
         rpb = [float(v) for v in node.get_parameter("right_pad_bias").value]
         try:
             out = pressure_to_foot_force(json.loads(msg.data), npc, lb, rb, pcc, lpb, rpb)
+            out["left_n"] *= lsc; out["right_n"] *= rsc   # per-foot 스케일 (접촉 이진은 패드 카운트 기반이라 불변)
         except Exception as e:
             stat["err"] += 1
             if stat["err"] % ERR_LOG_EVERY == 1:  # 1·21·41…번째만 로그

@@ -1837,14 +1837,18 @@ def main():
             현 자세 유지는 어느 상태에서든 무동작이다. 12관절 모두 실측·baseline 이 있어야 보낸다.
             ※ 이 프라임은 tick-1 stale 의 원인을 고치지 않는다(원인은 stage8 쪽 status 전달 갭 — 가설).
               워밍업은 실측된 전달 갭(최대 ~3 s)에 대한 유예이며, 4 s 안에 못 붙으면 정지가 맞다."""
-            if not self.baseline or len(self.joint_deg) < 12:
-                return
             tg = {}
-            for j in JOINT_ORDER:
-                b = self.baseline.get(j); q = self.joint_deg.get(j)
-                if b is None or q is None:
+            if all(j in self.stage8_cmd_rel for j in JOINT_ORDER):
+                # 호환검수 R6: stage8 가 지금 스트리밍 중인 상대 명령을 그대로 = 어떤 상태(ARM 직후·STOP_ALL 동결)에서도 '무변화'
+                tg = {j: float(self.stage8_cmd_rel[j]) for j in JOINT_ORDER}
+            else:
+                if not self.baseline or len(self.joint_deg) < 12:
                     return
-                tg[j] = q - b
+                for j in JOINT_ORDER:
+                    b = self.baseline.get(j); q = self.joint_deg.get(j)
+                    if b is None or q is None:
+                        return
+                    tg[j] = q - b            # 폴백: 실측 자세 유지
             self.pub_cmd.publish(String(data=json.dumps(
                 {"command": "SET_JOINT_TARGETS", "targets": tg})))
 
@@ -1882,6 +1886,11 @@ def main():
                     data=json.dumps({"command": "STOP_ALL"})))
             self._bb_write({"timestamp": time.time(), "event": "stop_all",
                             "reason": reason})
+            try:   # 0911 호환검수 R7: 브리지발 정지를 ROS 디버그 토픽으로도 알림 — 콘솔 Telemetry.receive 의 event 분기가 소비
+                self.pub_dbg.publish(String(data=json.dumps(
+                    {"event": "stop_all", "reason": str(reason), "timestamp": time.time()})))
+            except Exception:  # noqa: BLE001 — 알림 실패가 안전동작을 막으면 안 된다
+                pass
 
     rclpy.init()
     node = RlBridgeNode()

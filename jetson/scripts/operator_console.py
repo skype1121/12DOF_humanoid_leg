@@ -56,6 +56,7 @@ BRIDGE_CMD_TOPIC = "/humanoid/rl_bridge_command"
 BRIDGE_DEBUG_TOPIC = "/humanoid/rl_bridge_debug"
 
 BODY_WEIGHT_N = 172.9        # 구 로그 필드 호환용. 화면·진행·성공 판정에 사용하지 않는다.
+BRIDGE_JOINT_FRESH_SEC = 0.2  # rl_bridge_node.SENSOR_STALE_SEC 와 동일 — '12/12 신선' 판정 기준 (0911 R3)
 
 #: 정책 드롭다운 — 첫 항목이 기본값(7차 데뷔 후보). 브리지 CHECKPOINTS 의 부분집합이어야 한다(selftest ⑧).
 #: 0907: stand_v14 제거 — 패키지 GENS(v15~v18b)에 없어 젯슨에 파일이 없다(선택 시 로드 실패). 젯슨 구 자산 정리로
@@ -179,6 +180,7 @@ class SessionLog:
                 "ckpt": view["bridge"]["checkpoint"],
                 "blend": view["bridge"]["blend"],
                 "contact": view["bridge"]["contact"],
+                "hang_state": view["bridge"].get("hang_state"),   # 0911 R5: 리프트 가드 무장 여부 기록
                 "sensor_contact": view["foot"].get("contact"),
                 "foot_raw_sum": view["foot"].get("raw_sum"),
                 "foot_pads_on": view["foot"].get("pads_on"),
@@ -265,6 +267,7 @@ class Proc:
         self.rc = None
         self.hold = {}
         self.loaded_checkpoint = None
+        self.warmup = None            # 0911 R4: 브리지 인계 워밍업 {state: start|waiting|done|timeout, ts, detail}
         self.all_pass = False
         self.fault = None
         self.blackbox_path = None
@@ -288,6 +291,15 @@ class Proc:
                 cm = re.search(r"RL 브리지 기동.*LIVE.*checkpoint=([A-Za-z0-9_]+)", s)
                 if cm:
                     self.loaded_checkpoint = cm[1]
+                if self.key == "bridge":   # 0911 R4: 워밍업 상태를 stdout 계약에서 뽑아 화면·기록에 남긴다
+                    if "인계 워밍업 최대" in s:
+                        self.warmup = {"state": "start", "ts": now(), "detail": ""}
+                    elif "[인계 워밍업 대기]" in s:
+                        self.warmup = {"state": "waiting", "ts": now(), "detail": s.split("]", 1)[-1].strip()[:160]}
+                    elif "인계 워밍업 완료" in s:
+                        self.warmup = {"state": "done", "ts": now(), "detail": ""}
+                    elif "sensor_stale_warmup_timeout" in s:
+                        self.warmup = {"state": "timeout", "ts": now(), "detail": s[-200:]}
                 if self.key == "bridge" and "블랙박스 기록: " in s:
                     self.blackbox_path = s.split("블랙박스 기록: ", 1)[1].strip()
                 if "selftest: ALL PASS" in s:
@@ -340,6 +352,7 @@ class Proc:
                 "argv": " ".join(shlex.quote(a) for a in self.argv),
                 "lines": list(self.lines)[-n:], "hold": dict(self.hold),
                 "loaded_checkpoint": self.loaded_checkpoint, "all_pass": self.all_pass,
+                "warmup": getattr(self, "warmup", None),   # 테스트는 __init__ 없이 Proc 를 만들 수 있음
                 "fault": self.fault, "started": self.started, "blackbox_path": self.blackbox_path,
                 "release_ok": self.release_ok, "release_error": self.release_error}
 
@@ -570,9 +583,13 @@ class Telemetry:
             "last_event": tk.get("last_event"), "running": bool(st.get("running")),
             "last_command": st.get("last_command"), "accepted": st.get("accepted") is True,
             "command_seq": st.get("command_seq"), "errors": st.get("errors", []),
+            # 0911 호환검수 R3: stage8 의 feedback_stale(3 s)는 브리지 라이브 게이트(0.2 s, 관절별 worst_age)보다 15배
+            # 느슨해 콘솔이 초록인 채 stand 첫 틱이 sensor_stale 로 죽을 수 있다 → 브리지와 같은 0.2 s 를 관절별로 요구.
             "feedback_ok": (fresh["status"] and len(joints) == 12 and
                             all(isinstance(j, dict) and j.get("feedback_valid") is True
                                 and j.get("feedback_stale") is False and finite(j.get("latest_actual_deg"))
+                                and isinstance(j.get("feedback_age_sec"), (int, float))
+                                and float(j.get("feedback_age_sec")) < BRIDGE_JOINT_FRESH_SEC
                                 for j in joints.values())),
             "joints": joints,
         }

@@ -82,11 +82,22 @@ class TrialState:
             self.slack_at = None
             self.emit("measurement_interrupted", reason=reason, elapsed=round(self.max_elapsed, 1))
 
+    FAULT_HINTS = (   # 0911 R8: 정지 사유 원문 → 운영 문구 (부분 일치, 앞에서부터)
+        ("sensor_stale_warmup_timeout", "인계 실패 — 관절 피드백 미확보. 브리지 로그의 낡은 관절 목록/status 나이 확인 후 CAN·stage8 점검, 재명령"),
+        ("sensor_stale", "센서 신선도 정지 — IMU/발압력/관절 피드백 공백. 원인 확인 전 재개 금지"),
+        ("lift_guard", "양발 무접촉 정지 — 접촉 비트·패드·영상으로 '실제 리프트'인지 '센서'인지 판별"),
+        ("hang_guard", "행잉 허용 시간 초과 정지"),
+        ("osc_guard", "발진 가드 정지"),
+        ("nonfinite", "비유한 관측 정지 — 센서 점검"),
+        ("STOP_ALL", "제어기가 STOP_ALL 수락 — 목표 동결(토크 유지), 정지 사유 확인"),
+    )
+
     def latch(self, reason):
         if not self.fault:
             self.fault = reason
+            self.fault_hint = next((h for k, h in self.FAULT_HINTS if k in str(reason)), None)
             self.revision += 1
-            self.emit("fault", reason=reason)
+            self.emit("fault", reason=reason, hint=self.fault_hint)
         self.invalidate(reason)
 
     def _sensor_reason(self, need_status=False):
@@ -414,6 +425,7 @@ class TrialState:
         return {"boot_id": self.boot_id, "revision": self.revision, "number": self.number,
                 "mode": self.mode, "checkpoint": self.checkpoint, "phase": phase, "owner": owner,
                 "completed": sorted(self.completed), "pending": self.pending, "fault": self.fault,
+                "fault_hint": getattr(self, "fault_hint", None),
                 "last_result": self.last_result, "next_action": next_action, "allowed": allowed,
                 "measurement": dict(self.measurement), "stop": stop, "support_confirmed": self.support,
                 "history": list(self.history)}

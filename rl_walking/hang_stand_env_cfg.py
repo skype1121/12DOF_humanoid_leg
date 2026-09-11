@@ -513,6 +513,19 @@ class Biped12HangStandS8ac4EnvCfg(Biped12HangStandS8ac3EnvCfg):
 
 
 @configclass
+class Biped12HangStandS8ac4dEnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S8ac4d (0911): S8ac4 + 액션 지연 DR **3~10틱**(S8ac4 는 3~8). 실측 정책루프 지연 중앙 6.3틱·p95 8.9틱
+    (reports/real_prep_0911/realdata_model_id.md §5)이 S8ac4 대역 상단이라, 시뮬에서 실측 분포(6~9틱)만으로 DR 생존이
+    −11~−13 pp(sim_eval_v5.md 조건 H). 물리·보상·관측 불변, 지연 대역만 변경(단일 변수). v5 웜스타트 조건부 후보.
+    승격 기준·예산·종료 조건: promotion_criteria.md 부록 v5d (학습 전 고정)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.min_delay_steps = 3
+        self.actions.joint_pos.max_delay_steps = 10
+
+
+@configclass
 class Biped12HangStandS8ac5EnvCfg(Biped12HangStandS8ac4EnvCfg):
     """S8ac5: S8ac4 + torso_pitch_band 가중치 −25 → −60.
     S8ac4 는 정착 피치가 −4.9° 까지 기울었다(보너스 0.028/step 이 밴드 벌점 0.017/step 을 이김 — 후방 CoM DR 에서 앞으로 기울면 CoP 가 중앙에 와 더 조용하다).

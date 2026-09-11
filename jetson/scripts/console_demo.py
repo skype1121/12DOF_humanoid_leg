@@ -80,7 +80,7 @@ class Demo:
         procs = copy.deepcopy(self.procs)
         if procs.get("hang_stand", {}).get("alive"):
             procs["hang_stand"]["hold"] = {"phase": self.phase, "kp": self.kp, "ts": stamp}
-        joints = {f"joint_{i+1:02}": {"feedback_valid": True, "feedback_stale": False,
+        joints = {f"joint_{i+1:02}": {"feedback_valid": True, "feedback_stale": False, "feedback_age_sec": 0.02,
                   "latest_actual_deg": 0.2, "baseline_deg": 0 if self.baseline else None,
                   "commanded_relative_deg": 0, "desired_relative_deg": 0}
                   for i in range(12)}

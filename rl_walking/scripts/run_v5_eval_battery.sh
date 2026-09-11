@@ -15,10 +15,11 @@ OUT=${1:-log_picture/eval_logs_$(date +%Y%m%d_%H%M)}; mkdir -p "$OUT"
 CK=${CK:-"--load_run 2026-09-09_19-15-42 --checkpoint model_139987.pt"}   # v5
 T=${T:-Biped12-HangStand-S8ac4-v0}
 N=${N:-256}
+P=${P:-v5}          # 결과 파일 태그 접두어 — 후보 평가 시 P=v5d 등으로 바꿔 v5 결과를 덮어쓰지 않게 한다
 PY=${PY:-$HOME/IsaacLab/_isaac_sim/python.sh}
 
-run() {  # run <tag> [eval args...]
-  local tag=$1; shift
+run() {  # run <tag> [eval args...]   (tag 의 선행 'v5_' 는 접두어 $P 로 치환)
+  local tag="${P}_${1#v5_}"; shift
   rm -f "log_picture/hang2stand_$tag.txt"
   PYTHONPATH="$PWD" "$PY" -u rl_walking/scripts/eval_hang2stand.py --headless --task "$T" $CK --num_envs "$N" "$@" --out_tag "$tag" > "$OUT/$tag.log" 2>&1
   local F="log_picture/hang2stand_$tag.txt"

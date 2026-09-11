@@ -59,6 +59,8 @@ parser.add_argument("--anchor_x", type=float, default=None, help="[케이블 태
 parser.add_argument("--anchor_y", type=float, default=None, help="[케이블 태스크] 앵커 좌우 오프셋 고정 [m]")
 parser.add_argument("--anchor_h", type=float, default=None, help="[케이블 태스크] 앵커 높이(후크 위) 고정 [m] (기본 DR 1.0~1.6)")
 parser.add_argument("--hook_z", type=float, default=None, help="[케이블 태스크] 후크 높이(base 위) 고정 [m] (기본 DR 0.25~0.40)")
+parser.add_argument("--anchor_vx", type=float, default=None, help="[케이블] 앵커 전후 드리프트 속도 [m/s] (시간 가변 당김 가설)")
+parser.add_argument("--anchor_vy", type=float, default=None, help="[케이블] 앵커 좌우 드리프트 속도 [m/s]")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -110,7 +112,7 @@ _hp = env_cfg.events.hang_support_reset.params
 if args_cli.r0: _hp["r0_range"] = _pair(args_cli.r0)
 if args_cli.hold_s: _hp["hold_range"] = _pair(args_cli.hold_s)
 if args_cli.release_s: _hp["release_range"] = _pair(args_cli.release_s)
-for _nm, _key in (("anchor_x", "anchor_x_range"), ("anchor_y", "anchor_y_range"), ("anchor_h", "anchor_h_range"), ("hook_z", "hook_z_range")):
+for _nm, _key in (("anchor_x", "anchor_x_range"), ("anchor_y", "anchor_y_range"), ("anchor_h", "anchor_h_range"), ("hook_z", "hook_z_range"), ("anchor_vx", "anchor_vx_range"), ("anchor_vy", "anchor_vy_range")):
     _v = getattr(args_cli, _nm)
     if _v is not None:
         assert _hp.get("cable", False), f"--{_nm} 는 케이블 태스크(cable=True)에서만 의미가 있다"

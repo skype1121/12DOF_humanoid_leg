@@ -56,7 +56,8 @@ def _state(env):
               "cable_on": False, "hx": z(), "hy": z(), "hz": z(), "ax": z(), "ay": z(), "az": z(),
               "cbl_k": z(), "cbl_c": z(), "cbl_tmax": z(), "cbl_L0": torch.ones(N, device=dev), "cbl_d0": z(), "cbl_slack": z(),
               # 케이블 실제 상태 기록 (item 4c: 지지 제거를 스케줄 r 이 아니라 실제 장력으로 판정)
-              "cbl_T": z(), "cbl_dist": z()}
+              "cbl_T": z(), "cbl_dist": z(),
+              "avx": z(), "avy": z()}   # 0912 앵커 드리프트 속도 [m/s] (시간 가변 당김 재현용)
         env._hang = st
     return st
 
@@ -100,7 +101,8 @@ def _cable_apply(env, st, ids, asset_cfg):
     pos = asset.data.root_pos_w[ids]; quat = asset.data.root_quat_w[ids]
     hook_b = torch.stack([st["hx"][ids], st["hy"][ids], st["hz"][ids]], dim=-1)
     H = pos + _qrot(quat, hook_b)
-    A = torch.stack([st["ax"][ids], st["ay"][ids], st["az"][ids]], dim=-1)
+    _t = st["t"][ids]
+    A = torch.stack([st["ax"][ids] + st["avx"][ids] * _t, st["ay"][ids] + st["avy"][ids] * _t, st["az"][ids]], dim=-1)
     rope = A - H; dist = torch.norm(rope, dim=-1).clamp(min=1e-4); dirw = rope / dist.unsqueeze(-1)
     if bool(st.get("cbl_force", False)):
         T = (r.clamp(min=0.0) * m * G)                       # 힘제어 케이블: 크기 = 지지비 스케줄, 방향 = 후크→앵커 (램프 없음: 힘 모델과 동일 시작)
@@ -169,7 +171,7 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
                        level_gain_range=(0.0, 0.0), level_damp_range=(0.0, 0.0),
                        cable=False, hook_z_range=(0.25, 0.40), anchor_x_range=(-0.05, 0.05), anchor_y_range=(-0.05, 0.05),
                        anchor_h_range=(1.0, 1.6), cbl_k_range=(1500.0, 3000.0), cbl_c_range=(20.0, 120.0),
-                       cbl_slack_range=(0.05, 0.15), cable_force_mode=False):
+                       cbl_slack_range=(0.05, 0.15), cable_force_mode=False, anchor_vx_range=(0.0, 0.0), anchor_vy_range=(0.0, 0.0)):
     """mode="reset": 에피소드마다 지지 스케줄·로프 기하를 새로 뽑고 첫 지지력을 즉시 건다."""
     asset_cfg = asset_cfg or _base_cfg()
     st = _state(env)
@@ -205,6 +207,7 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
         # 0912 힘제어 케이블: 장력 크기는 r(t)·m·g(힘 모델과 같은 스케줄), 방향은 후크→고정 앵커(기하 결합). 강성·길이 제약 없음 —
         # 실물 로프 강성이 미측정이라 길이 모델은 k 에 결과가 지배되므로, 줄 모멘트(후크 비연직) 가설 검정엔 이 모드를 쓴다.
         st["cbl_force"] = bool(cable_force_mode)
+        st["avx"][ids] = U(*anchor_vx_range); st["avy"][ids] = U(*anchor_vy_range)   # 앵커가 t 에 비례해 이동(운영자·윈치 드리프트 가설)
         asset0 = env.scene[asset_cfg.name]
         p0 = asset0.data.root_pos_w[ids]                     # 리셋 시 base 월드 위치
         st["hx"][ids] = 0.0; st["hy"][ids] = 0.0; st["hz"][ids] = U(*hook_z_range)   # 후크(토르소 위)

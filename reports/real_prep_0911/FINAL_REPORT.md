@@ -44,7 +44,7 @@
 - 패키지: `deploy/stand_7차_<stamp>.tar.gz` + `deploy/MANIFEST.md5` (§8 에 stamp·md5). 젯슨 반영·md5·selftest·콘솔 재기동은 승윤님(`docs/A1_stand_hang_v5_실행카드.md` §2).
 - **패키지 풀기 검증(로컬, MEASURED)**: `stand_7차_20260912_0015.tar.gz` 를 임시 트리에 풀어 `LC_ALL=C md5sum -c --quiet deploy/MANIFEST.md5` → MD5_OK(45 파일), 하드웨어맵을 링크(패키지는 맵을 일부러 담지 않는다 — 젯슨 원본 유지)한 뒤 `rl_bridge_node.py --selftest --checkpoint stand_hang_v5` → **ALL PASS**, 풀린 `…/2026-09-09_19-15-42/exported/policy.pt` md5 = 레지스트리 `2a20b7b1cd4ec3da`.
 - 복구: 직전 패키지를 같은 절차로 풀고 md5·selftest — 상세 `deploy_path_check.md` §6(젯슨 조치는 미수행 표시). MANIFEST 불일치(0910 콘솔 수동 scp) 는 이번 패키지의 새 MANIFEST 로 해소.
-- 실행 카드: `docs/A1_stand_hang_v5_실행카드.md`(확정판). 사후 분석 일괄: `jetson/scripts/collect_trial_logs.sh <stamp>`(젯슨에서 블랙박스·타임라인·패드·stiff 를 scp 로 수집 → `analyze_hang2stand_trial.py --timeline`, `replay_bridge_log.py`, `analyze_fall.py`, `analyze_cop_transfer.py`(진단만) 실행 → `analysis.md`). 평가 재현: `rl_walking/scripts/run_v5_eval_battery.sh`.
+- 실행 카드: `docs/A1_stand_hang_v5_실행카드.md`(확정판). 사후 분석 일괄: `jetson/scripts/collect_trial_logs.sh <stamp>`(젯슨에서 블랙박스·타임라인·패드·stiff 를 scp 로 수집 → `analyze_hang2stand_trial.py --timeline`, `replay_bridge_log.py`, `analyze_fall.py`, `analyze_cop_transfer.py`(진단만) 실행 → `analysis.md`). 평가 재현: `rl_walking/scripts/run_v5_eval_battery.sh`. `collect_trial_logs.sh` 는 0910 trial1 로컬 사본으로 dry-run(젯슨 호스트 무효 → scp 실패 메시지 후 분석 블록 실행) — 구간·순서·타임라인·재생(PASS)·낙하 등급까지 `analysis.md` 151줄 생성, Traceback 없음(MEASURED, 0912).
 
 ## 6. 실패하면 어떤 기록이 어느 가설을 가르는가
 | 관찰 | 지지되는 가설 | 반박되는 가설 |

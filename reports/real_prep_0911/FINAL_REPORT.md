@@ -45,7 +45,7 @@
 
 ## 5. 패키지 · 복구 · 실행 카드
 - 패키지: `deploy/stand_7차_<stamp>.tar.gz` + `deploy/MANIFEST.md5` (§8 에 stamp·md5). 젯슨 반영·md5·selftest·콘솔 재기동은 승윤님(`docs/A1_stand_hang_v5_실행카드.md` §2).
-- **패키지 풀기 검증(로컬, MEASURED)**: `stand_7차_20260912_0015.tar.gz` 를 임시 트리에 풀어 `LC_ALL=C md5sum -c --quiet deploy/MANIFEST.md5` → MD5_OK(45 파일), 하드웨어맵을 링크(패키지는 맵을 일부러 담지 않는다 — 젯슨 원본 유지)한 뒤 `rl_bridge_node.py --selftest --checkpoint stand_hang_v5` → **ALL PASS**, 풀린 `…/2026-09-09_19-15-42/exported/policy.pt` md5 = 레지스트리 `2a20b7b1cd4ec3da`.
+- **패키지 풀기 검증(로컬, MEASURED)**: `stand_7차_20260912_0526.tar.gz` 를 임시 트리에 풀어 `LC_ALL=C md5sum -c --quiet deploy/MANIFEST.md5` → MD5_OK(45 파일), 하드웨어맵을 링크(패키지는 맵을 일부러 담지 않는다 — 젯슨 원본 유지)한 뒤 `rl_bridge_node.py --selftest --checkpoint stand_hang_v5` → **ALL PASS**, 풀린 `…/2026-09-09_19-15-42/exported/policy.pt` md5 = 레지스트리 `2a20b7b1cd4ec3da`.
 - 복구: 직전 패키지를 같은 절차로 풀고 md5·selftest — 상세 `deploy_path_check.md` §6(젯슨 조치는 미수행 표시). MANIFEST 불일치(0910 콘솔 수동 scp) 는 이번 패키지의 새 MANIFEST 로 해소.
 - 실행 카드: `docs/A1_stand_hang_v5_실행카드.md`(확정판). 사후 분석 일괄: `jetson/scripts/collect_trial_logs.sh <stamp>`(젯슨에서 블랙박스·타임라인·패드·stiff 를 scp 로 수집 → `analyze_hang2stand_trial.py --timeline`, `replay_bridge_log.py`, `analyze_fall.py`, `analyze_cop_transfer.py`(진단만) 실행 → `analysis.md`). 평가 재현: `rl_walking/scripts/run_v5_eval_battery.sh`. `collect_trial_logs.sh` 는 0910 trial1 로컬 사본으로 dry-run(젯슨 호스트 무효 → scp 실패 메시지 후 분석 블록 실행) — 구간·순서·타임라인·재생(PASS)·낙하 등급까지 `analysis.md` 151줄 생성, Traceback 없음(MEASURED, 0912).
 
@@ -71,7 +71,7 @@
 
 ## 8. 수치 부록
 - v5 평가표 전체: `sim_eval_v5.md` (조건 A~H, 결과 파일 `log_picture/hang2stand_<tag>.txt` 기준).
-- 패키지(최신): `deploy/stand_7차_20260912_0015.tar.gz` (6.8 MB, 44 파일, `deploy/MANIFEST.md5` 44 항목; 0911 23:16 판은 호환검수 R3~R8 반영 전, 23:37 판은 실행카드·콘솔 부록 갱신 전이라 폐기 — 코드·정책 md5 는 23:37 판과 동일). 핵심 md5(앞 16자리): `rl_bridge_node.py` 4562106ff344d74d · `console_state.py` b7ae160bb457d4ab · `operator_console.py` de2cc58a63943cb2 · `console_ui.html` c4f14b701ad6fb68 · `stand_hang_v5/policy.pt` 2a20b7b1cd4ec3da (= `logs/…/2026-09-09_19-15-42/exported/policy.pt`, actor 가중치 8/8 텐서 = model_139987). v5d 불채택(§8.4)이므로 정책은 v5 그대로; 이 패키지가 최종이다.
+- 패키지(최신): `deploy/stand_7차_20260912_0526.tar.gz` (6.8 MB, 44 파일, `deploy/MANIFEST.md5` 44 항목; 0911 23:16 판은 호환검수 R3~R8 반영 전, 23:37·0912 00:15 판은 실행카드(stage8 갭 판별 항목)·rl_walking/__init__(CableFS3r 등록) 갱신 전이라 폐기 — 브리지·콘솔·정책 md5 는 동일). 핵심 md5(앞 16자리): `rl_bridge_node.py` 4562106ff344d74d · `console_state.py` b7ae160bb457d4ab · `operator_console.py` de2cc58a63943cb2 · `console_ui.html` c4f14b701ad6fb68 · `stand_hang_v5/policy.pt` 2a20b7b1cd4ec3da (= `logs/…/2026-09-09_19-15-42/exported/policy.pt`, actor 가중치 8/8 텐서 = model_139987). v5d 불채택(§8.4)이므로 정책은 v5 그대로; 이 패키지가 최종이다.
 - 코드 커밋: 브랜치 `hang2stand-prep-0911`, 보존 커밋 f36c8a1(CLAUDE.md·하드웨어맵) → 8489315(Codex 콘솔 보존) → 이후 수정 커밋들. 패키지는 워킹트리 기준이며 MANIFEST 로 대조.
 - 접촉 교란 추가: onefoot(오른발 2 s 주기 0.3 s 0 오판) 명목 256/256 (100 %).
 - ~~케이블 명목 느린 방출: 254/256 (99.2 %) … 발목 피치 추종오차 반대칭~~ — **철회(0912)**: 그 런은 케이블 비활성 버그로 지지 없이 떨어뜨린 v5 였다. 발목 추종오차 반대칭은 케이블과 무관한 v5 의 서기 특성일 뿐 실물 발목 역구동 패턴의 재현 근거가 아니다.

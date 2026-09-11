@@ -10,6 +10,7 @@
 | 콘솔 | Codex 리뉴얼(0911): 실제 응답 기반 단계, 접지 인계/공중 시작 분리, 윈치 이벤트, 무보조 확인 후 관측 타이머, `--demo` |
 | 게인·필터 | kp150/kd5, 슬루 4°/틱, LPF β0.27, 블렌딩 1.5 s (변경 없음) |
 | 절차 | 접지 후 정책 인계(행잉 ARM 미체크), 좌우 대칭 저속 방출, 모든 줄 느슨 확인 후 관측 |
+| 조건부 후보 v5d | 사전등록 실험(지연 DR 3~10, 1500 it) 결과 승격 규칙 미충족(H69 +0.7 pp, seed 재현 실패, DR+푸시 −4.3 pp) → **불채택**, v5 유지 — `reports/real_prep_0911/promotion_criteria.md` 부록 결과 |
 | 커밋 | 브랜치 `hang2stand-prep-0911` (패키지 MANIFEST.md5 와 대조) |
 
 이전 3회 대비 달라지는 점과 근거: `reports/real_prep_0911/hypotheses_and_field_checks.md` §C.
@@ -74,4 +75,4 @@ python3 jetson/scripts/analyze_cop_transfer.py <pads> <bb>   # 미보정 진단�
 판별 규칙(가설 H1~H5, 무엇이 무엇을 지지/반박하는지): `reports/real_prep_0911/hypotheses_and_field_checks.md` §B.
 
 ## 8. 시뮬 기대치 (실물 성공률 아님)
-명목 99.6 %(5 s)·99.6 %(30 s), DR·푸시 OFF 100 %, 현실적 접촉 교란 100 %, 횡 편심 ±2 cm 명목 100 %. 실물 무보조 자립은 **미검증**이다.
+명목 99.6 %(5 s)·99.6 %(30 s), DR ON·푸시 OFF 95.3 %(256 env; 푸시·노이즈까지 OFF 100 %), 실측 지연 6~9틱 DR 푸시 OFF 89.1 %, 현실적 접촉 교란 100 %, 횡 편심 ±2 cm 명목 100 %. 조건부 후보 v5d 는 불채택(v5 유지). 실물 무보조 자립은 **미검증**이다.

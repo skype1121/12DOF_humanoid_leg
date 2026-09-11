@@ -102,13 +102,16 @@ def _cable_apply(env, st, ids, asset_cfg):
     H = pos + _qrot(quat, hook_b)
     A = torch.stack([st["ax"][ids], st["ay"][ids], st["az"][ids]], dim=-1)
     rope = A - H; dist = torch.norm(rope, dim=-1).clamp(min=1e-4); dirw = rope / dist.unsqueeze(-1)
-    payout = (1.0 - (r / st["r0"][ids].clamp(min=1e-3)).clamp(0.0, 1.0)) * (st["cbl_d0"][ids] + st["cbl_slack"][ids])
-    L = st["cbl_L0"][ids] - st["cbl_d0"][ids] + payout
-    v = asset.data.root_lin_vel_w[ids] if hasattr(asset.data, "root_lin_vel_w") else torch.zeros_like(pos)
-    ddist = -(dirw * v).sum(-1)
-    T = _cable_tension(dist, L, st["cbl_k"][ids], st["cbl_c"][ids], ddist, st["cbl_tmax"][ids])
-    ramp = (st["t"][ids] / 1.0).clamp(0.0, 1.0)          # 첫 1s 램프인: 스폰 낙하 착지 충격(시뮬 인공물) 제거
-    T = T * ramp
+    if bool(st.get("cbl_force", False)):
+        T = (r.clamp(min=0.0) * m * G)                       # 힘제어 케이블: 크기 = 지지비 스케줄, 방향 = 후크→앵커 (램프 없음: 힘 모델과 동일 시작)
+    else:
+        payout = (1.0 - (r / st["r0"][ids].clamp(min=1e-3)).clamp(0.0, 1.0)) * (st["cbl_d0"][ids] + st["cbl_slack"][ids])
+        L = st["cbl_L0"][ids] - st["cbl_d0"][ids] + payout
+        v = asset.data.root_lin_vel_w[ids] if hasattr(asset.data, "root_lin_vel_w") else torch.zeros_like(pos)
+        ddist = -(dirw * v).sum(-1)
+        T = _cable_tension(dist, L, st["cbl_k"][ids], st["cbl_c"][ids], ddist, st["cbl_tmax"][ids])
+        ramp = (st["t"][ids] / 1.0).clamp(0.0, 1.0)          # 첫 1s 램프인: 스폰 낙하 착지 충격(시뮬 인공물) 제거
+        T = T * ramp
     st["cbl_T"][ids] = T.detach()                        # item 4c: 실제 적용 장력 기록 (지지 소멸·재긴장 판정·로깅용)
     st["cbl_dist"][ids] = dist.detach()
     F_w = T.unsqueeze(-1) * dirw
@@ -166,7 +169,7 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
                        level_gain_range=(0.0, 0.0), level_damp_range=(0.0, 0.0),
                        cable=False, hook_z_range=(0.25, 0.40), anchor_x_range=(-0.05, 0.05), anchor_y_range=(-0.05, 0.05),
                        anchor_h_range=(1.0, 1.6), cbl_k_range=(1500.0, 3000.0), cbl_c_range=(20.0, 120.0),
-                       cbl_slack_range=(0.05, 0.15)):
+                       cbl_slack_range=(0.05, 0.15), cable_force_mode=False):
     """mode="reset": 에피소드마다 지지 스케줄·로프 기하를 새로 뽑고 첫 지지력을 즉시 건다."""
     asset_cfg = asset_cfg or _base_cfg()
     st = _state(env)
@@ -186,8 +189,22 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
     st["py"][ids] = U(-point_xy, point_xy)
     st["lvl_k"][ids] = U(*level_gain_range)      # 수평 유지 강성 [Nm/rad] (실물 두 줄 현가 ≈ 강함)
     st["lvl_c"][ids] = U(*level_damp_range)      # 감쇠 [Nm·s/rad]
+    # ★정정(2026-09-12): 질량 캐시를 케이블 블록 **앞**으로 옮김. 종전엔 케이블 프리텐션 d0=r0·m·g/k 와 tmax=1.5·m·g 를
+    # st["mass"] 를 채우기 전에 계산해 첫 리셋에서 mass=0 → tmax=0 → 장력이 에피소드 내내 0 으로 클램프됐다(평가는 단일
+    # 에피소드라 케이블이 한 번도 작용하지 않았음 — 0911 케이블 결과 전부 '무지지 낙하' 였다). 진단: simbb 덤프 cbl_T.
+    # 총질량: startup 질량 DR(add_base_mass) 반영. PhysX 뷰 get_masses() 는 CPU readback 이라
+    # 매 리셋마다 부르면 4096env 학습이 ~7it/min 로 느려진다(0908 실측) — startup 뒤 불변이므로 1회 캐시.
+    _asset0 = env.scene[asset_cfg.name]
+    cache = getattr(env, "_hang_mass_all", None)
+    if cache is None or cache.shape[0] != env.num_envs:
+        cache = _asset0.root_physx_view.get_masses().sum(1).to(env.device)
+        env._hang_mass_all = cache
+    st["mass"][ids] = cache[ids]
     if cable:
         st["cable_on"] = True
+        # 0912 힘제어 케이블: 장력 크기는 r(t)·m·g(힘 모델과 같은 스케줄), 방향은 후크→고정 앵커(기하 결합). 강성·길이 제약 없음 —
+        # 실물 로프 강성이 미측정이라 길이 모델은 k 에 결과가 지배되므로, 줄 모멘트(후크 비연직) 가설 검정엔 이 모드를 쓴다.
+        st["cbl_force"] = bool(cable_force_mode)
         asset0 = env.scene[asset_cfg.name]
         p0 = asset0.data.root_pos_w[ids]                     # 리셋 시 base 월드 위치
         st["hx"][ids] = 0.0; st["hy"][ids] = 0.0; st["hz"][ids] = U(*hook_z_range)   # 후크(토르소 위)
@@ -200,17 +217,12 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
                                                     st["az"][ids]-(p0[:,2]+st["hz"][ids])], -1), dim=-1)
         st["cbl_d0"][ids] = (st["r0"][ids] * st["mass"][ids] * G / st["cbl_k"][ids])
         st["cbl_tmax"][ids] = st["mass"][ids] * G * 1.5
+        assert bool((st["cbl_tmax"][ids] > 0).all()) and bool((st["cbl_d0"][ids] > 0).all()), \
+            "케이블 프리텐션/최대장력이 0 — 질량 미설정(순서 버그) — 무지지 낙하 평가가 되므로 중단"
     st["t"][ids] = 0.0
     st["released_t"][ids] = -1.0
     st["touch_t"][ids] = -1.0
     asset = env.scene[asset_cfg.name]
-    # 총질량: startup 질량 DR(add_base_mass) 반영. PhysX 뷰 get_masses() 는 CPU readback 이라
-    # 매 리셋마다 부르면 4096env 학습이 ~7it/min 로 느려진다(0908 실측) — startup 뒤 불변이므로 1회 캐시.
-    cache = getattr(env, "_hang_mass_all", None)
-    if cache is None or cache.shape[0] != env.num_envs:
-        cache = asset.root_physx_view.get_masses().sum(1).to(env.device)
-        env._hang_mass_all = cache
-    st["mass"][ids] = cache[ids]
     pos = asset.data.root_pos_w[ids]
     st["x0"][ids] = pos[:, 0]
     st["y0"][ids] = pos[:, 1]

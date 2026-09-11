@@ -386,6 +386,9 @@ def _dump_step(i, a, roll, pitch, contact, term, st):
                "contact": [float(contact[k, 0]), float(contact[k, 1])],
                "hang_state": "CONTACT_ACQUIRED" if float(st["touch_t"][k]) >= 0.0 else "PRE_CONTACT_HANG_ALLOWED",
                "support_r": float(st["r"][k]), "support_gone": bool(_sg[k]), "blend_alpha": 1.0}
+        if bool(st.get("cable_on", False)):   # 케이블 모델 진단: 실제 적용 장력·앵커-후크 거리 (0912, 편심 스윕이 비트동일 → 힘 작용 여부 확인용)
+            row["cbl_T"] = float(st["cbl_T"][k]); row["cbl_dist"] = float(st["cbl_dist"][k]); row["cbl_L0"] = float(st["cbl_L0"][k]); row["cbl_d0"] = float(st["cbl_d0"][k])
+            row["base_z"] = float(robot.data.root_pos_w[k, 2])
         fh.write(_json.dumps(row) + "\n")
         if bool(term[k]):
             fh.write(_json.dumps({"timestamp": _ts, "event": "stop_all", "reason": "sim: terminated(fell)"}) + "\n")

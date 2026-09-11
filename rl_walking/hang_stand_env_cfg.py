@@ -603,3 +603,12 @@ class Biped12HangStandCableS3rEnvCfg(Biped12HangStandS8aS3rEnvCfg):
         self.events.hang_support_reset.params["cable"] = True
         # 앵커 앞뒤 오프셋 범위를 넓혀(±0.08) 실물 후크 기하 불확실성 포함
         self.events.hang_support_reset.params["anchor_x_range"] = (-0.08, 0.08)
+
+
+class Biped12HangStandCableFS3rEnvCfg(Biped12HangStandCableS3rEnvCfg):
+    """힘제어 케이블(0912): 장력 = r(t)·m·g, 방향 = 후크→고정 앵커. 로프 강성이 미측정이라 길이 모델(k 지배) 대신
+    줄 모멘트(후크 비연직, 가설 H2b) 검정용. 학습 아님."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.hang_support_reset.params["cable_force_mode"] = True

@@ -66,6 +66,13 @@ def _ratio(st):
     return r.clamp(min=0.0)
 
 
+def _qrot(q, v):
+    """쿼터니언 q=[w,x,y,z] 로 벡터 v 정회전 (v' = R·v). 의존성 없음(런타임·셀프테스트 공용)."""
+    w = q[:, 0:1]; u = q[:, 1:4]
+    t = 2.0 * torch.cross(u, v, dim=-1)
+    return v + w * t + torch.cross(u, t, dim=-1)
+
+
 def _cable_tension(dist, L, k, c, ddist, tmax):
     """순수 스칼라 장력: T = clip(k·(dist−L), 0, tmax) + c·max(0,ddist). dist≤L(슬랙)이면 0. (Isaac 무관 — 셀프테스트용)"""
     stretch = (dist - L).clamp(min=0.0)
@@ -81,7 +88,7 @@ def _cable_apply(env, st, ids, asset_cfg):
     r = st["r"][ids]; m = st["mass"][ids]
     pos = asset.data.root_pos_w[ids]; quat = asset.data.root_quat_w[ids]
     hook_b = torch.stack([st["hx"][ids], st["hy"][ids], st["hz"][ids]], dim=-1)
-    H = pos + _quat_fwd(quat, hook_b)
+    H = pos + _qrot(quat, hook_b)
     A = torch.stack([st["ax"][ids], st["ay"][ids], st["az"][ids]], dim=-1)
     rope = A - H; dist = torch.norm(rope, dim=-1).clamp(min=1e-4); dirw = rope / dist.unsqueeze(-1)
     payout = (1.0 - (r / st["r0"][ids].clamp(min=1e-3)).clamp(0.0, 1.0)) * (st["cbl_d0"][ids] + st["cbl_slack"][ids])
@@ -366,7 +373,12 @@ def _selftest_cable():
     assert abs(float(T[3])-(172.0+50.0))<1.0, ("감쇠 +c·ddist", float(T[3]))
     # 감쇠는 멀어질 때만(ddist>0)
     assert abs(float(_cable_tension(torch.tensor([1.086]),torch.tensor([1.0]),torch.tensor([2000.0]),torch.tensor([100.0]),torch.tensor([-0.5]),torch.tensor([300.0]))[0])-172.0)<1.0
-    print("[selftest] 케이블 장력: 슬랙 0·프리텐션 172N·Tmax 클립·감쇠 단방향 — PASS")
+    # _qrot: 항등 쿼터니언·z축 90° 회전(x→y)
+    import math as _m
+    assert torch.allclose(_qrot(torch.tensor([[1.,0,0,0]]), torch.tensor([[1.,2,3]])), torch.tensor([[1.,2,3]]), atol=1e-6)
+    qz=torch.tensor([[_m.cos(_m.pi/4),0,0,_m.sin(_m.pi/4)]])  # z 90°
+    assert torch.allclose(_qrot(qz, torch.tensor([[1.,0,0]])), torch.tensor([[0.,1,0]]), atol=1e-5)
+    print("[selftest] 케이블 장력: 슬랙 0·프리텐션 172N·Tmax 클립·감쇠 단방향·_qrot 회전 — PASS")
 
 
 def _selftest_level():

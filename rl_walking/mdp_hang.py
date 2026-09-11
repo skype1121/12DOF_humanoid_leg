@@ -96,6 +96,8 @@ def _cable_apply(env, st, ids, asset_cfg):
     v = asset.data.root_lin_vel_w[ids] if hasattr(asset.data, "root_lin_vel_w") else torch.zeros_like(pos)
     ddist = -(dirw * v).sum(-1)
     T = _cable_tension(dist, L, st["cbl_k"][ids], st["cbl_c"][ids], ddist, st["cbl_tmax"][ids])
+    ramp = (st["t"][ids] / 1.0).clamp(0.0, 1.0)          # 첫 1s 램프인: 스폰 낙하 착지 충격(시뮬 인공물) 제거
+    T = T * ramp
     F_w = T.unsqueeze(-1) * dirw
     F_b = _quat_inv(quat, F_w)
     asset.permanent_wrench_composer.set_forces_and_torques(

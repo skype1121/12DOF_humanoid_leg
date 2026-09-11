@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""실기 운영 콘솔 — 젯슨에서 웹으로 띄우는 단일 화면 조작반.
+"""실기 운영 콘솔 — 실제 상태로 진행하는 기립 시험 조작반.
 
 매 실기마다 터미널 여러 개를 오가며 순서를 외우는 대신, 한 화면에서:
   게이트 → 기립 → 핸드오프 → 무장 → 정책 → 판정 → 회수
-를 순서대로 누르고, **판정 지표(발력 총합%·기울기·접촉·가드)를 실시간으로**
+를 순서대로 확인하고, **기울기·접촉·제어 상태·기록을 실시간으로**
 본다. 폰으로도 열리므로 로봇 옆에서 줄을 잡은 채 조작할 수 있다.
 
     python3 jetson/scripts/operator_console.py          # http://<젯슨>:8800
@@ -27,13 +27,20 @@ import math
 import os
 import re
 import shlex
-import shutil
 import signal
 import subprocess
 import sys
 import threading
 import time
+import tempfile
+import uuid
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+try:
+    from .console_state import TrialState, LABELS, EVENTS, CONTROL, finite
+except ImportError:
+    from console_state import TrialState, LABELS, EVENTS, CONTROL, finite
 
 # --- 경로: 젯슨은 스크립트가 두 디렉토리로 갈려 있다 (0808 실측 확인) ---
 CALIB = os.path.expanduser("~/rl_calib")
@@ -48,9 +55,7 @@ FOOT_TOPIC = "/humanoid/foot_force"
 BRIDGE_CMD_TOPIC = "/humanoid/rl_bridge_command"
 BRIDGE_DEBUG_TOPIC = "/humanoid/rl_bridge_debug"
 
-BODY_WEIGHT_N = 172.9        # 실물 17.62kg(저울 0904) — 발력 총합 %의 분모. 어댑터 npc 0.02650(0906 재보정) 과 짝.
-#: ⚠ 구 어댑터(npc 0.01804, 12kg 가정)와 짝지으면 완전 하중이 68% 로 나온다 — 착지 후 %가 70% 근처에서 안 오르면 구판 의심.
-#:    백분율은 카운트 앵커 대비라 4차 "90% 자립" 은 유효(0905 카드의 "실제 61%" 는 분모만 바꾼 오류 — 철회).
+BODY_WEIGHT_N = 172.9        # 구 로그 필드 호환용. 화면·진행·성공 판정에 사용하지 않는다.
 
 #: 정책 드롭다운 — 첫 항목이 기본값(7차 데뷔 후보). 브리지 CHECKPOINTS 의 부분집합이어야 한다(selftest ⑧).
 #: 0907: stand_v14 제거 — 패키지 GENS(v15~v18b)에 없어 젯슨에 파일이 없다(선택 시 로드 실패). 젯슨 구 자산 정리로
@@ -113,7 +118,7 @@ class SessionLog:
             self.manual = manual
             self._close_locked()
             stamp = time.strftime("%Y%m%d_%H%M%S")
-            self.name = f"session_{stamp}"
+            self.name = f"session_{stamp}_{uuid.uuid4().hex[:6]}"
             self.dir = os.path.join(SESSION_DIR, self.name)
             os.makedirs(self.dir, exist_ok=True)
             self.f = open(os.path.join(self.dir, "timeline.jsonl"), "a")
@@ -136,6 +141,10 @@ class SessionLog:
             self.f.flush()
             self.last = now()
         except OSError:
+            try:
+                self.f.close()
+            except OSError:
+                pass
             self.f = None
 
     def event(self, kind, **kw):
@@ -155,8 +164,7 @@ class SessionLog:
             imu = view.get("imu") or {}
             # '실제 활동' = 스택이 살아 있거나(stage8 상태 수신), 정책이 돌거나,
             # 로봇이 하중을 받고 있을 때. 매달린 채 방치된 상태는 활동이 아니다.
-            if (view["fresh"].get("status") or view["bridge"].get("live")
-                    or view["foot"]["pct"] > 20.0):
+            if (view["fresh"].get("status") or view["fresh"].get("bridge")):
                 self.last_active = now()
             self._write({
                 "kind": "s",
@@ -171,6 +179,19 @@ class SessionLog:
                 "ckpt": view["bridge"]["checkpoint"],
                 "blend": view["bridge"]["blend"],
                 "contact": view["bridge"]["contact"],
+                "sensor_contact": view["foot"].get("contact"),
+                "foot_raw_sum": view["foot"].get("raw_sum"),
+                "foot_pads_on": view["foot"].get("pads_on"),
+                "stage8_running": view["stage8"].get("running"),
+                "stage8_command_seq": view["stage8"].get("command_seq"),
+                "stage8_last_command": view["stage8"].get("last_command"),
+                "joints": {name: {key: joint.get(key) for key in (
+                    "latest_actual_deg", "baseline_deg", "commanded_relative_deg",
+                    "desired_relative_deg", "feedback_valid", "feedback_stale", "feedback_age_sec")}
+                    for name, joint in view["stage8"].get("joints", {}).items() if isinstance(joint, dict)},
+                "trial": {k: view.get("trial", {}).get(k) for k in
+                          ("number", "mode", "checkpoint", "phase", "owner", "fault", "measurement", "stop")},
+                "unverified_force_fields": True,
                 "fresh": [int(view["fresh"]["imu"]), int(view["fresh"]["foot"]),
                           int(view["fresh"]["status"])],
             })
@@ -242,6 +263,13 @@ class Proc:
         self.lines = collections.deque(maxlen=300)
         self.started = now()
         self.rc = None
+        self.hold = {}
+        self.loaded_checkpoint = None
+        self.all_pass = False
+        self.fault = None
+        self.blackbox_path = None
+        self.release_ok = False
+        self.release_error = None
         self.logf = SESSION.open_proc_log(key)
         self.p = subprocess.Popen(
             argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
@@ -254,6 +282,23 @@ class Proc:
             for line in self.p.stdout:
                 s = line.rstrip("\n")[:400]
                 self.lines.append(s)
+                hm = re.search(r"\[(에어유지|에어램프|게인램프|운용대기|하중유지)\s+[^]]*\]\s+kp\s*([\d.]+)", s)
+                if hm:
+                    self.hold = {"phase": hm[1], "kp": float(hm[2]), "ts": now()}
+                cm = re.search(r"RL 브리지 기동.*LIVE.*checkpoint=([A-Za-z0-9_]+)", s)
+                if cm:
+                    self.loaded_checkpoint = cm[1]
+                if self.key == "bridge" and "블랙박스 기록: " in s:
+                    self.blackbox_path = s.split("블랙박스 기록: ", 1)[1].strip()
+                if "selftest: ALL PASS" in s:
+                    self.all_pass = True
+                if self.key == "bridge" and "STOP_ALL (" in s:
+                    self.fault = s[s.index("STOP_ALL ("):]
+                if self.key == "release":
+                    if "12모터 소프트 릴리즈+MIT 해제 완료" in s:
+                        self.release_ok = True
+                    if "송신실패" in s or "읽기 실패" in s:
+                        self.release_error = s
                 if self.logf:                       # 링버퍼는 300줄에서 잘린다 —
                     try:                            # 판정 근거는 파일에 남겨야 한다
                         self.logf.write(f"{time.strftime('%H:%M:%S')} {s}\n")
@@ -293,7 +338,10 @@ class Proc:
         return {"key": self.key, "pid": self.p.pid, "alive": self.alive,
                 "rc": self.rc, "age": round(now() - self.started, 1),
                 "argv": " ".join(shlex.quote(a) for a in self.argv),
-                "lines": list(self.lines)[-n:]}
+                "lines": list(self.lines)[-n:], "hold": dict(self.hold),
+                "loaded_checkpoint": self.loaded_checkpoint, "all_pass": self.all_pass,
+                "fault": self.fault, "started": self.started, "blackbox_path": self.blackbox_path,
+                "release_ok": self.release_ok, "release_error": self.release_error}
 
 
 class Runner:
@@ -326,7 +374,7 @@ class Runner:
                 pids = self._foreign_pids(self.DUP_GUARD[key])
                 if pids:
                     return False, (f"{key} 이미 실행 중 (pid {pids}, 콘솔 추적 밖) — 중복 기동 안 함. "
-                                   "정리하려면 스택 종료(센서는 그대로 써도 됨)")
+                                   "기존 소유 콘솔/터미널에서 상태를 확인하세요. 이 콘솔은 외부 PID를 종료하지 않습니다")
             env = dict(os.environ)
             env.setdefault("PYTHONUNBUFFERED", "1")
             try:
@@ -365,6 +413,7 @@ class Telemetry:
         self.node = None
         self._pub_stage8 = None
         self._pub_bridge = None
+        self.bridge_fault = None
 
     def start(self):
         try:
@@ -383,13 +432,7 @@ class Telemetry:
                     obj = json.loads(msg.data)
                 except ValueError:
                     return
-                with self.lock:
-                    self.d[key] = obj
-                    self.t[key] = now()
-                    if key == "bridge" and "event" in obj:
-                        self.events.append(
-                            f"{time.strftime('%H:%M:%S')} {obj.get('event')} "
-                            f"{obj.get('reason', '')}".strip())
+                self.receive(key, obj)
             return cb
 
         node.create_subscription(String, STATUS_TOPIC, mk("status"), 10)
@@ -408,6 +451,22 @@ class Telemetry:
                 pass
         threading.Thread(target=spin, daemon=True).start()
 
+    def receive(self, key, obj):
+        """Event packets do not replace a full telemetry snapshot or its age."""
+        if not isinstance(obj, dict):
+            return
+        with self.lock:
+            if key == "bridge" and "event" in obj:
+                reason = obj.get("reason") or obj.get("why") or obj["event"]
+                self.events.append(f"{time.strftime('%H:%M:%S')} {obj['event']} {reason}")
+                if obj["event"] in ("stop_all", "lift_guard", "osc_guard"):
+                    self.bridge_fault = str(reason)
+                return
+            self.d[key] = obj
+            self.t[key] = now()
+            if key == "bridge" and (obj.get("stop_reason") or obj.get("osc_tripped") or obj.get("stopped_for_stale")):
+                self.bridge_fault = str(obj.get("stop_reason") or obj.get("osc_tripped") or "sensor_stale")
+
     def publish(self, which, obj):
         pub = self._pub_stage8 if which == "stage8" else self._pub_bridge
         if pub is None:
@@ -417,22 +476,43 @@ class Telemetry:
         return True
 
     def view(self):
-        """웹이 보는 판정 지표 — 발력 총합%가 1순위 (IMU 스냅샷 오판 이력)."""
+        """Normalize observed status; missing/invalid data is never a healthy zero."""
         with self.lock:
             d = dict(self.d)
             t = dict(self.t)
             ev = list(self.events)[-12:]
         n = now()
-        fresh = {k: (n - t[k]) < STALE_SEC and t[k] > 0 for k in t}
+        fresh = {k: -0.5 <= (n - t[k]) < STALE_SEC and t[k] > 0 for k in t}
+        for key, data in d.items():
+            source_ts = (data or {}).get("timestamp")
+            if not finite(source_ts) or not -0.5 <= n - source_ts < STALE_SEC:
+                fresh[key] = False
 
-        out = {"fresh": fresh, "events": ev, "ros": self.ok}
+        out = {"fresh": fresh, "events": ev, "ros": self.ok, "received": t,
+               "server_time": n}
 
         foot = d.get("foot") or {}
-        ln, rn = float(foot.get("left_n", 0.0)), float(foot.get("right_n", 0.0))
+        ln, rn = foot.get("left_n", 0.0), foot.get("right_n", 0.0)
+        if not finite(ln) or not finite(rn):
+            ln, rn = 0.0, 0.0
+        source_ts = foot.get("timestamp")
+        if finite(source_ts) and not -0.5 <= n - source_ts < STALE_SEC:
+            fresh["foot"] = False
+        contacts = [foot.get("left_contact"), foot.get("right_contact")]
+        contact_valid = all(type(v) is bool for v in contacts)
+        # Old adapter data remains visible in diagnostics, but cannot certify
+        # contact from an uncalibrated force scale.
+        if not contact_valid:
+            fresh["foot"] = False
         out["foot"] = {
             "left_n": round(ln, 1), "right_n": round(rn, 1),
             "total_n": round(ln + rn, 1),
             "pct": round(100.0 * (ln + rn) / BODY_WEIGHT_N, 1),
+            "contact": contacts if contact_valid and fresh["foot"] else None,
+            "raw_sum": [foot.get("left_raw_sum"), foot.get("right_raw_sum")],
+            "pads_on": [foot.get("left_pads_on"), foot.get("right_pads_on")],
+            "age": round(n - t["foot"], 2) if t["foot"] else None,
+            "reason": "패드 접촉 필드 없음 — 어댑터 버전 확인" if not contact_valid else (None if fresh["foot"] else "접촉 데이터 오래됨/비유한 값"),
         }
 
         # IMU는 **항상** 값을 내보낸다. 끊기면 None 으로 지우지 않고 마지막
@@ -441,7 +521,15 @@ class Telemetry:
         imu = d.get("imu") or {}
         q = imu.get("quat") or imu.get("quat_wxyz")
         gyro = imu.get("gyro_rad_s") or imu.get("gyro") or []
-        if q and len(q) == 4:
+        valid_imu = (isinstance(q, (list, tuple)) and len(q) == 4 and all(finite(v) for v in q)
+                     and 0.8 < sum(v*v for v in q) < 1.2
+                     and isinstance(gyro, (list, tuple)) and len(gyro) == 3 and all(finite(v) for v in gyro))
+        if not valid_imu:
+            fresh["imu"] = False
+        imu_ts = imu.get("timestamp")
+        if finite(imu_ts) and not -0.5 <= n - imu_ts < STALE_SEC:
+            fresh["imu"] = False
+        if valid_imu:
             w, x, y, z = (float(v) for v in q)
             gx = -2.0 * (x * z - w * y)
             gy = -2.0 * (y * z + w * x)
@@ -469,22 +557,36 @@ class Telemetry:
             out["imu"] = None
 
         st = d.get("status") or {}
-        joints = st.get("joints", {}) or {}
+        if not all(type(st.get(k)) is bool for k in ("armed", "running", "accepted")):
+            fresh["status"] = False
+        joints = st.get("joints") if isinstance(st.get("joints"), dict) else {}
+        tk = st.get("takeover") if isinstance(st.get("takeover"), dict) else {}
         n_base = sum(1 for v in joints.values()
-                     if isinstance(v, dict) and v.get("baseline_deg") is not None)
+                     if isinstance(v, dict) and finite(v.get("baseline_deg")))
         out["stage8"] = {
-            "armed": bool(st.get("armed")), "holding": bool(st.get("holding")),
-            "waiting": bool(st.get("waiting")), "baseline": n_base,
-            "hold_age": st.get("hold_age_sec"),
-            "last_event": st.get("last_event"),
+            "armed": bool(st.get("armed")), "holding": bool(tk.get("holding")),
+            "waiting": bool(tk.get("waiting")), "baseline": n_base,
+            "hold_age": tk.get("hold_age_sec"), "hold_joint_count": tk.get("hold_joint_count", 0),
+            "last_event": tk.get("last_event"), "running": bool(st.get("running")),
+            "last_command": st.get("last_command"), "accepted": st.get("accepted") is True,
+            "command_seq": st.get("command_seq"), "errors": st.get("errors", []),
+            "feedback_ok": (fresh["status"] and len(joints) == 12 and
+                            all(isinstance(j, dict) and j.get("feedback_valid") is True
+                                and j.get("feedback_stale") is False and finite(j.get("latest_actual_deg"))
+                                for j in joints.values())),
+            "joints": joints,
         }
 
         br = d.get("bridge") or {}
+        if not all(type(br.get(k)) is bool for k in ("live", "armed")):
+            fresh["bridge"] = False
         out["bridge"] = {
             "live": bool(br.get("live")), "armed": bool(br.get("armed")),
             "checkpoint": br.get("checkpoint"),
             "blend": br.get("blend_alpha"),
             "contact": br.get("contact"),
+            "fault": self.bridge_fault,
+            "hang_state": br.get("hang_state"),
         }
         return out
 
@@ -539,6 +641,32 @@ class CanHealth:
 RUN = Runner()
 TEL = Telemetry()
 CAN = CanHealth()
+TRIAL = TrialState(CKPT_DEFAULT)
+STATE_LOCK = threading.RLock()
+REQUESTS = collections.OrderedDict()
+BUSY = False
+DEMO = False
+PROCESS_HEALTH = {"ts": 0, "external": [], "error": "아직 검사 안 됨"}
+
+
+def poll_processes():
+    """Read-only check of known local senders. Never kill/adopt foreign PIDs."""
+    patterns = ["stage8_12axis_mit_control_node.py", "hang_stand.py", "rl_bridge_node.py",
+                "posture_probe.py", "zero_kinematic_check.py", "release_all.py", "zero_anchor.py", "stage8_cmd.py"]
+    try:
+        result = subprocess.run(["pgrep", "-f", "|".join(re.escape(p) for p in patterns)],
+                                capture_output=True, text=True, timeout=3)
+        if result.returncode not in (0, 1):
+            raise OSError("프로세스 목록 검사 실패")
+        # Hold the runner lock only during the short ownership comparison.
+        with RUN.lock:
+            owned = {p.p.pid for p in RUN.procs.values()}
+        external = [int(v) for v in result.stdout.split() if v.isdigit() and int(v) not in owned | {os.getpid()}]
+        health = {"ts": now(), "external": external, "error": None}
+    except (OSError, subprocess.SubprocessError) as exc:
+        health = {"ts": now(), "external": [], "error": str(exc)}
+    with STATE_LOCK:
+        PROCESS_HEALTH.update(health)
 
 
 # ---------------------------------------------------------------------------
@@ -597,17 +725,39 @@ def act_bridge_cmd(cmd, extra=None):
 def act_estop():
     """항상 실행 가능해야 한다 — 어떤 선행조건도 걸지 않는다."""
     msgs = []
+    sent = 0
+    # Cancel owned retrying command senders, so a delayed ARM retry cannot undo
+    # the freeze. Do not terminate the torque-holding process or release motors.
+    for key in ("stage8_arm", "stage8_baseline"):
+        try:
+            if RUN.alive(key):
+                RUN.stop(key)
+                msgs.append(f"{key} 재시도 송신자 종료 요청")
+        except Exception as exc:
+            msgs.append(f"{key} 종료 요청 실패: {exc}")
     try:
         if TEL.publish("bridge", {"cmd": "estop"}):
             msgs.append("브리지 estop 발행")
+            sent += 1
     except Exception as exc:
         msgs.append(f"브리지 estop 실패: {exc}")
     try:
         if TEL.publish("stage8", {"command": "STOP_ALL"}):
             msgs.append("stage8 STOP_ALL 발행")
+            sent += 1
     except Exception as exc:
         msgs.append(f"STOP_ALL 실패: {exc}")
-    return True, " / ".join(msgs) or "발행 경로 없음 (ROS 미연결)"
+    return sent == 2, (" / ".join(msgs) or "발행 경로 없음 (ROS 미연결)") + " — 실제 동결 응답 확인 필요"
+
+
+def act_stack_down():
+    """Only terminate console-owned processes after explicit support confirmation."""
+    messages = []
+    for key in ("stage8_arm", "stage8_baseline", "bridge", "hang_stand", "stage8"):
+        if RUN.alive(key):
+            ok, message = RUN.stop(key)
+            messages.append(message)
+    return True, " / ".join(messages) or "추적 중인 제어 프로세스 없음 — 잔존 상태 확인 중"
 
 
 #: hang_stand 트림 채널 파일 (0.5°/s 로 램프되므로 급변 없음)
@@ -636,21 +786,19 @@ def act_trim(payload):
 
 def act_bridge_live(payload):
     ckpt = str(payload.get("checkpoint", CKPT_DEFAULT))
-    _need(ckpt.replace("_", "").isalnum(), "체크포인트 이름이 올바르지 않습니다")
+    _need(ckpt in CKPT_CHOICES, "허용되지 않은 체크포인트입니다")
     return RUN.start("bridge",
                      [sys.executable, os.path.join(SCRIPTS, "rl_bridge_node.py"),
                       "--live", "--checkpoint", ckpt])
 
 
 def act_analyze():
-    files = sorted(
-        (os.path.join(LOGDIR, f) for f in os.listdir(LOGDIR)
-         if f.startswith("rl_bridge_") and f.endswith(".jsonl")),
-        key=os.path.getmtime)
-    _need(files, "블랙박스 로그가 없습니다")
+    path = RUN.snapshot().get("bridge", {}).get("blackbox_path")
+    _need(path and os.path.isfile(path), "이 시험 브리지의 블랙박스 경로를 확인하지 못했습니다 — 최신 파일로 대체하지 않습니다")
+    _need(Path(LOGDIR).resolve() in Path(path).resolve().parents, "시험 로그 경로가 로그 디렉터리 밖입니다")
     return RUN.start("analyze",
                      [sys.executable, os.path.join(SCRIPTS, "analyze_fall.py"),
-                      files[-1]])
+                      path])
 
 
 ACTIONS = {
@@ -717,8 +865,7 @@ ACTIONS = {
     "march":      (lambda p: act_bridge_cmd("march"), "march 발사"),
     "estop":      (lambda p: act_estop(), "비상정지"),
     # 회수·판정
-    "stack_down": (lambda p: RUN.start("stack_down", [
-        "bash", os.path.join(CALIB, "stack_down.sh")]), "스택 종료"),
+    "stack_down": (lambda p: act_stack_down(), "콘솔 소유 제어 프로세스 종료"),
     "release":    (lambda p: RUN.start("release", [
         sys.executable, os.path.join(CALIB, "release_all.py")]), "릴리즈"),
     "analyze":    (lambda p: act_analyze(), "최신 로그 판정"),
@@ -738,492 +885,334 @@ ACTIONS = {
 }
 STOPPABLE = {"stage8", "hang_stand", "bridge"}
 
-PAGE = """<!doctype html><html lang=ko><head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1">
-<title>실기 운영 콘솔</title><style>
-*{box-sizing:border-box}body{margin:0;background:#12141a;color:#e6e8ef;
-font:14px/1.5 system-ui,-apple-system,"Noto Sans KR",sans-serif}
-header{display:flex;align-items:center;gap:12px;padding:10px 14px;
-background:#191c24;border-bottom:1px solid #2a2f3d;position:sticky;top:0;z-index:9}
-h1{font-size:15px;margin:0;font-weight:600}
-#estop{margin-left:auto;background:#c0243a;color:#fff;border:0;border-radius:8px;
-padding:12px 22px;font-size:16px;font-weight:700;cursor:pointer}
-#estop:active{background:#8f1a2b}
-main{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;padding:12px}
-section{background:#191c24;border:1px solid #2a2f3d;border-radius:10px;padding:12px}
-section.full{grid-column:1/-1}
-h2{font-size:12px;margin:0 0 10px;color:#8b93a7;text-transform:uppercase;letter-spacing:.06em}
-button{background:#242938;color:#e6e8ef;border:1px solid #333a4d;border-radius:7px;
-padding:11px 14px;margin:0 6px 6px 0;cursor:pointer;font-size:14px}
-button:hover{background:#2d3346}button.warn{border-color:#7a4b1e;background:#2e2216}
-button.go{border-color:#1e6b4a;background:#16281f}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
-.tile{background:#12141a;border:1px solid #262c3a;border-radius:8px;padding:10px 12px}
-.tile .k{font-size:11px;color:#8b93a7}.tile .v{font-size:26px;font-weight:700;margin-top:2px;
-line-height:1.15;font-variant-numeric:tabular-nums}
-/* 발력 총합은 줄을 잡은 채 흘끗 보는 지표 — 화면에서 제일 커야 한다 */
-.big{grid-column:span 2}.big .v{font-size:56px}
-@media(max-width:560px){.big{grid-column:1/-1}.big .v{font-size:48px}}
-.ok{color:#4ade80}.bad{color:#f87171}.mid{color:#fbbf24}.dim{color:#6b7280}
-pre{background:#0d0f14;border:1px solid #232936;border-radius:8px;padding:9px;
-max-height:230px;overflow:auto;font-size:11.5px;margin:8px 0 0;white-space:pre-wrap}
-.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.pill{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid #333a4d}
-#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:#242938;
-border:1px solid #3a4256;padding:10px 16px;border-radius:8px;max-width:90vw;display:none;z-index:20}
-.flow .grp{margin:12px 0 4px;font-size:13px;font-weight:600;color:#c7cbd6}.flow .grp:first-of-type{margin-top:0}
-.gd{font-weight:400;color:#8b93a7;font-size:11.5px;margin-left:6px}
-.step{display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:8px;border:1px solid transparent}
-.step.next{border-color:#3b82f6;background:#141a2b}
-.step .n{width:22px;height:22px;border-radius:50%;background:#242938;color:#8b93a7;font-size:11px;display:flex;align-items:center;justify-content:center;flex:none}
-.step.next .n{background:#3b82f6;color:#fff}
-.step button{margin:0;min-width:150px}
-.step .st{font-size:11px;padding:2px 9px;border-radius:99px;border:1px solid #333a4d;color:#8b93a7;flex:none}
-.st.prog{color:#fbbf24;border-color:#7a5b1e}.st.ok{color:#4ade80;border-color:#1e6b4a}.st.run{color:#4ade80;border-color:#1e6b4a}.st.fail{color:#f87171;border-color:#7a1e2b}
-.step .msg{font-size:11.5px;color:#8b93a7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.chk{font-size:11px;color:#fbbf24}
-input[type=number]{width:58px;background:#12141a;color:#e6e8ef;border:1px solid #333a4d;border-radius:5px;padding:4px;margin-right:4px}
-button[title]:hover{outline:1px solid #3b82f6}
-@media(min-width:1100px){main{grid-template-columns:minmax(520px,1.15fr) minmax(360px,1fr)}}
-.step .msg{max-width:46%}
-</style></head><body>
-<header><h1>실기 운영 콘솔</h1><span id=conn class=pill>연결 중…</span>
-<span id=sess class="pill dim">세션 —</span>
-<button data-a=session_start style="padding:7px 12px;font-size:12px;margin:0">● 기록 시작</button>
-<button data-a=session_end style="padding:7px 12px;font-size:12px;margin:0">■ 기록 중지</button>
-<button id=estop>■ 비상정지</button></header>
-<main>
-<section class=full><h2>판정 지표</h2><div class=tiles>
-<div class="tile big"><div class=k>발력 총합 · 체중 172.9N 대비</div><div class=v id=pct>—</div></div>
-<div class=tile><div class=k>왼발 / 오른발 (N)</div><div class=v id=feet>—</div></div>
-<div class=tile><div class=k>전방 기울임</div><div class=v id=fwd>—</div></div>
-<div class=tile><div class=k>좌우 기울임</div><div class=v id=lat>—</div></div>
-<div class=tile><div class=k>블렌딩 alpha</div><div class=v id=blend>—</div></div>
-<div class=tile><div class=k>총 기울기</div><div class=v id=tilt>—</div></div>
-</div>
-<div class=row style="margin-top:10px;gap:16px;align-items:center">
-<canvas id=tiltmap width=132 height=132 style="border:1px solid #2a2f3d;border-radius:10px;background:#0d0f14"></canvas>
-<div style="display:flex;flex-direction:column;gap:6px">
-<div style=font-size:13px><span class=dim>앞뒤 (X)</span> &nbsp;<b id=t_fwd style=font-size:17px>—</b></div>
-<div style=font-size:13px><span class=dim>좌우 (Y)</span> &nbsp;<b id=t_lat style=font-size:17px>—</b></div>
-<div style=font-size:13px><span class=dim>방위 (Z)</span> &nbsp;<b id=t_yaw style=font-size:17px>—</b></div>
-<div style=font-size:11px;color:#8b93a7>IMU <b id=imu_age class=dim>—</b> · 흔들림 <b id=imu_gyro>—</b></div>
-</div></div>
-<div class=row style=margin-top:10px>
-<span class=pill id=p_arm>stage8</span><span class=pill id=p_base>baseline</span>
-<span class=pill id=p_live>bridge</span><span class=pill id=p_ckpt>ckpt</span>
-<span class=pill id=p_contact>접촉</span><span class=pill id=p_hang>가드</span>
-<span class=pill id=p_can>CAN</span></div>
-<div class=row style="margin-top:8px;gap:6px;align-items:center">
-<span class=gd style="margin:0 4px 0 0">윈치 이벤트(기록용):</span>
-<button data-a=op_touchdown title="착지 순간 기록 — 블랙박스와 정렬" style="margin:0">▼ 착지</button>
-<button data-a=op_release_start title="윈치 방출 시작 기록" style="margin:0">▶ 방출 시작</button>
-<button data-a=op_release_stop title="윈치 방출 정지 기록" style="margin:0">⏸ 정지</button>
-<button data-a=op_retension title="윈치 재인장(줄 다시 당김) 기록 — 사후에 재긴장 vs 기하 긴장 구분" style="margin:0">↥ 재인장</button>
-<button data-a=op_slack_done title="줄 완전히 느슨해진 순간 기록" style="margin:0">✓ 슬랙 완료</button></div>
-<pre id=events style=max-height:96px>이벤트 없음</pre></section>
+PAGE = Path(__file__).with_name("console_ui.html").read_text(encoding="utf-8")
+DEMO_SOURCE = None
+CONFIRM_ACTIONS = {"hang_stand", "gain_ramp", "ground", "handoff", "arm", "stand",
+                   "release", "support_confirm", "op_slack_done", "new_trial"}
 
-<section class=flow><h2>절차 — 위에서 아래로 순서대로 (다음 차례가 밝게 표시됨)</h2>
-<div class=grp>0. 게이트 <span class=gd>전원·통신·영점·센서 — 하나라도 실패면 진행 금지</span></div>
-<div class=step data-a=can_up><span class=n>1</span><button data-a=can_up title="peak_usb 드라이버 로드 + can1 1Mbps 기동 (부팅 후 1회, sudo)">CAN 브링업</button><span class=st>대기</span><span class=msg></span></div>
-<div class=step data-a=sensors><span class=n>2</span><button data-a=sensors title="IMU·발압력 어댑터 기동 — 판정 지표 신선(초록) 확인. 이미 떠 있으면 다시 누르지 말 것(중복)">센서 기동</button><span class=st>대기</span><span class=msg></span></div>
-<div class=step data-a=boot_pose><span class=n>3</span><button data-a=boot_pose title="제로게인 읽기로 12모터 영점 일치 판정(허용 8°). 홀드 중엔 누르지 말 것 — 같은 버스에 제로게인 프레임을 보내 홀드가 풀림">영점 판정 12/12</button><span class=st>대기</span><span class=msg></span></div>
-<div class=step data-a=selftest><span class=n>4</span><button data-a=selftest title="브리지 셀프테스트(하드웨어맵·게이트·가드·학습 계약·정책 로드). 홀드 중엔 누르지 말 것">브리지 셀프테스트</button><span class=st>대기</span><span class=msg></span></div>
 
-<div class=grp>1. 공중 홀드 <span class=gd>매달린 채 스탠드 자세를 kp150 으로 잡는다</span></div>
-<div class=step data-a=stage8><span class=n>5</span><button data-a=stage8 class=warn title="stage8 제어 노드를 인수 대기 모드로 띄운다 (토크 없음, 핸드오프 때 넘겨받음)">stage8 선기동</button><span class=st>대기</span><span class=msg></span></div>
-<div class=step data-a=hang_stand><span class=n>6</span><button data-a=hang_stand class=warn title="기립 스크립트: 현재각→스탠드 자세 kp20 에어램프(6 s) 후 유지. 트림 0">hang_stand 홀드</button><span class=st>대기</span><span class=msg></span></div>
-<div class=step data-a=gain_ramp><span class=n>7</span><button data-a=gain_ramp class=warn title="kp20→kp150 8 s 램프 (전 모터 오차 3° 미만일 때만 수락). 반드시 착지 전 공중에서">게인 램프 kp150</button><span class=st>대기</span><span class=msg></span></div>
+def json_safe(value):
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(v) for v in value]
+    return value
 
-<div class=grp>2. 착지 · 인계 <span class=gd>윈치로 발끝 연직선에 평평하게 착지 → 발력 30~50% 에서 멈춘 뒤</span></div>
-<div class=step data-a=ground><span class=n>8</span><button data-a=ground title="접지 선언: hang_stand 의 무부하 스톨가드 해제 (착지 후, 또는 공중 발사 절차 때는 인계 직전)">접지 선언</button><span class=st>대기</span><span class=msg></span></div>
-<div class=step data-a=handoff><span class=n>9</span><button data-a=handoff class=warn title="hang_stand 가 릴리즈 없이 종료 → 모터는 현 자세·kp150 유지, stage8 이 인수 (접지 선언 + kp150 + stage8 대기 필요)">핸드오프</button><span class=st>대기</span><span class=msg></span></div>
-<div class=step data-a=baseline><span class=n>10</span><button data-a=baseline title="stage8 베이스라인 12/12 캡처 (현재 각도를 기준점으로)">베이스라인 12/12</button><span class=st>대기</span><span class=msg></span></div>
-<div class=step data-a=arm><span class=n>11</span><button data-a=arm class=warn title="ARM_ALL — stage8 이 명령 스트리밍 시작 (토크 유지 상태로 정책 대기)">ARM</button><span class=st>대기</span><span class=msg></span></div>
 
-<div class=grp>3. 정책 <span class=gd>체크포인트 선택 → 브리지 → 발사. 공중 발사는 행잉 ARM 체크(접지 전 무접촉 120 s 허용)</span></div>
-<div class=step data-a=bridge><span class=n>12</span><select id=ckpt title="배포된 정책 체크포인트"><!--CKPT_OPTIONS--></select> <button data-a=bridge class=warn title="선택한 정책으로 RL 브리지를 LIVE 로 띄운다 (stand 전까지 대기, 블랙박스 기록 시작)">브리지 live</button><span class=st>대기</span><span class=msg></span></div>
-<div class=step data-a=stand><span class=n>13</span><button data-a=stand class=go title="stand 명령 발행 — 중력 게이트 통과 시 블렌딩 1.5 s 후 정책 제어 시작">stand 발사</button>
-<label class=chk title="체크 시 접지 전 무접촉을 최대 120 s 허용(HangGuard). 매달린 채 발사할 때만"><input type=checkbox id=hang_arm> 행잉 ARM</label><span class=st>대기</span><span class=msg></span></div>
+def console_snapshot():
+    """Called by the recorder too: browser refresh is never the state machine."""
+    with STATE_LOCK:
+        st = DEMO_SOURCE.snapshot() if DEMO else TEL.view()
+        if not DEMO:
+            st["procs"] = RUN.snapshot()
+            st["can"] = CAN.view()
+            bp = st["procs"].get("bridge", {})
+            st["bridge"]["loaded_checkpoint"] = bp.get("loaded_checkpoint") if bp.get("alive") else None
+            st["bridge"]["fault"] = st["bridge"].get("fault") or bp.get("fault")
+            st["external_controls"] = list(PROCESS_HEALTH["external"])
+            st["process_check_ok"] = not PROCESS_HEALTH["error"] and now() - PROCESS_HEALTH["ts"] < 4.0
+        st["session"] = SESSION.status()
+        st["demo"] = DEMO
+        TRIAL.update(st)
+        st["trial"] = TRIAL.snapshot()
+        if BUSY:
+            for key, item in st["trial"]["allowed"].items():
+                if key not in EVENTS | {"estop", "support_confirm"}:
+                    item.update(enabled=False, reason="서버에서 앞 요청을 처리 중입니다")
+        for event in TRIAL.drain_events():
+            SESSION.event("trial_event", **event)
+        return json_safe(st)
 
-<div class=grp>4. 회수 <span class=gd>줄 인장 → 스택 종료 → 그 다음에만 릴리즈 (동시 실행 금지)</span></div>
-<div class=step data-a=stack_down><span class=n>14</span><button data-a=stack_down title="브리지·stage8·hang_stand 종료 (콘솔이 띄운 것만, 명시 PID)">스택 종료</button><span class=st>대기</span><span class=msg></span></div>
-<div class=step data-a=release><span class=n>15</span><button data-a=release class=warn title="12모터 2 s 게인 램프다운 → 제로게인 + MIT 해제(무토크). 스택이 살아 있으면 거부(exit 3)">릴리즈</button><span class=st>대기</span><span class=msg></span></div>
-<div class=step data-a=session_end><span class=n>16</span><button data-a=session_end title="세션 기록(타임라인) 닫기">세션 종료</button><span class=st>대기</span><span class=msg></span></div>
-<div class=step data-a=analyze><span class=n>17</span><button data-a=analyze title="최신 블랙박스 analyze_fall.py 판정(A~D 등급·토크표)">최신 로그 판정</button><span class=st>대기</span><span class=msg></span></div>
-</section>
 
-<section><h2>실행 로그 <span class=gd id=log_key>—</span></h2><pre id=log_main style=max-height:420px>—</pre>
-<details style="margin-top:10px"><summary style="cursor:pointer;color:#8b93a7;font-size:12px">고급 (트림·영점·측정·march) — 절차 밖 도구</summary>
-<div style="margin-top:8px">
-<div class=gd style="margin:6px 0">트림 (hang_stand 홀드 중, 0.5°/s)</div>
-<button data-a=trim_zero title="발목·힙·무릎 트림 전부 0 (Hanging-to-Stand 정책은 0 이 기본)">트림 0</button>
-<button data-a=trim_preset class=warn title="v18b 계열 평형 자세 트림 a+12.5 h+6.4 k+10.4 — Hanging-to-Stand 정책엔 쓰지 않음">정책 평형 자세(v8)</button>
-<span style=font-size:12px;color:#8b93a7> 수동: </span>
-<input id=t_a type=number step=0.5 value=0 title="발목 [°]"><input id=t_h type=number step=0.5 value=0 title="힙 [°]"><input id=t_k type=number step=0.5 value=0 title="무릎 [°]">
-<button data-a=trim title="입력한 발목/힙/무릎 트림 적용">적용</button>
-<div class=gd style="margin:10px 0 6px">영점 재앵커 — 스택 내린 상태에서만. 배수 보정이 항상 우선, 재캡처는 기준 자세일 때만</div>
-<button data-a=zero_preview title="현재 읽기 vs 앵커 비교 (쓰기 없음)">미리보기</button>
-<button data-a=zero_multiple class=warn title="36°/10° 배수 프레임 시프트만 보정 (안전)">배수 보정</button>
-<button data-a=zero_recapture class=warn title="현재 읽기를 새 영점으로 씀 — 가장 위험한 쓰기, 백업 자동">재캡처</button>
-<div class=gd style="margin:10px 0 6px">측정 (정책 없이 stage8 만, ARM 후)</div>
-<button data-a=zero_kin class=warn title="발목 ±3° 스윕으로 영점 오차 절편 추정">영점 기구학 검증</button>
-<select id=pose title="자세 프로브 목표"><option value=policy_v8>정책 평형 자세(v8)</option><option value=policy_v7>정책 평형 자세(v7)</option><option value=knee_only>무릎만</option><option value=ankle_only>발목만</option><option value=zero>전 관절 0 복귀</option></select>
-<button data-a=posture class=warn title="stage8 홀드만으로 목표 자세 진입">자세 진입</button>
-<div class=gd style="margin:10px 0 6px">기타</div>
-<button data-a=march class=go title="march 정책 발사 (보행 계열 체크포인트 전용)">march 발사</button>
-<button data-a=disarm title="DISARM_ALL — stage8 스트리밍 중단(동결 홀드)">DISARM</button>
-<button data-a=session_start title="세션 기록 수동 시작">기록 시작</button>
-</div></details></section>
-</main><div id=toast></div>
-<script>
-const $=s=>document.querySelector(s);
-function toast(m,bad){const t=$('#toast');t.textContent=m;
-t.style.borderColor=bad?'#c0243a':'#3a4256';t.style.display='block';
-clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',4200);}
-// 액션 → 감시할 프로세스 키. null = 즉시 응답형
-const PROC={can_up:null,sensors:'sensors',boot_pose:'boot_pose',selftest:'selftest',
- stage8:'stage8',hang_stand:'hang_stand',gain_ramp:'hang_stand',ground:'hang_stand',handoff:'hang_stand',
- baseline:'stage8_baseline',arm:'stage8_arm',disarm:'stage8_disarm',bridge:'bridge',stand:null,march:null,
- stack_down:'stack_down',release:'release',analyze:'analyze',zero_preview:'zero',zero_multiple:'zero',zero_recapture:'zero',
- zero_kin:'zerokin',posture:'posture',trim:null,trim_preset:null,trim_zero:null,session_start:null,session_end:null,estop:null};
-const DAEMON=new Set(['stage8','hang_stand','bridge']);
-const FLOW=['can_up','sensors','boot_pose','selftest','stage8','hang_stand','gain_ramp','ground','handoff','baseline','arm','bridge','stand','stack_down','release','session_end','analyze'];
-const pending={};   // action → {t0, key, pid0, phase}
-const done={};      // action → 'ok'|'fail'|'run'
-let lastKey=null, lastState=null;
-function setSt(a,cls,txt,msg){
- document.querySelectorAll('.step[data-a="'+a+'"]').forEach(el=>{
-  const s=el.querySelector('.st'); s.className='st '+cls; s.textContent=txt;
-  const m=el.querySelector('.msg'); m.textContent=msg?msg.slice(0,90):''; m.title=msg||'';});
- if(cls==='ok'||cls==='run')done[a]=cls; else if(cls==='fail')done[a]='fail'; else if(cls==='idle')delete done[a];
- markNext();}
-function markNext(){
- let next=null;
- for(const a of FLOW){ if(done[a]==='ok'||done[a]==='run')continue; next=a; break; }
- document.querySelectorAll('.step').forEach(el=>el.classList.toggle('next',el.dataset.a===next));}
-async function act(a){
- const body={action:a};
- if(a==='bridge')body.checkpoint=$('#ckpt').value;
- if(a==='posture')body.pose=$('#pose').value;
- if(a==='trim'){body.a=+$('#t_a').value;body.h=+$('#t_h').value;body.k=+$('#t_k').value;}
- if(a==='stand'){body.hang_arm=$('#hang_arm').checked;
-   if(body.hang_arm&&!confirm('행잉 ARM: 접지 전 무접촉 120 s 허용. 매달린 채 발사가 맞습니까?'))return;}
- if(a==='zero_recapture'){
-   if(!confirm('영점 재캡처: 지금 자세가 기준 자세(수평 매달림·정렬)가 확실합니까? 현재 읽기가 새 앵커가 됩니다.'))return;
-   if(!confirm('한 번 더: 잘못 잡으면 이후 영점 판정도 틀린 기준에 통과합니다. 진행?'))return;}
- else if(['arm','handoff','release','zero_multiple','posture','zero_kin','gain_ramp','trim','trim_preset','march'].includes(a)){ if(!confirm(a+' — 실행할까요?'))return;}
- const key=PROC[a]; const P=(lastState&&lastState.procs)||{};
- pending[a]={t0:Date.now(),key,pid0:(key&&P[key])?P[key].pid:null,phase:'sent'};
- if(key)lastKey=key;
- setSt(a,'prog','진행 중…','');
- try{const r=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-  const j=await r.json(); toast(j.message,!j.ok);
-  if(!j.ok){setSt(a,'fail','실패',j.message);delete pending[a];return;}
-  pending[a].msg=j.message;
-  if(!key){ // 즉시 응답형
-   if(a==='stand'||a==='march'){pending[a].phase='verify';}
-   else{setSt(a,'ok','성공',j.message);delete pending[a];}
-  }
- }catch(e){toast(''+e,true);setSt(a,'fail','실패',''+e);delete pending[a];}}
-document.querySelectorAll('button[data-a]').forEach(b=>b.onclick=()=>act(b.dataset.a));
-$('#estop').onclick=()=>act('estop');
-function judge(s){ // 폴링마다 대기 중인 액션 판정
- const P=s.procs||{}; const now=Date.now();
- for(const a of Object.keys(pending)){
-  const p=pending[a]; const dt=(now-p.t0)/1000;
-  if(p.phase==='verify'){ // stand/march: 4 s 안에 브리지 armed
-   if(s.bridge.live&&s.bridge.armed){setSt(a,'ok','성공','정책 제어 중 · ckpt '+s.bridge.checkpoint);delete pending[a];}
-   else if(dt>6){setSt(a,'fail','실패','브리지가 armed 로 안 넘어감 — 중력 게이트/접촉/live 확인');delete pending[a];}
-   continue;}
-  const pr=P[p.key]; if(!pr)continue;
-  const fresh=(p.pid0==null)||(pr.pid!==p.pid0)||['gain_ramp','ground','handoff'].includes(a);
-  if(!fresh)continue;
-  const last=(pr.lines||[]).filter(l=>l.trim()).slice(-1)[0]||'';
-  if(a==='gain_ramp'){ const hit=(pr.lines||[]).some(l=>/운용대기|하중유지/.test(l)&&/kp150/.test(l));
-   if(hit){setSt(a,'ok','성공','kp150 운용대기');delete pending[a];}
-   else if((pr.lines||[]).some(l=>/거부/.test(l))||dt>25||!pr.alive){setSt(a,'fail','실패',last);delete pending[a];}
-   continue;}
-  if(a==='ground'){ setSt(a,'ok','성공','접지 선언됨 (스톨가드 해제)');delete pending[a];continue;}
-  if(a==='handoff'){ if(!pr.alive&&(pr.rc===3||(pr.lines||[]).some(l=>/\[핸드오프\]/.test(l)))){setSt(a,'ok','성공','인계 완료 — 모터 kp150 유지, stage8 인수');delete pending[a];}
-   else if((pr.lines||[]).some(l=>/핸드오프 거부/.test(l))||dt>15){setSt(a,'fail','실패',(pr.lines||[]).filter(l=>/핸드오프 거부/.test(l)).slice(-1)[0]||'시간 초과 — 접지 선언·kp150·stage8 대기 확인');delete pending[a];}
-   continue;}
-  if(pr.alive){ if(DAEMON.has(p.key)&&dt>4){setSt(a,'run','실행 중',last);delete pending[a];} else setSt(a,'prog','진행 중…',last); continue;}
-  // 종료됨
-  if(pr.rc===0||(p.key==='hang_stand'&&pr.rc===3)){
-   const bad=(pr.lines||[]).some(l=>/불일치|FAIL|\[거부됨\]|실패/.test(l)&&!/0 ·|불량 0/.test(l));
-   setSt(a,bad?'fail':'ok',bad?'실패':'성공',(pr.lines||[]).filter(l=>/\[OK\]|ALL PASS|완료|불일치|FAIL|거부|실패/.test(l)).slice(-1)[0]||last);
-  } else setSt(a,'fail','실패 rc='+pr.rc,last);
-  delete pending[a];
- }
- // 데몬 상태 반영(클릭 없이도): 죽으면 표시
- for(const a of ['stage8','hang_stand','bridge']){ const pr=P[PROC[a]]; if(!pr||pending[a])continue;
-  if(pr.alive&&done[a]!=='run'&&done[a]!=='ok')setSt(a,'run','실행 중','');
-  if(!pr.alive&&done[a]==='run'){ if(a==='hang_stand'&&pr.rc===3)setSt(a,'ok','인계 완료',''); else if(pr.rc===0)setSt(a,'idle','종료',''); else setSt(a,'fail','종료 rc='+pr.rc,(pr.lines||[]).slice(-1)[0]||''); }
- }}
-function cls(v,g,m){return v>=g?'ok':(v>=m?'mid':'bad');}
-function drawTilt(I,fresh){
- const c=$('#tiltmap'),x=c.getContext('2d'),W=c.width,H=c.height,cx=W/2,cy=H/2,R=W/2-10;
- x.clearRect(0,0,W,H);x.strokeStyle='#2a2f3d';x.lineWidth=1;
- [R,R*0.3].forEach(r=>{x.beginPath();x.arc(cx,cy,r,0,7);x.stroke();});
- x.beginPath();x.moveTo(cx-R,cy);x.lineTo(cx+R,cy);x.moveTo(cx,cy-R);x.lineTo(cx,cy+R);x.stroke();
- x.fillStyle='#6b7280';x.font='9px system-ui';x.textAlign='center';
- x.fillText('앞',cx,cy-R-2);x.fillText('뒤',cx,cy+R+8);x.textAlign='right';x.fillText('왼',cx-R-3,cy+3);x.textAlign='left';x.fillText('오',cx+R+3,cy+3);
- if(!I)return; const s=R/10, px=cx-(I.lat||0)*s, py=cy-(I.fwd||0)*s; const t=Math.hypot(I.fwd||0,I.lat||0);
- const col=!fresh?'#6b7280':(t<3?'#4ade80':(t<6?'#fbbf24':'#f87171'));
- x.strokeStyle=col;x.lineWidth=1.5;x.beginPath();x.moveTo(cx,cy);x.lineTo(px,py);x.stroke();x.fillStyle=col;x.beginPath();x.arc(px,py,5,0,7);x.fill();}
-async function poll(){
- try{const s=await (await fetch('/api/state')).json(); lastState=s;
-  $('#conn').textContent=s.ros?'ROS 연결됨':'ROS 없음';$('#conn').className='pill '+(s.ros?'ok':'bad');
-  const S=s.session||{};
-  $('#sess').textContent=S.active?('● '+S.name.replace('session_','')+'  '+Math.floor(S.dur/60)+'분 '+S.samples+'샘플'+(S.manual?' (수동)':'')):'기록 대기 (조작하면 자동 시작)';
-  $('#sess').className='pill '+(S.active?'ok':'dim');
-  const f=s.foot,fr=s.fresh;
-  $('#pct').textContent=fr.foot?f.pct.toFixed(0)+'%':'—';$('#pct').className='v '+(fr.foot?cls(f.pct,85,50):'dim');
-  $('#feet').textContent=fr.foot?f.left_n.toFixed(0)+' / '+f.right_n.toFixed(0)+' N':'—';
-  const I=s.imu;
-  $('#fwd').textContent=I?(I.fwd>0?'+':'')+I.fwd+'°':'—';$('#fwd').className='v '+(I?(fr.imu?cls(8-Math.abs(I.fwd),4,0):'dim'):'dim');
-  $('#lat').textContent=I?(I.lat>0?'+':'')+I.lat+'°':'—';$('#lat').className='v '+(I&&fr.imu?'':'dim');
-  $('#tilt').textContent=I?I.tilt+'°':'—';$('#tilt').className='v '+(I&&fr.imu?'':'dim');
-  $('#imu_age').textContent=I&&I.age!=null?(fr.imu?'수신중':(I.age+'초 전 끊김')):'없음';$('#imu_age').className=fr.imu?'ok':'bad';
-  const word=(v,pos,neg)=>Math.abs(v)<0.35?'거의 수평':(v>0?pos:neg)+' '+Math.abs(v).toFixed(1)+'°';
-  const cl=v=>Math.abs(v)<3?'ok':(Math.abs(v)<6?'mid':'bad');
-  if(I){$('#t_fwd').textContent=word(I.fwd,'앞으로','뒤로');$('#t_fwd').className=fr.imu?cl(I.fwd):'dim';
-   $('#t_lat').textContent=word(I.lat,'왼쪽으로','오른쪽으로');$('#t_lat').className=fr.imu?cl(I.lat):'dim';
-   $('#t_yaw').textContent=(I.yaw>0?'+':'')+(I.yaw!=null?I.yaw.toFixed(0):'—')+'°';$('#t_yaw').className=fr.imu?'':'dim';
-   const g=I.gyro||[];const mag=Math.hypot(g[0]||0,g[1]||0,g[2]||0);$('#imu_gyro').textContent=mag<0.02?'정지':mag.toFixed(2)+' rad/s';}
-  else{['t_fwd','t_lat','t_yaw'].forEach(k=>{$('#'+k).textContent='—';$('#'+k).className='dim';});}
-  const C=s.can||{};
-  if(C.busoff==null){$('#p_can').textContent='CAN —';$('#p_can').className='pill dim';}
-  else{const bad=C.rate60>0;$('#p_can').textContent='CAN '+(C.state||'?')+(bad?('  ⚠ bus-off +'+C.rate60+'/60s'):('  bus-off '+C.busoff));$('#p_can').className='pill '+(bad?'bad':'ok');
-   if(bad&&!window._canWarned){window._canWarned=1;toast('CAN bus-off 발생 중 — 모터 통신이 끊기고 있습니다. 즉시 중단하세요',true);} if(!bad)window._canWarned=0;}
-  drawTilt(I,fr.imu);
-  $('#blend').textContent=s.bridge.blend!=null?(+s.bridge.blend).toFixed(2):'—';
-  $('#p_arm').textContent='stage8 '+(s.stage8.armed?'ARMED':(s.stage8.waiting?'대기':'—'));$('#p_arm').className='pill '+(s.stage8.armed?'ok':'dim');
-  $('#p_base').textContent='baseline '+s.stage8.baseline+'/12';$('#p_base').className='pill '+(s.stage8.baseline===12?'ok':'dim');
-  const brAlive=!!(s.procs&&s.procs.bridge&&s.procs.bridge.alive);
-  $('#p_live').textContent='bridge '+(s.bridge.armed?'정책 제어 중':(s.bridge.live||brAlive?'LIVE 대기':'—'));$('#p_live').className='pill '+(s.bridge.armed?'ok':(brAlive?'mid':'dim'));
-  $('#p_ckpt').textContent=s.bridge.checkpoint||('ckpt '+$('#ckpt').value);
-  const c=s.bridge.contact;$('#p_contact').textContent='접촉 '+(c?('L'+(c[0]>0.5?'●':'○')+' R'+(c[1]>0.5?'●':'○')):'—');$('#p_contact').className='pill '+(c&&c[0]>0.5&&c[1]>0.5?'ok':'dim');
-  const ev=s.events||[]; const lastEv=ev.length?ev[ev.length-1]:'';
-  $('#p_hang').textContent=/stop_all|lift_guard|osc_guard/.test(lastEv)?'가드 정지: '+lastEv.slice(9,60):'가드 정상';$('#p_hang').className='pill '+(/stop_all|lift_guard|osc_guard/.test(lastEv)?'bad':'dim');
-  $('#events').textContent=ev.length?ev.join('\\n'):'이벤트 없음';
-  const P=s.procs||{}; const k=lastKey&&P[lastKey]?lastKey:Object.keys(P).sort((x,y)=>(P[x].age-P[y].age))[0];
-  if(k&&P[k]){$('#log_key').textContent=k+' pid '+P[k].pid+(P[k].alive?' 실행중':' 종료 rc='+P[k].rc);$('#log_main').textContent=P[k].lines.join('\\n')||'(출력 없음)';}
-  judge(s);
- }catch(e){$('#conn').textContent='콘솔 연결 끊김';$('#conn').className='pill bad';}
-}
-setInterval(poll,500);poll();markNext();
-</script></body></html>"""
+def dispatch_action(payload):
+    """Single server gate for every UI/API request. Never retry hardware commands."""
+    global BUSY, TRIAL, DEMO_SOURCE
+    if not isinstance(payload, dict) or not isinstance(payload.get("action"), str):
+        return 400, {"ok": False, "message": "잘못된 요청"}
+    action = payload["action"]
+    if action not in LABELS:
+        return 403, {"ok": False, "message": "기립 시험에서 허용하지 않는 동작"}
+    if action == "estop":
+        # No revision, recorder, pending-action or sensor gate may block this.
+        with STATE_LOCK:
+            TRIAL.stop_request_at = now()
+            TRIAL.stop_request_seq = TRIAL.view.get("stage8", {}).get("command_seq") or 0
+            TRIAL.stop_delivery = None
+            TRIAL.latch("운영자 정지 요청 — 회수 후 새 시험 필요")
+            if TRIAL.pending:
+                TRIAL.finish(False, "정지 요청으로 진행 취소 · 이미 보낸 명령은 실제 상태 확인 필요")
+        try:
+            ok, msg = DEMO_SOURCE.act(action, {}) if DEMO else act_estop()
+        except Exception as exc:
+            ok, msg = False, f"정지 발행 오류: {exc}"
+        with STATE_LOCK:
+            TRIAL.stop_delivery = {"ok": bool(ok), "message": msg}
+            TRIAL.emit("stop_delivery", ok=bool(ok), message=msg)
+        return 200, {"ok": bool(ok), "message": msg, "confirmed": False}
+
+    immediate = action in EVENTS | {"support_confirm", "configure", "new_trial", "session_start", "session_end"}
+    if not DEMO and not immediate:
+        poll_processes()
+    with STATE_LOCK:
+        console_snapshot()
+        if payload.get("boot_id") != TRIAL.boot_id:
+            return 409, {"ok": False, "message": "서버가 재시작됐거나 페이지가 오래됐습니다. 현재 상태를 다시 확인하세요"}
+        request_id = payload.get("request_id")
+        if not isinstance(request_id, str) or not 8 <= len(request_id) <= 100:
+            return 400, {"ok": False, "message": "요청 식별자가 필요합니다"}
+        fingerprint = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+        if request_id in REQUESTS:
+            old, response = REQUESTS[request_id]
+            if old != fingerprint:
+                return 409, {"ok": False, "message": "같은 요청 식별자를 다른 동작에 사용할 수 없습니다"}
+            return response
+        if payload.get("revision") != TRIAL.revision:
+            return 409, {"ok": False, "message": "다른 조작으로 단계가 바뀌었습니다. 현재 상태를 확인하고 다시 선택하세요"}
+        reason = TRIAL.reason(action)
+        if reason or (BUSY and action not in EVENTS | {"support_confirm"}):
+            return 409, {"ok": False, "message": reason or "앞 요청 처리 중"}
+        if action in CONFIRM_ACTIONS and payload.get("confirmed") is not True:
+            return 400, {"ok": False, "message": "운영자의 명시 확인이 필요합니다"}
+        if action == "configure":
+            if payload.get("mode") not in ("ground", "air") or payload.get("checkpoint") not in CKPT_CHOICES:
+                return 400, {"ok": False, "message": "허용된 시험 방식·정책을 선택하세요"}
+            if not payload["checkpoint"].startswith("stand"):
+                return 400, {"ok": False, "message": "이 콘솔은 기립 시험용입니다. 보행 정책은 별도 절차가 필요합니다"}
+        record_warning = ""
+        try:
+            if action != "session_end":
+                SESSION.ensure(LABELS[action], manual=True)
+                SESSION.event("action_request", action=action, trial=TRIAL.number, request_id=request_id)
+                if not SESSION.status()["active"]:
+                    raise OSError("세션 파일 쓰기 실패")
+        except OSError as exc:
+            if action not in {"support_confirm", "stack_down", "release", "session_end"}:
+                return 503, {"ok": False, "message": f"기록을 열지 못해 실행하지 않았습니다: {exc}"}
+            record_warning = " · 기록 불가 — 회수 동작을 우선합니다"
+            TRIAL.latch("기록 불가 — 회수 후 저장 장치 확인 필요")
+        REQUESTS[request_id] = (fingerprint, (202, {"ok": True, "message": "동일 요청 처리 중 · 재실행하지 않음"}))
+        while len(REQUESTS) > 256:
+            REQUESTS.popitem(last=False)
+        if immediate:
+            if action in EVENTS | {"support_confirm"}:
+                TRIAL.operator_event(action, payload)
+                if DEMO:
+                    DEMO_SOURCE.act(action, payload)
+            elif action == "configure":
+                TRIAL.mode, TRIAL.checkpoint = payload["mode"], payload["checkpoint"]
+                TRIAL.completed.discard("selftest")
+                TRIAL.revision += 1
+                TRIAL.emit("configured", mode=TRIAL.mode, checkpoint=TRIAL.checkpoint)
+            elif action == "new_trial":
+                previous = TRIAL
+                SESSION.event("trial_summary", **previous.snapshot())
+                TRIAL = TrialState(previous.checkpoint)
+                TRIAL.boot_id = previous.boot_id
+                TRIAL.revision = previous.revision + 1
+                TRIAL.number = previous.number + 1
+                TRIAL.mode = previous.mode
+                with TEL.lock:
+                    TEL.bridge_fault = None
+                    TEL.d["bridge"] = None
+                    TEL.t["bridge"] = 0
+                # Preserve old process log objects; don't reuse their faults/readiness.
+                if not DEMO:
+                    with RUN.lock:
+                        RUN.procs = {k: p for k, p in RUN.procs.items() if p.alive}
+                else:
+                    DEMO_SOURCE = type(DEMO_SOURCE)()
+                TRIAL.emit("new_trial")
+            elif action == "session_end":
+                TRIAL.completed.add("session_end")
+                TRIAL.revision += 1
+                SESSION.event("trial_summary", **TRIAL.snapshot())
+                SESSION.close("운영자 회수 후 종료")
+            else:
+                TRIAL.revision += 1
+            result = (200, {"ok": True, "message": LABELS[action] + " 완료" + record_warning})
+            REQUESTS[request_id] = (fingerprint, result)
+            console_snapshot()
+            return result
+        BUSY = True
+        TRIAL.begin(action, now())
+        pending = TRIAL.pending
+        # API cannot silently change the selected policy or airborne flag.
+        effective = {"checkpoint": TRIAL.checkpoint, "hang_arm": TRIAL.mode == "air"}
+    try:
+        if DEMO:
+            ok, msg = DEMO_SOURCE.act(action, effective)
+        elif action == "sensors" and not TRIAL._sensor_reason():
+            ok, msg = True, "기존 센서 정상 수신 확인 — 중복 기동하지 않음"
+        else:
+            ok, msg = ACTIONS[action][0](effective)
+    except Exception as exc:
+        ok, msg = False, f"{LABELS[action]} 실행 실패: {exc}"
+    finally:
+        with STATE_LOCK:
+            BUSY = False
+    with STATE_LOCK:
+        if TRIAL.pending is pending:
+            if not ok or action == "can_up":
+                TRIAL.finish(bool(ok), msg)
+            else:
+                pending["launched"] = True
+        else:
+            ok, msg = False, msg + " / 진행이 취소되었습니다. 잔존 프로세스·실제 상태를 확인하세요"
+        SESSION.event("action_dispatched", action=action, ok=bool(ok), message=msg)
+        result = (200, {"ok": bool(ok), "message": msg + (" · 실제 응답 대기" if ok and TRIAL.pending else "") + record_warning})
+        REQUESTS[request_id] = (fingerprint, result)
+        console_snapshot()
+        return result
 
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
-    def log_message(self, *a):
-        pass          # 접근 로그 억제 (콘솔 출력을 실기 로그로 쓴다)
+    def log_message(self, *args):
+        pass
 
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
         raw = body.encode() if isinstance(body, str) else body
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
         self.end_headers()
-        self.wfile.write(raw)
+        try:
+            self.wfile.write(raw)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_GET(self):
         if self.path in ("/", "/index.html"):
             return self._send(200, render_page(), "text/html; charset=utf-8")
         if self.path == "/api/state":
-            st = TEL.view()
-            st["procs"] = RUN.snapshot()
-            st["session"] = SESSION.status()
-            st["can"] = CAN.view()
-            return self._send(200, json.dumps(st))
-        return self._send(404, json.dumps({"ok": False, "message": "not found"}))
+            return self._send(200, json.dumps(console_snapshot(), ensure_ascii=False, allow_nan=False))
+        return self._send(404, '{"ok":false,"message":"not found"}')
 
     def do_POST(self):
         if self.path != "/api/action":
-            return self._send(404, json.dumps({"ok": False, "message": "not found"}))
+            return self._send(404, '{"ok":false,"message":"not found"}')
+        # Reject cross-origin browser commands; this remains a trusted-LAN tool,
+        # not an authenticated Internet service.
+        from urllib.parse import urlsplit
+        origin = self.headers.get("Origin")
+        if origin and urlsplit(origin).netloc != self.headers.get("Host"):
+            return self._send(403, '{"ok":false,"message":"cross-origin request rejected"}')
+        if self.headers.get_content_type() != "application/json":
+            return self._send(415, '{"ok":false,"message":"JSON required"}')
         try:
             n = int(self.headers.get("Content-Length", 0))
-            payload = json.loads(self.rfile.read(n) or b"{}")
+            if not 0 < n <= 4096:
+                raise ValueError("request size")
+            payload = json.loads(self.rfile.read(n))
         except (ValueError, TypeError):
-            return self._send(400, json.dumps({"ok": False, "message": "잘못된 요청"}))
-        name = payload.get("action")
-        entry = ACTIONS.get(name)
-        if entry is None:
-            return self._send(
-                403, json.dumps({"ok": False,
-                                 "message": f"허용되지 않은 액션: {name}"}))
-        fn, label = entry
-        # 조작이 일어난 시점 = 모터 전원 이후. 여기서 세션을 연다.
-        if name not in ("session_end", "session_start"):
-            SESSION.ensure(reason=label)
-        SESSION.event("action_start", action=name, label=label)
-        try:
-            ok, msg = fn(payload)
-        except Exception as exc:                     # 액션 실패가 콘솔을 죽이지 않게
-            ok, msg = False, f"{label} 실패: {exc}"
-        SESSION.event("action", action=name, label=label, ok=bool(ok),
-                      message=msg)
-        print(f"[{time.strftime('%H:%M:%S')}] {label}: {msg}")
-        return self._send(200, json.dumps({"ok": bool(ok), "message": msg}))
-
-
-def _selftest_hang_arm():
-    assert bridge_cmd_payload("stand") == {"cmd": "stand"}, "기본 = 종전과 동일 (플래그 없음)"
-    assert bridge_cmd_payload("stand", {"hang_arm": False}) == {"cmd": "stand"}, "False 는 보내지 않는다"
-    assert bridge_cmd_payload("stand", {"hang_arm": True}) == {"cmd": "stand", "hang_arm": True}
-    assert 'id=hang_arm' in PAGE and "body.hang_arm" in PAGE, "페이지 체크박스·JS 누락"
+            return self._send(400, '{"ok":false,"message":"invalid request"}')
+        code, result = dispatch_action(payload)
+        return self._send(code, json.dumps(result, ensure_ascii=False))
 
 
 def selftest():
-    _selftest_hang_arm()
-    """조작반의 안전 계약을 검사 — 실기 전에 이것만 통과하면 된다."""
-    fails = []
-    # ① 화이트리스트 밖 액션은 거부되어야 한다
-    if "rm" in ACTIONS or any(";" in k or "&" in k for k in ACTIONS):
-        fails.append("액션 키에 셸 메타문자")
-    # ② 모든 액션이 호출 가능한 형태인가
-    for k, (fn, label) in ACTIONS.items():
-        if not callable(fn) or not label:
-            fails.append(f"액션 정의 불량: {k}")
-    # ③ 비상정지는 선행조건이 없어야 한다 (ROS 미연결에서도 예외 없이 반환)
-    try:
-        ok, _ = act_estop()
-        if not ok:
-            fails.append("estop이 실패를 반환 — 항상 실행 가능해야 함")
-    except Exception as exc:
-        fails.append(f"estop 예외: {exc}")
-    # ④ 정지 대상은 장기 프로세스로 한정
-    if not STOPPABLE <= set(ACTIONS):
-        fails.append("STOPPABLE에 미정의 액션 포함")
-    # ⑤ 경로가 실재하는지 (젯슨 배치 확인)
-    for p in (CALIB, SCRIPTS):
-        if not os.path.isdir(p):
-            fails.append(f"경로 없음: {p}")
-    # ⑥ 발력 백분율 산식
-    got = round(100.0 * (86.45 + 86.45) / BODY_WEIGHT_N, 1)
-    if got != 100.0:
-        fails.append(f"발력 백분율 산식 오류: {got}")
-    # ⑧ 드롭다운 정책은 전부 브리지 CHECKPOINTS 에 있어야 하고 기본값은 데뷔 후보 (0905 감사 A1:
-    #    구판은 정적 목록 stand_v8~ 에 기본값 legacy stand_v7 — 10.49kg 자산 정책이 실물에 오르는 경로)
-    try:
-        bridge_py = os.path.join(SCRIPTS, "rl_bridge_node.py")
-        if not os.path.isfile(bridge_py):   # 젯슨 밖(개발 PC)에선 같은 폴더의 브리지로 대조
-            bridge_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rl_bridge_node.py")
-        src = open(bridge_py, encoding="utf-8").read()
+    """Small deployment smoke test. No ROS, subprocesses, markers or real logs."""
+    from unittest.mock import patch
+    with tempfile.TemporaryDirectory(prefix="console-selftest-") as directory:
+        with patch.dict(globals(), SESSION_DIR=directory):
+            recorder = SessionLog()
+            recorder.ensure("offline selftest", manual=True)
+            recorder.event("check")
+            recorder.sample(Telemetry().view())
+            assert recorder.status()["samples"] == 1
+            recorder.close("test complete")
+        t = TrialState(CKPT_DEFAULT)
+        assert t.reason("estop") is None
+        assert t.reason("arm") is not None
+        assert t.reason("release") is not None
+        assert bridge_cmd_payload("stand") == {"cmd": "stand"}
+        assert bridge_cmd_payload("stand", {"hang_arm": True})["hang_arm"] is True
+        with patch.object(TEL, "publish", return_value=False) as publish:
+            assert act_estop()[0] is False
+            assert publish.call_count == 2
+        page = render_page()
+        assert "<!--CKPT_OPTIONS-->" not in page
+        assert f"<option>{CKPT_DEFAULT}</option>" in page
+        src = Path(__file__).with_name("rl_bridge_node.py").read_text(encoding="utf-8")
         body = src.split("CHECKPOINTS = {", 1)[1].split("\n}\n", 1)[0]
         known = set(re.findall(r'^\s+"([A-Za-z0-9_]+)": os\.path\.join', body, re.M))
-        missing = [c for c in CKPT_CHOICES if c not in known]
-        if missing:
-            fails.append(f"드롭다운 정책이 브리지 CHECKPOINTS 에 없음: {missing}")
-        if CKPT_DEFAULT != "stand_hang_v5":   # 0910: 실물 첫 후보 v5 (승윤님 확정 0909 밤)
-            fails.append(f"기본 정책이 실물 첫 후보(stand_hang_v5, 승윤님 확정 0909)가 아님: {CKPT_DEFAULT}")
-        page = render_page()
-        _sel = page.index("<select id=ckpt"); _sel_end = page.index(">", _sel) + 1
-        if "<!--CKPT_OPTIONS-->" in page or f"<option>{CKPT_DEFAULT}</option>" not in page \
-                or page.index(f"<option>{CKPT_DEFAULT}</option>") != _sel_end:
-            fails.append("페이지 드롭다운 렌더 실패 (기본값이 첫 항목이 아님)")
-    except Exception as exc:
-        fails.append(f"브리지 CHECKPOINTS 대조 실패: {exc}")
-    # ⑦ 세션 레코더 — 닫힌 상태에서 호출해도 예외가 없어야 하고(콘솔이 죽으면
-    #    안 된다), 열면 타임라인에 실제로 기록되어야 한다
-    try:
-        SESSION.event("x")           # 세션 없음 — 조용히 무시되어야
-        SESSION.sample(TEL.view())
-        if SESSION.status()["active"]:
-            fails.append("세션이 열리지 않았는데 active")
-        name = SESSION.ensure("selftest")
-        SESSION.event("selftest_marker", v=1)
-        SESSION.sample(TEL.view())
-        st = SESSION.status()
-        if not st["active"] or st["events"] < 1 or st["samples"] < 1:
-            fails.append(f"세션 기록 누락: {st}")
-        tl = os.path.join(st["dir"], "timeline.jsonl")
-        with open(tl) as f:
-            kinds = [json.loads(l).get("kind") for l in f if l.strip()]
-        for want in ("session_start", "selftest_marker", "s"):
-            if want not in kinds:
-                fails.append(f"타임라인에 {want} 없음")
-        # 유휴 자동 닫힘: 자동 개시 세션은 닫히고, 수동 세션은 유지되어야 한다
-        SESSION.last_active = now() - (IDLE_CLOSE_SEC + 60)
-        SESSION.maybe_autoclose()
-        if SESSION.status()["active"]:
-            fails.append("자동 개시 세션이 유휴에도 안 닫힘")
-        d2 = SESSION.ensure("selftest-manual", manual=True)
-        SESSION.last_active = now() - (IDLE_CLOSE_SEC + 60)
-        SESSION.maybe_autoclose()
-        if not SESSION.status()["active"]:
-            fails.append("수동 세션이 자동으로 닫힘 — 사람의 선언을 무시함")
-        dir2 = SESSION.status()["dir"]
-        SESSION.close("selftest")
-        if SESSION.status()["active"]:
-            fails.append("close 후에도 active")
-        shutil.rmtree(st["dir"], ignore_errors=True)
-        shutil.rmtree(dir2, ignore_errors=True)
-        print(f"  (유휴 자동닫힘·수동 유지 확인: {d2})")
-        print(f"  (세션 레코더 확인: {name} — 기록·종료 정상, 테스트 폴더 삭제)")
-    except Exception as exc:
-        fails.append(f"세션 레코더 예외: {exc}")
-    for f in fails:
-        print(f"[FAIL] {f}")
-    print("selftest: " + ("ALL PASS" if not fails else f"{len(fails)}건 실패"))
-    return 0 if not fails else 1
+        assert set(CKPT_CHOICES) <= known, "console checkpoint not in bridge"
+    print("console selftest: ALL PASS (offline only; hardware not exercised)")
+    return 0
 
 
 def main():
-    ap = argparse.ArgumentParser(description="실기 운영 콘솔")
+    global DEMO, DEMO_SOURCE, SESSION_DIR
+    ap = argparse.ArgumentParser(description="실기 운영 콘솔 — 로컬 모의 확인은 --demo")
     ap.add_argument("--port", type=int, default=8800)
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--demo", action="store_true", help="합성 데이터만 사용; ROS/CAN/명령 실행 없음")
     a = ap.parse_args()
     if a.selftest:
         return selftest()
-    TEL.start()
+    DEMO = a.demo
+    if DEMO:
+        try:
+            from .console_demo import Demo
+        except ImportError:
+            from console_demo import Demo
+        DEMO_SOURCE = Demo()
+        a.host = "127.0.0.1"
+        SESSION_DIR = tempfile.mkdtemp(prefix="humanoid-console-demo-")
+        print(f"[DEMO] 실제 장비 연결 없음. 합성 시험 기록: {SESSION_DIR}", flush=True)
+    else:
+        TEL.start()
+        poll_processes()
+    stopped = threading.Event()
+
+    def process_watch():
+        while not stopped.wait(1.0):
+            poll_processes()
+    if not DEMO:
+        threading.Thread(target=process_watch, daemon=True).start()
 
     def sampler():
-        """세션이 열려 있는 동안 판정 지표를 SAMPLE_HZ 로 남긴다."""
-        period = 1.0 / SAMPLE_HZ
-        n_tick = 0
-        while True:
-            time.sleep(period)
-            n_tick += 1
+        tick = 0
+        while not stopped.wait(1.0 / SAMPLE_HZ):
+            tick += 1
             try:
-                if n_tick % int(SAMPLE_HZ) == 0:      # 1Hz — CAN 통계는 무겁다
+                if not DEMO and tick % int(SAMPLE_HZ) == 0:
                     before = CAN.view().get("busoff")
                     CAN.poll()
                     after = CAN.view().get("busoff")
-                    if (before is not None and after is not None
-                            and after > before):
-                        SESSION.event("can_busoff", count=after,
-                                      delta=after - before)
-                if SESSION.status()["active"]:
-                    SESSION.sample(TEL.view())
-                    SESSION.maybe_autoclose()
-            except Exception:
-                pass
-    threading.Thread(target=sampler, daemon=True).start()
-
+                    if before is not None and after is not None and after > before:
+                        SESSION.event("can_busoff", count=after, delta=after-before)
+                view = console_snapshot()
+                SESSION.sample(view)
+            except Exception as exc:
+                with STATE_LOCK:
+                    TRIAL.latch(f"상태·기록 처리 오류: {type(exc).__name__}")
+    thread = threading.Thread(target=sampler, daemon=True)
+    thread.start()
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     srv.daemon_threads = True
-    # rclpy.init() 이 SIGTERM/SIGINT 핸들러를 가로채 kill 이 먹지 않는다
-    # (0808 실측: 재배포하려고 kill 했더니 구버전이 계속 포트를 물고 있어
-    #  새 프로세스가 Address already in use 로 죽었다). 운영 도구가 안 꺼지는
-    # 것은 그 자체로 결함이므로 우리 핸들러를 나중에 덮어씌운다.
-    def _bye(signum, _frame):
-        print(f"\n신호 {signum} — 콘솔 종료 (띄운 프로세스는 그대로 둡니다: "
-              f"모터는 마지막 명령을 홀드).")
-        SESSION.close(f"콘솔 종료(신호 {signum})")   # 기록을 잘린 채 남기지 않는다
+
+    def bye(signum, _frame):
+        print(f"\n신호 {signum} — 콘솔 종료. 장비 제어 자식 프로세스는 자동 종료하지 않습니다.", flush=True)
+        stopped.set()
+        SESSION.close(f"콘솔 종료(신호 {signum})")
         threading.Thread(target=srv.shutdown, daemon=True).start()
-    for s in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(s, _bye)
-    print(f"운영 콘솔: http://<젯슨IP>:{a.port}/   (Ctrl-C 또는 kill 로 종료)")
-    print(f"  ROS 텔레메트리: {'연결' if TEL.ok else '없음(조작반만 동작)'}")
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, bye)
+    print(f"운영 콘솔: http://{a.host}:{a.port}/  {'[DEMO]' if DEMO else '[LIVE / 신뢰된 내부망 전용]'}", flush=True)
     try:
         srv.serve_forever()
     finally:
+        stopped.set()
+        thread.join(timeout=5)
+        SESSION.close("콘솔 종료")
         srv.server_close()
     return 0
 

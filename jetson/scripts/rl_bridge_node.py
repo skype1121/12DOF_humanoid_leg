@@ -1303,6 +1303,7 @@ def main():
             self.foot_contact = None     # 0910: 패드 단위 접지 (어댑터 필드), None=구판 합산 규칙
             self.foot_ts = 0.0
             self.baseline = {}
+            self.fb_age = {}             # 관절별 마지막 feedback_age_sec (워밍업 진단: 어느 관절이 낡았나)
             self.armed = False
             self.stopped_for_stale = False
             self.warmed = True           # 인계 워밍업 완료 여부 — stand 시 False 로 리셋
@@ -1433,6 +1434,7 @@ def main():
                     val = float(info.get("latest_actual_deg"))
                 except (ValueError, TypeError):
                     continue   # 피드백 없음(None 등) — 이 관절은 이번 미갱신
+                self.fb_age[j] = age     # 낡은 관절도 기록 (워밍업 진단용)
                 if age < STATUS_FEEDBACK_FRESH_SEC:
                     # 스파이크 필터 (0802 march 데뷔 트립 교훈): 한 갱신에 30°+
                     # 점프는 물리 불가(모터 최대 ~20rad/s×20ms≈23°) — 쓰레기
@@ -1603,13 +1605,16 @@ def main():
                 self.prev_qpos = None
                 if wact == "prime":
                     self._send_hold_prime()
+                    if now - getattr(self, "_warm_log_t", 0.0) >= 0.5:   # 판별 측정: 무엇이 낡았나 (H1 관절 한 분기 vs H3 status 전체)
+                        self._warm_log_t = now
+                        self.get_logger().info("[인계 워밍업 대기] " + self._warmup_diag(now))
                     return
                 # timeout — 워밍업 창 내 관절 피드백 미확보
                 self._stop_all("sensor_stale_warmup_timeout")
                 self.core.active = False
                 self.get_logger().error(
                     f"인계 워밍업 {STAND_WARMUP_MAX_S:.0f}s 내 관절 피드백 미확보 → STOP_ALL + 정책 비활성. "
-                    "stage8 status 스트림/CAN 점검 후 재명령.")
+                    f"{self._warmup_diag(now)}. 낡은 관절이 있으면 그 CAN 분기, 없으면 status 전달 경로를 점검 후 재명령.")
                 return
             if not self.warmed:   # 방금 신선해져 워밍업 완료
                 self.warmed = True
@@ -1824,16 +1829,31 @@ def main():
                     {"command": "SET_JOINT_TARGETS", "targets": targets})))
 
         def _send_hold_prime(self):
-            """인계 워밍업 전용: 현 자세 유지(상대 0) 명령으로 stage8 를 깨워 status 에코를 유발.
+            """인계 워밍업 전용: **현재 실측 자세**를 유지하는 명령(rel = joint_deg − baseline)을 보내
+            stage8 명령 경로를 살려 두고(모터 워치독·명령 트리거 status) 신선한 피드백을 기다린다.
 
-            stage8 는 명령 수신마다 status 를 발행(~수백 Hz)한다 — 유휴 시엔 발행이 버스트/스톨.
-            상대 0 = 모터를 baseline(착지 자세)에 유지 = 무동작. baseline 미확보면 다음 status 대기."""
-            if not self.baseline:
+            baseline 상대 0 이 아니라 현 자세를 잡는 이유(호환 검수 §2.7): STOP_ALL 로 동결된 뒤 수동
+            재발화되면 상대 0 은 동결 목표를 baseline 으로 교체해 슬루 상한(4°/틱=200°/s)으로 끌고 간다.
+            현 자세 유지는 어느 상태에서든 무동작이다. 12관절 모두 실측·baseline 이 있어야 보낸다.
+            ※ 이 프라임은 tick-1 stale 의 원인을 고치지 않는다(원인은 stage8 쪽 status 전달 갭 — 가설).
+              워밍업은 실측된 전달 갭(최대 ~3 s)에 대한 유예이며, 4 s 안에 못 붙으면 정지가 맞다."""
+            if not self.baseline or len(self.joint_deg) < 12:
                 return
-            tg = {j: 0.0 for j in JOINT_ORDER if self.baseline.get(j) is not None}
-            if tg:
-                self.pub_cmd.publish(String(data=json.dumps(
-                    {"command": "SET_JOINT_TARGETS", "targets": tg})))
+            tg = {}
+            for j in JOINT_ORDER:
+                b = self.baseline.get(j); q = self.joint_deg.get(j)
+                if b is None or q is None:
+                    return
+                tg[j] = q - b
+            self.pub_cmd.publish(String(data=json.dumps(
+                {"command": "SET_JOINT_TARGETS", "targets": tg})))
+
+        def _warmup_diag(self, now):
+            stale = [j for j in JOINT_ORDER
+                     if j not in self.joint_deg or self.fb_age.get(j, 9e9) >= STATUS_FEEDBACK_FRESH_SEC]
+            return (f"joint_ts {now - self.joint_ts:.2f}s status_age {now - self.status_ts:.2f}s "
+                    f"imu {now - self.imu_ts:.2f}s foot {now - self.foot_ts:.2f}s 관절 {len(self.joint_deg)}/12 "
+                    f"낡은관절 {stale if stale else '없음'}")
 
         def _bb_write(self, obj):
             """블랙박스 기록 — 실패(디스크 만충 등)해도 안전동작을 못 막게 격리.

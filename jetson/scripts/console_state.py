@@ -127,6 +127,8 @@ class TrialState:
             if action == "op_slack_done":
                 if self.fault:
                     return "정지·고장 후에는 회수하고 새 시험을 시작하세요"
+                if getattr(self, "releasing", False):
+                    return "방출 정지(⏸)를 먼저 기록하세요 — 윈치 조작 중에는 느슨 확인 불가"
                 if "stand" not in self.completed or not fresh.get("bridge") or not b.get("armed"):
                     return "정책 제어 중인 상태 확인 필요"
                 if self.slack_at is not None or self.measurement["state"] != "waiting":
@@ -232,10 +234,14 @@ class TrialState:
             self.invalidate(LABELS[action])
         elif action == "op_release_start":
             self.support = False
+            self.releasing = True          # 0911: 방출 중 표시 — '모든 줄 느슨' 확인은 방출 정지 기록 후에만
             if self.slack_at is not None:
                 self.invalidate("자립 측정 중 윈치 조작")
+        elif action == "op_release_stop":
+            self.releasing = False
         elif action == "op_slack_done":
             self.support = False
+            self.releasing = False
             self.slack_at = self.clock()
             self._pose_stamps = None
             self.measurement = {"state": "measuring", "elapsed": 0.0,
@@ -307,6 +313,13 @@ class TrialState:
         ok = False
         if self.fault and self.fault != p["fault_at_start"] and action not in RECOVERY:
             return self.finish(False, "정지·고장이 발생해 진행을 중단했습니다")
+        # 0911 호환검수 R2: 콘솔이 정지를 요청하지 않았는데 제어기가 요청 이후 STOP_ALL 을 수락했다면(브리지발
+        # 워밍업 타임아웃·센서 stale·가드 정지 등) 브리지 stdout 소유 여부와 무관하게 즉시 래치한다.
+        if (action == "stand" and self.stop_request_at is None and status_new
+                and s.get("last_command") == "STOP_ALL" and s.get("accepted")
+                and (s.get("command_seq") or 0) > (p.get("status_seq") or 0)):
+            self.latch("제어기가 브리지/외부 STOP_ALL 을 수락 — 브리지 정지 사유(워밍업 타임아웃·센서 stale·가드) 확인 필요")
+            return self.finish(False, "정책 시작 중 제어기 STOP_ALL 수신")
         if action == "sensors":
             ok = not self._sensor_reason()
         elif action == "stage8":
@@ -351,7 +364,8 @@ class TrialState:
             return self.finish(True, message)
         if proc and not proc.get("alive") and proc.get("rc") not in (None, 0, 3):
             return self.finish(False, f"프로세스 종료 코드 {proc['rc']}")
-        timeout = 300 if action in ("boot_pose", "selftest", "analyze") else 30
+        # 0911 호환검수 R2: stand 는 브리지 인계 워밍업(최대 4 s)+블렌딩 안에 응답하므로 30 s 는 브리지발 정지를 26 s 동안 가린다
+        timeout = 300 if action in ("boot_pose", "selftest", "analyze") else (8 if action == "stand" else 30)
         if self.clock() - p["started"] > timeout:
             self.finish(False, "확인 시간 초과 — 실제 상태를 확인하세요")
 
@@ -379,11 +393,14 @@ class TrialState:
             phase, owner = "준비 확인", "미확인" if fresh.get("status") or owners else "제어 시작 전 / 외부 상태 미확인"
         stop = None
         if self.stop_request_at is not None:
+            # 0911 호환검수 R1: stage8 는 armed 인 한 STOP_ALL 다음 제어틱에 running=True 로 돌아온다(동결 목표를 계속
+            # 스트리밍 = 토크 유지). 'not running' 을 요구하면 동결 확인이 구조적으로 실패해 경보가 상시화되므로,
+            # 확인은 "STOP_ALL 이 요청 이후 수락됐고(command_seq 증가) 그 뒤 status 가 왔다" 로 판정한다.
             ack = (fresh.get("status") and self.view.get("received", {}).get("status", 0) > self.stop_request_at
-                   and s.get("last_command") == "STOP_ALL" and s.get("accepted") and not s.get("running")
+                   and s.get("last_command") == "STOP_ALL" and s.get("accepted")
                    and (s.get("command_seq") or 0) > self.stop_request_seq)
             stop = {"confirmed": bool(ack), "delivery": self.stop_delivery,
-                    "message": "제어기 목표 동결 확인 · 토크 유지, 다른 송신자 확인 필요" if ack else "정지 요청 후 실제 동결 미확인"}
+                    "message": "STOP_ALL 수락 확인 · 제어기는 동결 목표를 계속 스트리밍(토크 유지), 다른 송신자 확인 필요" if ack else "정지 요청 후 STOP_ALL 수락 미확인"}
         allowed = {k: {"enabled": self.reason(k) is None, "reason": self.reason(k), "label": v} for k, v in LABELS.items()}
         if self.mode == "air":
             allowed["ground"]["label"] = "공중 인계 조건 확인"

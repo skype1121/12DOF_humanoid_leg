@@ -145,6 +145,25 @@ def onset_order(ticks, stop_ts):
     return res, (ticks[lo]["timestamp"] - ticks[0]["timestamp"], ticks[hi - 1]["timestamp"] - ticks[0]["timestamp"])
 
 
+def step_attempts(ticks, min_s=0.25, max_s=1.5):
+    """한 발만 일시적으로 접촉 0 이 됐다가 (1,1) 로 복귀한 에피소드 = 스텝 시도 후보 (0912).
+    시뮬 v5 는 줄 당김·편심을 발을 옮겨 받아내므로(발 들기 2~47회/env), 실물에서 이것이 0 이면 '스텝 없이 접촉 상실' 부류.
+    반환: [(시작 ts, 지속 s, '왼'|'오른'), ...]. 양발 0 은 스텝이 아니라 리프트/낙하로 보고 제외.
+    min_s 0.25: 패드 10 Hz S&H 한 샘플(0.10 s) 이탈은 임계 채터이지 스텝이 아니다(0910 trial1 의 0.10 s 이탈 7건) — 시뮬 스텝은 0.45~0.55 s."""
+    out, cur = [], None
+    for t in ticks:
+        c = tuple(t.get("contact") or (0, 0)); ts = t["timestamp"]
+        one = (c == (0, 1) and "왼") or (c == (1, 0) and "오른") or None
+        if cur is None:
+            if one: cur = [ts, one]
+        else:
+            if one == cur[1]: continue
+            dur = ts - cur[0]
+            if c == (1, 1) and min_s <= dur <= max_s: out.append((cur[0], dur, cur[1]))
+            cur = [ts, one] if one else None
+    return out
+
+
 def end_state(ticks, stop_reason=None):
     tN = ticks[-1]["timestamp"]
     rows = []
@@ -232,6 +251,11 @@ def report(bb_path, timeline_path=None, pads_path=None, out=print, ref="stop"):
             if n > 30: out("  ...(30개 초과 생략)"); break
     dist = Counter(tuple(t.get("contact") or (0, 0)) for t in ticks)
     out("  분포: " + ", ".join(f"{k}:{v / len(ticks) * 100:.0f}%" for k, v in dist.most_common()))
+    sa = step_attempts(ticks); chat = step_attempts(ticks, min_s=0.0, max_s=0.249)
+    cnt = Counter(f for _, _, f in sa)
+    out(f"  한 발 짧은 이탈(<0.25 s, 패드 채터 후보): {len(chat)}회")
+    out(f"  스텝 시도 후보(한 발만 0.25~1.5 s 이탈 후 (1,1) 복귀): {len(sa)}회 [왼 {cnt.get('왼', 0)} · 오른 {cnt.get('오른', 0)}]"
+        + ("  — 마지막 3건: " + ", ".join(f"{ts - stop_ts:+.1f}s {f} {d:.2f}s" for ts, d, f in sa[-3:]) if sa else "  — 0 이면 '스텝 없이 접촉 상실' 부류(시뮬 v5 는 외란을 스텝으로 받아냄)"))
     # 종료 직전
     out("\n## 4. 종료 직전 3 s (추종오차° qvelL2°/s |ω|°/s roll° pitch° 접촉)")
     rows, verdict = end_state(ticks, stop.get("reason") if stop else None)
@@ -291,10 +315,18 @@ def selftest():
     assert res["추종오차"] is None, "추종오차 상수 → 이탈 없음"
     rows_, verdict = end_state(ticks)
     assert "자세 유지" in verdict, verdict
+    # 스텝 시도: 합성 (1,1)→(0,1) 0.2 s→(1,1) 1건 + 너무 짧은 1틱 + 양발 0 은 제외
+    syn = [{"timestamp": 100 + i * TICK, "contact": [1, 1]} for i in range(60)]
+    for i in range(10, 25): syn[i]["contact"] = [0, 1]      # 0.30 s 왼발 이탈 = 스텝 후보
+    syn[30]["contact"] = [1, 0]                                # 1틱 = 채터
+    for i in range(40, 50): syn[i]["contact"] = [0, 0]         # 양발 0 = 제외
+    sa = step_attempts(syn); ch = step_attempts(syn, min_s=0.0, max_s=0.249)
+    assert len(sa) == 1 and sa[0][2] == "왼" and abs(sa[0][1] - 0.3) < 1e-6, sa
+    assert len(ch) == 1 and ch[0][2] == "오른", ch
     buf = []; report(p, out=buf.append)
     txt = "\n".join(buf)
     assert "윈치 조작 시각 불명" in txt and "최초 이상 발생 순서" in txt
-    print("[selftest] analyze_hang2stand_trial: 로드·발생순서(roll→접촉→정지)·종료판정(자세 유지)·리포트 — PASS")
+    print("[selftest] analyze_hang2stand_trial: 로드·발생순서(roll→접촉→정지)·종료판정(자세 유지)·스텝 시도 카운트·리포트 — PASS")
     return 0
 
 

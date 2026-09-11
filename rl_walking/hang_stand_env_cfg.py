@@ -581,8 +581,8 @@ class Biped12HangStandS10aEnvCfg(Biped12HangStandS8ac4EnvCfg):
 
 
 @configclass
-class Biped12HangStandCableS3rEnvCfg(Biped12HangStandS3rEnvCfg):
-    """케이블 지지 모델(0911) — S3r(실제 행잉) 조건에 길이제약 케이블 적용. v5 재현 게이트 전용(학습 아님).
+class Biped12HangStandCableS3rEnvCfg(Biped12HangStandS8aS3rEnvCfg):
+    """케이블 지지 모델(0911) — S8aS3r(실제 행잉·raw+EMA 320관측) 에 길이제약 케이블 적용. v5(320) 재현 게이트 전용(학습 아님).
     이 환경에서 v5 가 실물 궤적(방출 중 발력 저하 + p1축 회전 + 정책 준정지)을 재현하는지 확인 후에만 케이블 기반 학습."""
 
     def __post_init__(self):

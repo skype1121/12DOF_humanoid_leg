@@ -599,3 +599,10 @@ left_ankle_f 47.637| right_ankle_f 14.961| left_ankle_r 3.158 | right_ankle_r 8.
 - `python3 jetson/scripts/foot_force_adapter_node.py --selftest` (패드 단위 접지)
 - 본 문서의 블랙박스 측정은 `reports/real_0910_A1/trial1/rl_bridge_20260910_154841.jsonl` 을
   표준 라이브러리 + numpy 로 파싱해 산출했다 (일회성 스크립트, 저장소에 남기지 않음).
+
+---
+## 부록 (0911 추가): 학습 env ↔ 배포 러너 ↔ 실물 브리지 조립 등가성 (MEASURED)
+- `rl_walking/deploy/sim_validate_runner_stage4.py --hang-nominal` (S8ac4, v5, 15 s): 학습 전용 손상 모델을 끄면 기본 8항 오차 0, 슬루 후 목표각 0 rad, EMA 항은 리셋 2 s 이후 ≤5.5e-5. → 러너 320 조립 = env 관측 (레이아웃·이력·클록·접촉·EMA 산술·슬루 1:1).
+- `rl_walking/deploy/replay_bridge_log.py` (0910 trial1/3): 러너 조립·정책 출력 = 실물 블랙박스 기록 ≤1e-4. → 러너 = 실물 브리지.
+- 계약 주의점(학습에서만 존재, 배포엔 없음): IMU 자세 지연 0~3틱(`projected_gravity_lagged`, `imu_lag_steps`)·IMU 롤/틸트 편향·관절 영점 편향(`calib_bias`)·관절위치 양자화 0.003 rad·발목 디더 0.008 rad(`joint_pos_rel_biased`)·관절속도 드롭아웃 25 %(`joint_vel_rel_dropout`)·접촉 비트 5틱 지연·임계 2~20 N(`feet_contact` params)·액션 지연 3~8틱·LPF β0.2~1.0·백래시(`SlewJointPositionActionCfg`)·EMA 항 내부 노이즈(자이로 0.2, 관절속도 1.5). EMA 재시드: env 는 리셋 후 2틱 동안, 러너는 1회 — (0.9)ⁿ 감쇠 과도.
+- 실측 대응: 정책루프 지연 중앙 6.3틱(학습 3~8 안), 접촉 10 Hz S&H(학습 5틱 지연과 정합), 자이로 잡음 σ 0.31 °/s(학습 노이즈 ±0.2 rad/s 대역보다 훨씬 작음).

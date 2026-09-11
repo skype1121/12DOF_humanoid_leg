@@ -70,8 +70,30 @@
 ### 8.1 (실행 중 결과 기입란)
 | 항목 | 결과 |
 |---|---|
-| v5_nom_delay7 (지연 7틱 고정) | |
-| v5_nom_delay9 (9틱) | |
-| v5_dr_delay9 | |
-| v5_nom_delay12 (12틱) | |
-| env↔러너 320 교차검증(sim_validate_runner_stage4, S8ac4, v5) | |
+| v5_nom_delay7 (지연 7틱 고정) | 256/256 (100 %) |
+| v5_nom_delay9 (9틱) | 254/256 (99.2 %) |
+| v5_dr_delay9 (DR+푸시) | 98/256 (38.3 %) — 외란 하 지연 절벽 |
+| v5_nom_delay12 (12틱 = 240 ms) | 160/256 (62.5 %) — **푸시 없이도** 절벽. 정적 자립의 지연 여유는 9틱까지, 12틱이면 붕괴 |
+| env↔러너 320 교차검증(sim_validate_runner_stage4, S8ac4, v5) | 1차 실행 **FAIL**(관측 최대 오차 4.92, 목표각 0.41 rad). 단, 이 하네스는 보행 태스크용(속도 명령·고정 5 N 접촉 임계·노이즈 EMA)이라 HangStand 계약과 어긋난 블록이 있을 수 있음 → 항별 오차 분해 후 판정(§8.2). 러너 자체의 정합은 실물 로그 재생으로 ≤1e-4 확인됨. |
+
+### 8.2 교차검증 항별 분해 (`sim_validate_runner_stage4.py --hang-nominal`: 관측 노이즈·EMA 노이즈·접촉 임계 DR·액션 지연·LPF/백래시 DR·푸시 OFF, 명령 0)
+| 항 | 최대 오차 | 해석 |
+|---|---|---|
+| base_ang_vel, velocity_commands, actions, feet_contact | **0** | 레이아웃·이력 순서 정확 |
+| gait_clock | 6e-8 | 클록 위상 일치(f=1.1 Hz) |
+| **목표각(슬루 후)** | **0.00 rad** | 러너 슬루 = env 액션항 (지연·LPF·백래시 DR 을 끄면 정확히 일치) |
+| projected_gravity | 0.050 | env 항은 `projected_gravity_lagged`(학습용 IMU 전송 지연 모델) — 러너는 현재값. 조립 오류 아님 |
+| joint_pos | 0.050 | env 항 `joint_pos_rel_biased`(영점 편향·양자화 0.003 rad·발목 디더 0.008 rad — 학습용 엔코더 모델) — 조립 오류 아님 |
+| joint_vel | 2.25 | env 항 `joint_vel_rel_dropout`(zero_prob 0.25 — 학습용 드롭아웃) — 조립 오류 아님 |
+| gyro_ema / joint_vel_ema | 0.42 / 1.42 | env EMA 는 위 손상 신호 위에서 계산 — 손상을 끈 재검증으로 산술 일치 확인(§8.3) |
+**결론(1차)**: 러너 320 조립의 **레이아웃·이력·클록·접촉·액션 처리는 학습 env 와 1:1** 이다. 남은 차이는 학습 시에만 넣는 센서 손상 모델(지연·편향·양자화·드롭아웃)이며, 배포에서는 실물 센서가 그 역할을 한다(sim2real 설계 의도). 이것으로 배포경로 리포트의 UNKNOWN("320 조립이 학습 env 와 1:1 인지 실증된 적 없음")은 레이아웃 수준에서 해소된다.
+
+### 8.3 손상 모델까지 끈 재검증 — **PASS** (S8ac4 · v5 · 15 s · 1 env)
+| 항 | 전체 최대 오차 | 리셋 2 s 이후 최대 오차 |
+|---|---|---|
+| base_ang_vel, projected_gravity, velocity_commands, joint_pos, joint_vel, actions, feet_contact | **0.00** | 0.00 |
+| gait_clock | 6e-8 | 6e-8 |
+| gyro_ema / joint_vel_ema | 0.54 / 1.21 (리셋 직후 2틱: env 는 `episode_length_buf<=1` 동안 EMA 를 재시드, 러너는 1회 — (0.9)ⁿ 로 감쇠하는 과도) | **2.4e-5 / 5.5e-5** |
+| 목표각(슬루 후) | **0.00 rad** | |
+→ 배포 러너의 320 관측 조립(레이아웃·이력 5·클록 1.1 Hz·접촉 이진화·EMA α0.1 산술)과 슬루 처리는 학습 env 와 1:1 이다(MEASURED). 학습에서만 넣는 센서 손상 모델: IMU 지연 0~3틱·IMU 롤/틸트 편향·관절 영점 편향·양자화 0.003 rad·발목 디더 0.008 rad·관절속도 드롭아웃 25 %·접촉 비트 5틱 지연·접촉 임계 2~20 N·액션 지연 3~8틱·LPF β0.2~1.0·백래시 — 배포에선 실물 센서·기구가 그 역할을 한다(계약 문서 부록으로 기록). 실물 로그 재생(≤1e-4)과 합쳐 "학습 env = 배포 러너 = 실물 브리지" 세 조립이 등가임이 확인됐다.
+

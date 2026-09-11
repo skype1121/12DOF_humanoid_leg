@@ -63,7 +63,7 @@
 
 ## 8. 수치 부록
 - v5 평가표 전체: `sim_eval_v5.md` (조건 A~H, 결과 파일 `log_picture/hang2stand_<tag>.txt` 기준).
-- 패키지: `deploy/stand_7차_20260911_2316.tar.gz` (6.8 MB, 44 파일, `deploy/MANIFEST.md5` 44 항목). 핵심 md5(앞 16자리): `rl_bridge_node.py` 160b5e97e001cdc5 · `console_state.py` b64e7496b58df694 · `operator_console.py` b2d3e26ca68cf32c · `stand_hang_v5/policy.pt` 2a20b7b1cd4ec3da (= `logs/…/2026-09-09_19-15-42/exported/policy.pt`, actor 가중치 8/8 텐서 = model_139987).
+- 패키지(최신): `deploy/stand_7차_20260911_2337.tar.gz` (6.8 MB, 44 파일, `deploy/MANIFEST.md5` 44 항목; 23:16 판은 호환검수 R3~R8 반영 전이라 폐기). 핵심 md5(앞 16자리): `rl_bridge_node.py` 4562106ff344d74d · `console_state.py` b7ae160bb457d4ab · `operator_console.py` de2cc58a63943cb2 · `console_ui.html` c4f14b701ad6fb68 · `stand_hang_v5/policy.pt` 2a20b7b1cd4ec3da (= `logs/…/2026-09-09_19-15-42/exported/policy.pt`, actor 가중치 8/8 텐서 = model_139987). v5d 가 승격되면 패키지를 다시 만든다(§8.4).
 - 코드 커밋: 브랜치 `hang2stand-prep-0911`, 보존 커밋 f36c8a1(CLAUDE.md·하드웨어맵) → 8489315(Codex 콘솔 보존) → 이후 수정 커밋들. 패키지는 워킹트리 기준이며 MANIFEST 로 대조.
 - 접촉 교란 추가: onefoot(오른발 2 s 주기 0.3 s 0 오판) 명목 256/256 (100 %).
 - 케이블 명목 느린 방출: 254/256 (99.2 %). 방출 구간 내내 양 발목 피치 추종오차가 **부호 반대칭(L +1.0~2.2°, R −0.5~−1.8°)** 으로 유지 — 실물 온셋 분석의 발목 역구동 부호 패턴과 같은 형태이나, 시뮬에선 증가·접촉 상실로 이어지지 않는다(부분 재현, 실패 재현 아님).

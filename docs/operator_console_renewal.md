@@ -103,3 +103,17 @@ python3 tests/console_browser_smoke.py
 현장에 남는 검증: 실제 ROS 메시지 주기·시각 계약, 설치된 스크립트 출력 버전,
 인계 직전/직후 목표 연속성·명령 공백, 프로세스 종료 지연, 실제 동결·릴리즈,
 영상 동기화 및 무보조 자립. 오프라인 화면/절차 통과는 실물 성공 보증이 아니다.
+
+---
+## 부록 (2026-09-11 밤, Claude): 호환 적대검수 반영 사항 — `reports/real_prep_0911/console_bridge_compat.md`
+- R1 `console_state.py`: estop 동결 확인에서 `running==False` 요구 제거(stage8 는 armed 인 한 다음 틱에 running=True 로 복귀 = 동결 목표 스트리밍). 확인 = STOP_ALL 수락 + command_seq 증가 + 요청 이후 status.
+- R2 `console_state.py`: stand 진행 중 콘솔이 요청하지 않은 STOP_ALL 수락 감지 시 즉시 래치(브리지발 워밍업 타임아웃·센서 stale·가드). stand pending 타임아웃 30→8 s.
+- R3 `operator_console.py`: '12/12 신선' = 관절별 `feedback_age_sec` < 0.2 s(브리지 SENSOR_STALE_SEC 와 동일). 데모 status 에 `feedback_age_sec` 추가.
+- R4 `operator_console.py`/`console_ui.html`: 브리지 stdout 계약(`인계 워밍업 최대/대기/완료`, `sensor_stale_warmup_timeout`) → `procs.bridge.warmup {state,ts,detail}`, 브리지 줄에 표시.
+- R5 `operator_console.py`/`console_ui.html`: `bridge.hang_state` 를 세션 샘플에 기록하고 정책 제어 중 표시에 병기.
+- R6 `rl_bridge_node.py`: 홀드-프라임 = stage8 가 스트리밍 중인 상대 명령(`stage8_cmd_rel`) 그대로(무변화), 폴백은 실측 자세.
+- R7 `rl_bridge_node.py`: `_stop_all` 이 `{"event":"stop_all","reason":…}` 를 디버그 토픽으로도 발행 → `Telemetry.receive` 의 event 분기가 실제로 동작.
+- R8 `console_state.py`/`console_ui.html`: 정지 사유 원문 → 운영 문구 `fault_hint`(워밍업 타임아웃·센서 stale·lift/hang/osc 가드·비유한 관측·STOP_ALL).
+- 슬랙 게이트: `op_release_start` 후엔 `op_release_stop` 기록 전까지 `op_slack_done` 차단.
+- 미반영(의도적): R9 — 트림/영점/자세시험 스크립트를 외부 제어 프로세스로 래치하는 것은 안전 동작이므로 유지.
+검증: `tests/test_operator_console.py` 35 passed · `--demo` 모의 절차(정상·게이팅·정책일치·측정 게이팅·estop·회수) PASS · 브리지 selftest ALL PASS.

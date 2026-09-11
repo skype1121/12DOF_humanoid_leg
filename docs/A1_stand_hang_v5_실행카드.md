@@ -62,6 +62,7 @@ bash jetson/deploy_to_jetson.sh --host 172.16.35.89 --pkg $(ls -t deploy/stand_7
 전후 기울기 게이트 초과 · 발진 · 가드 정지 · 센서 stale 반복 · 줄이 몸을 옆으로 당김 · 스포터 개입 필요.
 
 ## 7. 시험 후 (PC, Claude)
+한 번에: `bash jetson/scripts/collect_trial_logs.sh <블랙박스 stamp> [세션 디렉토리명] [젯슨IP]` → `reports/real_<날짜>/<stamp>/analysis.md` (아래 명령을 자동 실행).
 ```bash
 scp mama@172.16.35.89:~/logs/rl_bridge_<stamp>.jsonl  reports/real_<날짜>/   # 블랙박스
 scp -r mama@172.16.35.89:~/logs/sessions/session_<stamp> reports/real_<날짜>/  # 타임라인(윈치 이벤트)

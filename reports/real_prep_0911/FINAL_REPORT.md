@@ -42,7 +42,7 @@
 ## 5. 패키지 · 복구 · 실행 카드
 - 패키지: `deploy/stand_7차_<stamp>.tar.gz` + `deploy/MANIFEST.md5` (§8 에 stamp·md5). 젯슨 반영·md5·selftest·콘솔 재기동은 승윤님(`docs/A1_stand_hang_v5_실행카드.md` §2).
 - 복구: 직전 패키지를 같은 절차로 풀고 md5·selftest — 상세 `deploy_path_check.md` §6(젯슨 조치는 미수행 표시). MANIFEST 불일치(0910 콘솔 수동 scp) 는 이번 패키지의 새 MANIFEST 로 해소.
-- 실행 카드: `docs/A1_stand_hang_v5_실행카드.md`(확정판). 사후 분석: `analyze_hang2stand_trial.py --timeline`, `replay_bridge_log.py`, `analyze_fall.py`, `analyze_cop_transfer.py`(진단만).
+- 실행 카드: `docs/A1_stand_hang_v5_실행카드.md`(확정판). 사후 분석 일괄: `jetson/scripts/collect_trial_logs.sh <stamp>`(젯슨에서 블랙박스·타임라인·패드·stiff 를 scp 로 수집 → `analyze_hang2stand_trial.py --timeline`, `replay_bridge_log.py`, `analyze_fall.py`, `analyze_cop_transfer.py`(진단만) 실행 → `analysis.md`). 평가 재현: `rl_walking/scripts/run_v5_eval_battery.sh`.
 
 ## 6. 실패하면 어떤 기록이 어느 가설을 가르는가
 | 관찰 | 지지되는 가설 | 반박되는 가설 |
@@ -69,7 +69,7 @@
 - 케이블 명목 느린 방출: 254/256 (99.2 %). 방출 구간 내내 양 발목 피치 추종오차가 **부호 반대칭(L +1.0~2.2°, R −0.5~−1.8°)** 으로 유지 — 실물 온셋 분석의 발목 역구동 부호 패턴과 같은 형태이나, 시뮬에선 증가·접촉 상실로 이어지지 않는다(부분 재현, 실패 재현 아님).
 - 지연 민감도(조건 H)·env↔러너 320 교차검증: 아래 §8.1.
 
-### 8.1 (실행 중 결과 기입란)
+### 8.1 지연 민감도(조건 H) · 교차검증 1차
 | 항목 | 결과 |
 |---|---|
 | v5_nom_delay7 (지연 7틱 고정) | 256/256 (100 %) |

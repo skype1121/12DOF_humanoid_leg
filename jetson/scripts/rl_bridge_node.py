@@ -96,6 +96,11 @@ FOOT_STALE_SEC = 0.35
 #: 명령마다 피드백이 와서(50Hz) 0.2s 엄격 게이트가 그대로 적용된다.
 JOINT_STALE_DRYRUN_SEC = 0.5
 STATUS_FEEDBACK_FRESH_SEC = 0.5   # status 경유 관절 피드백(feedback_age_sec) 신선 한계
+#: 인계 워밍업(0911): stand 직후 stage8 status 스트림이 유휴 버스트/스톨로 아직 안 붙어
+#: joint_ts 가 낡을 수 있다 — tick-1 에서 sensor_stale 로 오정지하던 것(실측: 3회 정상기동 vs
+#: 금일 2회 tick-1 실패, 차이=타이밍)을 막는다. 이 창 동안엔 정책 구동 없이 홀드-프라임만 보내
+#: stage8 status 에코를 깨우고 신선 피드백을 기다린다. 정상상태 게이트(SENSOR_STALE_SEC)는 불변.
+STAND_WARMUP_MAX_S = 4.0   # 관측된 최대 status 갭(~2.9s)보다 넉넉. 초과 시 STOP_ALL.
 COMMAND_TOPIC = "/humanoid/stage8_12axis_mit_command"
 STATUS_TOPIC = "/humanoid/stage8_12axis_mit_status"
 JOINT_STATES_TOPIC = "/humanoid/joint_states"
@@ -378,6 +383,19 @@ def gravity_gate(imu, imu_ts, now, tol=GRAV_GATE_TOL, max_age=GRAV_GATE_MAX_AGE_
     return True, f"중력 정합 OK (|g−(0,0,−1)|={dist:.2f})"
 
 
+def warmup_gate(fresh, warmed, now, warmup_until):
+    """stand 직후 인계 워밍업 게이트(순수 함수 — 셀프테스트 공유).
+
+    반환 (proceed, action):
+      proceed=True  → 정책 경로로 진행(이미 워밍업 완료거나 방금 신선해짐).
+      (False,'prime')   → 홀드-프라임 후 대기 (창 이내, 아직 미신선).
+      (False,'timeout') → 워밍업 창 초과, 신선 피드백 미확보 → 정지.
+    warmed=True 이후엔 신선도와 무관하게 proceed=True → 정상상태 게이트(0.2s)가 뒤에서 판정(불변)."""
+    if warmed or fresh:
+        return True, "ok"
+    return (False, "prime") if now < warmup_until else (False, "timeout")
+
+
 class BridgeCore:
     """ROS 무관 코어 — 관측 → 12관절 목표각(rad, URDF 관절 프레임). 셀프테스트 공유.
 
@@ -596,6 +614,16 @@ def _selftest_grav_gate():
         ok, _ = gravity_gate(((0, 0, 0), (math.cos(h), 0.0, math.sin(h), 0.0)), now, now)
         assert ok == expect, (deg, ok)
     return "정합 통과 · (−1,0,0) 거부 · 스테일/미수신 거부 · 15° 통과/20° 거부"
+
+
+def _selftest_warmup():
+    """(0911) 인계 워밍업 게이트: 미신선+창내→prime, 신선→ok, 미신선+창초과→timeout, 워밍업후→ok(정상게이트로)."""
+    assert warmup_gate(fresh=False, warmed=False, now=1.0, warmup_until=5.0) == (False, "prime"), "창내 미신선→prime"
+    assert warmup_gate(fresh=True, warmed=False, now=1.0, warmup_until=5.0) == (True, "ok"), "신선→진행(워밍업 완료)"
+    assert warmup_gate(fresh=False, warmed=False, now=6.0, warmup_until=5.0) == (False, "timeout"), "창초과 미신선→timeout"
+    assert warmup_gate(fresh=False, warmed=True, now=9.0, warmup_until=5.0) == (True, "ok"), "워밍업후 미신선→진행(뒤의 0.2s 게이트가 판정)"
+    assert warmup_gate(fresh=True, warmed=True, now=9.0, warmup_until=5.0) == (True, "ok")
+    return "미신선+창내 prime · 신선 완료 · 창초과 timeout · 워밍업후 정상게이트 위임"
 
 
 def _parse_env_contract(path):
@@ -1181,6 +1209,7 @@ def run_selftest(required=()):
              ("게인 정책", _selftest_gains),
              ("프레임 게이트", _selftest_frame_gate),
              ("중력 게이트", _selftest_grav_gate),
+             ("인계 워밍업", _selftest_warmup),
              ("롤/피치 기록", _selftest_roll_pitch),
              ("발진 가드", _selftest_osc_guard),
              ("행잉 가드", _selftest_hang_guard),
@@ -1276,6 +1305,8 @@ def main():
             self.baseline = {}
             self.armed = False
             self.stopped_for_stale = False
+            self.warmed = True           # 인계 워밍업 완료 여부 — stand 시 False 로 리셋
+            self.warmup_until = 0.0      # 워밍업 데드라인(time.time 기준)
             self.osc = OscGuard(JOINT_ORDER)
             self.osc_tripped = None
             self.stop_reason = None      # A1 기록: 마지막 STOP_ALL 사유
@@ -1548,7 +1579,12 @@ def main():
                     self.core.heading_hold = bool(d.get("heading_hold", True))
                 self.core.active = True
                 self.stopped_for_stale = False
-                self.get_logger().info(f"RL {c} 시작 ckpt={ck} cmd={self.core.cmd}")
+                # 인계 워밍업 시작 — stage8 status 스트림이 붙을 때까지 정책 구동 보류(홀드-프라임만).
+                # 실측: 3회 정상기동은 tick-1 이 신선했고, 금일 2회 실패는 tick-1 이 유휴 status 갭에
+                # 걸려 sensor_stale 오정지. 워밍업이 이 타이밍 레이스를 없앤다(정상상태 게이트는 불변).
+                self.warmed = False
+                self.warmup_until = time.time() + STAND_WARMUP_MAX_S
+                self.get_logger().info(f"RL {c} 시작 ckpt={ck} cmd={self.core.cmd} (인계 워밍업 최대 {STAND_WARMUP_MAX_S:.0f}s)")
 
         # ---- 50Hz 틱 ----
         def _tick(self):
@@ -1560,6 +1596,24 @@ def main():
                      and now - self.imu_ts < SENSOR_STALE_SEC
                      and now - self.foot_ts < FOOT_STALE_SEC
                      and len(self.joint_deg) == 12)
+            # 인계 워밍업: stand 직후 stage8 status 스트림이 아직 안 붙어 joint_ts 가 낡을 수 있다.
+            # 정책을 구동하지 않고 홀드-프라임(현 자세 상대0)만 보내 stage8 를 깨우며 신선 피드백을 기다린다.
+            proceed, wact = warmup_gate(fresh, self.warmed, now, self.warmup_until)
+            if not proceed:
+                self.prev_qpos = None
+                if wact == "prime":
+                    self._send_hold_prime()
+                    return
+                # timeout — 워밍업 창 내 관절 피드백 미확보
+                self._stop_all("sensor_stale_warmup_timeout")
+                self.core.active = False
+                self.get_logger().error(
+                    f"인계 워밍업 {STAND_WARMUP_MAX_S:.0f}s 내 관절 피드백 미확보 → STOP_ALL + 정책 비활성. "
+                    "stage8 status 스트림/CAN 점검 후 재명령.")
+                return
+            if not self.warmed:   # 방금 신선해져 워밍업 완료
+                self.warmed = True
+                self.get_logger().info("인계 워밍업 완료 — 관절 피드백 신선, 정책 구동 시작")
             if not fresh:
                 if not self.stopped_for_stale:
                     self._stop_all("sensor_stale")
@@ -1768,6 +1822,18 @@ def main():
             if targets:
                 self.pub_cmd.publish(String(data=json.dumps(
                     {"command": "SET_JOINT_TARGETS", "targets": targets})))
+
+        def _send_hold_prime(self):
+            """인계 워밍업 전용: 현 자세 유지(상대 0) 명령으로 stage8 를 깨워 status 에코를 유발.
+
+            stage8 는 명령 수신마다 status 를 발행(~수백 Hz)한다 — 유휴 시엔 발행이 버스트/스톨.
+            상대 0 = 모터를 baseline(착지 자세)에 유지 = 무동작. baseline 미확보면 다음 status 대기."""
+            if not self.baseline:
+                return
+            tg = {j: 0.0 for j in JOINT_ORDER if self.baseline.get(j) is not None}
+            if tg:
+                self.pub_cmd.publish(String(data=json.dumps(
+                    {"command": "SET_JOINT_TARGETS", "targets": tg})))
 
         def _bb_write(self, obj):
             """블랙박스 기록 — 실패(디스크 만충 등)해도 안전동작을 못 막게 격리.

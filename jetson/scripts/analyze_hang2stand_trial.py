@@ -160,8 +160,12 @@ def end_state(ticks):
     last = rows[-1] if rows else None
     verdict = None
     if last:
-        verdict = ("관절 붕괴 후보(추종오차 큼)" if last[1] > 5.0 else
-                   "자세 유지한 채 접촉 상실(추종오차 작음) — 윈치 리프트/측면 표류/센서 중 판별 필요")
+        if last[1] > 5.0:
+            verdict = "관절 붕괴 후보(추종오차 큼)"
+        elif last[6] == (1.0, 1.0):
+            verdict = "양발 접촉 유지한 채 종료(정지 없음/시간 종료) — 접촉 상실 아님"
+        else:
+            verdict = "자세 유지한 채 접촉 상실(추종오차 작음) — 윈치 리프트/측면 표류/센서 중 판별 필요"
     return rows, verdict
 
 

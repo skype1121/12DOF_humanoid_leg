@@ -371,6 +371,11 @@ CLAUDE.md 는 "판정 1순위는 발력 총합 %" 라고 못박고 있어, **카
 
 ---
 
+### 6.1 주의: 로컬 `logs/…/exported/policy.pt` ≠ 레지스트리인 세대가 있다 (MEASURED, 0911 23:5x)
+- 워킹트리에서 `md5sum -c deploy/MANIFEST.md5` 를 돌리면 `logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/exported/policy.pt`(stand_v18b) 가 FAILED 로 나온다: 로컬 파일 md5 `1ddaef70…`(mtime 0908 20:17, 그 run 을 play.py 로 다시 돌려 재익스포트된 것) ≠ 레지스트리 `models/stand_v18b/policy.pt` `fac90eb5…`(meta.json, model_120998).
+- 패키지는 **레지스트리 사본**을 브리지 CHECKPOINTS 경로로 복사하므로(`deploy_package.sh` 설계) 패키지 자체는 옳고 자기 일관(풀린 트리 MD5_OK). 젯슨에 풀면 레지스트리 사본이 그 경로에 놓인다. 로컬에서 v18b 를 브리지로 실행할 일이 있으면 `models/stand_v18b/policy.pt` 를 기준으로 보라.
+- stand_hang_v5 는 로컬 logs 사본 = 레지스트리(`2a20b7b1…`) 로 일치한다. 나머지 FAILED 2건(`docs/A1_…실행카드.md`, `docs/operator_console_renewal.md`) 은 2337 패키지 뒤의 문서 갱신 — 최종 패키지 재생성 시 해소.
+
 ## 7. 권고 (승윤님 결정 대기, 본 감사에서는 아무것도 바꾸지 않음)
 
 1. `deploy_package.sh` 의 `GENS` 기본값을 현행 배포 세트(`stand_v18b stand_hang_v4 stand_hang_v5`)로 맞추거나, 기본값 사용 시 **명시 실패**시킨다 (§5-1).

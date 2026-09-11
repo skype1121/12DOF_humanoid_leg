@@ -49,6 +49,9 @@ parser.add_argument("--contact_perturb", type=str, default="none",
                          "chatter(랜덤 플립)/both1/both0(진단 고정 대조군)")
 parser.add_argument("--perturb_seed", type=int, default=0, help="접촉 교란 RNG seed (독립 seed 평가용)")
 parser.add_argument("--seed", type=int, default=None, help="env/torch seed 덮어쓰기 (독립 seed 평가용; 기본 agent_cfg.seed 고정 → 같은 설정은 결정론적 동일 결과)")
+parser.add_argument("--dump_envs", type=int, default=0,
+                    help="처음 N개 env 의 시계열을 실물 블랙박스 형식으로 log_picture/simbb_<tag>_env<i>.jsonl 에 기록 "
+                         "(jetson/scripts/analyze_hang2stand_trial.py 로 시뮬/실물 '최초 이상 발생 순서' 비교, 0911)")
 parser.add_argument("--calib_fixed", type=str, default="", help="관절 고정 편향 주입 'left_ankle_r_joint:3.6,right_hip_r_joint:3.4' [deg] — 실측 좌우 비대칭 재현")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
@@ -206,6 +209,7 @@ _DEF = robot.data.default_joint_pos.clone()
 _LAND = torch.zeros_like(_DEF)
 _ASCALE = 0.25
 chain_desc = "없음(env 원생 액션)"
+_LAST_OUT = [None]   # 배포 체인이 마지막으로 보낸 관절 목표(rad) — 시뮬 블랙박스 덤프용
 if use_chain:
     from rl_walking.deploy.deploy_chain import DeployChain, BLEND_S, STAND_LPF_BETA  # noqa: E402
     from rl_walking.deploy.policy_runner import SLEW_RAD  # noqa: E402
@@ -218,6 +222,7 @@ if use_chain:
             _ids = torch.nonzero(_term._needs_init).squeeze(-1)
             _chain.reset(_ids, robot.data.joint_pos)
         out = _chain.step(a)
+        _LAST_OUT[0] = out          # 덤프용: 배포 체인이 실제로 보낸 관절 목표(rad)
         _orig((out - _DEF) / _ASCALE)
         _term._raw_actions[:] = a
 
@@ -331,6 +336,46 @@ class ContactPerturb:
 
 
 _cperturb = ContactPerturb(args_cli.contact_perturb, N, dev, _cs_lo, _cs_hi, args_cli.perturb_seed)
+
+# ── 시뮬 블랙박스 덤프 (0911): 실물 rl_bridge 블랙박스와 같은 키·같은 JOINT_ORDER(좌우 교대)로 기록 ──
+import json as _json
+_JO_REAL = ["left_hip_f_joint", "right_hip_f_joint", "left_hip_a_joint", "right_hip_a_joint",
+            "left_hip_r_joint", "right_hip_r_joint", "left_knee_joint", "right_knee_joint",
+            "left_ankle_f_joint", "right_ankle_f_joint", "left_ankle_r_joint", "right_ankle_r_joint"]
+_DUMP = []; _dump_dead = []
+if args_cli.dump_envs > 0:
+    os.makedirs("log_picture", exist_ok=True)
+    _DUMP = [open(f"log_picture/simbb_{args_cli.out_tag}_env{k}.jsonl", "w", encoding="utf-8") for k in range(min(args_cli.dump_envs, N))]
+    _dump_dead = [False] * len(_DUMP)
+    _jsel = [_jidx[n] for n in _JO_REAL]
+    print(f"[dump] {len(_DUMP)}개 env 시계열 → log_picture/simbb_{args_cli.out_tag}_env*.jsonl (JOINT_ORDER 좌우교대로 재배열)")
+
+
+def _dump_step(i, a, roll, pitch, contact, term, st):
+    if not _DUMP:
+        return
+    _tgt = _LAST_OUT[0] if _LAST_OUT[0] is not None else (_DEF + a * _ASCALE)
+    _q = robot.data.joint_pos; _qd = robot.data.joint_vel; _w = robot.data.root_ang_vel_b
+    _sg = _support_gone_mask(st)
+    _ts = 1.0e9 + i * 0.02
+    for k, fh in enumerate(_DUMP):
+        if _dump_dead[k]:
+            continue
+        row = {"timestamp": _ts, "live": True, "checkpoint": f"sim:{args_cli.out_tag}",
+               "rp_deg": [float(roll[k]), float(pitch[k])],
+               "gyro_rad_s": [float(x) for x in _w[k]],
+               "qpos_rad": [float(_q[k, j]) for j in _jsel], "qvel_rad_s": [float(_qd[k, j]) for j in _jsel],
+               "raw_action": [float(a[k, j]) for j in _jsel],
+               "targets_deg_joint": {n: float(torch.rad2deg(_tgt[k, _jidx[n]])) for n in _JO_REAL},
+               "contact": [float(contact[k, 0]), float(contact[k, 1])],
+               "hang_state": "CONTACT_ACQUIRED" if float(st["touch_t"][k]) >= 0.0 else "PRE_CONTACT_HANG_ALLOWED",
+               "support_r": float(st["r"][k]), "support_gone": bool(_sg[k]), "blend_alpha": 1.0}
+        fh.write(_json.dumps(row) + "\n")
+        if bool(term[k]):
+            fh.write(_json.dumps({"timestamp": _ts, "event": "stop_all", "reason": "sim: terminated(fell)"}) + "\n")
+            _dump_dead[k] = True
+
+
 t0 = time.time()
 for i in range(STEPS):
     with torch.inference_mode():
@@ -344,6 +389,7 @@ for i in range(STEPS):
     w = robot.data.root_ang_vel_b.norm(dim=-1)
     f = _cs.data.net_forces_w[:, [_fl, _fr], :].norm(dim=-1)
     contact = (f > 5.0).float()
+    _dump_step(i, a, roll, pitch, contact, term, st)
     a_ = alive
     max_roll[a_] = torch.maximum(max_roll[a_], roll[a_].abs()); max_pitch[a_] = torch.maximum(max_pitch[a_], pitch[a_].abs())
     max_w[a_] = torch.maximum(max_w[a_], w[a_])

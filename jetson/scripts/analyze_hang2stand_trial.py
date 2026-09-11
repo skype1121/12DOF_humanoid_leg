@@ -145,7 +145,7 @@ def onset_order(ticks, stop_ts):
     return res, (ticks[lo]["timestamp"] - ticks[0]["timestamp"], ticks[hi - 1]["timestamp"] - ticks[0]["timestamp"])
 
 
-def end_state(ticks):
+def end_state(ticks, stop_reason=None):
     tN = ticks[-1]["timestamp"]
     rows = []
     for lab, a, b in (("종료-3~-2s", 3, 2), ("종료-2~-1s", 2, 1), ("종료-1~0s", 1, 0)):
@@ -160,12 +160,18 @@ def end_state(ticks):
     last = rows[-1] if rows else None
     verdict = None
     if last:
+        dyn = last[3] > 20.0 or last[2] > 60.0          # |ω| > 20 °/s 또는 관절속도 > 60 °/s = 동적 낙상
         if last[1] > 5.0:
             verdict = "관절 붕괴 후보(추종오차 큼)"
+        elif stop_reason and "terminated" in str(stop_reason):
+            verdict = ("동적 낙상 종료(시뮬 기울기 종료, 접촉 비트는 아직 1,1)" if dyn else
+                       "기울기 종료(준정적) — 실물 준정적 접촉 상실과 비교 대상")
         elif last[6] == (1.0, 1.0):
             verdict = "양발 접촉 유지한 채 종료(정지 없음/시간 종료) — 접촉 상실 아님"
+        elif dyn:
+            verdict = "동적 접촉 상실(|ω| 큼) — 실물 준정적 사례와 다른 부류"
         else:
-            verdict = "자세 유지한 채 접촉 상실(추종오차 작음) — 윈치 리프트/측면 표류/센서 중 판별 필요"
+            verdict = "자세 유지한 채 준정적 접촉 상실(추종오차·|ω| 작음) — 윈치 리프트/측면 표류/센서 중 판별 필요"
     return rows, verdict
 
 
@@ -228,7 +234,7 @@ def report(bb_path, timeline_path=None, pads_path=None, out=print, ref="stop"):
     out("  분포: " + ", ".join(f"{k}:{v / len(ticks) * 100:.0f}%" for k, v in dist.most_common()))
     # 종료 직전
     out("\n## 4. 종료 직전 3 s (추종오차° qvelL2°/s |ω|°/s roll° pitch° 접촉)")
-    rows, verdict = end_state(ticks)
+    rows, verdict = end_state(ticks, stop.get("reason") if stop else None)
     for lab, te, qv, wm, r, p, cc in rows: out(f"  {lab:12s} {te:6.2f} {qv:7.1f} {wm:6.1f} {r:5.1f} {p:5.1f} {cc}")
     if verdict: out(f"  → {verdict}")
     # 발생 순서

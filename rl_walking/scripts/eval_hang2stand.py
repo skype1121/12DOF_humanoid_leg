@@ -49,6 +49,8 @@ parser.add_argument("--contact_perturb", type=str, default="none",
                          "chatter(랜덤 플립)/both1/both0(진단 고정 대조군)")
 parser.add_argument("--perturb_seed", type=int, default=0, help="접촉 교란 RNG seed (독립 seed 평가용)")
 parser.add_argument("--seed", type=int, default=None, help="env/torch seed 덮어쓰기 (독립 seed 평가용; 기본 agent_cfg.seed 고정 → 같은 설정은 결정론적 동일 결과)")
+parser.add_argument("--delay_steps", type=str, default=None,
+                    help="액션 지연 틱 lo,hi 고정 (예 7,7 / 9,9). 실측 정책루프 지연 중앙 6.3틱·p95 8.9틱 대비 민감도; v5 학습 대역 3~8")
 parser.add_argument("--dump_envs", type=int, default=0,
                     help="처음 N개 env 의 시계열을 실물 블랙박스 형식으로 log_picture/simbb_<tag>_env<i>.jsonl 에 기록 "
                          "(jetson/scripts/analyze_hang2stand_trial.py 로 시뮬/실물 '최초 이상 발생 순서' 비교, 0911)")
@@ -184,6 +186,11 @@ if getattr(env_cfg.events, "base_com", None) and (args_cli.com_fix is not None o
         _cr["y"] = (args_cli.com_fix_y, args_cli.com_fix_y)
         env_cfg.events.base_com.params["com_range"] = _cr
     print(f"[com] base_com com_range = {env_cfg.events.base_com.params['com_range']}")
+if getattr(args_cli, "delay_steps", None):
+    # 0911 실측(realdata_model_id.md §5): 정책루프 지연 중앙 6.3틱(IQR 5.7~7.0, p95 8.9) vs 학습 대역 3~8틱 → 상단 민감도
+    _dlo, _dhi = _pair(args_cli.delay_steps)
+    env_cfg.actions.joint_pos.min_delay_steps = int(_dlo); env_cfg.actions.joint_pos.max_delay_steps = int(_dhi)
+    print(f"[delay] action delay steps = {int(_dlo)}..{int(_dhi)}")
 T_s = args_cli.seconds if args_cli.seconds else float(env_cfg.episode_length_s)
 env_cfg.episode_length_s = T_s + 1.0      # 평가 창 안에서 time_out 이 끼지 않게
 

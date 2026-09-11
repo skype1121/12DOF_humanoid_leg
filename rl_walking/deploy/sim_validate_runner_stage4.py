@@ -85,10 +85,11 @@ feet_cfg.resolve(uenv.scene)
 
 rep = [f"PolicyRunnerStage4 폐루프 검증 — 모델 {MODEL_DIR} "
        f"(task={args_cli.task}, clock={args_cli.gait_freq}Hz)",
-       f"명령 {CMD}, {args_cli.secs:.0f}s, 관측 {OBS_DIM_STAGE4}차원(이력5·클록·접촉)"]
+       f"명령 {CMD}, {args_cli.secs:.0f}s, 관측 {runner.obs_dim}차원(이력5·클록·접촉{'·raw+EMA' if runner.obs_dim != OBS_DIM_STAGE4 else ''})"]
 obs_dict, _ = env.reset()
-assert obs_dict["policy"].shape[1] == OBS_DIM_STAGE4, \
-    f"env policy 관측 {obs_dict['policy'].shape[1]} != {OBS_DIM_STAGE4}"
+# 0911: 245 하드코딩 → 러너가 모델에서 검출한 차원(245 또는 320 S8a) 과 env 정책 관측 차원을 대조
+assert obs_dict["policy"].shape[1] == runner.obs_dim, \
+    f"env policy 관측 {obs_dict['policy'].shape[1]} != 러너 {runner.obs_dim} (모델·태스크 불일치)"
 cmd_term = uenv.command_manager.get_term("base_velocity")
 
 S = int(args_cli.secs * 50)
@@ -132,7 +133,7 @@ with torch.inference_mode():
 
 dist = float(robot.data.root_pos_w[0, 0]) - (x0 or 0.0)
 rep.append(f"전진 거리: {dist:.2f} m ({args_cli.secs:.0f}s, 명령 0.5m/s)")
-rep.append(f"러너 vs env 관측 {OBS_DIM_STAGE4}차원 최대 오차: {obs_err_max:.2e}")
+rep.append(f"러너 vs env 관측 {runner.obs_dim}차원 최대 오차: {obs_err_max:.2e}")
 rep.append(f"러너 vs env 목표각 최대 오차: {target_err_max:.2e} rad")
 rep.append(f"낙상: {'있음' if fell else '없음'}")
 ok = (not fell) and obs_err_max < 1e-4 and target_err_max < 1e-4

@@ -673,4 +673,30 @@ class Biped12HangStandS8ac4rnEnvCfg(Biped12HangStandS8ac4EnvCfg):
         super().__post_init__()
         _apply_real_bands(self)
 
+def _apply_joint_play(cfg, pitch_deg=3.0, lat_deg=1.5, rng=(0.0, 1.0)):
+    """0913 기계 유격 DR: 액추에이터를 DeadzonePD(명시적)로 교체. 유격 반폭 = 기준(피치 관절 pitch_deg, 횡 관절 lat_deg) × U(rng) env 별.
+    실측(0912 재배치): 피치 관절 1.5~3.7°, 횡 ≤0.9° → 기준을 실측 상한으로, 0 까지 포함(종전 강체와 연속)."""
+    import math as _m
+    from rl_walking.actuators_play import DeadzonePDActuatorCfg
+    acts = cfg.scene.robot.actuators
+    for k, a in list(acts.items()):
+        exprs = a.joint_names_expr if isinstance(a.joint_names_expr, (list, tuple)) else [a.joint_names_expr]
+        import re as _re
+        pm = {}
+        for jt in ("hip_f", "hip_a", "hip_r", "knee", "ankle_f", "ankle_r"):
+            if any(_re.fullmatch(ex, f"left_{jt}_joint") for ex in exprs):
+                pm[f".*_{jt}_joint"] = _m.radians(lat_deg if jt in ("hip_a", "ankle_r") else pitch_deg)
+        acts[k] = DeadzonePDActuatorCfg(joint_names_expr=a.joint_names_expr,
+                                        effort_limit=getattr(a, "effort_limit_sim", None) or getattr(a, "effort_limit", None),
+                                        velocity_limit=getattr(a, "velocity_limit_sim", None) or getattr(a, "velocity_limit", None),
+                                        stiffness=a.stiffness, damping=a.damping, armature=getattr(a, "armature", None), friction=getattr(a, "friction", None),
+                                        play_rad=pm, play_rad_range=tuple(rng))
 
+
+@configclass
+class Biped12HangStandS8ac4rpEnvCfg(Biped12HangStandS8ac4rEnvCfg):
+    """S8ac4rp(0913): S8ac4r + 기계 유격 DR(피치 0~3°, 횡 0~1.5°, env 별) — 0913 시뮬에서 유격 1.5° 만으로 v5 가 방출 후 6 % 생존(스모크)한 것에 대응."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _apply_joint_play(self, pitch_deg=3.0, lat_deg=1.5, rng=(0.0, 1.0))

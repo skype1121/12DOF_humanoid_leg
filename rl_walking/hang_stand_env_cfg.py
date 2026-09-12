@@ -741,3 +741,12 @@ class Biped12HangStandS8ac4sEnvCfg(Biped12HangStandS8ac4qEnvCfg):
         super().__post_init__()
         self.events.hang_support_reset.params["ramp_cap_range"] = (2.0, 12.0)
         self.events.actuator_gains.params["stiffness_distribution_params"] = (0.3, 1.1)
+
+@configclass
+class Biped12HangStandS8ac4kEnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S8ac4k(0913, 최종 후보 v8): S8ac4 + 액추에이터 강성 DR (0.7,1.1)→(0.3,1.1) **만**. 램프 DR 없음(v5q 프로브: 램프 DR 단독은
+    C1 −8.6·C2 −11 pp 손실에 R6/B1 이득 없음), 잡음·IMU 편향 대역 종전. 단일 변수 = 강성 DR(실물 k_eff/kp 0.23~0.41 실측 포함)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.actuator_gains.params["stiffness_distribution_params"] = (0.3, 1.1)

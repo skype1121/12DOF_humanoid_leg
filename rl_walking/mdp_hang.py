@@ -58,7 +58,8 @@ def _state(env):
               # 케이블 실제 상태 기록 (item 4c: 지지 제거를 스케줄 r 이 아니라 실제 장력으로 판정)
               "cbl_T": z(), "cbl_dist": z(),
               "avx": z(), "avy": z(),   # 0912 앵커 드리프트 속도 [m/s] (시간 가변 당김 재현용)
-              "ramp_rate": z(), "ramp_cap": z(), "ramp_start": z()}   # 0912 준정적 롤 토크 램프 [Nm/s, Nm, s] (실물 준정적 이탈 재현용)
+              "ramp_rate": z(), "ramp_cap": z(), "ramp_start": z(),   # 0912 준정적 롤 토크 램프 [Nm/s, Nm, s] (실물 준정적 이탈 재현용)
+              "tp_d": z(), "tp_kp": z(), "tp_kd": z()}   # 0913 앞뒤 2점 현수: 후크 간격 d [m](0=끔), 피치 구속 강성/감쇠 — 토크 cap = T·d/2 (줄은 당기기만)
         env._hang = st
     return st
 
@@ -122,6 +123,10 @@ def _cable_apply(env, st, ids, asset_cfg):
     asset.permanent_wrench_composer.set_forces_and_torques(
         forces=F_b.unsqueeze(1), torques=None, positions=hook_b.unsqueeze(1),
         body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
+    if bool((st["tp_d"][ids] > 0).any()):   # 0913 앞뒤 2점 현수 피치 구속 (cap = T·d/2)
+        _ty = _two_point_pitch_torque(asset.data.projected_gravity_b[ids], asset.data.root_ang_vel_b[ids], st["tp_kp"][ids], st["tp_kd"][ids], T * st["tp_d"][ids] * 0.5)
+        _tau = torch.stack([torch.zeros_like(_ty), _ty, torch.zeros_like(_ty)], dim=-1)
+        asset.permanent_wrench_composer.add_forces_and_torques(forces=None, torques=_tau.unsqueeze(1), positions=None, body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
 
 
 def _apply(env, st, ids, asset_cfg):
@@ -149,6 +154,9 @@ def _apply(env, st, ids, asset_cfg):
     ramp = st["ramp_rate"][ids] * _dt
     ramp = torch.where(st["ramp_cap"][ids] >= 0, torch.minimum(ramp, st["ramp_cap"][ids]), torch.maximum(ramp, st["ramp_cap"][ids]))   # 부호에 맞춰 cap
     tau = tau + torch.stack([ramp, torch.zeros_like(ramp), torch.zeros_like(ramp)], dim=-1)
+    # 0913 앞뒤 2점 현수 피치 구속 (tp_d>0 일 때만; cap = Fz·d/2 — 줄이 풀리면(Fz→0) 자동 소멸)
+    _ty = _two_point_pitch_torque(pgv, w, st["tp_kp"][ids], st["tp_kd"][ids], Fz * st["tp_d"][ids] * 0.5)
+    tau = tau + torch.stack([torch.zeros_like(_ty), _ty, torch.zeros_like(_ty)], dim=-1)
     # ★정정(2026-09-12): Isaac Lab 2.3 `set_forces_and_torques` 는 positions 를 주면 합성 토크를 position×force 로 **덮어써**
     # torques 인자를 버린다(kernels.set_forces_and_torques_at_position). 종전 코드는 수평 유지 토크(lvl_k, 0908)를 한 번도 적용하지
     # 못했다(v5 학습·평가 전부 — 정책은 그 조건으로 학습된 것이므로 배포엔 영향 없음, 문서의 '수평 유지 토크' 서술만 무효).
@@ -185,8 +193,12 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
                        cable=False, hook_z_range=(0.25, 0.40), anchor_x_range=(-0.05, 0.05), anchor_y_range=(-0.05, 0.05),
                        anchor_h_range=(1.0, 1.6), cbl_k_range=(1500.0, 3000.0), cbl_c_range=(20.0, 120.0),
                        cbl_slack_range=(0.05, 0.15), cable_force_mode=False, anchor_vx_range=(0.0, 0.0), anchor_vy_range=(0.0, 0.0), ramp_roll_torque=(0.0, 0.0, 0.0),
-                       ramp_rate_range=None, ramp_cap_range=None, ramp_start_range=None, ramp_sign_random=False):
-    """mode="reset": 에피소드마다 지지 스케줄·로프 기하를 새로 뽑고 첫 지지력을 즉시 건다."""
+                       ramp_rate_range=None, ramp_cap_range=None, ramp_start_range=None, ramp_sign_random=False,
+                       two_point_d_range=(0.0, 0.0), two_point_kp_range=(200.0, 200.0), two_point_kd_range=(10.0, 10.0)):
+    """mode="reset": 에피소드마다 지지 스케줄·로프 기하를 새로 뽑고 첫 지지력을 즉시 건다.
+    two_point_d_range: 0913 승윤님 확인 '줄은 몸통 앞·뒤 2점' — 두 줄이 팽팽한 동안 피치를 구속한다(롤은 진자 그대로).
+    토크 = clip(−kp·pitch − kd·ω_y, ±T·d/2) (줄은 당기기만 하므로 한 줄이 전 장력을 받을 때가 최대). d=0 이면 종전(단일 후크)과 동일.
+    d 실측 없음(가정 0.1~0.3 m)."""
     asset_cfg = asset_cfg or _base_cfg()
     st = _state(env)
     ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
@@ -206,6 +218,7 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
     st["lvl_k"][ids] = U(*level_gain_range)      # 수평 유지 강성 [Nm/rad] (실물 두 줄 현가 ≈ 강함)
     st["lvl_c"][ids] = U(*level_damp_range)      # 감쇠 [Nm·s/rad]
     st["ramp_rate"][ids] = float(ramp_roll_torque[0]); st["ramp_cap"][ids] = float(ramp_roll_torque[1]); st["ramp_start"][ids] = float(ramp_roll_torque[2])
+    st["tp_d"][ids] = U(*two_point_d_range); st["tp_kp"][ids] = U(*two_point_kp_range); st["tp_kd"][ids] = U(*two_point_kd_range)
     if ramp_rate_range is not None:   # 학습용 DR(0912 S8ac4q): 준정적 롤 토크 램프를 env 마다 다르게, 부호 랜덤
         st["ramp_rate"][ids] = U(*ramp_rate_range); st["ramp_cap"][ids] = U(*ramp_cap_range); st["ramp_start"][ids] = U(*ramp_start_range)
         if ramp_sign_random:
@@ -319,6 +332,7 @@ def selftest():
     _selftest_pitch_band()
     _selftest_level()
     _selftest_cable()
+    _selftest_two_point()
     _selftest_still()
     _selftest_s8()
     print("[selftest] mdp_hang: 지지비 스케줄·안정 자세 항·피치 밴드·수평 유지 토크·착지 후 정지·S8 — ALL PASS")
@@ -432,6 +446,24 @@ def _level_torque(pg, w, k, c):
     +x 롤(pg_y<0)→ −x 토크. τ = k·(pg_y, −pg_x, 0) − c·(w_x, w_y, 0)."""
     zero = torch.zeros_like(k)
     return torch.stack([k * pg[:, 1] - c * w[:, 0], -k * pg[:, 0] - c * w[:, 1], zero], dim=-1)
+
+
+def _two_point_pitch_torque(pg, w, kp, kd, cap):
+    """앞뒤 2점 현수의 피치 구속 토크 τ_y [Nm] (body y축; 앞기울임 pitch=atan2(pg_x,−pg_z)>0 → 음의 토크). |τ| ≤ cap = T·d/2, cap<=0 이면 0."""
+    pitch = torch.atan2(pg[:, 0], -pg[:, 2])
+    cap = cap.clamp(min=0.0)
+    return (-kp * pitch - kd * w[:, 1]).clamp(-cap, cap)
+
+
+def _selftest_two_point():
+    pg = torch.tensor([[0.0, 0.0, -1.0], [math.sin(0.1), 0.0, -math.cos(0.1)], [-math.sin(0.1), 0.0, -math.cos(0.1)], [math.sin(0.1), 0.0, -math.cos(0.1)]])
+    w = torch.zeros(4, 3); kp = torch.full((4,), 200.0); kd = torch.full((4,), 10.0); cap = torch.tensor([10.0, 10.0, 10.0, 0.0])
+    t = _two_point_pitch_torque(pg, w, kp, kd, cap)
+    assert abs(float(t[0])) < 1e-9, "수평 → 0"
+    assert float(t[1]) == -10.0, f"앞기울임 0.1 rad → −20 → cap −10: {float(t[1])}"
+    assert float(t[2]) == 10.0, "뒤기울임 → +cap"
+    assert float(t[3]) == 0.0, "cap 0(줄 슬랙) → 0"
+    return "2점 현수 피치 토크: 수평 0 · 앞/뒤 기울임 부호·cap 클램프 · 슬랙 0"
 
 
 def _selftest_cable():

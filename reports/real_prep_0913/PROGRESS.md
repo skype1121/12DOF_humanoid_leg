@@ -5,6 +5,8 @@
 맥락 압축 대비: 이 파일이 재개 지점. 산출물은 `reports/real_prep_0913/` 와 `log_picture/hang2stand_*.txt`.
 
 ## 상태(최근 갱신이 위)
+- 01:10 배터리 A 첫 결과(명목 64, 50 % 지지 홀드 60 s, 램프 0.25 Nm/s cap 15): **정책 v5 낙상 토크 중앙 14.3 Nm(p10 13.0, 최소 11.4; 52/64 가 방출 전 낙상)** vs **홀드(정책 OFF kp150) 64/64 가 cap 15 Nm 까지 홀드 생존**(방출 후에만 종료, 양발 접촉 유지). → 50 % 지지에서 v5 의 능동 여유는 **음수**(정책이 수동 홀드보다 먼저 무너짐). 강성 0.5/0.3 결과 대기.
+- 01:10 2점 현수 피치 구속(`two_point_d`, cap T·d/2) 힘/케이블 모델 구현·셀프테스트·스모크(16 env 20 s) 통과. 학습 체인 대기 중(`scratchpad/train_v6_chain.sh` → 배터리 끝나면 S8ac4r 학습 → v6/v5 배터리 → v6 C3).
 - 00:30 실물 재분석 완료 → `analysis_0912_trials_v2.md`(가드 정지 0건·능동 이득 0.11~0.13 °/°·오른발 패드 죽은 채널 의심·hip_r=요 정정). 시뮬 배터리(A 능동여유 정책 vs 홀드 ×강성 1.0/0.5/0.3, B T5 재현 느린방출+횡편심) 재실행 중(`scratchpad/active_margin.sh`, 결과 `scratchpad/evals/active_margin.log`, 파일 `log_picture/hang2stand_am_*|t5_*`). eval 에 `--gain_scale`·'램프 토크 at 낙상' 추가(스텝 전 상태 보존 — 종전 r_at_death 는 리셋값 읽던 결함 정정).
 - 00:30 학습 후보 env 등록: `S8ac4r`(S8ac4q 램프 DR + 실측 대역: 자이로 ±0.05·중력 ±0.02·관절속도 ±0.3·IMU 편향 ±1.5°·강성 DR 0.3~1.1, 램프 cap 2~12) / `S8ac4rn`(대역만, 램프 없음). 학습 명령(v5 웜스타트 1500 it): `~/IsaacLab/isaaclab.sh -p rl_walking/scripts/train.py --task Biped12-HangStand-S8ac4r-v0 --headless --num_envs 4096 --max_iterations 1500 --resume --load_run 2026-09-09_19-15-42 --checkpoint model_139987.pt` — 배터리 종료 후 시작(GPU).
 - 진행 중: 브리지 IMU 장착 편향 상수 보정(하드웨어맵 선택 키 `imu_mount_bias_deg`, 기본 없음=무변화) + selftest.

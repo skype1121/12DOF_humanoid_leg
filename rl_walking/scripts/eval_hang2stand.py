@@ -63,6 +63,7 @@ parser.add_argument("--anchor_vx", type=float, default=None, help="[케이블] �
 parser.add_argument("--anchor_vy", type=float, default=None, help="[케이블] 앵커 좌우 드리프트 속도 [m/s]")
 parser.add_argument("--ramp_roll_torque", type=str, default=None, help="준정적 롤 토크 램프 'rate[Nm/s],cap[Nm],start[s]' (힘 모델; 실물 준정적 이탈 재현 시도)")
 parser.add_argument("--level_torque", action="store_true", help="힘 모델의 수평 유지 토크(lvl_k) 를 켠다. 기본 OFF — 0912 확인: Isaac Lab set_forces_and_torques 가 positions 와 함께 주어진 torques 를 버려 v5 까지의 모든 학습·평가에서 이 토크는 작용한 적이 없다(학습 물리와 같게 두려면 OFF)")
+parser.add_argument("--two_point_d", type=float, default=None, help="앞뒤 2점 현수 후크 간격 d [m] 고정 (0913 승윤님: 줄은 몸통 앞·뒤 2점) — 팽팽한 동안 피치 구속 토크 cap=T·d/2. 기본 None=종전 단일 후크")
 parser.add_argument("--gain_scale", type=float, default=None, help="액추에이터 강성(kp) 스케일 고정 (전 관절, 감쇠 불변) — 0913: 시뮬 강체 kp150 vs 실물 구조 강성 k_struct 43.5~107(k_eff≈34~62 Nm/rad) 차이 아래에서 정책의 능동 여유(정책 vs --hold 램프 파괴 토크 차) 측정용. --nominal 뒤에 적용")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
@@ -117,6 +118,8 @@ if args_cli.hold_s: _hp["hold_range"] = _pair(args_cli.hold_s)
 if args_cli.release_s: _hp["release_range"] = _pair(args_cli.release_s)
 if not args_cli.level_torque:
     _hp["level_gain_range"] = (0.0, 0.0); _hp["level_damp_range"] = (0.0, 0.0)   # 학습 당시 실효 물리(토크 미적용)와 동일
+if args_cli.two_point_d is not None:
+    _hp["two_point_d_range"] = (float(args_cli.two_point_d), float(args_cli.two_point_d))
 if args_cli.ramp_roll_torque:
     _v = [float(x) for x in args_cli.ramp_roll_torque.split(",")]; assert len(_v) == 3
     _hp["ramp_roll_torque"] = tuple(_v)

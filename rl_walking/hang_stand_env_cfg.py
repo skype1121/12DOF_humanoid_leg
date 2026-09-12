@@ -625,3 +625,52 @@ class Biped12HangStandS8ac4qEnvCfg(Biped12HangStandS8ac4EnvCfg):
         p = self.events.hang_support_reset.params
         p["level_gain_range"] = (0.0, 0.0); p["level_damp_range"] = (0.0, 0.0)
         p["ramp_rate_range"] = (0.05, 0.6); p["ramp_cap_range"] = (3.0, 15.0); p["ramp_start_range"] = (1.0, 8.0); p["ramp_sign_random"] = True
+
+def _apply_real_bands(cfg):
+    """0913 실측 대역(S8ac4r): 0912 실물 5회에서 '정책이 느린 기울기(≤1 °/s·≤5°)에 반응하지 않음'(이득 ≈0.1 °/°)의 원인 가설 =
+    학습 관측 잡음·편향 대역이 실측의 20~300배라 그 신호가 학습 분포에서 잡음과 구분되지 않았고, 시뮬은 강체 kp150 이라 수동 강성이
+    정책의 무반응을 가려 왔다(실물 구조 강성 43.5~107 Nm/rad → k_eff ≈ 34~62 = kp 의 0.23~0.41 배).
+    변경(전부 실측→모델식별, 보상·관측 계약·액션 체인 불변):
+      - 관측 잡음: 자이로 ±0.2→±0.05 rad/s(실측 std 0.006~0.010), 중력벡터 ±0.05→±0.02(≈1.1°), 관절속도 ±1.5→±0.3(실측 std 0.005),
+        관절위치 ±0.01 유지; S8a EMA 항의 잡음 파라미터도 동일 축소.
+      - IMU 장착 편향 DR: 롤 ±3.5°→±1.5°, 피치 ±4°→±1.5° — 실측 편향(롤 +1.3°, 피치 −0.6°)을 브리지에서 상수 보정하는 것을 전제(잔여 ±0.5°).
+      - 액추에이터 강성 DR: (0.7,1.1)→(0.3,1.1) — 실물 k_eff/kp 0.23~0.41 을 포함. 감쇠 (0.7,1.3) 유지.
+    """
+    P = cfg.observations.policy
+    for name, half in (("base_ang_vel", 0.05), ("projected_gravity", 0.02), ("joint_vel", 0.3)):
+        t = getattr(P, name, None)
+        if t is not None and t.noise is not None:
+            t.noise.n_min = -half; t.noise.n_max = half
+    for name, val in (("gyro_ema", 0.05), ("joint_vel_ema", 0.3)):
+        t = getattr(P, name, None)
+        if t is not None and isinstance(t.params, dict) and "noise" in t.params:
+            t.params["noise"] = val
+    ev = cfg.events
+    if getattr(ev, "calib_bias", None):
+        p = ev.calib_bias.params
+        for k, half in (("imu_tilt_rad", 0.026), ("imu_roll_rad", 0.026)):
+            if k in p and p[k] is not None:
+                p[k] = (-half, half)
+    if getattr(ev, "actuator_gains", None):
+        ev.actuator_gains.params["stiffness_distribution_params"] = (0.3, 1.1)
+
+
+@configclass
+class Biped12HangStandS8ac4rEnvCfg(Biped12HangStandS8ac4qEnvCfg):
+    """S8ac4r(0913): S8ac4q(준정적 롤 램프 DR) + 실측 대역(_apply_real_bands). 램프 cap 은 3~12 Nm(50 % 지지의 접촉 한계 ≈17 Nm 안, 강성 0.3 배에서도 학습 가능)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _apply_real_bands(self)
+        self.events.hang_support_reset.params["ramp_cap_range"] = (2.0, 12.0)
+
+
+@configclass
+class Biped12HangStandS8ac4rnEnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S8ac4rn(0913, 대조): S8ac4 + 실측 대역만(램프 DR 없음) — 능동 보정이 대역 정합만으로 생기는지 램프 DR 이 필요한지 분리."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _apply_real_bands(self)
+
+

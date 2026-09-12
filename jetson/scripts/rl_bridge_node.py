@@ -312,7 +312,18 @@ def load_frame_map():
     path = existing[0]
     print(f"[FrameMap] 하드웨어맵: {path}")
     with open(path, encoding="utf-8") as f:
-        joints = json.load(f).get("joints") or {}
+        _full = json.load(f)
+    joints = _full.get("joints") or {}
+    _mb = _full.get("imu_mount_bias_deg")
+    if isinstance(_mb, dict):
+        _lat, _fwd = _mb.get("lat", 0.0), _mb.get("fwd", 0.0)
+        for _v in (_lat, _fwd):
+            if isinstance(_v, bool) or not isinstance(_v, (int, float)) or not math.isfinite(float(_v)) or abs(float(_v)) > IMU_MOUNT_BIAS_MAX_DEG:
+                raise ValueError(f"하드웨어맵 imu_mount_bias_deg 이상: {_mb!r} (유한 float, |v| ≤ {IMU_MOUNT_BIAS_MAX_DEG}° 필요)")
+        IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = float(_lat), float(_fwd)
+        print(f"[FrameMap] IMU 장착 편향 보정 lat {float(_lat):+.2f}° fwd {float(_fwd):+.2f}° (정책 중력벡터에만 적용)")
+    else:
+        IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = 0.0, 0.0
     dir_by, sz_by, mid_by, gains_by = {}, {}, {}, {}
     problems = []
     for name in JOINT_ORDER:
@@ -351,6 +362,27 @@ def projected_gravity(quat_wxyz):
     """world −z 를 body 프레임으로 (학습 obs 와 동일식). 직립·정합 IMU 면 (0,0,−1)."""
     w, x, y, z = quat_wxyz
     return (-2.0 * (x * z - w * y), -2.0 * (y * z + w * x), -(1.0 - 2.0 * (x * x + y * y)))
+
+
+#: IMU 장착 편향 [deg] = [lat(롤, + = 왼쪽), fwd(피치, + = 앞)] — rp_deg/콘솔 규약. 하드웨어맵 선택 키
+#: "imu_mount_bias_deg": {"lat": 1.3, "fwd": -0.6} 로 지정(없으면 0 = 종전과 동일). 0912 지그 수평 접지 실측: lat +1.2~1.4, fwd −0.2~−1.1.
+#: 정책 관측(중력벡터)에만 적용한다 — 게이트·rp_deg 기록·콘솔 표시는 원시값 유지(대조 가능하도록).
+IMU_MOUNT_BIAS_DEG = [0.0, 0.0]
+IMU_MOUNT_BIAS_MAX_DEG = 5.0
+
+
+def correct_gravity(g, bias_deg=None):
+    """투영중력 g 에서 장착 편향(롤·피치)을 뺀다. rp 정의(roll=atan2(g_y,−g_z), pitch=atan2(g_x,−g_z))에서 각각 편향을 빼고
+    같은 정의로 단위벡터를 복원한다(두 atan2 값이 g_z<0 인 방향을 유일하게 정하므로 정확). 편향 0 이면 g 그대로."""
+    b = IMU_MOUNT_BIAS_DEG if bias_deg is None else bias_deg
+    if not b or (abs(float(b[0])) < 1e-12 and abs(float(b[1])) < 1e-12):
+        return g
+    gx, gy, gz = (float(v) for v in g)
+    roll = math.atan2(gy, -gz) - math.radians(float(b[0]))
+    pitch = math.atan2(gx, -gz) - math.radians(float(b[1]))
+    tx, ty = math.tan(pitch), math.tan(roll)
+    c = 1.0 / math.sqrt(1.0 + tx * tx + ty * ty)
+    return (c * tx, c * ty, -c)
 
 
 #: 중력 정합 게이트 (0905 감사 A4): stand/walk/march 시작 시 |g−(0,0,−1)| 가 이 값을 넘으면 기동 거부.
@@ -425,7 +457,7 @@ class BridgeCore:
     def tick(self, gyro, quat_wxyz, qpos_rad, qvel_rad_s, contact2):
         """관측 → 목표각 12 [rad, 절대] (JOINT_ORDER 순)."""
         w, x, y, z = quat_wxyz
-        grav = projected_gravity(quat_wxyz)   # world -z 를 body 프레임으로 (게이트와 동일식)
+        grav = correct_gravity(projected_gravity(quat_wxyz))   # world -z 를 body 프레임으로 (게이트와 동일식) + 장착 편향 보정(맵 키 있을 때만)
         vx, vy, wz = self.cmd
         if self.heading_hold and abs(wz) < 1e-6:
             yaw = yaw_from_quat_wxyz(w, x, y, z)
@@ -593,6 +625,29 @@ def _selftest_roll_pitch():
     assert rp is not None and abs(abs(rp[1]) - 10.0) < 1e-3 and abs(rp[0]) < 1e-3, rp
     assert _roll_pitch_deg(None) is None
     return f"직립 (0,0) · y축 10° → 피치 {rp[1]:+.1f}° 롤 {rp[0]:.1f}° · 불량 입력 None"
+
+
+def _selftest_imu_mount():
+    """(0913) 장착 편향 보정: 편향 0 → 항등 / 편향만큼 기운 IMU → 보정 후 (0,0,−1) / 추가 10° 기울기는 보정 뒤에도 10° 로 남음 / 범위 밖 값 거부."""
+    g0 = (0.0, 0.0, -1.0)
+    assert correct_gravity(g0, [0.0, 0.0]) == g0
+    def _q(roll_deg, pitch_deg):   # x축 롤 → y축 피치 순 작은 회전 쿼터니언 (w,x,y,z)
+        r, p = math.radians(roll_deg) / 2, math.radians(pitch_deg) / 2
+        qr = (math.cos(r), math.sin(r), 0.0, 0.0); qp = (math.cos(p), 0.0, math.sin(p), 0.0)
+        w1, x1, y1, z1 = qr; w2, x2, y2, z2 = qp
+        return (w1*w2 - x1*x2 - y1*y2 - z1*z2, w1*x2 + x1*w2 + y1*z2 - z1*y2, w1*y2 - x1*z2 + y1*w2 + z1*x2, w1*z2 + x1*y2 - y1*x2 + z1*w2)
+    q_b = _q(-1.3, -0.6); rp_b = _roll_pitch_deg(q_b)          # 실물 편향과 같은 크기의 기울기
+    g_c = correct_gravity(projected_gravity(q_b), rp_b)
+    assert max(abs(g_c[0]), abs(g_c[1]), abs(g_c[2] + 1.0)) < 1e-4, g_c     # rp_deg 는 0.001° 로 반올림되므로 잔차 ~1e-6
+    q_t = _q(-1.3 + 10.0, -0.6); g_t = correct_gravity(projected_gravity(q_t), rp_b)
+    roll_t = math.degrees(math.atan2(g_t[1], -g_t[2]))
+    assert abs(abs(roll_t) - 10.0) < 0.05, roll_t
+    try:
+        _bad = {"lat": 9.0, "fwd": 0.0}; _v = _bad["lat"]
+        assert not (abs(float(_v)) <= IMU_MOUNT_BIAS_MAX_DEG)
+    except AssertionError:
+        raise AssertionError("범위 검사 실패")
+    return f"편향 {rp_b[0]:+.2f}/{rp_b[1]:+.2f}° 보정 → (0,0,−1) 오차 <1e-4 · +10° 기울기 → {abs(roll_t):.2f}° · 한계 {IMU_MOUNT_BIAS_MAX_DEG}°"
 
 
 def _selftest_grav_gate():
@@ -1209,6 +1264,7 @@ def run_selftest(required=()):
              ("게인 정책", _selftest_gains),
              ("프레임 게이트", _selftest_frame_gate),
              ("중력 게이트", _selftest_grav_gate),
+             ("IMU 장착 편향", _selftest_imu_mount),
              ("인계 워밍업", _selftest_warmup),
              ("롤/피치 기록", _selftest_roll_pitch),
              ("발진 가드", _selftest_osc_guard),
@@ -1797,6 +1853,7 @@ def main():
                            if getattr(self.core.runner, "last_obs", None) is not None else None),
                    "raw_action": [round(float(v), 4) for v in self.core.runner.last_action],
                    "rp_deg": _roll_pitch_deg(quat),
+                   "imu_mount_bias_deg": [IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1]],
                    "osc_tripped": self.osc_tripped,
                    "stopped_for_stale": self.stopped_for_stale,
                    "stop_reason": self.stop_reason,

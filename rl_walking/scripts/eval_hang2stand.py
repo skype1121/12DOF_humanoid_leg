@@ -63,6 +63,7 @@ parser.add_argument("--anchor_vx", type=float, default=None, help="[케이블] �
 parser.add_argument("--anchor_vy", type=float, default=None, help="[케이블] 앵커 좌우 드리프트 속도 [m/s]")
 parser.add_argument("--ramp_roll_torque", type=str, default=None, help="준정적 롤 토크 램프 'rate[Nm/s],cap[Nm],start[s]' (힘 모델; 실물 준정적 이탈 재현 시도)")
 parser.add_argument("--level_torque", action="store_true", help="힘 모델의 수평 유지 토크(lvl_k) 를 켠다. 기본 OFF — 0912 확인: Isaac Lab set_forces_and_torques 가 positions 와 함께 주어진 torques 를 버려 v5 까지의 모든 학습·평가에서 이 토크는 작용한 적이 없다(학습 물리와 같게 두려면 OFF)")
+parser.add_argument("--gain_scale", type=float, default=None, help="액추에이터 강성(kp) 스케일 고정 (전 관절, 감쇠 불변) — 0913: 시뮬 강체 kp150 vs 실물 구조 강성 k_struct 43.5~107(k_eff≈34~62 Nm/rad) 차이 아래에서 정책의 능동 여유(정책 vs --hold 램프 파괴 토크 차) 측정용. --nominal 뒤에 적용")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -204,6 +205,10 @@ if getattr(env_cfg.events, "base_com", None) and (args_cli.com_fix is not None o
         _cr["y"] = (args_cli.com_fix_y, args_cli.com_fix_y)
         env_cfg.events.base_com.params["com_range"] = _cr
     print(f"[com] base_com com_range = {env_cfg.events.base_com.params['com_range']}")
+if args_cli.gain_scale is not None and getattr(env_cfg.events, "actuator_gains", None):
+    _gs = float(args_cli.gain_scale)
+    env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (_gs, _gs)
+    print(f"[gain] 액추에이터 강성 스케일 고정 ×{_gs:.2f} (감쇠 불변)")
 if getattr(args_cli, "delay_steps", None):
     # 0911 실측(realdata_model_id.md §5): 정책루프 지연 중앙 6.3틱(IQR 5.7~7.0, p95 8.9) vs 학습 대역 3~8틱 → 상단 민감도
     _dlo, _dhi = _pair(args_cli.delay_steps)
@@ -262,6 +267,7 @@ max_roll = torch.zeros(N, device=dev); max_pitch = torch.zeros(N, device=dev); m
 pitch_at_rel = torch.full((N,), float("nan"), device=dev)
 pitch_death = torch.full((N,), float("nan"), device=dev); roll_death = torch.full((N,), float("nan"), device=dev)
 r_at_death = torch.full((N,), float("nan"), device=dev)
+ramp_at_death = torch.full((N,), float("nan"), device=dev)   # 0913: 종료(낙상) 순간의 램프 롤 토크 [Nm] — 정책 vs 홀드 능동 여유
 ratio_trace = []; contact_trace = []; z_trace = []; pitch_trace = []
 last_q = torch.zeros_like(robot.data.joint_pos); last_contact = torch.zeros(N, 2, device=dev)
 _cs = uenv.scene["contact_forces"]; _bn = list(_cs.body_names)
@@ -408,10 +414,17 @@ def _dump_step(i, a, roll, pitch, contact, term, st):
 
 
 t0 = time.time()
+_ramp_prev = torch.zeros(N, device=dev); _r_prev = torch.full((N,), float("nan"), device=dev)
 for i in range(STEPS):
     with torch.inference_mode():
         obs = _cperturb(obs, i)          # actor 접촉 obs 교란(정답/물리 불변) — none 이면 무변
         a = torch.zeros(N, 12, device=dev) if policy is None else policy(obs)
+        _stp = getattr(uenv, "_hang", None)
+        if _stp is not None:             # 스텝 '전' 상태 보존 — env.step 은 종료 env 를 즉시 리셋한다(0913 정정: 종전 r_at_death 는 리셋값 r0 을 읽었음)
+            _r_prev = _stp["r"].clone()
+            if "ramp_rate" in _stp:
+                _rd = _stp["ramp_rate"] * (_stp["t"] - _stp["ramp_start"]).clamp(min=0.0)
+                _ramp_prev = torch.where(_stp["ramp_cap"] >= 0, torch.minimum(_rd, _stp["ramp_cap"]), torch.maximum(_rd, _stp["ramp_cap"]))
         obs, _, dones, _ = env.step(a)
     st = uenv._hang
     term = uenv.termination_manager.terminated
@@ -429,7 +442,8 @@ for i in range(STEPS):
     rel_t = torch.where(newly_rel, st["released_t"], rel_t); pitch_at_rel[newly_rel] = pitch[newly_rel]
     newly_dead = a_ & term
     death_step[newly_dead] = i; pitch_death[newly_dead] = pitch[newly_dead]; roll_death[newly_dead] = roll[newly_dead]
-    r_at_death[newly_dead] = st["r"][newly_dead]
+    r_at_death[newly_dead] = _r_prev[newly_dead]          # 스텝 전 지지비 (리셋 전 값)
+    ramp_at_death[newly_dead] = _ramp_prev[newly_dead]    # 스텝 전 램프 토크
     last_q[a_] = robot.data.joint_pos[a_]; last_contact[a_] = contact[a_]
     _post = a_ & _support_gone_mask(st)   # item 4c: 케이블이면 실제 장력<=eps (힘 모델은 r<=0 동일)
     _both_now = (contact[:, 0] > 0) & (contact[:, 1] > 0)
@@ -495,6 +509,10 @@ P("=" * 74)
 P(f"접지(양발 동시) 도달      : {int(touched.sum())}/{N} ({pct(touched):.1f}%)  평균 접지 시각 {float(touch_t[touched].mean()) if touched.any() else float('nan'):.2f}s")
 P(f"지지 0 도달(살아서)        : {int(released.sum())}/{N} ({pct(released):.1f}%)  평균 방출완료 시각 {float(rel_t[released].mean()) if released.any() else float('nan'):.2f}s  그때 피치 {float(pitch_at_rel[released].mean()) if released.any() else float('nan'):+.2f}°")
 P(f"**지지 0 이후 {args_cli.stand_s:.0f}s 생존**   : {int(stand5.sum())}/{N} ({pct(stand5):.1f}%)   ← 핵심 지표")
+if bool(torch.isfinite(ramp_at_death).any()):
+    _rv = ramp_at_death[torch.isfinite(ramp_at_death)].abs()
+    _q = torch.quantile(_rv, torch.tensor([0.1, 0.5, 0.9], device=_rv.device))
+    P(f"램프 롤 토크 at 낙상 [Nm] (낙상 env {int(_rv.numel())}/{N}): p10 {float(_q[0]):.2f} · 중앙 {float(_q[1]):.2f} · p90 {float(_q[2]):.2f} · 최소 {float(_rv.min()):.2f} · 최대 {float(_rv.max()):.2f}")
 P(f"**지지 0 이후 {args_cli.stand_s:.0f}s 생존**(미검증 {_inconcl}: 방출 후 관측창 <{args_cli.stand_s:.0f}s)")
 P(f"낙상(조기 종료)            : {int(fell.sum())}/{N} ({pct(fell):.1f}%)  방향 뒤 {b} · 앞 {fw} · 왼 {l} · 오른 {rgt}")
 if fell.any():

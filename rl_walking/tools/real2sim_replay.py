@@ -4,6 +4,8 @@
 - 물리 계산 없음(동역학 재현 아님) — 기록 재생 시각화. 접촉 비트는 발 위 작은 구(초록=접촉, 빨강=비접촉)로 표시.
 사용(Isaac Sim 스크립트 콘솔/MCP execute_script):
     exec(open(PATH).read()); start_replay(BB_PATH, speed=1.0, t_start=0.0)
+    ghost=True 이면 반투명 '정책 목표 유령'(targets_deg_joint = LPF 뒤·블렌딩 전 관절 목표)을 같은 베이스 자세로 겹쳐 그린다 —
+    "정책이 어디로 가려 했는데 실물이 못 갔는가"(정정 사슬 ②③)를 눈으로 본다. ⚠ 0913 추가분은 GUI 스모크 미실행(미검증).
 """
 import json, math, numpy as np
 
@@ -35,12 +37,42 @@ def _rpy_to_quat_wxyz(r, p, y):
     return np.array([cr * cp * cy + sr * sp * sy, sr * cp * cy - cr * sp * sy, cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy], dtype=np.float32)
 
 
-def start_replay(bb_path, speed=1.0, t_start=0.0, physics_hz=200.0, record_hz=50.0):
+GHOST_PATH = "/World/biped12_ghost"
+JOINT_ORDER = ["left_hip_f_joint", "right_hip_f_joint", "left_hip_a_joint", "right_hip_a_joint", "left_hip_r_joint", "right_hip_r_joint",
+               "left_knee_joint", "right_knee_joint", "left_ankle_f_joint", "right_ankle_f_joint", "left_ankle_r_joint", "right_ankle_r_joint"]
+
+
+def _ensure_ghost(world, stage, usd_path):
+    """반투명 유령 로봇(두 번째 articulation) 생성·초기화. 이미 있으면 재사용. (미검증: 타임라인 재생 중 추가 시 initialize 필요)"""
+    from pxr import UsdGeom, Gf, Sdf, UsdShade
+    from isaacsim.core.utils.stage import add_reference_to_stage
+    from isaacsim.core.prims import SingleArticulation
+    g = world.scene.get_object("biped12_ghost")
+    if g is not None:
+        return g
+    if not stage.GetPrimAtPath(GHOST_PATH):
+        add_reference_to_stage(usd_path=usd_path, prim_path=GHOST_PATH)
+    # 반투명 재질(표시 색만; 충돌은 그대로 두되 텔레포트라 물리 영향 없음)
+    for prim in stage.Traverse():
+        if prim.GetPath().pathString.startswith(GHOST_PATH) and prim.IsA(UsdGeom.Mesh):
+            gp = UsdGeom.Gprim(prim); gp.CreateDisplayColorAttr([Gf.Vec3f(0.2, 0.5, 1.0)]); gp.CreateDisplayOpacityAttr([0.35])
+    g = SingleArticulation(prim_path=GHOST_PATH, name="biped12_ghost")
+    world.scene.add(g)
+    try:
+        g.initialize()
+    except Exception as e:   # noqa: BLE001 — 재생 중 초기화 실패는 로그만
+        print("[real2sim] ghost initialize:", e)
+    return g
+
+
+def start_replay(bb_path, speed=1.0, t_start=0.0, physics_hz=200.0, record_hz=50.0, ghost=False,
+                 usd_path="/home/ryu/humanoid_leg_test1/rl_walking/assets/usd_final3/biped12.usd"):
     import omni.usd, omni.timeline
     from pxr import UsdGeom, Gf
     from isaacsim.core.api import World
     world = World.instance(); stage = omni.usd.get_context().get_stage()
     robot = world.scene.get_object("biped12")
+    gh = _ensure_ghost(world, stage, usd_path) if ghost else None
     frames, t0 = _load_bb(bb_path, t_start)
     _STATE.update(frames=frames, i=0, sub=0, t0=t0)
     per = max(1, int(round(physics_hz / (record_hz * speed))))
@@ -70,6 +102,15 @@ def start_replay(bb_path, speed=1.0, t_start=0.0, physics_hz=200.0, record_hz=50
         # 높이: 고정(서기 자세에서 발목 원점이 base 아래 0.59 m → base z = 0.59 + ANKLE_H). 링크 xform 은 같은 콜백 안에서 갱신되지 않아 동적 보정은 발산함(0912).
         robot.set_world_pose(position=np.array([0.0, 0.0, 0.59 + ANKLE_H], dtype=np.float32), orientation=quat)
         robot.set_linear_velocity(np.zeros(3, dtype=np.float32)); robot.set_angular_velocity(np.zeros(3, dtype=np.float32))
+        if gh is not None and isinstance(f.get("targets_deg_joint"), (dict, list)):
+            tg = f["targets_deg_joint"]
+            qg = np.array([math.radians(float(tg[n] if isinstance(tg, dict) else tg[k])) for k, n in enumerate(JOINT_ORDER)], dtype=np.float32)
+            try:
+                gh.set_joint_positions(qg); gh.set_joint_velocities(np.zeros_like(qg))
+                gh.set_world_pose(position=np.array([0.0, 0.0, 0.59 + ANKLE_H], dtype=np.float32), orientation=quat)
+                gh.set_linear_velocity(np.zeros(3, dtype=np.float32)); gh.set_angular_velocity(np.zeros(3, dtype=np.float32))
+            except Exception as e:   # noqa: BLE001
+                if st["i"] % 500 == 0: print("[real2sim] ghost:", e)
         # 마커: 접촉 비트에 따라 색·높이
         c = f.get("contact") or [0, 0]
         for k, (side, nm) in enumerate((("L", "left_ankle_r_joint"), ("R", "right_ankle_r_joint"))):

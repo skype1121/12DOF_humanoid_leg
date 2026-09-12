@@ -69,6 +69,7 @@ parser.add_argument("--two_point_d", type=float, default=None, help="앞뒤 2점
 parser.add_argument("--joint_play_deg", type=float, default=None, help="관절 기계 유격 반폭 [deg] (전 관절): 링크가 모터 ±play 안에서 자유(강성·감쇠 0) — 0912 재배치 실측 2~3°. 명시적 DeadzonePD 액추에이터로 교체(평가 전용)")
 parser.add_argument("--play_inside_damping", type=float, default=1.0, help="유격 안 링크 감쇠(kd 배수; 기어 마찰 근사). 0 = 완전 자유")
 parser.add_argument("--joint_play_lat_deg", type=float, default=None, help="횡 관절(hip_a·ankle_r) 유격 반폭 [deg] — --joint_play_deg 와 함께 쓰면 횡 관절만 이 값(실측: 횡 ≤0.9°, 피치 1.5~3.7°)")
+parser.add_argument("--ankle_roll_kp_scale", type=float, default=None, help="발목 롤(ankle_roll 액추에이터 그룹)만 kp 스케일 (0913 §3.1: 롤의 4~6° 가 관절 엔코더에 안 보임 → 롤 DOF 실효 강성 저하 가설)")
 parser.add_argument("--gain_scale", type=float, default=None, help="액추에이터 강성(kp) 스케일 고정 (전 관절, 감쇠 불변) — 0913: 시뮬 강체 kp150 vs 실물 구조 강성 k_struct 43.5~107(k_eff≈34~62 Nm/rad) 차이 아래에서 정책의 능동 여유(정책 vs --hold 램프 파괴 토크 차) 측정용. --nominal 뒤에 적용")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
@@ -230,6 +231,11 @@ def _play_map(names_expr, play_deg, lat_deg):
     return out
 
 
+if args_cli.ankle_roll_kp_scale is not None:
+    _ar = env_cfg.scene.robot.actuators.get("ankle_roll")
+    assert _ar is not None, "ankle_roll 액추에이터 그룹 없음"
+    _ar.stiffness = float(_ar.stiffness) * float(args_cli.ankle_roll_kp_scale)
+    print(f"[ankle_roll] kp ×{args_cli.ankle_roll_kp_scale:.2f} → {_ar.stiffness:.1f} (kd 불변)")
 if args_cli.joint_play_deg is not None:
     from rl_walking.actuators_play import DeadzoneImplicitActuatorCfg
     _acts = env_cfg.scene.robot.actuators

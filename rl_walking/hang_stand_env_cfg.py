@@ -791,3 +791,20 @@ class Biped12HangStandS8ac4k5EnvCfg(Biped12HangStandS8ac4EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.actuator_gains.params["stiffness_distribution_params"] = (0.5, 1.1)
+
+@configclass
+class Biped12HangStandS8ac4k4EnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S8ac4k4(0913 자동 후속): S8ac4 + 강성 DR (0.4,1.1)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.actuator_gains.params["stiffness_distribution_params"] = (0.4, 1.1)
+
+
+@configclass
+class Biped12HangStandS8ac4k6EnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S8ac4k6(0913 자동 후속): S8ac4 + 강성 DR (0.6,1.1)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.actuator_gains.params["stiffness_distribution_params"] = (0.6, 1.1)

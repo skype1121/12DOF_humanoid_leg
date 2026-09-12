@@ -52,8 +52,10 @@ class DeadzonePDActuator(IdealPDActuator):
         e_dz = torch.sign(e) * torch.clamp(e.abs() - b, min=0.0)
         ev = control_action.joint_velocities - joint_vel
         inside = e.abs() <= b
+        # 유격 안: 기어 마찰 근사 = 링크 속도에 대한 점성 감쇠(kd × inside_damping_scale; 0 이면 완전 자유). 밖: 통상 PD 감쇠.
+        d_in = -self.damping * joint_vel * float(self.cfg.inside_damping_scale)
         self.computed_effort = (self.stiffness * e_dz
-                                + torch.where(inside, torch.zeros_like(ev), self.damping * ev)
+                                + torch.where(inside, d_in, self.damping * ev)
                                 + control_action.joint_efforts)
         self.applied_effort = self._clip_effort(self.computed_effort)
         control_action.joint_efforts = self.applied_effort
@@ -67,3 +69,4 @@ class DeadzonePDActuatorCfg(IdealPDActuatorCfg):
     class_type: type = DeadzonePDActuator
     play_rad: dict[str, float] | float = 0.0        # 유격 반폭 [rad] (관절별 dict 가능)
     play_rad_range: tuple[float, float] | None = None   # 학습 DR: 리셋마다 play_rad × U(lo,hi)
+    inside_damping_scale: float = 1.0   # 유격 안 링크 감쇠(kd 배수, 기어 마찰 근사). 0.0 = 완전 자유(최악)

@@ -65,6 +65,7 @@ parser.add_argument("--ramp_roll_torque", type=str, default=None, help="준정�
 parser.add_argument("--level_torque", action="store_true", help="힘 모델의 수평 유지 토크(lvl_k) 를 켠다. 기본 OFF — 0912 확인: Isaac Lab set_forces_and_torques 가 positions 와 함께 주어진 torques 를 버려 v5 까지의 모든 학습·평가에서 이 토크는 작용한 적이 없다(학습 물리와 같게 두려면 OFF)")
 parser.add_argument("--two_point_d", type=float, default=None, help="앞뒤 2점 현수 후크 간격 d [m] 고정 (0913 승윤님: 줄은 몸통 앞·뒤 2점) — 팽팽한 동안 피치 구속 토크 cap=T·d/2. 기본 None=종전 단일 후크")
 parser.add_argument("--joint_play_deg", type=float, default=None, help="관절 기계 유격 반폭 [deg] (전 관절): 링크가 모터 ±play 안에서 자유(강성·감쇠 0) — 0912 재배치 실측 2~3°. 명시적 DeadzonePD 액추에이터로 교체(평가 전용)")
+parser.add_argument("--play_inside_damping", type=float, default=1.0, help="유격 안 링크 감쇠(kd 배수; 기어 마찰 근사). 0 = 완전 자유")
 parser.add_argument("--joint_play_lat_deg", type=float, default=None, help="횡 관절(hip_a·ankle_r) 유격 반폭 [deg] — --joint_play_deg 와 함께 쓰면 횡 관절만 이 값(실측: 횡 ≤0.9°, 피치 1.5~3.7°)")
 parser.add_argument("--gain_scale", type=float, default=None, help="액추에이터 강성(kp) 스케일 고정 (전 관절, 감쇠 불변) — 0913: 시뮬 강체 kp150 vs 실물 구조 강성 k_struct 43.5~107(k_eff≈34~62 Nm/rad) 차이 아래에서 정책의 능동 여유(정책 vs --hold 램프 파괴 토크 차) 측정용. --nominal 뒤에 적용")
 parser.add_argument("--out_tag", type=str, default="")
@@ -232,7 +233,7 @@ if args_cli.joint_play_deg is not None:
                                          effort_limit=getattr(_a, "effort_limit_sim", None) or getattr(_a, "effort_limit", None),
                                          velocity_limit=getattr(_a, "velocity_limit_sim", None) or getattr(_a, "velocity_limit", None),
                                          stiffness=_a.stiffness, damping=_a.damping, armature=getattr(_a, "armature", None), friction=getattr(_a, "friction", None),
-                                         play_rad=_play_map(_a.joint_names_expr, float(args_cli.joint_play_deg), args_cli.joint_play_lat_deg))
+                                         play_rad=_play_map(_a.joint_names_expr, float(args_cli.joint_play_deg), args_cli.joint_play_lat_deg), inside_damping_scale=float(args_cli.play_inside_damping))
     print(f"[play] 관절 유격 ±{args_cli.joint_play_deg:.2f}° (횡 {args_cli.joint_play_lat_deg}) (DeadzonePD 명시적 액추에이터, 그룹 {list(_acts)})")
 if args_cli.gain_scale is not None and getattr(env_cfg.events, "actuator_gains", None):
     _gs = float(args_cli.gain_scale)

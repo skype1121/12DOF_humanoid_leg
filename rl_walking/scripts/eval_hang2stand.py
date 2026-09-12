@@ -45,7 +45,7 @@ parser.add_argument("--imu_roll_bias_deg", type=float, default=None, help="IMU �
 parser.add_argument("--com_fix_y", type=float, default=0.0, help="횡 CoM 고정 편심 [m] (0910 진단: 실물 편하중 재현)")
 parser.add_argument("--contact_perturb", type=str, default="none",
                     help="actor 접촉 obs 교란(정답·물리·보상 불변, 0911 접촉 의존도 평가): "
-                         "none/hold(10Hz S&H)/delay3(60ms)/realistic(S&H+한발누락)/onefoot(오른발 버스트0)/"
+                         "none/hold(10Hz S&H)/delay3(60ms)/realistic(S&H+한발누락)/onefoot(오른발 버스트0)/right0(오른발 상시0)/right0_after10/"
                          "chatter(랜덤 플립)/both1/both0(진단 고정 대조군)")
 parser.add_argument("--perturb_seed", type=int, default=0, help="접촉 교란 RNG seed (독립 seed 평가용)")
 parser.add_argument("--seed", type=int, default=None, help="env/torch seed 덮어쓰기 (독립 seed 평가용; 기본 agent_cfg.seed 고정 → 같은 설정은 결정론적 동일 결과)")
@@ -351,6 +351,11 @@ class ContactPerturb:
             self.buf.append(c.clone())
             if len(self.buf) > 3:
                 p = self.buf.pop(0)
+        elif self.mode == "right0":             # 0913: 오른발(idx1) 접촉 비트 **상시 0** (실물 0912: 오른발 뒤바깥 패드 사망 + 바깥 모서리 하중 → 합 0 오판 모사)
+            p[:, 1] = 0.0
+        elif self.mode == "right0_after10":     # 0913: 10 s 뒤부터 오른발 상시 0 (안정 서기 뒤 오판 발생)
+            if i >= 500:
+                p[:, 1] = 0.0
         elif self.mode == "onefoot":            # 오른발(idx1) 2s 주기·앞 0.3s 0 오판 (실물 오른발 언로드 모사)
             if (i % 100) < 15:
                 p[:, 1] = 0.0

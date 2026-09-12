@@ -64,6 +64,7 @@ parser.add_argument("--anchor_vx", type=float, default=None, help="[케이블] �
 parser.add_argument("--anchor_vy", type=float, default=None, help="[케이블] 앵커 좌우 드리프트 속도 [m/s]")
 parser.add_argument("--ramp_roll_torque", type=str, default=None, help="준정적 롤 토크 램프 'rate[Nm/s],cap[Nm],start[s]' (힘 모델; 실물 준정적 이탈 재현 시도)")
 parser.add_argument("--level_torque", action="store_true", help="힘 모델의 수평 유지 토크(lvl_k) 를 켠다. 기본 OFF — 0912 확인: Isaac Lab set_forces_and_torques 가 positions 와 함께 주어진 torques 를 버려 v5 까지의 모든 학습·평가에서 이 토크는 작용한 적이 없다(학습 물리와 같게 두려면 OFF)")
+parser.add_argument("--ramp_dr", action="store_true", help="태스크 env 의 준정적 롤 램프 DR(S8ac4q/S8ac4r 계열 ramp_rate_range)을 평가에서도 켠다. 기본 OFF — 0913 정정: 종전엔 S8ac4r env 평가에 램프 DR 이 그대로 섞여(2~12 Nm 무작위) v5 S8ac4 수치와 비교 불가였음")
 parser.add_argument("--two_point_d", type=float, default=None, help="앞뒤 2점 현수 후크 간격 d [m] 고정 (0913 승윤님: 줄은 몸통 앞·뒤 2점) — 팽팽한 동안 피치 구속 토크 cap=T·d/2. 기본 None=종전 단일 후크")
 parser.add_argument("--joint_play_deg", type=float, default=None, help="관절 기계 유격 반폭 [deg] (전 관절): 링크가 모터 ±play 안에서 자유(강성·감쇠 0) — 0912 재배치 실측 2~3°. 명시적 DeadzonePD 액추에이터로 교체(평가 전용)")
 parser.add_argument("--play_inside_damping", type=float, default=1.0, help="유격 안 링크 감쇠(kd 배수; 기어 마찰 근사). 0 = 완전 자유")
@@ -124,6 +125,9 @@ if not args_cli.level_torque:
     _hp["level_gain_range"] = (0.0, 0.0); _hp["level_damp_range"] = (0.0, 0.0)   # 학습 당시 실효 물리(토크 미적용)와 동일
 if args_cli.two_point_d is not None:
     _hp["two_point_d_range"] = (float(args_cli.two_point_d), float(args_cli.two_point_d))
+if not args_cli.ramp_dr and _hp.get("ramp_rate_range") is not None:
+    _hp["ramp_rate_range"] = None; _hp["ramp_cap_range"] = None; _hp["ramp_start_range"] = None; _hp["ramp_sign_random"] = False
+    print("[ramp] 태스크의 램프 DR 을 평가에서 끔 (--ramp_dr 로 유지 가능; --ramp_roll_torque 고정값은 별개)")
 if args_cli.ramp_roll_torque:
     _v = [float(x) for x in args_cli.ramp_roll_torque.split(",")]; assert len(_v) == 3
     _hp["ramp_roll_torque"] = tuple(_v)

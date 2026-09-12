@@ -54,6 +54,7 @@ parser.add_argument("--delay_steps", type=str, default=None,
 parser.add_argument("--dump_envs", type=int, default=0,
                     help="처음 N개 env 의 시계열을 실물 블랙박스 형식으로 log_picture/simbb_<tag>_env<i>.jsonl 에 기록 "
                          "(jetson/scripts/analyze_hang2stand_trial.py 로 시뮬/실물 '최초 이상 발생 순서' 비교, 0911)")
+parser.add_argument("--calib_fixed_action", action="store_true", help="--calib_fixed 편향을 관측뿐 아니라 **액션에도**(진 목표 = 정책 목표 − b) 적용 = 실제 영점 오차(브리지가 틀린 영점으로 변환) 재현. 기본은 종전대로 관측만")
 parser.add_argument("--calib_fixed", type=str, default="", help="관절 고정 편향 주입 'left_ankle_r_joint:3.6,right_hip_r_joint:3.4' [deg] — 실측 좌우 비대칭 재현")
 parser.add_argument("--anchor_x", type=float, default=None, help="[케이블 태스크] 앵커 전후 오프셋 고정 [m] (+앞) — 줄 모멘트(후크 비연직) 가설 H2b 스윕용")
 parser.add_argument("--anchor_y", type=float, default=None, help="[케이블 태스크] 앵커 좌우 오프셋 고정 [m]")
@@ -250,6 +251,17 @@ env_cfg.episode_length_s = T_s + 1.0      # 평가 창 안에서 time_out 이 �
 env = gym.make(args_cli.task, cfg=env_cfg)
 env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 uenv = env.unwrapped
+if args_cli.calib_fixed and args_cli.calib_fixed_action:
+    # 0913: 진짜 영점 오차 = 관측 +b 이면서 명령은 −b (정책 프레임에서 일관). 액션 항의 최종 목표(슬루·LPF·백래시 뒤)에서 b 를 뺀다.
+    _zt = uenv.action_manager.get_term("joint_pos")
+    _zo = _zt.process_actions
+    def _z_patched(actions, _t=_zt, _o=_zo):
+        _o(actions)
+        _b = getattr(uenv, "_calib_joint_bias", None)
+        if _b is not None:
+            _t._processed_actions = _t._processed_actions - _b[:, _t._joint_ids]
+    _zt.process_actions = _z_patched
+    print("[calib] 고정 편향을 액션에도 적용(진 목표 = 정책 목표 − b) — 실제 영점 오차 재현")
 robot = uenv.scene["robot"]
 N = args_cli.num_envs
 dev = uenv.device

@@ -227,15 +227,14 @@ def _play_map(names_expr, play_deg, lat_deg):
 
 
 if args_cli.joint_play_deg is not None:
-    from rl_walking.actuators_play import DeadzonePDActuatorCfg
+    from rl_walking.actuators_play import DeadzoneImplicitActuatorCfg
     _acts = env_cfg.scene.robot.actuators
     for _k, _a in list(_acts.items()):
-        _acts[_k] = DeadzonePDActuatorCfg(joint_names_expr=_a.joint_names_expr,
-                                         effort_limit=getattr(_a, "effort_limit_sim", None) or getattr(_a, "effort_limit", None),
-                                         velocity_limit=getattr(_a, "velocity_limit_sim", None) or getattr(_a, "velocity_limit", None),
-                                         stiffness=_a.stiffness, damping=_a.damping, armature=getattr(_a, "armature", None), friction=getattr(_a, "friction", None),
-                                         play_rad=_play_map(_a.joint_names_expr, float(args_cli.joint_play_deg), args_cli.joint_play_lat_deg), inside_damping_scale=float(args_cli.play_inside_damping))
-    print(f"[play] 관절 유격 ±{args_cli.joint_play_deg:.2f}° (횡 {args_cli.joint_play_lat_deg}) (DeadzonePD 명시적 액추에이터, 그룹 {list(_acts)})")
+        _acts[_k] = DeadzoneImplicitActuatorCfg(joint_names_expr=_a.joint_names_expr,
+                                               effort_limit_sim=getattr(_a, "effort_limit_sim", None), velocity_limit_sim=getattr(_a, "velocity_limit_sim", None),
+                                               stiffness=_a.stiffness, damping=_a.damping, armature=getattr(_a, "armature", None), friction=getattr(_a, "friction", None),
+                                               play_rad=_play_map(_a.joint_names_expr, float(args_cli.joint_play_deg), args_cli.joint_play_lat_deg))
+    print(f"[play] 관절 유격 ±{args_cli.joint_play_deg:.2f}° (횡 {args_cli.joint_play_lat_deg}) (DeadzoneImplicit 내재 드라이브 목표 이동, 그룹 {list(_acts)})")
 if args_cli.gain_scale is not None and getattr(env_cfg.events, "actuator_gains", None):
     _gs = float(args_cli.gain_scale)
     env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (_gs, _gs)

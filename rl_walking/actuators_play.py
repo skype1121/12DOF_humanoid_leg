@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import torch
-from isaaclab.actuators.actuator_pd import IdealPDActuator
-from isaaclab.actuators.actuator_pd_cfg import IdealPDActuatorCfg
+from isaaclab.actuators.actuator_pd import IdealPDActuator, ImplicitActuator
+from isaaclab.actuators.actuator_pd_cfg import IdealPDActuatorCfg, ImplicitActuatorCfg
 from isaaclab.utils import configclass
 
 
@@ -70,3 +70,50 @@ class DeadzonePDActuatorCfg(IdealPDActuatorCfg):
     play_rad: dict[str, float] | float = 0.0        # 유격 반폭 [rad] (관절별 dict 가능)
     play_rad_range: tuple[float, float] | None = None   # 학습 DR: 리셋마다 play_rad × U(lo,hi)
     inside_damping_scale: float = 1.0   # 유격 안 링크 감쇠(kd 배수, 기어 마찰 근사). 0.0 = 완전 자유(최악)
+
+
+class DeadzoneImplicitActuator(ImplicitActuator):
+    """유격을 **PhysX 내재 드라이브의 목표 이동**으로 구현(수치 안정): 매 물리 스텝 목표 = q + sign(e)·max(|e|−play, 0).
+    → 유격 안에서는 강성 0(목표 = 현재각), 감쇠 kd 는 내재 드라이브가 항상 적용(기어 마찰 근사). 명시적 DeadzonePD 는 작은 관성 관절에서
+    kd·dt/I 가 커 불안정(0913 진단: 홀드도 3 s 에 붕괴) → 이 변형을 기본으로 쓴다."""
+    cfg: "DeadzoneImplicitActuatorCfg"
+
+    def __init__(self, cfg, *args, **kwargs):
+        super().__init__(cfg, *args, **kwargs)
+        self._play_base = self._parse_joint_parameter(cfg.play_rad, 0.0).clone()
+        self._play = self._play_base.clone()
+        self._rng_scale = None
+        if cfg.play_rad_range is not None:
+            lo, hi = (float(v) for v in cfg.play_rad_range)
+            self._rng_scale = (lo, hi)
+            self._resample(None)
+
+    def _resample(self, env_ids):
+        if self._rng_scale is None:
+            return
+        lo, hi = self._rng_scale
+        if env_ids is None:
+            n = self._play.shape[0]; idx = slice(None)
+        else:
+            idx = env_ids; n = len(env_ids)
+        s = torch.empty(n, 1, device=self._play.device).uniform_(lo, hi)
+        self._play[idx] = self._play_base[idx] * s
+
+    def reset(self, env_ids: Sequence[int]):
+        super().reset(env_ids)
+        if self._rng_scale is not None and env_ids is not None and len(env_ids) > 0:
+            ids = torch.as_tensor(env_ids, device=self._play.device, dtype=torch.long)
+            self._resample(ids)
+
+    def compute(self, control_action, joint_pos: torch.Tensor, joint_vel: torch.Tensor):
+        e = control_action.joint_positions - joint_pos
+        e_dz = torch.sign(e) * torch.clamp(e.abs() - self._play, min=0.0)
+        control_action.joint_positions = joint_pos + e_dz
+        return super().compute(control_action, joint_pos, joint_vel)
+
+
+@configclass
+class DeadzoneImplicitActuatorCfg(ImplicitActuatorCfg):
+    class_type: type = DeadzoneImplicitActuator
+    play_rad: dict[str, float] | float = 0.0
+    play_rad_range: tuple[float, float] | None = None

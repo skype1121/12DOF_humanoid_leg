@@ -39,7 +39,14 @@ log "[5/7] ~/rl_calib/release_all.py 갱신 (백업 후 복사, 게이트 selfte
 $SSH "cd ~/humanoid_repo && { [ -f ~/rl_calib/release_all.py ] && cp ~/rl_calib/release_all.py ~/rl_calib/release_all.py.bak_\$(date +%m%d_%H%M); } ; cp jetson/scripts/release_all.py ~/rl_calib/release_all.py && python3 ~/rl_calib/release_all.py --selftest | tail -1" || { log "release_all 갱신 실패 — 중단"; exit 1; }
 log "[5b/7] ~/rl_calib/boot_pose_check.py 갱신 (콘솔이 부르는 사본; △ 경고 판 — 허용치 8° 불변)"
 $SSH "cd ~/humanoid_repo && { [ -f ~/rl_calib/boot_pose_check.py ] && cp ~/rl_calib/boot_pose_check.py ~/rl_calib/boot_pose_check.py.bak_\$(date +%m%d_%H%M); } ; cp jetson/scripts/boot_pose_check.py ~/rl_calib/boot_pose_check.py && python3 -m py_compile ~/rl_calib/boot_pose_check.py && grep -c 'WARN' ~/rl_calib/boot_pose_check.py" || { log "boot_pose_check 갱신 실패 — 중단"; exit 1; }
-log "[6/7] 발압력 어댑터: sensors_up.sh 가 띄우는 경로의 NEWTON_PER_COUNT 확인 (0.02650 이어야 함)"
+log "[6/7] 발압력 어댑터: sensors_up.sh 가 띄우는 경로의 사본을 저장소 판과 md5 대조 — 다르면 백업 후 갱신 (0912: 임계 200·고장 패드 bias 파라미터)"
+$SSH 'for f in $(grep -o "[^ \"]*foot_force_adapter_node\.py" ~/rl_calib/sensors_up.sh | sort -u); do f2=$(eval echo "$f"); [ -f "$f2" ] || continue
+  if [ "$f2" -ef ~/humanoid_repo/jetson/scripts/foot_force_adapter_node.py ]; then echo "  $f2 (저장소 사본)"; continue; fi
+  if ! cmp -s "$f2" ~/humanoid_repo/jetson/scripts/foot_force_adapter_node.py; then cp "$f2" "$f2.bak_$(date +%m%d_%H%M)"; cp ~/humanoid_repo/jetson/scripts/foot_force_adapter_node.py "$f2"; echo "  $f2 갱신(백업됨): $(grep -m1 "^PAD_CONTACT_COUNTS" "$f2" | cut -c1-60)"; else echo "  $f2 동일"; fi
+  python3 "$f2" --selftest | tail -1; done'
+log "[6b/7] sensors_up.sh 의 어댑터 기동 줄에 left_pad_bias(고장 패드 제외) 파라미터가 있는지 확인 — 없으면 경고만(승윤님 결정 후 수동 반영)"
+$SSH 'grep -n "left_pad_bias" ~/rl_calib/sensors_up.sh >/dev/null && echo "  left_pad_bias 설정 있음: $(grep -m1 left_pad_bias ~/rl_calib/sensors_up.sh | cut -c1-120)" || echo "  ⚠ sensors_up.sh 에 left_pad_bias 없음 → 왼발 index 2 고장 패드가 접촉 판정에 들어감. 반영: [foot_adapter]=\"python3 /home/mama/rl_calib/foot_force_adapter_node.py --ros-args -p left_pad_bias:=[0.0,0.0,5000.0,0.0]\""'
+log "[6c/7] (구) NEWTON_PER_COUNT 확인 (0.02650 이어야 함)"
 $SSH 'grep -n "foot_force_adapter" ~/rl_calib/sensors_up.sh | head -3
 for f in $(grep -o "[^ \"]*foot_force_adapter_node\.py" ~/rl_calib/sensors_up.sh | sort -u); do
   f2=$(eval echo "$f"); [ -f "$f2" ] || { echo "  $f2: 파일 없음"; continue; }

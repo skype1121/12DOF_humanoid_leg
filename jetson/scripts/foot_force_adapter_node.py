@@ -44,8 +44,9 @@ NEWTON_PER_COUNT = 0.02650
 LEFT_BIAS_COUNTS = 328.0
 RIGHT_BIAS_COUNTS = 62.0
 #: 0910 승윤님: 접지 판정은 '4개 패드 중 하나라도 눌리면 접지' (합산 5N 규칙은 발이 모서리로 닿을 때 왼발을 너무 일찍 비접촉으로 판정 →
-#: 정책이 "왼발 떴다" 입력을 받고 반응, A1 3회 공통). 패드별 (count − pad_bias) > PAD_CONTACT_COUNTS 면 그 패드 눌림. 80 counts ≈ 2.1 N.
-PAD_CONTACT_COUNTS = 80.0
+#: 정책이 "왼발 떴다" 입력을 받고 반응, A1 3회 공통). 패드별 (count − pad_bias) > PAD_CONTACT_COUNTS 면 그 패드 눌림. 200 counts ≈ 5.3 N (0912 까지 80).
+#: 0912: 왼발 index 2 패드 상시 눌림(고장, 429~728 카운트 표류) → 젯슨 sensors_up 에서 `-p left_pad_bias:="[0.0,0.0,5000.0,0.0]"` 로 판정 제외(패드 교체 전까지).
+PAD_CONTACT_COUNTS = 200.0   # 0912 승윤님 결정: 80 → 200 카운트(≈5.3 N; 패드가 매우 민감해 80 은 스침도 눌림). 학습 접촉 임계 DR 2~20 N 안.
 
 
 def pressure_to_foot_force(raw, newton_per_count,
@@ -152,7 +153,11 @@ def selftest():
     o = pressure_to_foot_force({"timestamp": 1.0, "left": [0, 0, 760, 0], "right": [0, 0, 0, 0]}, 0.0265, 700.0, 0.0,
                                80.0, [0, 0, 700, 0], None)
     assert o["left_contact"] is False, "예압 패드 +60 카운트 요동은 접지 아님"
-    print("[selftest] foot_force_adapter: 합산·뉴턴 스케일·손상입력 거부·패드 단위 접지(하나라도 눌리면 True, 예압 상쇄) ALL PASS")
+    # 5) 0912: 기본 임계 200 — 150 카운트 스침은 눌림 아님, 250 은 눌림; 고장 패드(왼 index 2)는 bias 5000 으로 제외
+    o = pressure_to_foot_force({"timestamp": 1.0, "left": [0, 150, 600, 0], "right": [0, 0, 250, 0]}, 0.0265, 0.0, 0.0,
+                               PAD_CONTACT_COUNTS, [0, 0, 5000, 0], None)
+    assert PAD_CONTACT_COUNTS == 200.0 and o["left_contact"] is False and o["left_pads_on"] == 0 and o["right_contact"] is True and o["right_pads_on"] == 1, o
+    print("[selftest] foot_force_adapter: 합산·뉴턴 스케일·손상입력 거부·패드 단위 접지(하나라도 눌리면 True, 예압 상쇄)·임계 200·고장 패드 제외 ALL PASS")
     return 0
 
 

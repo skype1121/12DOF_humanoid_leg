@@ -750,3 +750,35 @@ class Biped12HangStandS8ac4kEnvCfg(Biped12HangStandS8ac4EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.actuator_gains.params["stiffness_distribution_params"] = (0.3, 1.1)
+
+def _apply_gravity_bands(cfg):
+    """IMU 채널만 실측 대역(0913 §3.1: 느린 롤은 IMU 에만 보였다 → 중력벡터를 더 믿게): 중력벡터 잡음 ±0.05→±0.02, IMU 롤/피치 편향 DR ±3.5/4°→±1.5°.
+    자이로·관절속도 대역은 종전 유지(v6 의 지연 민감 상승이 그쪽 대역 축소의 대가라는 가설). 브리지 imu_mount_bias_deg 보정 전제."""
+    P = cfg.observations.policy
+    t = getattr(P, "projected_gravity", None)
+    if t is not None and t.noise is not None:
+        t.noise.n_min = -0.02; t.noise.n_max = 0.02
+    ev = cfg.events
+    if getattr(ev, "calib_bias", None):
+        p = ev.calib_bias.params
+        for k in ("imu_tilt_rad", "imu_roll_rad"):
+            if k in p and p[k] is not None:
+                p[k] = (-0.026, 0.026)
+
+
+@configclass
+class Biped12HangStandS8ac4gEnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S8ac4g(0913 후보): S8ac4 + IMU 채널 실측 대역만(중력 잡음·IMU 편향 DR). 단일 변수 = IMU 채널."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _apply_gravity_bands(self)
+
+
+@configclass
+class Biped12HangStandS8ac4kgEnvCfg(Biped12HangStandS8ac4kEnvCfg):
+    """S8ac4kg(0913 후보): S8ac4k(강성 DR 0.3) + IMU 채널 실측 대역. v8 결과에 따라 선택."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _apply_gravity_bands(self)

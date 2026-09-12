@@ -5,7 +5,7 @@
 사용(Isaac Sim 스크립트 콘솔/MCP execute_script):
     exec(open(PATH).read()); start_replay(BB_PATH, speed=1.0, t_start=0.0)
     ghost=True 이면 반투명 '정책 목표 유령'(targets_deg_joint = LPF 뒤·블렌딩 전 관절 목표)을 같은 베이스 자세로 겹쳐 그린다 —
-    "정책이 어디로 가려 했는데 실물이 못 갔는가"(정정 사슬 ②③)를 눈으로 본다. ⚠ 0913 추가분은 GUI 스모크 미실행(미검증).
+    "정책이 어디로 가려 했는데 실물이 못 갔는가"(정정 사슬 ②③)를 눈으로 본다. 0913 헤드리스 스모크 통과(유령 생성·텔레포트; GUI 표시는 미확인).
 """
 import json, math, numpy as np
 
@@ -70,6 +70,7 @@ def start_replay(bb_path, speed=1.0, t_start=0.0, physics_hz=200.0, record_hz=50
     import omni.usd, omni.timeline
     from pxr import UsdGeom, Gf
     from isaacsim.core.api import World
+    from isaacsim.core.utils.types import ArticulationAction
     world = World.instance(); stage = omni.usd.get_context().get_stage()
     robot = world.scene.get_object("biped12")
     gh = _ensure_ghost(world, stage, usd_path) if ghost else None
@@ -96,7 +97,7 @@ def start_replay(bb_path, speed=1.0, t_start=0.0, physics_hz=200.0, record_hz=50
         st["i"] = j + 1
         f = st["frames"][j]
         q = np.array(f["qpos_rad"], dtype=np.float32)
-        robot.set_joint_positions(q); robot.set_joint_velocities(np.zeros_like(q))
+        robot.set_joint_positions(q); robot.set_joint_velocities(np.zeros_like(q)); robot.apply_action(ArticulationAction(joint_positions=q))   # 드라이브 목표 동기(0912 잔류 버그 방지)
         r, p, _y = _quat_wxyz_to_rpy(f["quat_wxyz"])
         quat = _rpy_to_quat_wxyz(r, p, 0.0)
         # 높이: 고정(서기 자세에서 발목 원점이 base 아래 0.59 m → base z = 0.59 + ANKLE_H). 링크 xform 은 같은 콜백 안에서 갱신되지 않아 동적 보정은 발산함(0912).
@@ -106,7 +107,7 @@ def start_replay(bb_path, speed=1.0, t_start=0.0, physics_hz=200.0, record_hz=50
             tg = f["targets_deg_joint"]
             qg = np.array([math.radians(float(tg[n] if isinstance(tg, dict) else tg[k])) for k, n in enumerate(JOINT_ORDER)], dtype=np.float32)
             try:
-                gh.set_joint_positions(qg); gh.set_joint_velocities(np.zeros_like(qg))
+                gh.set_joint_positions(qg); gh.set_joint_velocities(np.zeros_like(qg)); gh.apply_action(ArticulationAction(joint_positions=qg))
                 gh.set_world_pose(position=np.array([0.0, 0.0, 0.59 + ANKLE_H], dtype=np.float32), orientation=quat)
                 gh.set_linear_velocity(np.zeros(3, dtype=np.float32)); gh.set_angular_velocity(np.zeros(3, dtype=np.float32))
             except Exception as e:   # noqa: BLE001

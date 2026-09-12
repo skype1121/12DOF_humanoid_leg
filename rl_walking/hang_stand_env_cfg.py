@@ -782,3 +782,12 @@ class Biped12HangStandS8ac4kgEnvCfg(Biped12HangStandS8ac4kEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         _apply_gravity_bands(self)
+
+@configclass
+class Biped12HangStandS8ac4k5EnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S8ac4k5(0913 마지막 후보 v10): S8ac4 + 강성 DR (0.7,1.1)→(0.5,1.1). v8(0.3 하한)은 정적 모멘트 100 % 를 얻었지만 스텝 폭주로 C1 54.7 —
+    하한을 0.5 로 완화해 이득 일부(R6 ≥ 60 %)와 분포 내 성공률(C1 ≥ 92) 양립을 시험. 단일 변수 = 강성 DR 하한."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.actuator_gains.params["stiffness_distribution_params"] = (0.5, 1.1)

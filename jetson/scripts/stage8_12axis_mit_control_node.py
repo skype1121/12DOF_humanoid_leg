@@ -59,6 +59,28 @@ CAN_CHANNEL = "can0"
 CAN_BITRATE = 1000000
 CAN_RESTART_MS = 100
 CAN_COMMAND_TIMEOUT_SEC = 3.0
+#: CAN 송신(명령 프레임) 타임아웃 (초) — bus.send(timeout=…) 로 그대로 전달.
+#: 기본 0.2 는 종전 하드코딩 값과 동일 — 기본 기동의 버스 거동은 바뀌지 않는다.
+#: 선택형 진단 손잡이: H-D1(버스 정체로 send 가 프레임마다 블로킹 → 12관절
+#: × 0.2 s 로 단일 스레드 실행기가 잠겨 status 갭) 판별 시
+#: --can-send-timeout 0.01 로 재기동하면 정체가 '블로킹' 대신 '즉시 실패 +
+#: can_send_timeouts 증가'로 드러난다. ⚠ 낮추면 실패 거동이 바뀐다(송신
+#: 드롭) — 진단 목적 외 상시 사용은 별도 검토 대상.
+CAN_SEND_TIMEOUT_SEC = 0.2
+CAN_SEND_TIMEOUT_MIN_SEC = 0.001
+CAN_SEND_TIMEOUT_MAX_SEC = 1.0
+#: 송신 타임아웃 판정 문구 (python-can 4.6.1 socketcan 소스 실측: TX 큐가
+#: timeout 안에 쓰기 가능해지지 않으면 CanOperationError("Transmit buffer
+#: full")). 인터페이스마다 문구가 달라 '타임아웃 예산을 다 쓴 CanError'
+#: 경로도 함께 본다 (_is_can_send_timeout). 그 외 CanError(예: 인터페이스
+#: 다운)는 세지 않는다 — 세면 H-D1 을 거짓으로 확증하게 된다.
+CAN_SEND_TIMEOUT_ERROR_MARKERS = (
+    "transmit buffer full",
+    "buffer full",
+    "no buffer space",   # ENOBUFS = TX 큐 포화 (같은 정체 현상)
+    "timeout",
+    "timed out",
+)
 CAN_FEEDBACK_RECV_TIMEOUT_SEC = 0.0
 CAN_FEEDBACK_MAX_FRAMES_PER_TICK = 64
 CAN_FEEDBACK_REQUEST_TIMEOUT_SEC = 0.01
@@ -208,6 +230,46 @@ def parse_json_object(message_data):
     return payload, ""
 
 
+def parse_can_send_timeout(value):
+    """--can-send-timeout 값 → float 초. 비수치·범위 밖은 ValueError.
+
+    범위 0.001~1.0 s: 아래로는 select 해상도 밑이라 무의미, 위로는 12관절 ×
+    타임아웃이 제어 틱(20 ms)을 통째로 삼키는 영역.
+    """
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"invalid --can-send-timeout: {value!r} (초 단위 숫자)") from None
+    if not math.isfinite(seconds):
+        raise ValueError(f"invalid --can-send-timeout: {value!r} (유한한 숫자)")
+    if not (CAN_SEND_TIMEOUT_MIN_SEC <= seconds <= CAN_SEND_TIMEOUT_MAX_SEC):
+        raise ValueError(
+            f"--can-send-timeout out of range: {seconds}"
+            f" (허용 {CAN_SEND_TIMEOUT_MIN_SEC}~{CAN_SEND_TIMEOUT_MAX_SEC} 초)")
+    return seconds
+
+
+def _is_can_send_timeout(error, elapsed_sec=None, timeout_sec=None):
+    """bus.send 예외가 '송신 타임아웃(TX 큐 정체)'인지 판정.
+
+    can 모듈을 못 불러오는 환경(오프라인 테스트)에서는 문구만으로 판정한다.
+    """
+    try:
+        import can as _can
+    except Exception:  # noqa: BLE001 — can 미설치 환경은 문구로만 판정
+        _can = None
+    if _can is not None and not isinstance(error, _can.CanError):
+        return False
+    text = str(error).lower()
+    if any(marker in text for marker in CAN_SEND_TIMEOUT_ERROR_MARKERS):
+        return True
+    # 문구를 모르는 인터페이스 대비: 타임아웃 예산을 다 쓰고 실패한 경우
+    if elapsed_sec is not None and timeout_sec:
+        return float(elapsed_sec) >= 0.9 * float(timeout_sec)
+    return False
+
+
 def _number_or_none(value):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -281,6 +343,9 @@ class Stage8TwelveAxisMitControlCore:
         self.can_rx_count = 0
         self.can_tx_readonly_count = 0
         self.can_rx_ignored_count = 0
+        #: bus.send 가 타임아웃 예산 내 송신 실패(TX 큐 대기/버퍼 포화)로
+        #: 낸 CanError 누적 — H-D1 버스 정체 판별용 (status 노출)
+        self.can_send_timeouts = 0
         self.can_decode_error = None
         self.feedback_stale_reason = "no_feedback"
         self.baseline_missing_joints = list(JOINT_NAMES_12DOF)
@@ -866,6 +931,7 @@ class Stage8TwelveAxisMitControlCore:
         if not REAL_CAN_WRITE_ENABLED:
             return False
 
+        send_started = None
         try:
             import can
             bus = self._get_or_open_can_bus(can)
@@ -874,11 +940,18 @@ class Stage8TwelveAxisMitControlCore:
                 data=list(frame_bytes),
                 is_extended_id=False,
             )
-            bus.send(message, timeout=0.2)
+            send_started = time.monotonic()
+            bus.send(message, timeout=CAN_SEND_TIMEOUT_SEC)
             self.can_status = "OK"
             self.can_last_error = None
             return True
         except Exception as error:
+            # 타임아웃도 기존 실패 경로(can_status ERROR·_set_error)를 그대로
+            # 탄다 — 카운터만 추가로 센다(진단 가시화, 가드 완화 아님).
+            elapsed = None if send_started is None else (
+                time.monotonic() - send_started)
+            if _is_can_send_timeout(error, elapsed, CAN_SEND_TIMEOUT_SEC):
+                self.can_send_timeouts += 1
             self.can_status = "ERROR"
             self.can_last_error = str(error)
             self._set_error(str(error))
@@ -1282,6 +1355,8 @@ class Stage8TwelveAxisMitControlCore:
             "can_rx_count": self.can_rx_count,
             "can_tx_readonly_count": self.can_tx_readonly_count,
             "can_rx_ignored_count": self.can_rx_ignored_count,
+            "can_send_timeouts": self.can_send_timeouts,
+            "can_send_timeout_sec": CAN_SEND_TIMEOUT_SEC,
             "can_decode_error": self.can_decode_error,
             "feedback_stale": not self._feedback_is_fresh(),
             "feedback_age_sec": self._feedback_age_sec(),
@@ -1374,9 +1449,7 @@ def load_ros2():
     return rclpy, String, None
 
 
-def main():
-    global CAN_CHANNEL, WAIT_TAKEOVER
-
+def build_arg_parser():
     parser = argparse.ArgumentParser(
         description="Stage8 12-axis AK MIT real-control node")
     parser.add_argument(
@@ -1388,12 +1461,31 @@ def main():
         help="선기동 대기: 핸드오프 상태 파일이 나타날 때까지 CAN 무송신 대기 "
              "후 즉시 인수 홀드 (무토크 공백 ~20ms화). hang_stand 핸드오프 전에 "
              "이 플래그로 먼저 기동해둘 것")
+    parser.add_argument(
+        "--can-send-timeout", default=None,
+        help=f"CAN 송신 타임아웃 초 ({CAN_SEND_TIMEOUT_MIN_SEC}~"
+             f"{CAN_SEND_TIMEOUT_MAX_SEC}). 미지정(기본) = 모듈 상수 "
+             f"{CAN_SEND_TIMEOUT_SEC} 유지 = 종전과 동일 동작. H-D1 버스 정체 "
+             "판별 시에만 낮춘다 (예: --can-send-timeout 0.01)")
+    return parser
+
+
+def main():
+    global CAN_CHANNEL, WAIT_TAKEOVER, CAN_SEND_TIMEOUT_SEC
+
+    parser = build_arg_parser()
     # ROS2 런치가 붙이는 --ros-args 등 미지 인자는 무시 (parse_known_args)
     args, _unknown = parser.parse_known_args()
     if re.fullmatch(r"can[0-9]+", str(args.can_channel)) is None:
         print(f"[Stage8-12Axis] invalid --can-channel: {args.can_channel!r} "
               "(can0/can1/... 형식만 허용)")
         return 1
+    if args.can_send_timeout is not None:
+        try:
+            CAN_SEND_TIMEOUT_SEC = parse_can_send_timeout(args.can_send_timeout)
+        except ValueError as error:
+            print(f"[Stage8-12Axis] {error}")
+            return 1
     CAN_CHANNEL = str(args.can_channel)
     WAIT_TAKEOVER = bool(args.wait_takeover)
 
@@ -1407,6 +1499,7 @@ def main():
     print(f"[Stage8-12Axis] command topic = {COMMAND_TOPIC}")
     print(f"[Stage8-12Axis] status topic = {STATUS_TOPIC}")
     print(f"[Stage8-12Axis] CAN channel = {CAN_CHANNEL}")
+    print(f"[Stage8-12Axis] CAN send timeout = {CAN_SEND_TIMEOUT_SEC} s")
     print(f"[Stage8-12Axis] REAL_CAN_WRITE_ENABLED = {REAL_CAN_WRITE_ENABLED}")
     print(f"[Stage8-12Axis] ALLOWED_JOINTS = {ALLOWED_JOINTS}")
     print("[Stage8-12Axis] 12-axis MIT control node started")

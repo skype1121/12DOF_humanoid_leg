@@ -12,9 +12,10 @@
   4. 종료 직전 3 s: 추종오차·관절속도·|ω| → '관절 붕괴' vs '자세 유지한 채 접촉 상실' 구분.
   5. 최초 이상 발생 순서: roll·pitch·|ω|·접촉·추종오차·액션변화율의 이탈 시각을 정지 이벤트 기준으로 정렬(정렬 불확실성 명시).
   6. 타임라인이 있으면 운영자 이벤트(착지·방출·재인장·슬랙·보조)를 정지 기준 시각으로 정렬. 없으면 '윈치 미기록' 명시.
+     + 방출 구간(▶ op_release_start → ✓ op_slack_done) 의 길이와 그 구간 롤(rp_deg[0]) 기울기 속도·최대 롤 표. 이벤트 없으면 '미기록'.
 하지 않는 것: 발력%·CoP·CoM·좌우 하중 계산. 원인 확정(가설만 열거).
 """
-import argparse, json, math, statistics, sys, time
+import argparse, json, math, statistics, sys, time, unicodedata
 from collections import Counter
 
 JO = ["left_hip_f_joint", "right_hip_f_joint", "left_hip_a_joint", "right_hip_a_joint",
@@ -36,15 +37,118 @@ def load_bb(path):
     return ticks, events
 
 
+# 콘솔 타임라인 계약(측정 사실, 0912 실세션으로 확인):
+#   한 조작 = kind"action_request"(action=...) [+ kind"action_dispatched"(action=..., ok=...) — 즉시 이벤트는 없음]
+#             + kind"trial_event"(event="request", action=...)  ... 비즉시 동작
+#   윈치/운영자 이벤트(op_*) = kind"action_request"(action="op_*") + kind"trial_event"(event="op_*")  — 둘 다 같은 1회 조작
+#   비상정지 = kind"trial_event"(event="stop_delivery", ok=...)  — action_request 없음(게이트 앞에서 처리)
+# 예전 필터는 kind 를 ("action","event","action_start") 로 봤는데 콘솔은 그런 kind 를 쓰지 않는다 → 실세션에서 0행.
+TL_KINDS = ("action_request", "action_dispatched", "trial_event",   # 현 콘솔(operator_console.py:1004/1080/941)
+            "action", "event", "action_start")                      # 구형·외부 기록 호환(있으면 읽되 없어도 무방)
+TL_SKIP_EVENTS = ("action_confirmed", "action_failed")              # 서버 응답 — 조작(누른) 시각이 아니다
+TL_MERGE_S = 0.20      # 같은 조작이 kind 2~3행으로 남는다 → 이 안의 같은 이름은 1회로 합침(ok 는 보고된 값 채택)
+
+
 def load_timeline(path):
-    rows = []
+    """세션 타임라인에서 운영자 조작만 뽑는다. 반환 [(ts_epoch, action, ok)] — 시간 오름차순, 1조작 1행."""
+    raw = []
     for l in open(path, encoding="utf-8"):
         try: d = json.loads(l)
         except ValueError: continue
-        if d.get("kind") in ("action", "event", "action_start") and (d.get("action") in OPS or str(d.get("event", "")).startswith("op_")):
-            try: rows.append((float(d.get("ts")), d.get("action") or d.get("event"), d.get("ok")))
-            except (TypeError, ValueError): pass
-    return rows
+        kind = d.get("kind")
+        if kind not in TL_KINDS: continue
+        ev = str(d.get("event") or "")
+        if kind == "trial_event" and ev in TL_SKIP_EVENTS: continue
+        name = d.get("action") or ("estop" if ev == "stop_delivery" else ev)
+        if name not in OPS and not name.startswith("op_"): continue
+        try: raw.append([float(d.get("ts")), name, d.get("ok")])
+        except (TypeError, ValueError): pass
+    raw.sort(key=lambda r: r[0])
+    out = []
+    for ts, name, ok in raw:
+        if out and out[-1][1] == name and ts - out[-1][0] <= TL_MERGE_S:
+            if ok is not None and out[-1][2] is None: out[-1][2] = ok    # action_dispatched 의 ok 를 같은 조작에 병합
+            continue
+        out.append([ts, name, ok])
+    return [tuple(r) for r in out]
+
+
+def roll_stats(ticks, t_from, t_to):
+    """구간 [t_from, t_to] 의 블랙박스 롤(rp_deg[0]) — 측정값만. 기울기는 최소자승 1차 회귀(°/s).
+    표본 2개 미만이면 None(블랙박스가 그 구간을 덮지 않음)."""
+    seg = [(t["timestamp"], t["rp_deg"][0]) for t in ticks if t_from <= t["timestamp"] <= t_to]
+    if len(seg) < 2: return None
+    xs = [a - seg[0][0] for a, _ in seg]; ys = [b for _, b in seg]
+    mx = sum(xs) / len(xs); my = sum(ys) / len(ys)
+    den = sum((x - mx) ** 2 for x in xs)
+    slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / den if den > 1e-9 else float("nan")
+    return {"n": len(seg), "slope": slope, "first": ys[0], "last": ys[-1],
+            "peak": max(ys, key=abs), "span": seg[-1][0] - seg[0][0]}
+
+
+def release_window(rows, ticks):
+    """윈치 이벤트로 '방출 구간' = 첫 ▶ op_release_start → 그 뒤 첫 ✓ op_slack_done.
+    둘 중 하나라도 없으면 길이는 '미기록'(추정하지 않는다 — 0912 실기 5회가 전부 버튼 미기록이었다).
+    방출 시작만 있으면 '방출 시작→기록 끝' 이라는 다른 이름으로만 낸다(방출 구간이라 부르지 않는다)."""
+    at = lambda k: [ts for ts, a, _ in rows if a == k]
+    starts, stops_, slacks = at("op_release_start"), at("op_release_stop"), at("op_slack_done")
+    rets, assists = at("op_retension"), at("op_assist")
+    info = {"n": {"▶ 방출 시작": len(starts), "⏸ 방출 정지": len(stops_), "↥ 재인장": len(rets),
+                  "✓ 느슨·무보조": len(slacks), "외부 보조": len(assists)},
+            "closed": False, "t_from": None, "t_to": None, "label": "방출(▶→✓)", "roll": None, "inner": {}}
+    if not starts: return info
+    t_from = starts[0]
+    after = [s for s in slacks if s >= t_from]
+    if after:
+        info.update(closed=True, t_from=t_from, t_to=after[0])
+    else:
+        end = ticks[-1]["timestamp"] if ticks else None
+        info.update(closed=False, t_from=t_from, label="방출 시작→기록 끝(✓ 없음)",
+                    t_to=(end if end is not None and end > t_from else None))   # 기록 끝보다 늦게 눌렀으면 구간 없음
+    if info["t_to"] is not None:
+        lo, hi = info["t_from"], info["t_to"]
+        info["roll"] = roll_stats(ticks, lo, hi)
+        info["inner"] = {k: sum(1 for t in v if lo < t <= hi)
+                         for k, v in (("⏸ 방출 정지", stops_), ("↥ 재인장", rets),
+                                      ("▶ 방출 추가", starts), ("외부 보조", assists))}
+    return info
+
+
+def _w(t):      # 표 정렬용 표시폭 — 한글 등 East Asian Wide/Fullwidth 는 2칸
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in t)
+
+
+def _pad(t, n, right=False):
+    fill = " " * max(0, n - _w(t))
+    return fill + t if right else t + fill
+
+
+def print_release(info, stop_ts, out):
+    """방출 구간 표. 길이는 타임라인(운영자 버튼) 측정, 롤은 블랙박스 측정 — 둘 다 없으면 '미기록'."""
+    cols = (("시작", 9), ("끝", 9), ("길이", 8), ("롤 시작", 9), ("롤 끝", 8), ("최대|롤|", 9), ("기울기", 11), ("표본", 8))
+    out("\n### 방출 구간 길이·롤 (▶ 방출 시작 → ✓ 모든 줄 느슨; 롤 = 블랙박스 rp_deg[0], 하중·CoP 아님)")
+    out("  " + _pad("구간", 20) + "".join(_pad(h, w, True) for h, w in cols))
+    cnt = " · ".join(f"{k} {v}회" for k, v in info["n"].items())
+    if info["t_from"] is None or info["t_to"] is None:
+        out("  " + _pad(info["label"], 20) + _pad("미기록", 9, True) + "   — " + cnt)
+        out("  ※ 미기록 = 윈치 이벤트 버튼(▶/⏸/↥/✓)을 누르지 않았거나 이 시도 창(±60 s) 밖. 방출 길이·롤 기울기 산출 불가 — 추정하지 않는다.")
+        return
+    dur = info["t_to"] - info["t_from"]
+    r = info["roll"]
+    cells = [f"{info['t_from'] - stop_ts:+.1f}s", f"{info['t_to'] - stop_ts:+.1f}s", f"{dur:.1f}s"]
+    if r is None:
+        cells += ["미기록"] * 4 + ["0틱"]
+    else:
+        cells += [f"{r['first']:+.1f}°", f"{r['last']:+.1f}°", f"{r['peak']:+.1f}°", f"{r['slope']:+.2f}°/s", f"{r['n']}틱"]
+    out("  " + _pad(info["label"], 20) + "".join(_pad(c, w, True) for c, (_, w) in zip(cells, cols)))
+    if r is None:
+        out("  ※ 길이는 타임라인 측정, 롤은 미기록 — 블랙박스가 이 구간을 덮지 않음(정책 틱 <2).")
+    else:
+        out("  구간 내: " + " · ".join(f"{k} {v}회" for k, v in info["inner"].items())
+            + f"  (블랙박스 커버 {r['span']:.1f}s / 구간 {dur:.1f}s · 기울기는 최소자승 1차 회귀)")
+    if not info["closed"]:
+        out("  ※ ✓ 느슨·무보조 확인이 없어 '방출 구간'이 아니다 — 길이는 방출 시작~기록 끝이며 자립 판정에 쓰지 않는다.")
+    out("  ※ 시각 정렬: 타임라인 ts 와 블랙박스 timestamp 는 같은 epoch 시계(둘 다 time.time()). 버튼 누름과 실제 윈치 동작의 차이는 영상으로 확인.")
 
 
 def gyro_mag(t):
@@ -277,8 +381,10 @@ def report(bb_path, timeline_path=None, pads_path=None, out=print, ref="stop"):
         if rows:
             for ts, a, ok in rows: out(f"  {ts - stop_ts:+7.1f}s(정지 기준) {a} ok={ok}")
         else: out("  ⚠ 이 시도 창(±60 s)에 운영자 이벤트 기록 없음 — 윈치 조작 시각 불명.")
+        print_release(release_window(rows, ticks), stop_ts, out)
     else:
         out("  타임라인 미제공 — 윈치 조작 시각 불명(--timeline 로 session_*/timeline.jsonl 지정).")
+        print_release(release_window([], ticks), stop_ts, out)
     out("\n## 7. 가설 (확정 아님)")
     out("  H1 윈치 재인장/리프트로 발이 뜸 · H2 횡 편심/줄 측방 당김으로 롤 표류 · H3 한쪽 패드 감도 저하 · H4 정책 체중이동+lift_guard 상호작용 · H5 인계 레이스(워밍업 로그로 확인).")
     out("  판별: 3·5·6절의 순서와 영상(발·줄)로. 발력%·CoP 로 판정하지 않는다.")
@@ -326,7 +432,85 @@ def selftest():
     buf = []; report(p, out=buf.append)
     txt = "\n".join(buf)
     assert "윈치 조작 시각 불명" in txt and "최초 이상 발생 순서" in txt
-    print("[selftest] analyze_hang2stand_trial: 로드·발생순서(roll→접촉→정지)·종료판정(자세 유지)·스텝 시도 카운트·리포트 — PASS")
+    assert "미기록" in txt and "방출 구간 길이·롤" in txt, "타임라인 없음 → 방출 구간 미기록 표시"
+
+    # --- 타임라인 계약(콘솔 실제 kind) 읽기 + 1조작 1행 병합 ---------------------
+    d = os.path.dirname(p)
+    tl = os.path.join(d, "timeline.jsonl")
+    tl_rows = [
+        {"kind": "session_start", "reason": "셀프테스트", "ts": 1000.0},
+        {"kind": "s", "ts": 1001.0, "pct": 0.0},                                   # 텔레메트리 — 무시돼야
+        {"kind": "action_request", "action": "stand", "trial": 1, "ts": 1002.0},
+        {"kind": "action_dispatched", "action": "stand", "ok": True, "ts": 1002.001},
+        {"kind": "trial_event", "event": "request", "action": "stand", "ts": 1002.002},
+        {"kind": "trial_event", "event": "action_confirmed", "action": "stand", "ts": 1002.900},   # 응답 — 조작 아님
+        {"kind": "action_request", "action": "op_release_start", "trial": 1, "ts": 1010.0},
+        {"kind": "trial_event", "event": "op_release_start", "trial": 1, "note": "", "ts": 1010.001},
+        {"kind": "action_request", "action": "op_release_stop", "trial": 1, "ts": 1011.5},
+        {"kind": "trial_event", "event": "op_release_stop", "trial": 1, "note": "", "ts": 1011.501},
+        {"kind": "action_request", "action": "op_slack_done", "trial": 1, "ts": 1014.0},
+        {"kind": "trial_event", "event": "op_slack_done", "trial": 1, "note": "", "ts": 1014.001},
+        {"kind": "trial_event", "event": "stop_delivery", "ok": True, "ts": 1015.5},               # estop 로 매핑
+    ]
+    with open(tl, "w") as f:
+        for r in tl_rows: f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    rows = load_timeline(tl)
+    assert [a for _, a, _ in rows] == ["stand", "op_release_start", "op_release_stop", "op_slack_done", "estop"], rows
+    assert rows[0][2] is True, ("action_dispatched 의 ok 가 같은 조작에 병합돼야", rows[0])
+    assert rows[1][0] == 1010.0 and rows[3][0] == 1014.0, rows
+
+    # --- 방출 구간 길이·롤 기울기 (합성 롤 = 1010 s 부터 정확히 −1.0 °/s) --------
+    info = release_window(rows, ticks)
+    assert info["closed"] and abs((info["t_to"] - info["t_from"]) - 4.0) < 1e-6, info
+    r = info["roll"]
+    assert abs(r["slope"] + 1.0) < 0.02, ("롤 기울기 −1.0 °/s 여야", r)
+    assert abs(r["first"] - 1.0) < 1e-6 and abs(r["last"] + 3.0) < 1e-6, r
+    assert abs(r["peak"] + 3.0) < 1e-6, ("최대 |롤| = −3.0°", r)
+    assert info["inner"]["⏸ 방출 정지"] == 1 and info["inner"]["↥ 재인장"] == 0, info["inner"]
+    buf = []; report(p, timeline_path=tl, out=buf.append)
+    txt = "\n".join(buf)
+    assert "방출(▶→✓)" in txt and "-1.00°/s" in txt and "op_slack_done" in txt, txt[-900:]
+    assert "4.0" in txt and "201틱" in txt, txt[-900:]
+
+    # --- ▶ 만 있고 ✓ 가 없는 경우: '방출 구간' 이라 부르지 않는다 -----------------
+    half = os.path.join(d, "timeline_half.jsonl")
+    with open(half, "w") as f:
+        for r in tl_rows:
+            if r.get("action") != "op_slack_done" and r.get("event") != "op_slack_done":
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    hrows = load_timeline(half)
+    hi = release_window(hrows, ticks)
+    assert not hi["closed"] and hi["label"].startswith("방출 시작→기록 끝"), hi
+    assert hi["n"]["✓ 느슨·무보조"] == 0 and hi["n"]["▶ 방출 시작"] == 1, hi["n"]
+    assert hi["t_to"] == ticks[-1]["timestamp"] and hi["roll"] is not None, hi
+    late = release_window([(ticks[-1]["timestamp"] + 5.0, "op_release_start", None)], ticks)
+    assert late["t_to"] is None, ("기록 끝 뒤에 눌린 ▶ → 구간 없음(음수 길이 금지)", late)
+
+    # --- 윈치 이벤트가 전혀 없는 타임라인 → '미기록' ----------------------------
+    none_tl = os.path.join(d, "timeline_nowinch.jsonl")
+    with open(none_tl, "w") as f:
+        for r in tl_rows:
+            if not str(r.get("action", "") or r.get("event", "")).startswith("op_"):
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    nrows = load_timeline(none_tl)
+    ni = release_window(nrows, ticks)
+    assert ni["t_from"] is None and ni["roll"] is None and ni["n"]["▶ 방출 시작"] == 0, ni
+    nbuf = []; print_release(ni, ticks[-1]["timestamp"], nbuf.append)
+    ntxt = "\n".join(nbuf)
+    assert "미기록" in ntxt and "▶ 방출 시작 0회" in ntxt and "✓ 느슨·무보조 0회" in ntxt, ntxt
+    buf = []; report(p, timeline_path=none_tl, out=buf.append)
+    assert "미기록" in "\n".join(buf) and "stand" in "\n".join(buf)
+
+    # --- 블랙박스가 구간을 못 덮는 경우: 길이는 내고 롤만 미기록 ------------------
+    far = [(5000.0, "op_release_start", None), (5003.0, "op_slack_done", None)]
+    fi = release_window(far, ticks)
+    assert fi["closed"] and fi["roll"] is None, fi
+    fbuf = []; print_release(fi, 5000.0, fbuf.append)
+    assert "미기록" in "\n".join(fbuf) and "3.0" in "\n".join(fbuf), fbuf
+
+    print("[selftest] analyze_hang2stand_trial: 로드·발생순서(roll→접촉→정지)·종료판정(자세 유지)·스텝 시도 카운트·리포트"
+          " / 타임라인 kind 계약·1조작 1행·estop 매핑 / 방출 구간 길이 4.0s·롤 −1.00°/s·최대 −3.0°"
+          " / ✓ 없음·윈치 미기록·블랙박스 미커버 3종 — PASS")
     return 0
 
 

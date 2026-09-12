@@ -100,6 +100,29 @@ class ConsoleTests(unittest.TestCase):
         self.assertEqual(view["baseline"], 0)
         self.assertFalse(view["feedback_ok"])
 
+    def test_handoff_allowed_before_takeover_without_joint_feedback_R9(self):
+        """0912 현장(R9): 인계 전 stage8 은 --wait-takeover(CAN 침묵)라 관절 피드백이 없다 — 인계 게이트는
+        waiting+status 신선+kp150 홀드만 요구해야 하고, 12관절 신선은 인계 뒤 단계(기준점·ARM·정책 로드·발사)에만 요구한다."""
+        self.prepare(until="ground")
+        view = Demo().snapshot()
+        now = view.get("server_time") or c.now()
+        view["server_time"] = now
+        view["session"] = {"active": True}
+        view["fresh"] = dict.fromkeys(("status", "imu", "foot"), True); view["fresh"]["bridge"] = False
+        view["stage8"].update(waiting=True, holding=False, armed=False, baseline=0, feedback_ok=False, joints={})
+        view.setdefault("procs", {})["hang_stand"] = {"alive": True, "hold": {"kp": 150.0, "ts": now}}
+        view["procs"]["stage8"] = {"alive": True}
+        view["foot"]["contact"] = [True, True]
+        self.trial.update(view)
+        self.assertIsNone(self.trial.reason("handoff"), self.trial.reason("handoff"))
+        # 인계 뒤: 홀드 상태이지만 12관절 피드백이 없으면 기준점은 막혀야 한다
+        self.trial.completed.add("handoff")
+        view["stage8"].update(waiting=False, holding=True)
+        view["procs"]["hang_stand"] = {"alive": False, "rc": 0}   # 인계 뒤 자세 유지 스크립트는 종료됨(겹침 래치 회피)
+        self.trial.update(view)
+        self.assertIsNotNone(self.trial.reason("baseline"))
+        self.assertIn("피드백", self.trial.reason("baseline"))
+
     def test_stale_missing_future_and_nonfinite_source_timestamps(self):
         for stamp in (None, c.now()-2, c.now()+10, float("nan")):
             with self.subTest(stamp=stamp):

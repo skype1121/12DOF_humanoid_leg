@@ -185,7 +185,10 @@ class TrialState:
         if missing:
             return f"먼저 {LABELS[missing]} 단계를 완료하세요"
         if action not in ("can_up", "sensors"):
-            r = self._sensor_reason(action in ("handoff", "baseline", "arm", "bridge", "stand"))
+            # 0912 R9(현장 발견): 인계 '전'의 stage8 은 --wait-takeover 로 CAN 침묵(피드백 없음)이라 12관절 신선을
+            # 요구하면 인계가 영원히 막힌다. 인계는 아래의 '대기 중(waiting)+status 신선+kp150 홀드' 게이트로 판정하고,
+            # 12관절 피드백은 인계 뒤 단계(기준점·ARM·정책 로드·발사)에만 요구한다.
+            r = self._sensor_reason(action in ("baseline", "arm", "bridge", "stand"))
             if r:
                 return r
         if action in ("boot_pose", "selftest") and owners:

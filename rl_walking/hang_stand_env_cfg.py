@@ -612,3 +612,16 @@ class Biped12HangStandCableFS3rEnvCfg(Biped12HangStandCableS3rEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.hang_support_reset.params["cable_force_mode"] = True
+
+
+@configclass
+class Biped12HangStandS8ac4qEnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S8ac4q(0912): S8ac4 + 준정적 롤 토크 램프 DR — 실물 0912 5회에서 확인된 '부분지지 아래 각속도 1~5 °/s 로 천천히 기울어 접촉을
+    잃는' 이탈(시뮬 재현: r0 0.5, 0.5 Nm/s 램프 → 22 s 접촉 OFF·|ω| 4~5 °/s)을 학습 분포에 넣어 기울기 각에 대한 보정을 요구한다.
+    물리·보상·관측 불변(단일 변수). 수평 유지 토크는 종전처럼 OFF(0912 확인: 지금까지 미적용이었음)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        p = self.events.hang_support_reset.params
+        p["level_gain_range"] = (0.0, 0.0); p["level_damp_range"] = (0.0, 0.0)
+        p["ramp_rate_range"] = (0.05, 0.6); p["ramp_cap_range"] = (3.0, 15.0); p["ramp_start_range"] = (1.0, 8.0); p["ramp_sign_random"] = True

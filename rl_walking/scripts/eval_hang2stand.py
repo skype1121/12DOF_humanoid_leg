@@ -61,6 +61,8 @@ parser.add_argument("--anchor_h", type=float, default=None, help="[케이블 태
 parser.add_argument("--hook_z", type=float, default=None, help="[케이블 태스크] 후크 높이(base 위) 고정 [m] (기본 DR 0.25~0.40)")
 parser.add_argument("--anchor_vx", type=float, default=None, help="[케이블] 앵커 전후 드리프트 속도 [m/s] (시간 가변 당김 가설)")
 parser.add_argument("--anchor_vy", type=float, default=None, help="[케이블] 앵커 좌우 드리프트 속도 [m/s]")
+parser.add_argument("--ramp_roll_torque", type=str, default=None, help="준정적 롤 토크 램프 'rate[Nm/s],cap[Nm],start[s]' (힘 모델; 실물 준정적 이탈 재현 시도)")
+parser.add_argument("--level_torque", action="store_true", help="힘 모델의 수평 유지 토크(lvl_k) 를 켠다. 기본 OFF — 0912 확인: Isaac Lab set_forces_and_torques 가 positions 와 함께 주어진 torques 를 버려 v5 까지의 모든 학습·평가에서 이 토크는 작용한 적이 없다(학습 물리와 같게 두려면 OFF)")
 parser.add_argument("--out_tag", type=str, default="")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -112,6 +114,11 @@ _hp = env_cfg.events.hang_support_reset.params
 if args_cli.r0: _hp["r0_range"] = _pair(args_cli.r0)
 if args_cli.hold_s: _hp["hold_range"] = _pair(args_cli.hold_s)
 if args_cli.release_s: _hp["release_range"] = _pair(args_cli.release_s)
+if not args_cli.level_torque:
+    _hp["level_gain_range"] = (0.0, 0.0); _hp["level_damp_range"] = (0.0, 0.0)   # 학습 당시 실효 물리(토크 미적용)와 동일
+if args_cli.ramp_roll_torque:
+    _v = [float(x) for x in args_cli.ramp_roll_torque.split(",")]; assert len(_v) == 3
+    _hp["ramp_roll_torque"] = tuple(_v)
 for _nm, _key in (("anchor_x", "anchor_x_range"), ("anchor_y", "anchor_y_range"), ("anchor_h", "anchor_h_range"), ("hook_z", "hook_z_range"), ("anchor_vx", "anchor_vx_range"), ("anchor_vy", "anchor_vy_range")):
     _v = getattr(args_cli, _nm)
     if _v is not None:

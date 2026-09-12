@@ -57,7 +57,8 @@ def _state(env):
               "cbl_k": z(), "cbl_c": z(), "cbl_tmax": z(), "cbl_L0": torch.ones(N, device=dev), "cbl_d0": z(), "cbl_slack": z(),
               # 케이블 실제 상태 기록 (item 4c: 지지 제거를 스케줄 r 이 아니라 실제 장력으로 판정)
               "cbl_T": z(), "cbl_dist": z(),
-              "avx": z(), "avy": z()}   # 0912 앵커 드리프트 속도 [m/s] (시간 가변 당김 재현용)
+              "avx": z(), "avy": z(),   # 0912 앵커 드리프트 속도 [m/s] (시간 가변 당김 재현용)
+              "ramp_rate": z(), "ramp_cap": z(), "ramp_start": z()}   # 0912 준정적 롤 토크 램프 [Nm/s, Nm, s] (실물 준정적 이탈 재현용)
         env._hang = st
     return st
 
@@ -143,8 +144,20 @@ def _apply(env, st, ids, asset_cfg):
     # 프레임을 수평으로 잡는다(오늘 착지 피치 −0.5°). 지지비 r 에 비례해 줄이 풀리면 사라진다. lvl_k=0 이면 종전과 동일.
     pgv = asset.data.projected_gravity_b[ids]; w = asset.data.root_ang_vel_b[ids]
     tau = _level_torque(pgv, w, st["lvl_k"][ids] * r, st["lvl_c"][ids] * r)
+    # 0912 준정적 롤 토크 램프: τx += clip(rate·(t−start), 0, cap) — 실물의 느린(각속도 <5 °/s) 횡 이탈 재현 시도 (가정 외란, 실측 아님)
+    _dt = (st["t"][ids] - st["ramp_start"][ids]).clamp(min=0.0)
+    ramp = st["ramp_rate"][ids] * _dt
+    ramp = torch.where(st["ramp_cap"][ids] >= 0, torch.minimum(ramp, st["ramp_cap"][ids]), torch.maximum(ramp, st["ramp_cap"][ids]))   # 부호에 맞춰 cap
+    tau = tau + torch.stack([ramp, torch.zeros_like(ramp), torch.zeros_like(ramp)], dim=-1)
+    # ★정정(2026-09-12): Isaac Lab 2.3 `set_forces_and_torques` 는 positions 를 주면 합성 토크를 position×force 로 **덮어써**
+    # torques 인자를 버린다(kernels.set_forces_and_torques_at_position). 종전 코드는 수평 유지 토크(lvl_k, 0908)를 한 번도 적용하지
+    # 못했다(v5 학습·평가 전부 — 정책은 그 조건으로 학습된 것이므로 배포엔 영향 없음, 문서의 '수평 유지 토크' 서술만 무효).
+    # 힘(+레버암 토크)은 set 으로, 명시 토크(수평 유지 + 램프)는 add 로 따로 더한다.
     asset.permanent_wrench_composer.set_forces_and_torques(
-        forces=forces, torques=tau.unsqueeze(1), positions=positions,
+        forces=forces, torques=None, positions=positions,
+        body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
+    asset.permanent_wrench_composer.add_forces_and_torques(
+        forces=None, torques=tau.unsqueeze(1), positions=None,
         body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
 
 
@@ -171,7 +184,8 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
                        level_gain_range=(0.0, 0.0), level_damp_range=(0.0, 0.0),
                        cable=False, hook_z_range=(0.25, 0.40), anchor_x_range=(-0.05, 0.05), anchor_y_range=(-0.05, 0.05),
                        anchor_h_range=(1.0, 1.6), cbl_k_range=(1500.0, 3000.0), cbl_c_range=(20.0, 120.0),
-                       cbl_slack_range=(0.05, 0.15), cable_force_mode=False, anchor_vx_range=(0.0, 0.0), anchor_vy_range=(0.0, 0.0)):
+                       cbl_slack_range=(0.05, 0.15), cable_force_mode=False, anchor_vx_range=(0.0, 0.0), anchor_vy_range=(0.0, 0.0), ramp_roll_torque=(0.0, 0.0, 0.0),
+                       ramp_rate_range=None, ramp_cap_range=None, ramp_start_range=None, ramp_sign_random=False):
     """mode="reset": 에피소드마다 지지 스케줄·로프 기하를 새로 뽑고 첫 지지력을 즉시 건다."""
     asset_cfg = asset_cfg or _base_cfg()
     st = _state(env)
@@ -191,6 +205,12 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
     st["py"][ids] = U(-point_xy, point_xy)
     st["lvl_k"][ids] = U(*level_gain_range)      # 수평 유지 강성 [Nm/rad] (실물 두 줄 현가 ≈ 강함)
     st["lvl_c"][ids] = U(*level_damp_range)      # 감쇠 [Nm·s/rad]
+    st["ramp_rate"][ids] = float(ramp_roll_torque[0]); st["ramp_cap"][ids] = float(ramp_roll_torque[1]); st["ramp_start"][ids] = float(ramp_roll_torque[2])
+    if ramp_rate_range is not None:   # 학습용 DR(0912 S8ac4q): 준정적 롤 토크 램프를 env 마다 다르게, 부호 랜덤
+        st["ramp_rate"][ids] = U(*ramp_rate_range); st["ramp_cap"][ids] = U(*ramp_cap_range); st["ramp_start"][ids] = U(*ramp_start_range)
+        if ramp_sign_random:
+            sgn = (torch.rand(n, device=env.device) < 0.5).to(st["ramp_rate"].dtype) * 2.0 - 1.0
+            st["ramp_rate"][ids] = st["ramp_rate"][ids] * sgn; st["ramp_cap"][ids] = st["ramp_cap"][ids] * sgn
     # ★정정(2026-09-12): 질량 캐시를 케이블 블록 **앞**으로 옮김. 종전엔 케이블 프리텐션 d0=r0·m·g/k 와 tmax=1.5·m·g 를
     # st["mass"] 를 채우기 전에 계산해 첫 리셋에서 mass=0 → tmax=0 → 장력이 에피소드 내내 0 으로 클램프됐다(평가는 단일
     # 에피소드라 케이블이 한 번도 작용하지 않았음 — 0911 케이블 결과 전부 '무지지 낙하' 였다). 진단: simbb 덤프 cbl_T.

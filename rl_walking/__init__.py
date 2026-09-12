@@ -522,7 +522,7 @@ gym.register(
 
 
 # ── Hanging-to-Stand (0908 저녁): 보조지지 스케줄 커리큘럼 S1/S2/S3 — rl_walking/hang_stand_env_cfg.py ──
-for _stage in ("S1", "S2", "S3", "S1r", "S2r", "S3r", "S4m", "S5s", "S5k", "S5u", "S5r", "S5v", "S5w", "S6", "S7", "S7b", "S7c", "S7d", "S8a", "S8aS1r", "S8aS3r", "S8b", "S8n", "S8an", "S8ac", "S8acL", "S8nc", "S8anc", "S8c", "S8ac3", "S8a3", "S8ac4", "S8ac5", "S8ac6", "S9a", "S9b", "S10a", "CableS3r", "CableFS3r", "S8ac4d", "S8ac4q", "S8ac4r", "S8ac4rn", "S8ac4rp", "S8ac4rq", "S8ac4r5"):   # *r = 축소 DR (0908 2차), S4m = 혼합 스케줄+실측 대역 DR (3차)
+for _stage in ("S1", "S2", "S3", "S1r", "S2r", "S3r", "S4m", "S5s", "S5k", "S5u", "S5r", "S5v", "S5w", "S6", "S7", "S7b", "S7c", "S7d", "S8a", "S8aS1r", "S8aS3r", "S8b", "S8n", "S8an", "S8ac", "S8acL", "S8nc", "S8anc", "S8c", "S8ac3", "S8a3", "S8ac4", "S8ac5", "S8ac6", "S9a", "S9b", "S10a", "CableS3r", "CableFS3r", "S8ac4d", "S8ac4q", "S8ac4r", "S8ac4rn", "S8ac4rp", "S8ac4rq", "S8ac4r5", "S8ac4s"):   # *r = 축소 DR (0908 2차), S4m = 혼합 스케줄+실측 대역 DR (3차)
     gym.register(
         id=f"Biped12-HangStand-{_stage}-v0",
         entry_point="isaaclab.envs:ManagerBasedRLEnv",

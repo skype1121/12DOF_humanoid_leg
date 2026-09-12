@@ -731,3 +731,13 @@ class Biped12HangStandS8ac4r5EnvCfg(Biped12HangStandS8ac4rEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.actuator_gains.params["stiffness_distribution_params"] = (0.5, 1.1)
+
+@configclass
+class Biped12HangStandS8ac4sEnvCfg(Biped12HangStandS8ac4qEnvCfg):
+    """S8ac4s(0913, 대안 후보): S8ac4q(램프 DR, cap 2~12) + 강성 DR (0.3,1.1) 만 — 관측 잡음·IMU 편향 대역은 종전(S8ac4) 유지.
+    v6(S8ac4r) 의 강점(정적 모멘트·연성 관절)이 램프+강성 DR 에서 오고, 약점(지연·잡음·접촉 비트 민감)이 잡음 대역 축소에서 온다는 가설의 분리용."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.hang_support_reset.params["ramp_cap_range"] = (2.0, 12.0)
+        self.events.actuator_gains.params["stiffness_distribution_params"] = (0.3, 1.1)

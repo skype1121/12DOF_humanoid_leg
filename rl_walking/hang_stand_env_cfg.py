@@ -816,6 +816,17 @@ class Biped12HangStandS8ac4k4EnvCfg(Biped12HangStandS8ac4EnvCfg):
 
 
 @configclass
+class Biped12HangStandS8ac4zEnvCfg(Biped12HangStandS8ac4EnvCfg):
+    """S8ac4z(0913 08시, 대조군 v5y): S8ac4 + 수평 유지 토크 OFF **만**. v5x(S8ac4 그대로 웜스타트 1500 it)가 C1 85.2·C2 74.6·both0 61.7 로
+    v10(86.7/74.2/56.6)과 같았음 → 변형들의 C1/C2 손실은 '이어 학습' 자체의 산물. 단, v5x 는 수평 토크 ON 으로 학습(평가 기본 OFF 와 불일치)이라
+    그 교란까지 뺀 대조군. 체크포인트 3개(마지막·−100·−200) C1/R6 로 체크포인트 간 변동도 같이 잰다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _level_off(self)
+
+
+@configclass
 class Biped12HangStandS8ac4k6EnvCfg(Biped12HangStandS8ac4EnvCfg):
     """S8ac4k6(0913 자동 후속): S8ac4 + 강성 DR (0.6,1.1)."""
 

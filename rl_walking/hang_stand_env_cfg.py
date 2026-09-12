@@ -605,6 +605,7 @@ class Biped12HangStandCableS3rEnvCfg(Biped12HangStandS8aS3rEnvCfg):
         self.events.hang_support_reset.params["anchor_x_range"] = (-0.08, 0.08)
 
 
+@configclass
 class Biped12HangStandCableFS3rEnvCfg(Biped12HangStandCableS3rEnvCfg):
     """힘제어 케이블(0912): 장력 = r(t)·m·g, 방향 = 후크→고정 앵커. 로프 강성이 미측정이라 길이 모델(k 지배) 대신
     줄 모멘트(후크 비연직, 가설 H2b) 검정용. 학습 아님."""
@@ -634,7 +635,7 @@ def _apply_real_bands(cfg):
       - 관측 잡음: 자이로 ±0.2→±0.05 rad/s(실측 std 0.006~0.010), 중력벡터 ±0.05→±0.02(≈1.1°), 관절속도 ±1.5→±0.3(실측 std 0.005),
         관절위치 ±0.01 유지; S8a EMA 항의 잡음 파라미터도 동일 축소.
       - IMU 장착 편향 DR: 롤 ±3.5°→±1.5°, 피치 ±4°→±1.5° — 실측 편향(롤 +1.3°, 피치 −0.6°)을 브리지에서 상수 보정하는 것을 전제(잔여 ±0.5°).
-      - 액추에이터 강성 DR: (0.7,1.1)→(0.3,1.1) — 실물 k_eff/kp 0.23~0.41 을 포함. 감쇠 (0.7,1.3) 유지.
+      - 액추에이터 강성 DR: (0.7,1.1)→(0.3,1.1) — 실물 k_eff/kp 0.23~0.41 의 대부분을 포함(0.23~0.30 은 분포 밖). 감쇠 (0.7,1.3) 유지. 관절속도 대역(±0.3)은 실측 std(0.005)의 ~60배로 다른 채널보다 넓다.
     """
     P = cfg.observations.policy
     for name, half in (("base_ang_vel", 0.05), ("projected_gravity", 0.02), ("joint_vel", 0.3)):
@@ -657,12 +658,19 @@ def _apply_real_bands(cfg):
 
 @configclass
 class Biped12HangStandS8ac4rEnvCfg(Biped12HangStandS8ac4qEnvCfg):
-    """S8ac4r(0913): S8ac4q(준정적 롤 램프 DR) + 실측 대역(_apply_real_bands). 램프 cap 은 3~12 Nm(50 % 지지의 접촉 한계 ≈17 Nm 안, 강성 0.3 배에서도 학습 가능)."""
+    """S8ac4r(0913): S8ac4q(준정적 롤 램프 DR) + 실측 대역(_apply_real_bands). 램프 cap 은 2~12 Nm(50 % 지지의 접촉 한계 ≈17 Nm 안, 강성 0.3 배에서도 학습 가능)."""
 
     def __post_init__(self):
         super().__post_init__()
         _apply_real_bands(self)
         self.events.hang_support_reset.params["ramp_cap_range"] = (2.0, 12.0)
+
+
+def _level_off(cfg):
+    """0913 감사: S8ac4 직계 후보는 hang_support_reset 의 수평 유지 토크(lvl_k 50~300)가 0912 수정(set+add) 이후 학습에 **실제로 걸린다**.
+    v5(학습 당시 미적용)·v6(S8ac4q 는 명시 OFF)과 조건을 맞추기 위해 끈다. v8·v9(0913 03~05시 학습)는 이 토크가 켜진 채 학습됨 → 결과에 교란 표기."""
+    p = cfg.events.hang_support_reset.params
+    p["level_gain_range"] = (0.0, 0.0); p["level_damp_range"] = (0.0, 0.0)
 
 
 @configclass
@@ -671,11 +679,12 @@ class Biped12HangStandS8ac4rnEnvCfg(Biped12HangStandS8ac4EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        _level_off(self)
         _apply_real_bands(self)
 
 def _apply_joint_play(cfg, pitch_deg=3.0, lat_deg=1.5, rng=(0.0, 1.0)):
     """0913 기계 유격 DR: 액추에이터를 DeadzonePD(명시적)로 교체. 유격 반폭 = 기준(피치 관절 pitch_deg, 횡 관절 lat_deg) × U(rng) env 별.
-    실측(0912 재배치): 피치 관절 1.5~3.7°, 횡 ≤0.9° → 기준을 실측 상한으로, 0 까지 포함(종전 강체와 연속)."""
+    실측(0912 재배치): 피치 관절 1.5~3.7°, 횡 ≤0.9° → 기준 피치 3.0°(실측 상한보다 약간 작음)·횡 1.5°(실측보다 큼, 여유), 0 까지 포함(종전 강체와 연속). 그룹(ak70/ankle_roll)별로 스케일이 독립 추출된다."""
     import math as _m
     from rl_walking.actuators_play import DeadzoneImplicitActuatorCfg
     acts = cfg.scene.robot.actuators
@@ -715,7 +724,7 @@ def _apply_real_noise_only(cfg):
 
 @configclass
 class Biped12HangStandS8ac4rqEnvCfg(Biped12HangStandS8ac4qEnvCfg):
-    """S8ac4rq(0913, 대안 후보): S8ac4q(램프 DR, cap 2~12) + 실측 잡음 대역만. 강성 DR(0.7~1.1)·IMU 편향 DR(±3.5°) 종전 유지 —
+    """S8ac4rq(0913, 대안 후보): S8ac4q(램프 DR, cap 2~12) + 실측 잡음 대역만. 강성 DR(0.7~1.1)·IMU 편향 DR(롤 ±3.5°·피치 ±4°) 종전 유지 —
     v6(S8ac4r) 가 A1(50 % 지지 램프, 강성 ×0.3) 에서 v5 보다 약하게 나온 경우의 분리 실험(강성 DR 확장이 원인인지)."""
 
     def __post_init__(self):
@@ -749,6 +758,7 @@ class Biped12HangStandS8ac4kEnvCfg(Biped12HangStandS8ac4EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        _level_off(self)
         self.events.actuator_gains.params["stiffness_distribution_params"] = (0.3, 1.1)
 
 def _apply_gravity_bands(cfg):
@@ -772,6 +782,7 @@ class Biped12HangStandS8ac4gEnvCfg(Biped12HangStandS8ac4EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        _level_off(self)
         _apply_gravity_bands(self)
 
 
@@ -781,6 +792,7 @@ class Biped12HangStandS8ac4kgEnvCfg(Biped12HangStandS8ac4kEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        _level_off(self)
         _apply_gravity_bands(self)
 
 @configclass
@@ -790,6 +802,7 @@ class Biped12HangStandS8ac4k5EnvCfg(Biped12HangStandS8ac4EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        _level_off(self)
         self.events.actuator_gains.params["stiffness_distribution_params"] = (0.5, 1.1)
 
 @configclass
@@ -798,6 +811,7 @@ class Biped12HangStandS8ac4k4EnvCfg(Biped12HangStandS8ac4EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        _level_off(self)
         self.events.actuator_gains.params["stiffness_distribution_params"] = (0.4, 1.1)
 
 
@@ -807,4 +821,5 @@ class Biped12HangStandS8ac4k6EnvCfg(Biped12HangStandS8ac4EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        _level_off(self)
         self.events.actuator_gains.params["stiffness_distribution_params"] = (0.6, 1.1)

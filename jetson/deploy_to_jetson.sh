@@ -37,6 +37,8 @@ log "[4/7] 어댑터·release_all selftest (저장소 사본)"
 $SSH "cd ~/humanoid_repo && python3 jetson/scripts/foot_force_adapter_node.py --selftest && python3 jetson/scripts/release_all.py --selftest | tail -1" || { log "selftest FAIL — 중단"; exit 1; }
 log "[5/7] ~/rl_calib/release_all.py 갱신 (백업 후 복사, 게이트 selftest)"
 $SSH "cd ~/humanoid_repo && { [ -f ~/rl_calib/release_all.py ] && cp ~/rl_calib/release_all.py ~/rl_calib/release_all.py.bak_\$(date +%m%d_%H%M); } ; cp jetson/scripts/release_all.py ~/rl_calib/release_all.py && python3 ~/rl_calib/release_all.py --selftest | tail -1" || { log "release_all 갱신 실패 — 중단"; exit 1; }
+log "[5c/7] ~/rl_calib/sensors_up.sh 갱신 (0913: 고장 패드 제외 파라미터·서명 추출 수정 — 백업 후 복사, 노드 재기동은 콘솔 '센서 기동' 에서)"
+$SSH "cd ~/humanoid_repo && { [ -f ~/rl_calib/sensors_up.sh ] && cp ~/rl_calib/sensors_up.sh ~/rl_calib/sensors_up.sh.bak_\$(date +%m%d_%H%M); } ; cp jetson/scripts/sensors_up.sh ~/rl_calib/sensors_up.sh && bash -n ~/rl_calib/sensors_up.sh && grep -c left_pad_bias ~/rl_calib/sensors_up.sh" || { log "sensors_up 갱신 실패 — 중단"; exit 1; }
 log "[5b/7] ~/rl_calib/boot_pose_check.py 갱신 (콘솔이 부르는 사본; △ 경고 판 — 허용치 8° 불변)"
 $SSH "cd ~/humanoid_repo && { [ -f ~/rl_calib/boot_pose_check.py ] && cp ~/rl_calib/boot_pose_check.py ~/rl_calib/boot_pose_check.py.bak_\$(date +%m%d_%H%M); } ; cp jetson/scripts/boot_pose_check.py ~/rl_calib/boot_pose_check.py && python3 -m py_compile ~/rl_calib/boot_pose_check.py && grep -c 'WARN' ~/rl_calib/boot_pose_check.py" || { log "boot_pose_check 갱신 실패 — 중단"; exit 1; }
 log "[6/7] 발압력 어댑터: sensors_up.sh 가 띄우는 경로의 사본을 저장소 판과 md5 대조 — 다르면 백업 후 갱신 (0912: 임계 200·고장 패드 bias 파라미터)"

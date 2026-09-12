@@ -67,7 +67,6 @@ parser.add_argument("--level_torque", action="store_true", help="힘 모델의 �
 parser.add_argument("--ramp_dr", action="store_true", help="태스크 env 의 준정적 롤 램프 DR(S8ac4q/S8ac4r 계열 ramp_rate_range)을 평가에서도 켠다. 기본 OFF — 0913 정정: 종전엔 S8ac4r env 평가에 램프 DR 이 그대로 섞여(2~12 Nm 무작위) v5 S8ac4 수치와 비교 불가였음")
 parser.add_argument("--two_point_d", type=float, default=None, help="앞뒤 2점 현수 후크 간격 d [m] 고정 (0913 승윤님: 줄은 몸통 앞·뒤 2점) — 팽팽한 동안 피치 구속 토크 cap=T·d/2. 기본 None=종전 단일 후크")
 parser.add_argument("--joint_play_deg", type=float, default=None, help="관절 기계 유격 반폭 [deg] (전 관절): 링크가 모터 ±play 안에서 자유(강성·감쇠 0) — 0912 재배치 실측 2~3°. 명시적 DeadzonePD 액추에이터로 교체(평가 전용)")
-parser.add_argument("--play_inside_damping", type=float, default=1.0, help="유격 안 링크 감쇠(kd 배수; 기어 마찰 근사). 0 = 완전 자유")
 parser.add_argument("--joint_play_lat_deg", type=float, default=None, help="횡 관절(hip_a·ankle_r) 유격 반폭 [deg] — --joint_play_deg 와 함께 쓰면 횡 관절만 이 값(실측: 횡 ≤0.9°, 피치 1.5~3.7°)")
 parser.add_argument("--backlash_deg", type=float, default=None, help="액션 항 명령측 백래시(히스테리시스) 반폭 고정 [deg] — 학습 DR 은 0.3~1.5°(S8ac4). 실측 유격 2~3° 를 명령측 모델로 넣었을 때의 감도(기계 유격 DeadzoneImplicit 와 대조). --nominal 뒤에 적용")
 parser.add_argument("--ankle_roll_kp_scale", type=float, default=None, help="발목 롤(ankle_roll 액추에이터 그룹)만 kp 스케일 (0913 §3.1: 롤의 4~6° 가 관절 엔코더에 안 보임 → 롤 DOF 실효 강성 저하 가설)")
@@ -248,7 +247,11 @@ if args_cli.joint_play_deg is not None:
                                                effort_limit_sim=getattr(_a, "effort_limit_sim", None), velocity_limit_sim=getattr(_a, "velocity_limit_sim", None),
                                                stiffness=_a.stiffness, damping=_a.damping, armature=getattr(_a, "armature", None), friction=getattr(_a, "friction", None),
                                                play_rad=_play_map(_a.joint_names_expr, float(args_cli.joint_play_deg), args_cli.joint_play_lat_deg))
-    print(f"[play] 관절 유격 ±{args_cli.joint_play_deg:.2f}° (횡 {args_cli.joint_play_lat_deg}) (DeadzoneImplicit 내재 드라이브 목표 이동, 그룹 {list(_acts)})")
+    print(f"[play] 관절 유격 ±{args_cli.joint_play_deg:.2f}° (횡 {args_cli.joint_play_lat_deg}) (DeadzoneImplicit 내재 드라이브 목표 이동, 그룹 {list(_acts)}; 유격 안 감쇠 = 내재 kd)")
+if args_cli.nominal:
+    for _k, _a in list(env_cfg.scene.robot.actuators.items()):   # 0913 감사: S8ac4rp 계열의 내장 유격 DR 도 명목에서 끔(고정 유격은 --joint_play_deg 로만)
+        if getattr(_a, "play_rad_range", None) is not None and args_cli.joint_play_deg is None:
+            _a.play_rad_range = None; _a.play_rad = 0.0; print(f"[nominal] 액추에이터 {_k} 유격 DR OFF")
 if args_cli.gain_scale is not None and getattr(env_cfg.events, "actuator_gains", None):
     _gs = float(args_cli.gain_scale)
     env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (_gs, _gs)
@@ -265,6 +268,7 @@ env = gym.make(args_cli.task, cfg=env_cfg)
 env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 uenv = env.unwrapped
 if args_cli.calib_fixed and args_cli.calib_fixed_action:
+    assert args_cli.nominal, "--calib_fixed_action 은 --nominal 과 함께만(DR ON 이면 무작위 편향 벡터 전체가 액션에도 빠져 의미가 달라짐 — 0913 감사)"
     # 0913: 진짜 영점 오차 = 관측 +b 이면서 명령은 −b (정책 프레임에서 일관). 액션 항의 최종 목표(슬루·LPF·백래시 뒤)에서 b 를 뺀다.
     _zt = uenv.action_manager.get_term("joint_pos")
     _zo = _zt.process_actions
@@ -403,14 +407,14 @@ class ContactPerturb:
             self.buf.append(c.clone())
             if len(self.buf) > 3:
                 p = self.buf.pop(0)
-        elif self.mode == "right0":             # 0913: 오른발(idx1) 접촉 비트 **상시 0** (실물 0912: 오른발 뒤바깥 패드 사망 + 바깥 모서리 하중 → 합 0 오판 모사)
-            p[:, 1] = 0.0
+        elif self.mode == "right0":             # 0913: 오른발 접촉 비트 **상시 0** — 이력 5×[L,R] 평탄화(폭 10, [old_L,old_R,…,new_L,new_R]) 라 오른발 열 전체(1::2)를 지운다
+            p[:, 1::2] = 0.0                    #   (0913 감사 정정: 종전 p[:,1] 은 가장 오래된 오른발 비트 1칸만 지워 사실상 무효였음 — cm_*/cm2_* 결과 무효)
         elif self.mode == "right0_after10":     # 0913: 10 s 뒤부터 오른발 상시 0 (안정 서기 뒤 오판 발생)
             if i >= 500:
-                p[:, 1] = 0.0
-        elif self.mode == "onefoot":            # 오른발(idx1) 2s 주기·앞 0.3s 0 오판 (실물 오른발 언로드 모사)
+                p[:, 1::2] = 0.0
+        elif self.mode == "onefoot":            # 오른발 2s 주기·앞 0.3s 0 오판 (실물 오른발 언로드 모사) — 0913 정정: 오른발 열 전체
             if (i % 100) < 15:
-                p[:, 1] = 0.0
+                p[:, 1::2] = 0.0
         elif self.mode == "chatter":            # 랜덤 단발 누락(양발 각 8%/스텝 0)
             p = p * (~self._rand(c.shape, 0.08)).float()
         elif self.mode == "realistic":          # 10Hz S&H + 지터 + 한발 짧은 누락(각 3%/스텝)
@@ -484,7 +488,7 @@ for i in range(STEPS):
             _r_prev = _stp["r"].clone()
             if "ramp_rate" in _stp:
                 _rd = _stp["ramp_rate"] * (_stp["t"] - _stp["ramp_start"]).clamp(min=0.0)
-                _ramp_prev = torch.where(_stp["ramp_cap"] >= 0, torch.minimum(_rd, _stp["ramp_cap"]), torch.maximum(_rd, _stp["ramp_cap"]))
+                _capm = _stp["ramp_cap"].abs(); _ramp_prev = torch.maximum(torch.minimum(_rd, _capm), -_capm)
         obs, _, dones, _ = env.step(a)
     st = uenv._hang
     term = uenv.termination_manager.terminated

@@ -320,11 +320,10 @@ def load_frame_map():
         _full = json.load(f)
     joints = _full.get("joints") or {}
     _mb = _full.get("imu_mount_bias_deg")
+    if _mb is not None and (not isinstance(_mb, dict) or not {"lat", "fwd"} <= set(_mb.keys())):
+        raise ValueError(f"하드웨어맵 imu_mount_bias_deg 형식 오류: {_mb!r} (dict, 키 lat·fwd 필수; 조용히 무시하지 않음 — 0913 감사)")
     if isinstance(_mb, dict):
-        _lat, _fwd = _mb.get("lat", 0.0), _mb.get("fwd", 0.0)
-        for _v in (_lat, _fwd):
-            if isinstance(_v, bool) or not isinstance(_v, (int, float)) or not math.isfinite(float(_v)) or abs(float(_v)) > IMU_MOUNT_BIAS_MAX_DEG:
-                raise ValueError(f"하드웨어맵 imu_mount_bias_deg 이상: {_mb!r} (유한 float, |v| ≤ {IMU_MOUNT_BIAS_MAX_DEG}° 필요)")
+        _lat, _fwd = _validate_imu_mount_bias(_mb)
         IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = float(_lat), float(_fwd)
         print(f"[FrameMap] IMU 장착 편향 보정 lat {float(_lat):+.2f}° fwd {float(_fwd):+.2f}° (정책 중력벡터에만 적용)")
     else:
@@ -374,6 +373,16 @@ def projected_gravity(quat_wxyz):
 #: 정책 관측(중력벡터)에만 적용한다 — 게이트·rp_deg 기록·콘솔 표시는 원시값 유지(대조 가능하도록).
 IMU_MOUNT_BIAS_DEG = [0.0, 0.0]
 IMU_MOUNT_BIAS_MAX_DEG = 5.0
+IMU_MOUNT_CORR_MIN_GZ = 0.3   # −g_z 가 이보다 작으면(기울기 > ~73°) 보정 생략
+
+
+def _validate_imu_mount_bias(mb):
+    """하드웨어맵 imu_mount_bias_deg dict → (lat, fwd) [deg]. 유한 float·|v| ≤ IMU_MOUNT_BIAS_MAX_DEG 아니면 ValueError."""
+    lat, fwd = mb.get("lat", 0.0), mb.get("fwd", 0.0)
+    for v in (lat, fwd):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(float(v)) or abs(float(v)) > IMU_MOUNT_BIAS_MAX_DEG:
+            raise ValueError(f"하드웨어맵 imu_mount_bias_deg 이상: {mb!r} (유한 float, |v| ≤ {IMU_MOUNT_BIAS_MAX_DEG}° 필요)")
+    return float(lat), float(fwd)
 
 
 def correct_gravity(g, bias_deg=None):
@@ -383,6 +392,8 @@ def correct_gravity(g, bias_deg=None):
     if not b or (abs(float(b[0])) < 1e-12 and abs(float(b[1])) < 1e-12):
         return g
     gx, gy, gz = (float(v) for v in g)
+    if -gz < IMU_MOUNT_CORR_MIN_GZ:      # 0913 감사: 기울기 ≥ ~73°(넘어짐)에선 (roll,pitch) 재구성이 반구를 접어 뒤집힌 자세가 직립처럼 보임 → 보정 생략(원시값)
+        return g
     roll = math.atan2(gy, -gz) - math.radians(float(b[0]))
     pitch = math.atan2(gx, -gz) - math.radians(float(b[1]))
     tx, ty = math.tan(pitch), math.tan(roll)
@@ -647,12 +658,15 @@ def _selftest_imu_mount():
     q_t = _q(-1.3 + 10.0, -0.6); g_t = correct_gravity(projected_gravity(q_t), rp_b)
     roll_t = math.degrees(math.atan2(g_t[1], -g_t[2]))
     assert abs(abs(roll_t) - 10.0) < 0.05, roll_t
-    try:
-        _bad = {"lat": 9.0, "fwd": 0.0}; _v = _bad["lat"]
-        assert not (abs(float(_v)) <= IMU_MOUNT_BIAS_MAX_DEG)
-    except AssertionError:
-        raise AssertionError("범위 검사 실패")
-    return f"편향 {rp_b[0]:+.2f}/{rp_b[1]:+.2f}° 보정 → (0,0,−1) 오차 <1e-4 · +10° 기울기 → {abs(roll_t):.2f}° · 한계 {IMU_MOUNT_BIAS_MAX_DEG}°"
+    for _bad in ({"lat": 9.0, "fwd": 0.0}, {"lat": float("nan"), "fwd": 0.0}, {"lat": True, "fwd": 0.0}, {"lat": "1.3", "fwd": 0.0}):
+        try:
+            _validate_imu_mount_bias(_bad); raise AssertionError(f"범위/타입 검사 미작동: {_bad}")
+        except ValueError:
+            pass
+    assert _validate_imu_mount_bias({"lat": 1.3, "fwd": -0.6}) == (1.3, -0.6)
+    # 큰 기울기(> ~73°)에선 보정 생략(원시값 그대로)
+    g_fall = (0.0, 0.95, -0.2); assert correct_gravity(g_fall, [1.3, -0.6]) == g_fall
+    return f"편향 {rp_b[0]:+.2f}/{rp_b[1]:+.2f}° 보정 → (0,0,−1) 오차 <1e-4 · +10° 기울기 → {abs(roll_t):.2f}° · 한계 {IMU_MOUNT_BIAS_MAX_DEG}° · 범위/타입 4종 거부 · 73° 초과 기울기 보정 생략"
 
 
 def _selftest_grav_gate():

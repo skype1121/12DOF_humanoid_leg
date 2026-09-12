@@ -61,7 +61,7 @@ V6B_BASELINE = {"slope": 4.06, "lean_end": 19.2, "standing_s": 1.4}
 def grav_to_angles(quat_wxyz):
     """quat(wxyz) → (전방기울임°, 좌우기울임°, 총기울기°).
 
-    브리지와 동일한 projected-gravity 식을 쓴다 (rl_bridge_node.tick).
+    브리지와 동일한 projected-gravity 식을 쓴다 (rl_bridge_node.projected_gravity — 원시값; tick 은 0913 부터 하드웨어맵 imu_mount_bias_deg 가 있으면 장착 편향을 뺀 값을 정책에 준다. 여기서는 원시값이 의도).
     gx>0 = 앞으로 기울어짐 (y축 +a 회전에서 gx=sin(a) — 실물 IMU 규약과 일치).
     """
     w, x, y, z = quat_wxyz

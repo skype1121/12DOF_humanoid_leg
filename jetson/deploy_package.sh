@@ -41,7 +41,7 @@ for f in jetson/scripts/rl_bridge_node.py jetson/scripts/analyze_fall.py jetson/
          jetson/scripts/operator_console.py docs/stand_v18_7차_실행카드.md docs/hang_to_stand_실물절차.md docs/A1_stand_hang_v5_실행카드.md \
          jetson/scripts/console_state.py jetson/scripts/console_demo.py jetson/scripts/console_ui.html docs/operator_console_renewal.md \
          jetson/scripts/stiffness_log.py \
-         jetson/scripts/foot_force_adapter_node.py jetson/scripts/release_all.py jetson/scripts/zero_kinematic_check.py \
+         jetson/scripts/foot_force_adapter_node.py jetson/scripts/sensors_up.sh jetson/scripts/release_all.py jetson/scripts/zero_kinematic_check.py \
          jetson/scripts/cop_from_pads.py jetson/scripts/boot_pose_check.py \
          jetson/calib_data/sim_default_stand_targets_20260727.json; do   # selftest 수치 앵커 대조 파일
   mkdir -p "$STAGE/$(dirname "$f")"; cp "$f" "$STAGE/$f"

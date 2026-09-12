@@ -152,7 +152,7 @@ def _apply(env, st, ids, asset_cfg):
     # 0912 준정적 롤 토크 램프: τx += clip(rate·(t−start), 0, cap) — 실물의 느린(각속도 <5 °/s) 횡 이탈 재현 시도 (가정 외란, 실측 아님)
     _dt = (st["t"][ids] - st["ramp_start"][ids]).clamp(min=0.0)
     ramp = st["ramp_rate"][ids] * _dt
-    ramp = torch.where(st["ramp_cap"][ids] >= 0, torch.minimum(ramp, st["ramp_cap"][ids]), torch.maximum(ramp, st["ramp_cap"][ids]))   # 부호에 맞춰 cap
+    _capm = st["ramp_cap"][ids].abs(); ramp = torch.maximum(torch.minimum(ramp, _capm), -_capm)   # 0913 정정: 크기 기준 클램프(rate·cap 부호가 달라도 무제한 토크 방지)
     tau = tau + torch.stack([ramp, torch.zeros_like(ramp), torch.zeros_like(ramp)], dim=-1)
     # 0913 앞뒤 2점 현수 피치 구속 (tp_d>0 일 때만; cap = Fz·d/2 — 줄이 풀리면(Fz→0) 자동 소멸)
     _ty = _two_point_pitch_torque(pgv, w, st["tp_kp"][ids], st["tp_kd"][ids], Fz * st["tp_d"][ids] * 0.5)

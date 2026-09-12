@@ -34,7 +34,7 @@ kill_verified() {  # $1=pid $2=서명(실행파일 basename) — argv[0..1] 위�
 }
 
 for name in "${!NODES[@]}"; do
-  sig=$(basename "${NODES[$name]##* }")
+  sig=$(basename "$(echo "${NODES[$name]}" | awk '{print ($1=="python3")?$2:$1}')")   # 0913 감사: 마지막 토큰 방식은 --ros-args 인자가 붙으면 파라미터 문자열을 잡음 → 실행파일/스크립트 토큰
   # 1) PID파일 기반
   if [ -f ~/run/"$name".pid ]; then
     kill_verified "$(cat ~/run/"$name".pid)" "$sig"
@@ -50,7 +50,7 @@ done
 for i in 1 2 3 4 5 6 7 8 9 10; do
   alive=0
   for name in "${!NODES[@]}"; do
-    sig=$(basename "${NODES[$name]##* }")
+    sig=$(basename "$(echo "${NODES[$name]}" | awk '{print ($1=="python3")?$2:$1}')")   # 0913 감사: 마지막 토큰 방식은 --ros-args 인자가 붙으면 파라미터 문자열을 잡음 → 실행파일/스크립트 토큰
     pgrep -f "$sig" > /dev/null 2>&1 && alive=1
   done
   [ "$alive" = 0 ] && break

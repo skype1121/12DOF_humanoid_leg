@@ -42,7 +42,11 @@ class DeadzonePDActuator(IdealPDActuator):
 
     def reset(self, env_ids: Sequence[int]):
         super().reset(env_ids)
-        if self._rng_scale is not None and env_ids is not None and len(env_ids) > 0:
+        if self._rng_scale is None or env_ids is None:
+            return
+        if isinstance(env_ids, slice):          # Isaac Lab Articulation.reset(env_ids=None) → slice(None) (0913 감사)
+            self._resample(None); return
+        if len(env_ids) > 0:
             ids = torch.as_tensor(env_ids, device=self._play.device, dtype=torch.long)
             self._resample(ids)
 
@@ -101,7 +105,11 @@ class DeadzoneImplicitActuator(ImplicitActuator):
 
     def reset(self, env_ids: Sequence[int]):
         super().reset(env_ids)
-        if self._rng_scale is not None and env_ids is not None and len(env_ids) > 0:
+        if self._rng_scale is None or env_ids is None:
+            return
+        if isinstance(env_ids, slice):          # Isaac Lab Articulation.reset(env_ids=None) → slice(None) (0913 감사)
+            self._resample(None); return
+        if len(env_ids) > 0:
             ids = torch.as_tensor(env_ids, device=self._play.device, dtype=torch.long)
             self._resample(ids)
 

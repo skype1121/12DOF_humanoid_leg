@@ -6,12 +6,12 @@ df95d2f15417fa02eb4315a3daf55c4f  ./docs/hang_to_stand_실물절차.md
 0e670b805fd077b902e8d6e066c84833  ./jetson/calib_data/sim_default_stand_targets_20260727.json
 8ad18b0e7be36184e009d92b4b31b7fb  ./jetson/scripts/analyze_fall.py
 cf24508e46fc65b88cd7ab3287f4273d  ./jetson/scripts/boot_pose_check.py
-f7510f256b75e21c1bf510f0b2b098ca  ./jetson/scripts/console_demo.py
+63db208b408be595b33c0becd1f9a10c  ./jetson/scripts/console_demo.py
 fbf20698d79d48fe87972196e793b660  ./jetson/scripts/console_state.py
-c4f14b701ad6fb68697c99163db5fbf2  ./jetson/scripts/console_ui.html
+2a82422389f3128fcdeeffb63e395e25  ./jetson/scripts/console_ui.html
 c16ae314f533e6b542433a71c8a72708  ./jetson/scripts/cop_from_pads.py
-5d99e9cfbbf02f2b7fd292fb68ddaa51  ./jetson/scripts/foot_force_adapter_node.py
-6cd2490b6cd2cfda39a4f0288e5dee5f  ./jetson/scripts/operator_console.py
+b6c6255817a7f2cd2c804980259556a6  ./jetson/scripts/foot_force_adapter_node.py
+bb2cc002cb5f3a71770521451be2559d  ./jetson/scripts/operator_console.py
 0dd26fc3c7584343ade75e4801a4cd95  ./jetson/scripts/posture_probe.py
 931bd59d930071755e973c0d936bed1e  ./jetson/scripts/release_all.py
 4ae6099fae9bc3c0a9fa2b8735ff3128  ./jetson/scripts/rl_bridge_node.py

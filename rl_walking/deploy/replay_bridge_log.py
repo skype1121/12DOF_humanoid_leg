@@ -46,6 +46,7 @@ def main():
     ap.add_argument("--contact_hold", action="store_true", help="접촉 입력을 항상 (1,1) 로 유지")
     ap.add_argument("--gyro_scale", type=float, default=1.0, help="자이로 입력 배율")
     ap.add_argument("--grav_roll_deg", type=float, default=0.0, help="투영중력에 롤 오프셋[deg] 추가(IMU 장착 편향 가정)")
+    ap.add_argument("--qvel_scale", type=float, default=1.0, help="관절속도 입력 배율(실물 관절속도 관측이 시뮬보다 작을 때의 출력 민감도)")
     ap.add_argument("--window", type=str, default="", help="민감도 집계 구간 't0,t1' [s, 첫 틱 기준]")
     a = ap.parse_args()
     from rl_walking.deploy.policy_runner_stage4 import PolicyRunnerStage4
@@ -60,7 +61,7 @@ def main():
     runner.reset()
     n = len(ticks); dobs = np.zeros(n); dact = np.zeros(n); worst_idx = np.zeros(n, dtype=int)
     dim = None
-    perturbed = a.contact_hold or a.gyro_scale != 1.0 or a.grav_roll_deg != 0.0
+    perturbed = a.contact_hold or a.gyro_scale != 1.0 or a.grav_roll_deg != 0.0 or a.qvel_scale != 1.0
     act_rec = np.zeros((n, 12)); act_new = np.zeros((n, 12)); tt = np.zeros(n)
     for i, t in enumerate(ticks):
         grav = projected_gravity(t["quat_wxyz"])
@@ -71,7 +72,8 @@ def main():
         gyro = [v * a.gyro_scale for v in t["gyro_rad_s"]]
         contact = [1.0, 1.0] if a.contact_hold else t["contact"]
         cmd = tuple(t.get("cmd") or (0.0, 0.0, 0.0))
-        runner.step(gyro, grav, cmd, t["qpos_rad"], t["qvel_rad_s"], contact)
+        qvel = [v * a.qvel_scale for v in t["qvel_rad_s"]]
+        runner.step(gyro, grav, cmd, t["qpos_rad"], qvel, contact)
         act_rec[i] = np.asarray(t["raw_action"], dtype=np.float64); act_new[i] = np.asarray(runner.last_action, dtype=np.float64); tt[i] = t["timestamp"] - ticks[0]["timestamp"]
         rec_obs = np.asarray(t["obs"], dtype=np.float64); my_obs = np.asarray(runner.last_obs, dtype=np.float64)
         if dim is None:
@@ -97,7 +99,7 @@ def main():
             w0, w1 = (float(x) for x in a.window.split(",")); sel = (tt >= w0) & (tt <= w1)
         d = (act_new - act_rec) * 0.25 * 57.29578   # 목표각 환산 [deg]
         lat = [2, 3, 4, 5, 10, 11]
-        print(f"# 출력 민감도(계약 검증 아님): contact_hold={a.contact_hold} gyro_scale={a.gyro_scale} grav_roll_deg={a.grav_roll_deg} 구간 {a.window or '전체'} ({int(sel.sum())} 틱)")
+        print(f"# 출력 민감도(계약 검증 아님): contact_hold={a.contact_hold} gyro_scale={a.gyro_scale} qvel_scale={a.qvel_scale} grav_roll_deg={a.grav_roll_deg} 구간 {a.window or '전체'} ({int(sel.sum())} 틱)")
         print(f"  |Δ목표| deg: 전체 관절 최대 {np.abs(d[sel]).max():.2f}, 중앙 {np.median(np.abs(d[sel])):.3f} | 좌우축(hip_a/hip_r/ankle_r) 최대 {np.abs(d[sel][:, lat]).max():.2f}")
         print("  관절별 최대 |Δ목표| deg: " + " ".join(f"{np.abs(d[sel][:, k]).max():.2f}" for k in range(12)))
         return 0

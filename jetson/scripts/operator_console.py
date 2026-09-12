@@ -80,6 +80,31 @@ def now():
     return time.time()
 
 
+def pad_ints(value):
+    """어댑터의 [4] 채널 카운트 → [4] int, 형식이 어긋나면 None (0으로 위장하지 않는다).
+
+    0913 추가. **진단·화면 전용** — 하중/CoP/체중 지지율이 아니라 "이 채널이
+    눌렸는가·살아있는가"를 사람이 보기 위한 값이다. 접촉 판정에는 쓰이지 않는다.
+    """
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    out = []
+    for v in value:
+        if not finite(v):
+            return None
+        out.append(int(v))
+    return out
+
+
+def pad_bools(value):
+    """어댑터의 [4] bool 마스크 → [4] bool, 형식이 어긋나면 None (진단·화면 전용)."""
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    if any(type(v) is not bool for v in value):
+        return None
+    return list(value)
+
+
 # ---------------------------------------------------------------------------
 # 세션 레코더 — 모터 전원 이후 전 구간을 하나의 타임라인으로 남긴다
 # ---------------------------------------------------------------------------
@@ -184,6 +209,10 @@ class SessionLog:
                 "sensor_contact": view["foot"].get("contact"),
                 "foot_raw_sum": view["foot"].get("raw_sum"),
                 "foot_pads_on": view["foot"].get("pads_on"),
+                # 0913: 채널별 보정 카운트·죽은 채널 후보 — "착지 뒤 살아있는 채널이
+                # 실제로 눌렸는가"를 사후에 확인하기 위한 기록. 하중·CoP 아님.
+                "foot_pads_counts": view["foot"].get("pads_counts"),
+                "foot_dead_mask": view["foot"].get("dead_mask"),
                 "stage8_running": view["stage8"].get("running"),
                 "stage8_command_seq": view["stage8"].get("command_seq"),
                 "stage8_last_command": view["stage8"].get("last_command"),
@@ -517,6 +546,21 @@ class Telemetry:
         # contact from an uncalibrated force scale.
         if not contact_valid:
             fresh["foot"] = False
+        # 0913 추가(진단·화면 전용, 키 추가만): 채널별 카운트·눌림·죽은 채널.
+        # 접촉 판정(contact)·신선도·게이트는 위에서 이미 끝났고 아래 값들은 그것을
+        # 바꾸지 않는다. 어댑터가 구버전이면 전부 None — 0 으로 위장하지 않는다.
+        pads_counts = [pad_ints(foot.get("left_pads_counts")),
+                       pad_ints(foot.get("right_pads_counts"))]
+        pads_on_mask = [pad_bools(foot.get("left_pads_on_mask")),
+                        pad_bools(foot.get("right_pads_on_mask"))]
+        dead_raw = foot.get("dead_mask")
+        dead_mask = None
+        if isinstance(dead_raw, (list, tuple)) and len(dead_raw) == 2:
+            rows = [pad_bools(r) for r in dead_raw]
+            dead_mask = rows if all(r is not None for r in rows) else None
+        dead_note = foot.get("dead_note")
+        if not isinstance(dead_note, str) or not dead_note.strip():
+            dead_note = None
         out["foot"] = {
             "left_n": round(ln, 1), "right_n": round(rn, 1),
             "total_n": round(ln + rn, 1),
@@ -524,6 +568,11 @@ class Telemetry:
             "contact": contacts if contact_valid and fresh["foot"] else None,
             "raw_sum": [foot.get("left_raw_sum"), foot.get("right_raw_sum")],
             "pads_on": [foot.get("left_pads_on"), foot.get("right_pads_on")],
+            # 채널별 진단 — 값이 없으면 None (없음과 0 을 구분해서 보여주기 위함)
+            "pads_counts": pads_counts if any(v is not None for v in pads_counts) else None,
+            "pads_on_mask": pads_on_mask if any(v is not None for v in pads_on_mask) else None,
+            "dead_mask": dead_mask,
+            "dead_note": dead_note,
             "age": round(n - t["foot"], 2) if t["foot"] else None,
             "reason": "패드 접촉 필드 없음 — 어댑터 버전 확인" if not contact_valid else (None if fresh["foot"] else "접촉 데이터 오래됨/비유한 값"),
         }

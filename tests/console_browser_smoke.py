@@ -43,6 +43,13 @@ def main():
                 page.wait_for_function("k => state.trial.completed.includes(k)", arg=key)
 
         flow()
+        # 0913: 패드 8칸 미니 표 — 값·눌림(초록)·죽은 채널(회색 빗금 + 死) 이 실제로 그려지는가
+        assert "하중·CoP 아님" in page.locator(".padWarn").inner_text()
+        assert "620" in page.locator("#pad-L0").inner_text(), page.locator("#pad-L0").inner_text()
+        assert "on" in (page.locator("#pad-L0").get_attribute("class") or "")
+        assert "dead" in (page.locator("#pad-L3").get_attribute("class") or "")
+        assert "死" in page.locator("#pad-L3").inner_text()
+        assert page.evaluate("state.foot.pads_counts[0].length") == 4
         assert page.evaluate("state.trial.measurement.state") == "waiting"
         action("op_slack_done")
         page.wait_for_function("state.trial.measurement.elapsed >= 5", timeout=10000)

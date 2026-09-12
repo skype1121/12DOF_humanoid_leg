@@ -6,9 +6,15 @@
 출력: /humanoid/foot_force (std_msgs/String, 입력과 동일 레이트):
   {"timestamp", "left_n", "right_n", "left_raw_sum", "right_raw_sum",
    "left_contact", "right_contact", "left_pads_on", "right_pads_on",
+   "left_pads_counts": [4 int], "right_pads_counts": [4 int],
+   "left_pads_on_mask": [4 bool], "right_pads_on_mask": [4 bool],
    "calibrated": true, "dead_mask": [[4 bool],[4 bool]], "dead_note": str}
   dead_mask/dead_note 는 **계측 전용 진단**이다 (0912 추가). 접촉 판정·임계·
   pad bias 동작은 이 진단과 무관하게 그대로다 — 소비측은 무시해도 된다.
+  *_pads_counts/*_pads_on_mask 도 **채널별 진단·화면 전용**이다 (0913 추가).
+  counts 는 채널별 (원카운트 − pad bias), 음수는 0 — **하중·CoP 가 아니라**
+  "이 채널이 눌렸는가/살아있는가"를 눈으로 보기 위한 값이다. on_mask 는
+  기존 left_pads_on/left_contact 과 **같은 판정 리스트**에서 파생하므로 어긋날 수 없다.
 
 변환: left_n = NEWTON_PER_COUNT × max(0, sum(left 카운트) − LEFT_BIAS_COUNTS),
 우측 동일. "calibrated": true = 실측 보정 완료 (2026-08-02 자립 스탠딩 보정).
@@ -220,6 +226,11 @@ def pressure_to_foot_force(raw, newton_per_count,
         raise ValueError("pad bias 길이 오류 (4 필요)")
     l_on = [int(int(v) - float(b) > pad_contact_counts) for v, b in zip(left, lpb)]
     r_on = [int(int(v) - float(b) > pad_contact_counts) for v, b in zip(right, rpb)]
+    # 0913: 채널별 보정 카운트(진단·화면 전용). 접촉 판정은 위 l_on/r_on 이 단독으로
+    # 끝냈고 아래 두 줄은 그 결과를 바꾸지 않는다. 음수는 0 으로 바닥 처리한다
+    # (bias 로 판정 제외한 채널은 0 으로 보이고, 그 사실은 dead_note 가 따로 알린다).
+    l_counts = [int(max(0.0, int(v) - float(b))) for v, b in zip(left, lpb)]
+    r_counts = [int(max(0.0, int(v) - float(b))) for v, b in zip(right, rpb)]
     return {
         "timestamp": float(raw["timestamp"]),
         "left_n": newton_per_count * max(0.0, left_sum - left_bias),
@@ -231,6 +242,12 @@ def pressure_to_foot_force(raw, newton_per_count,
         "right_contact": bool(any(r_on)),
         "left_pads_on": int(sum(l_on)),
         "right_pads_on": int(sum(r_on)),
+        # 0913 추가(진단·화면 전용, 키 추가만): 채널별 보정 카운트와 채널별 눌림.
+        # 눌린 패드 수·카운트를 하중 비율로 읽지 말 것 — 접촉 여부·채널 생사 확인용.
+        "left_pads_counts": l_counts,
+        "right_pads_counts": r_counts,
+        "left_pads_on_mask": [bool(x) for x in l_on],
+        "right_pads_on_mask": [bool(x) for x in r_on],
         "calibrated": True,
     }
 
@@ -447,8 +464,54 @@ def selftest():
     assert err2 is not None and warn2 is None and s2 is s, (err2, warn2)
     assert bad_o["dead_mask"] == [[False] * 4, [False] * 4] and bad_o["dead_note"].startswith("diag 오류"), bad_o
 
+    # ─────── 7) 채널별 카운트·눌림 (0913 추가, 진단·화면 전용 — 접촉 계약 불변) ───────
+    LEGACY = ("timestamp", "left_n", "right_n", "left_raw_sum", "right_raw_sum",
+              "left_contact", "right_contact", "left_pads_on", "right_pads_on", "calibrated")
+    NEW = ("left_pads_counts", "right_pads_counts", "left_pads_on_mask", "right_pads_on_mask")
+    # 7a) 0912 실물 상황 그대로: 왼 index 2 고착(587 카운트)을 bias 5000 으로 판정 제외.
+    #     공중에서도 false positive 가 생기지 않고, 화면에도 0 으로 보여야 한다.
+    args = (NEWTON_PER_COUNT, 0.0, 0.0, PAD_CONTACT_COUNTS, [0, 0, 5000, 0], None)
+    air_raw = {"timestamp": 2.0, "left": [0, 3, 587, 0], "right": [0, 0, 0, 0]}
+    air = pressure_to_foot_force(air_raw, *args)
+    assert air["left_pads_counts"] == [0, 3, 0, 0], air["left_pads_counts"]
+    assert air["left_pads_on_mask"] == [False] * 4 and air["left_contact"] is False, air
+    land_raw = {"timestamp": 2.1, "left": [420, 150, 587, 900], "right": [0, 0, 250, 30]}
+    land = pressure_to_foot_force(land_raw, *args)
+    assert land["left_pads_counts"] == [420, 150, 0, 900], land["left_pads_counts"]
+    assert land["left_pads_on_mask"] == [True, False, False, True], land["left_pads_on_mask"]
+    assert land["right_pads_on_mask"] == [False, False, True, False], land["right_pads_on_mask"]
+    # 7b) 새 키는 기존 판정 리스트에서 파생될 뿐 — 개수·접촉과 어긋날 수 없다
+    for raw7 in (air_raw, land_raw,
+                 {"timestamp": 1.0, "left": [201, 200, 199, 0], "right": [1000, 0, 0, 0]},
+                 {"timestamp": 2.0, "left": [900, 900, 900, 900], "right": [900, 0, 900, 0]}):
+        o7 = pressure_to_foot_force(raw7, *args)
+        for side in ("left", "right"):
+            m, cnt = o7[side + "_pads_on_mask"], o7[side + "_pads_counts"]
+            assert len(m) == 4 and all(type(v) is bool for v in m), m
+            assert len(cnt) == 4 and all(type(v) is int and v >= 0 for v in cnt), cnt
+            assert sum(m) == o7[side + "_pads_on"], (side, m, o7)
+            assert any(m) == o7[side + "_contact"], (side, m, o7)
+    # 7c) 음수 바닥: pad bias 이하 카운트는 음수가 아니라 0
+    o7 = pressure_to_foot_force({"timestamp": 3.0, "left": [100, 0, 0, 0], "right": [0, 0, 0, 0]},
+                                NEWTON_PER_COUNT, 0.0, 0.0, PAD_CONTACT_COUNTS, [700, 0, 0, 0], None)
+    assert o7["left_pads_counts"] == [0, 0, 0, 0], o7["left_pads_counts"]
+    # 7d) '키 추가만' — 기존 10키 그대로 + 신규 4키, JSON 왕복에서 타입 보존
+    assert set(LEGACY) | set(NEW) == set(land), set(land) ^ (set(LEGACY) | set(NEW))
+    rt = json.loads(json.dumps(land))
+    for k in LEGACY + NEW:
+        assert rt[k] == land[k], (k, rt[k], land[k])
+    assert all(isinstance(v, bool) for v in rt["left_pads_on_mask"] + rt["right_pads_on_mask"])
+    assert all(isinstance(v, int) and not isinstance(v, bool)
+               for v in rt["left_pads_counts"] + rt["right_pads_counts"])
+    # 7e) 죽은 채널 진단 경로와 독립 — 새 키가 있어도 dead_mask/dead_note 부착은 그대로
+    o7 = dict(land)
+    _s7, _w7, e7 = attach_dead_diag(o7, new_dead_state(), land_raw)
+    assert e7 is None and "dead_mask" in o7 and "dead_note" in o7, o7
+    assert o7["left_pads_counts"] == land["left_pads_counts"], o7["left_pads_counts"]
+
     print("[selftest] foot_force_adapter: 합산·뉴턴 스케일·손상입력 거부·패드 단위 접지(하나라도 눌리면 True, 예압 상쇄)·임계 200·고장 패드 제외"
-          " + 죽은 채널 진단(정상/죽음/전채널0=무접촉/bias 제외/무변화 대조/전이 1회/간극·역행/순수성/접촉 판정 불변) ALL PASS")
+          " + 죽은 채널 진단(정상/죽음/전채널0=무접촉/bias 제외/무변화 대조/전이 1회/간극·역행/순수성/접촉 판정 불변)"
+          " + 채널별 카운트·눌림(0912 고착패드 재현/판정 파생 일치/음수 바닥/키 추가만/진단 독립) ALL PASS")
     return 0
 
 

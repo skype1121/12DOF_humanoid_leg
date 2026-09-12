@@ -80,6 +80,10 @@ class Demo:
         procs = copy.deepcopy(self.procs)
         if procs.get("hang_stand", {}).get("alive"):
             procs["hang_stand"]["hold"] = {"phase": self.phase, "kp": self.kp, "ts": stamp}
+        # 접촉 시 '살아있는 채널 2개만' 눌린 합성값 — pads_on(=2) 과 어긋나지 않게 만든다
+        pads = [[620, 540, 0, 0] if self.contact[0] else [0, 3, 0, 0],
+                [700, 480, 0, 0] if self.contact[1] else [0, 0, 0, 0]]
+        mask = [[v > 200 for v in row] for row in pads]
         joints = {f"joint_{i+1:02}": {"feedback_valid": True, "feedback_stale": False, "feedback_age_sec": 0.02,
                   "latest_actual_deg": 0.2, "baseline_deg": 0 if self.baseline else None,
                   "commanded_relative_deg": 0, "desired_relative_deg": 0}
@@ -89,7 +93,14 @@ class Demo:
                 "received": {k: stamp if v else 0 for k, v in fresh.items()}, "fresh": fresh,
                 "imu": {"fwd": 1.2, "lat": -0.4, "tilt": 1.3, "gyro": [0.01, 0.02, 0], "age": 0} if self.sensors else None,
                 "foot": {"left_n": 0, "right_n": 0, "pct": 0, "contact": list(self.contact) if self.sensors else None,
-                         "pads_on": [int(x)*2 for x in self.contact], "raw_sum": [800, 900], "age": 0 if self.sensors else None},
+                         "pads_on": [int(x)*2 for x in self.contact], "raw_sum": [800, 900], "age": 0 if self.sensors else None,
+                         # 0913 합성: 채널별 카운트·눌림·죽은 채널. 0912 실물 모양을 본떠
+                         # 왼[2]는 bias 판정제외(0), 왼[3]은 dead 후보로 둔다 (하중 아님).
+                         "pads_counts": pads if self.sensors else None,
+                         "pads_on_mask": mask if self.sensors else None,
+                         "dead_mask": [[False, False, False, True], [False] * 4] if self.sensors else None,
+                         "dead_note": ("dead 후보 L3 / 판정제외(bias) L2 — 계측용, 접촉 판정 불변"
+                                       if self.sensors else None)},
                 "stage8": {"armed": self.armed, "running": self.running, "waiting": self.waiting,
                            "holding": self.holding, "hold_joint_count": 12 if self.holding else 0,
                            "baseline": self.baseline, "feedback_ok": stage, "last_command": self.command,

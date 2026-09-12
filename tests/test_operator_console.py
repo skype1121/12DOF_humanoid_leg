@@ -90,6 +90,56 @@ class ConsoleTests(unittest.TestCase):
         self.assertFalse(telemetry.view()["fresh"]["foot"])
         self.assertIsNone(telemetry.view()["foot"]["contact"])
 
+    def test_pad_channel_keys_flow_from_adapter_to_console(self):
+        """0913: 어댑터 채널별 출력이 콘솔 foot dict 로 그대로 흐르는가 (현장 확인 1순위).
+
+        0912 실물 상황 재현 — 왼[2] 고착 패드는 bias 5000 으로 판정 제외, 살아있는
+        왼[0]/왼[3]만 눌림. 접촉 계약(contact/pads_on)은 이 추가로 바뀌지 않는다.
+        """
+        from jetson.scripts import foot_force_adapter_node as ffa
+        bias = [0.0, 0.0, 5000.0, 0.0]
+        raw = {"timestamp": c.now(), "left": [420, 150, 587, 900], "right": [0, 0, 250, 30]}
+        out = ffa.pressure_to_foot_force(raw, ffa.NEWTON_PER_COUNT, 0.0, 0.0,
+                                         ffa.PAD_CONTACT_COUNTS, bias, None)
+        _state, _warn, err = ffa.attach_dead_diag(out, ffa.new_dead_state(), raw,
+                                                  ffa.PAD_CONTACT_COUNTS, bias, None)
+        self.assertIsNone(err)
+        telemetry = c.Telemetry()
+        telemetry.receive("foot", out)
+        foot = telemetry.view()["foot"]
+        self.assertEqual(foot["pads_counts"], [[420, 150, 0, 900], [0, 0, 250, 30]])
+        self.assertEqual(foot["pads_on_mask"], [[True, False, False, True],
+                                                [False, False, True, False]])
+        self.assertEqual(foot["dead_mask"], [[False] * 4, [False] * 4])
+        self.assertIn("판정제외(bias) L2", foot["dead_note"])
+        self.assertEqual(foot["contact"], [True, True])
+        self.assertEqual(foot["pads_on"], [2, 1])
+        json.dumps(c.json_safe(foot), allow_nan=False)
+
+    def test_missing_or_malformed_pad_channels_are_none_not_zero(self):
+        telemetry = c.Telemetry()
+        base = {"timestamp": c.now(), "left_contact": True, "right_contact": False}
+        telemetry.receive("foot", base)                      # 구버전 어댑터: 새 키 없음
+        foot = telemetry.view()["foot"]
+        self.assertEqual(foot["contact"], [True, False])     # 접촉 계약은 그대로
+        for key in ("pads_counts", "pads_on_mask", "dead_mask", "dead_note"):
+            self.assertIsNone(foot[key], key)
+        telemetry.receive("foot", dict(
+            base, timestamp=c.now(), left_pads_counts=[1, 2, 3],
+            right_pads_counts=[0, 0, 0, float("nan")], left_pads_on_mask=[1, 0, 0, 0],
+            right_pads_on_mask=[True] * 4, dead_mask=[[False] * 4], dead_note="   "))
+        foot = telemetry.view()["foot"]
+        self.assertIsNone(foot["pads_counts"])               # 길이 3·NaN 은 0 으로 위장하지 않는다
+        self.assertEqual(foot["pads_on_mask"], [None, [True] * 4])   # 1/0 은 bool 계약 아님
+        self.assertIsNone(foot["dead_mask"])                 # [[4]] 한 발만 = 형식 오류
+        self.assertIsNone(foot["dead_note"])
+        self.assertEqual(foot["contact"], [True, False])
+        self.demo.act("sensors", {})                         # --demo 화면도 새 키를 낸다
+        self.demo.act("op_touchdown", {})
+        demo_foot = c.console_snapshot()["foot"]
+        self.assertEqual([sum(m) for m in demo_foot["pads_on_mask"]], demo_foot["pads_on"])
+        self.assertEqual([len(row) for row in demo_foot["pads_counts"]], [4, 4])
+
     def test_nested_takeover_contract_and_bad_baseline(self):
         telemetry = c.Telemetry()
         telemetry.receive("status", {"timestamp": c.now(), "takeover": {"waiting": True, "holding": False},

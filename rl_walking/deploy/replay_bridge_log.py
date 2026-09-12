@@ -42,6 +42,11 @@ def main():
     ap.add_argument("--gait_freq", type=float, default=1.1, help="v5=1.1 (CKPT_GAIT_FREQ), 그 외 1.4")
     ap.add_argument("--backend", default="auto"); ap.add_argument("--max_ticks", type=int, default=0)
     ap.add_argument("--tol_obs", type=float, default=2e-3); ap.add_argument("--tol_act", type=float, default=2e-3)
+    # 0912 출력 민감도 검사(낙상 방지 증명 아님): 기록 입력을 바꿔 정책 출력이 얼마나 달라지는지
+    ap.add_argument("--contact_hold", action="store_true", help="접촉 입력을 항상 (1,1) 로 유지")
+    ap.add_argument("--gyro_scale", type=float, default=1.0, help="자이로 입력 배율")
+    ap.add_argument("--grav_roll_deg", type=float, default=0.0, help="투영중력에 롤 오프셋[deg] 추가(IMU 장착 편향 가정)")
+    ap.add_argument("--window", type=str, default="", help="민감도 집계 구간 't0,t1' [s, 첫 틱 기준]")
     a = ap.parse_args()
     from rl_walking.deploy.policy_runner_stage4 import PolicyRunnerStage4
     ticks, stops = load(a.bb)
@@ -55,10 +60,19 @@ def main():
     runner.reset()
     n = len(ticks); dobs = np.zeros(n); dact = np.zeros(n); worst_idx = np.zeros(n, dtype=int)
     dim = None
+    perturbed = a.contact_hold or a.gyro_scale != 1.0 or a.grav_roll_deg != 0.0
+    act_rec = np.zeros((n, 12)); act_new = np.zeros((n, 12)); tt = np.zeros(n)
     for i, t in enumerate(ticks):
         grav = projected_gravity(t["quat_wxyz"])
+        if a.grav_roll_deg:
+            # base 프레임 x 축(전방) 둘레로 grav 를 회전 = 롤 편향 주입
+            th = np.radians(a.grav_roll_deg); gy, gz = grav[1], grav[2]
+            grav = (grav[0], gy * np.cos(th) - gz * np.sin(th), gy * np.sin(th) + gz * np.cos(th))
+        gyro = [v * a.gyro_scale for v in t["gyro_rad_s"]]
+        contact = [1.0, 1.0] if a.contact_hold else t["contact"]
         cmd = tuple(t.get("cmd") or (0.0, 0.0, 0.0))
-        runner.step(t["gyro_rad_s"], grav, cmd, t["qpos_rad"], t["qvel_rad_s"], t["contact"])
+        runner.step(gyro, grav, cmd, t["qpos_rad"], t["qvel_rad_s"], contact)
+        act_rec[i] = np.asarray(t["raw_action"], dtype=np.float64); act_new[i] = np.asarray(runner.last_action, dtype=np.float64); tt[i] = t["timestamp"] - ticks[0]["timestamp"]
         rec_obs = np.asarray(t["obs"], dtype=np.float64); my_obs = np.asarray(runner.last_obs, dtype=np.float64)
         if dim is None:
             dim = my_obs.shape[0]
@@ -77,6 +91,16 @@ def main():
     if bad:
         c = Counter(bad).most_common(6)
         print("초과 틱의 최악 인덱스(상위): " + ", ".join(f"{k}(x{v})" for k, v in c))
+    if perturbed:
+        sel = np.ones(n, dtype=bool)
+        if a.window:
+            w0, w1 = (float(x) for x in a.window.split(",")); sel = (tt >= w0) & (tt <= w1)
+        d = (act_new - act_rec) * 0.25 * 57.29578   # 목표각 환산 [deg]
+        lat = [2, 3, 4, 5, 10, 11]
+        print(f"# 출력 민감도(계약 검증 아님): contact_hold={a.contact_hold} gyro_scale={a.gyro_scale} grav_roll_deg={a.grav_roll_deg} 구간 {a.window or '전체'} ({int(sel.sum())} 틱)")
+        print(f"  |Δ목표| deg: 전체 관절 최대 {np.abs(d[sel]).max():.2f}, 중앙 {np.median(np.abs(d[sel])):.3f} | 좌우축(hip_a/hip_r/ankle_r) 최대 {np.abs(d[sel][:, lat]).max():.2f}")
+        print("  관절별 최대 |Δ목표| deg: " + " ".join(f"{np.abs(d[sel][:, k]).max():.2f}" for k in range(12)))
+        return 0
     ok = (dobs > a.tol_obs).sum() == 0 and (dact > a.tol_act).sum() == 0
     print("판정: " + ("PASS — 러너 관측 조립·정책 출력이 기록과 일치(계약 검증; 폐루프 성능 아님)" if ok else
                      "FAIL/편차 — 항 경계별 원인 확인 필요(이력 백필·EMA 초기화·클록 위상 후보)"))

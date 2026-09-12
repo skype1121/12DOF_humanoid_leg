@@ -23,3 +23,5 @@ outputs/
 .scratch/
 deploy/*.tar.gz
 deploy/old/
+reports/real_20260912/*/pads_inc_*.jsonl
+reports/real_20260912/*/stiff_cop_*.jsonl

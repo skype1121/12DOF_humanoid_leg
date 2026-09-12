@@ -8,13 +8,13 @@ set -uo pipefail
 cd "$(dirname "$0")/../.."
 STAMP=${1:?블랙박스 stamp (예 20260912_1030)}; SESS=${2:-}; HOST=${3:-172.16.35.89}; USER_=${JETSON_USER:-mama}
 DAY=${STAMP:0:8}; OUT="reports/real_${DAY}/${STAMP}"; mkdir -p "$OUT"
-S="ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10"
+S="sshpass -p "$JETSON_PW" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10"
 echo "# 수집 → $OUT"
-scp -q -o StrictHostKeyChecking=no "$USER_@$HOST:~/logs/rl_bridge_${STAMP}.jsonl" "$OUT/" && echo "블랙박스 OK" || echo "블랙박스 실패(경로/stamp 확인)"
+sshpass -p "$JETSON_PW" scp -q -o StrictHostKeyChecking=no "$USER_@$HOST:~/logs/rl_bridge_${STAMP}.jsonl" "$OUT/" && echo "블랙박스 OK" || echo "블랙박스 실패(경로/stamp 확인)"
 if [ -z "$SESS" ]; then SESS=$($S "$USER_@$HOST" "ls -td ~/logs/sessions/session_* | head -1" 2>/dev/null | xargs -r basename); fi
-[ -n "$SESS" ] && { mkdir -p "$OUT/$SESS"; scp -q -o StrictHostKeyChecking=no "$USER_@$HOST:~/logs/sessions/$SESS/timeline.jsonl" "$OUT/$SESS/" && echo "타임라인 OK ($SESS)" || echo "타임라인 실패"; }
+[ -n "$SESS" ] && { mkdir -p "$OUT/$SESS"; sshpass -p "$JETSON_PW" scp -q -o StrictHostKeyChecking=no "$USER_@$HOST:~/logs/sessions/$SESS/timeline.jsonl" "$OUT/$SESS/" && echo "타임라인 OK ($SESS)" || echo "타임라인 실패"; }
 for pat in "pads_inc_*.jsonl" "pads_cop_*.jsonl" "stiff_cop_*.jsonl"; do
-  f=$($S "$USER_@$HOST" "ls -t ~/logs/$pat 2>/dev/null | head -1"); [ -n "$f" ] && scp -q -o StrictHostKeyChecking=no "$USER_@$HOST:$f" "$OUT/" && echo "$(basename "$f") OK"
+  f=$($S "$USER_@$HOST" "ls -t ~/logs/$pat 2>/dev/null | head -1"); [ -n "$f" ] && sshpass -p "$JETSON_PW" scp -q -o StrictHostKeyChecking=no "$USER_@$HOST:$f" "$OUT/" && echo "$(basename "$f") OK"
 done
 BB="$OUT/rl_bridge_${STAMP}.jsonl"; TL=$(ls "$OUT"/session_*/timeline.jsonl 2>/dev/null | head -1)
 {

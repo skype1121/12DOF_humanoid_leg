@@ -6,7 +6,7 @@
 ## 0. 이번 시험의 정책 (판정 후 기입)
 | 항목 | 값 |
 |---|---|
-| 정책 | **기본 v5** `2a20b7b1…` (사전등록 규칙상 v6·v7 미승격). 대안 v6 `stand_hang_v6` daece308… 동봉 — 정적 모멘트·연성 관절 압도, 지연 6~9틱 −11 pp·종전 잡음 대역 36 % (선택은 승윤님). v8(강성 DR 만) 결과는 `promotion_criteria_v7.md` 하단 |
+| 정책 | **기본 v5** `2a20b7b1…` (사전등록 규칙상 v6~v11 전부 미승격). 대안 v6 `stand_hang_v6` daece308… 동봉 — 연성 관절(kp×0.4) 100 %·램프 15 Nm 홀드 생존 63/64 가 장점, 지연 6~9틱 −11 pp·종전 잡음 대역 36 % 가 단점(선택은 승윤님). 08시 대조군(v5x)으로 변형들의 C1/C2 손실은 이어 학습 산물이며 '정적 모멘트 100 %' 는 체크포인트 의존 항목으로 확인 — `promotion_criteria_v7.md` 끝 절 |
 | 브리지 | IMU 장착 편향 보정 지원(맵 키 `imu_mount_bias_deg`, 없으면 종전과 동일) — 젯슨 반영은 승인 |
 | 패키지 | `deploy/stand_7차_20260913_0711.tar.gz` (48 파일, MD5_OK, v18b·hang_v4·v5·v6 + sensors_up.sh·콘솔 v6 선택지·패드 8칸/죽은 채널 표시·브리지 정정) — `bash jetson/deploy_to_jetson.sh --host 172.16.35.89 --pkg deploy/stand_7차_20260913_0711.tar.gz` 는 승인 후 |
 | 계측 | 왼발 index 2 고장 패드 제외(`left_pad_bias`), 패드 임계 200 카운트 — 젯슨 sensors_up/어댑터 반영은 승인 |
@@ -42,4 +42,4 @@
 
 ## 5. 시뮬 기대치 (실물 확률 아님)
 - 방출 속도 비교(v5, 명목 64 env, 강성 ×0.7, 일정 롤 모멘트 6/9 Nm, 횡 CoM 3 cm): `reports/real_prep_0913/PROGRESS.md` 결과 표 참조(채움 중).
-- v6 후보 배터리: `promotion_criteria_v6.md` 결과 표.
+- v6 후보 배터리: `promotion_criteria_v6.md` 결과 표(v6 값은 S8ac4r env) + `promotion_criteria_v7.md` 끝 절(대조군·체크포인트 변동).

@@ -1,0 +1,18 @@
+{
+  "name": "stand_hang_v6",
+  "run": "2026-09-13_00-40-49",
+  "checkpoint": "model_141486.pt",
+  "checkpoint_md5": "6792e4e6e113969ef862625bcb9d64d2",
+  "task": "Biped12-HangStand-S8ac4r-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "stand_hang_v5(S8ac4 139987) 웜스타트 1500 it",
+  "summary": "S8ac4r(0913): S8ac4q 램프 DR(cap 2~12) + 실측 대역(자이로 ±0.05·중력 ±0.02·관절속도 ±0.3·IMU 편향 ±1.5°·강성 DR 0.3~1.1), v5 웜스타트 1500 it. 사전등록 결과: 줄 없이 상수 6/9 Nm 100 %(v5 11/0), 연성 ×0.4 느린 방출 100 %(v5 0), 램프 홀드 63/64; 대가 지연 6~9틱 73 %(v5r 84), both0 46 %. 규칙상 미승격 — 대안 동봉",
+  "legacy": false,
+  "files": {
+    "policy.pt": "daece308ee920bf2125869700a253cec",
+    "policy.onnx": "8d73ba2b345ab57c6806aacae7b68310",
+    "env.yaml": "c8cf475336a6b8207abd5a41c138312f",
+    "agent.yaml": "ae35b14c3eb0b33edb6cced748db7a5f"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-13_00-40-49"
+}

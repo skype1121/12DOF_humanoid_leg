@@ -219,6 +219,11 @@ CHECKPOINTS = {
     # 실제행잉 92.6(v4 동등, v5 94.1). 자세 우선 대안. (S8ac5 밴드 −60 은 전 지표 열세로 폐기.) 젯슨 미배포.
     "stand_hang_v5p": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-09_20-50-01/exported"),
+    # stand_hang_v6 (0913, S8ac4r): v5 + 준정적 롤 램프 DR + 실측 잡음·IMU 편향·강성 대역. 관측 320 동일(브리지 변경 없음).
+    # 사전등록 결과(reports/real_prep_0913/promotion_criteria_v6.md): 줄 없이 상수 6/9 Nm 100 %(v5 11/0), 연성 ×0.4 느린 방출 100 %(v5 0),
+    # 램프 홀드 63/64; 대가 지연 6~9틱 73 %(v5r 84)·접촉 비트 상시 0 에서 46 %. **규칙상 미승격 — 대안 동봉(승윤님 선택). 젯슨 미배포.**
+    "stand_hang_v6": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-09-13_00-40-49/exported"),
 }
 
 #: 체크포인트별 게이트 클록 주파수 [Hz] — 학습 클록과 반드시 일치 (불일치 =
@@ -226,7 +231,7 @@ CHECKPOINTS = {
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
 CKPT_GAIT_FREQ = {"march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
-                   "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1, "stand_hang_v1": 1.1, "stand_hang_v2": 1.1, "stand_hang_v3": 1.1, "stand_hang_v4": 1.1, "stand_hang_v5": 1.1, "stand_hang_v5p": 1.1}
+                   "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1, "stand_hang_v1": 1.1, "stand_hang_v2": 1.1, "stand_hang_v3": 1.1, "stand_hang_v4": 1.1, "stand_hang_v5": 1.1, "stand_hang_v5p": 1.1, "stand_hang_v6": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 #: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).
 #: 대체는 경고 로그로 드러낸다 (0905 감사 A1: 무언 대체 'stand_v7' = 10.49kg 자산 정책 탑승 경로).

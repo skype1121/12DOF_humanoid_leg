@@ -699,3 +699,35 @@ class Biped12HangStandS8ac4rpEnvCfg(Biped12HangStandS8ac4rEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         _apply_joint_play(self, pitch_deg=3.0, lat_deg=1.5, rng=(0.0, 1.0))
+
+def _apply_real_noise_only(cfg):
+    """실측 잡음 대역만(자이로 ±0.05·중력 ±0.02·관절속도 ±0.3, EMA 항 동일) — IMU 편향 DR·강성 DR 은 종전(S8ac4) 유지."""
+    P = cfg.observations.policy
+    for name, half in (("base_ang_vel", 0.05), ("projected_gravity", 0.02), ("joint_vel", 0.3)):
+        t = getattr(P, name, None)
+        if t is not None and t.noise is not None:
+            t.noise.n_min = -half; t.noise.n_max = half
+    for name, val in (("gyro_ema", 0.05), ("joint_vel_ema", 0.3)):
+        t = getattr(P, name, None)
+        if t is not None and isinstance(t.params, dict) and "noise" in t.params:
+            t.params["noise"] = val
+
+
+@configclass
+class Biped12HangStandS8ac4rqEnvCfg(Biped12HangStandS8ac4qEnvCfg):
+    """S8ac4rq(0913, 대안 후보): S8ac4q(램프 DR, cap 2~12) + 실측 잡음 대역만. 강성 DR(0.7~1.1)·IMU 편향 DR(±3.5°) 종전 유지 —
+    v6(S8ac4r) 가 A1(50 % 지지 램프, 강성 ×0.3) 에서 v5 보다 약하게 나온 경우의 분리 실험(강성 DR 확장이 원인인지)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _apply_real_noise_only(self)
+        self.events.hang_support_reset.params["ramp_cap_range"] = (2.0, 12.0)
+
+
+@configclass
+class Biped12HangStandS8ac4r5EnvCfg(Biped12HangStandS8ac4rEnvCfg):
+    """S8ac4r5(0913, 대안 후보): S8ac4r 와 같되 강성 DR 하한 0.5 (0.3 → 0.5)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.actuator_gains.params["stiffness_distribution_params"] = (0.5, 1.1)

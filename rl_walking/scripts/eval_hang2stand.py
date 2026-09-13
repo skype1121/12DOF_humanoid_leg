@@ -59,6 +59,8 @@ parser.add_argument("--flip_joints", type=str, default="", help="0914 좌표계 
 parser.add_argument("--yaw_damp", type=float, default=0.0, help="0914 공중 응답 기준 시험: 힘 모델에 요 감쇠 토크 −c·ω_z [Nm·s/rad] 추가(sig4 의 요 회전 77 °/s 오염 방지; 기본 0 = 종전 동일)")
 parser.add_argument("--joint_offset", type=str, default="", help="0914 부호 확인용: 최종 물리 목표에 상수 오프셋 [deg] 가산 'left_ankle_r_joint:10,right_ankle_r_joint:10' (지연 버퍼·보정기·반전 뒤 = 실물 stage8 에 주는 관절 프레임 목표와 같은 자리)")
 parser.add_argument("--rotor_obs", type=str, default="", help="0914 실물 로터측 엔코더 에뮬레이션: 지정 관절(쉼표, all=12관절)의 관측 joint_pos/joint_vel/joint_vel_ema 를 물리 관절각 대신 명령 목표(슬루·지연 뒤 물리 목표) 기반 값으로 대체 — 구조 휨(엔코더 뒤 컴플라이언스)이 정책에 안 보이는 실물 조건. --gain_scale 과 함께 쓰면 휘지만 엔코더는 목표를 따르는 플랜트")
+parser.add_argument("--ground_compliance", type=str, default="", help="0914 실물 패드·구조 연성 에뮬레이션: 지면 재질 compliant contact 'stiffness_N_per_m,damping' (PhysX 5 compliant contact; 0 = 강체 접촉=종전)")
+parser.add_argument("--rotor_tau", type=float, default=0.05, help="--rotor_obs 의 모터측 각 = 목표의 1차 지연(τ s; 구동기 대역폭 에뮬, 속도는 그 미분). 0 = 목표 그대로(계단 속도 스파이크 — 폐기된 첫 판)")
 parser.add_argument("--dump_feet_quat", action="store_true", default=False, help="덤프에 발 링크(*_ankle_r_link) 월드 쿼터니언(wxyz)·발바닥 아래 벡터를 기록 — 관절 부호의 물리 의미 확인")
 parser.add_argument("--hook_dxy", type=str, default=None, help="0913: 힘 모델(줄) 작용점을 몸통 로컬 (dx,dy)[m] 로 고정 (y+ = 왼쪽). 실물 후크가 무게중심에서 옆으로 벗어난 경우 재현 — 매 스텝 st[px,py] 덮어씀")
 parser.add_argument("--roll_comp", type=str, default=None,
@@ -123,6 +125,14 @@ use_chain = (not args_cli.hold) and (not args_cli.no_chain)
 if use_chain and hasattr(env_cfg.actions.joint_pos, "lpf_beta_range"):
     env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)     # 배포 판정: 필터는 체인 1개만
 # 정지 서기 명령 · 요 고정 · 초기 속도 0 (실물 착지는 정지)
+if args_cli.ground_compliance:
+    _gk, _gd = [float(x) for x in args_cli.ground_compliance.split(",")]
+    _pm = env_cfg.scene.terrain.physics_material
+    if hasattr(_pm, "compliant_contact_stiffness"):
+        _pm.compliant_contact_stiffness = _gk; _pm.compliant_contact_damping = _gd
+        print(f"[ground_compliance] 지면 compliant contact stiffness={_gk:g} N/m damping={_gd:g}")
+    else:
+        raise SystemExit("[ground_compliance] RigidBodyMaterialCfg 에 compliant_contact_stiffness 없음 — Isaac Lab 버전 확인")
 env_cfg.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
 env_cfg.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
 env_cfg.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
@@ -562,7 +572,7 @@ if args_cli.joint_offset:
         out = out.clone(); out[:, _jo_cols] = out[:, _jo_cols] + _jo_vals; return out
     _rct_o.pre_delay_hook = _offset_hook
     print(f"[joint_offset] {args_cli.joint_offset} (열 {list(_jo.keys())}) — 최종 물리 목표에 가산")
-_FEET_BODY = [k for k, n in enumerate(robot.body_names) if n.endswith("ankle_r_link")] if args_cli.dump_feet_quat else []
+_FEET_BODY = [k for k, n in enumerate(robot.body_names) if "ankle_r" in n] if args_cli.dump_feet_quat else []   # final3 자산은 링크 이름이 *_ankle_r_joint
 if args_cli.dump_feet_quat:
     print(f"[dump_feet_quat] 발 링크 body idx {_FEET_BODY} = {[robot.body_names[k] for k in _FEET_BODY]}")
 # ── 0914 로터측 관측 에뮬레이션 ──
@@ -586,9 +596,13 @@ def _rotor_obs(obs):
     tgt = _LAST_OUT[0]
     if tgt is None:
         return obs
-    q_cmd = (tgt - _DEF)[:, _rot_cols_t]
-    if _rot_prev is None:
-        _rot_prev = q_cmd.clone(); _rot_ema = torch.zeros_like(q_cmd)
+    q_t = (tgt - _DEF)[:, _rot_cols_t]
+    if _rot_prev is None:                                   # 첫 틱: 물리 관절각으로 초기화(목표 0 인공물 방지)
+        _rot_prev = (robot.data.joint_pos - _DEF)[:, _rot_cols_t].clone(); _rot_ema = torch.zeros_like(q_t)
+        _rotor_obs.q_m = _rot_prev.clone()
+    _a = 1.0 if args_cli.rotor_tau <= 0 else min(1.0, 0.02 / float(args_cli.rotor_tau))
+    _rotor_obs.q_m = _rotor_obs.q_m + _a * (q_t - _rotor_obs.q_m)   # 모터측 각 = 목표의 1차 지연
+    q_cmd = _rotor_obs.q_m
     qd_cmd = (q_cmd - _rot_prev) / 0.02; _rot_prev = q_cmd.clone()
     _rot_ema = 0.9 * _rot_ema + 0.1 * qd_cmd
     frame = {"joint_pos": q_cmd, "joint_vel": qd_cmd, "joint_vel_ema": _rot_ema}
@@ -653,13 +667,13 @@ def _dump_step(i, a, roll, pitch, contact, term, st):
         if args_cli.dump_obs and _LAST_OBS[0] is not None:
             row["obs"] = [float(x) for x in _LAST_OBS[0][k]]
         if _FEET_BODY:
-            _bq = robot.data.body_quat_w[k, _FEET_BODY]          # (2,4) wxyz
-            _dn = []
-            for _q in _bq:
-                _w, _x, _y, _z = [float(v) for v in _q]
-                # R(q)·(0,0,−1): 발 링크 프레임 −Z(발바닥 아래) 의 월드 벡터
-                _dn.append([-(2.0 * (_x * _z + _w * _y)), -(2.0 * (_y * _z - _w * _x)), -(1.0 - 2.0 * (_x * _x + _y * _y))])
-            row["feet_quat_wxyz"] = [[float(v) for v in _q] for _q in _bq]; row["feet_down_w"] = _dn
+            _bq_f = robot.data.body_quat_w[k, _FEET_BODY]          # (2,4) wxyz
+            _dn_f = []
+            for _qf in _bq_f:
+                _fw, _fx, _fy, _fz = [float(v) for v in _qf]
+                # R(q)·(0,0,−1): 발 링크 프레임 −Z 의 월드 벡터 (링크 프레임이 회전돼 있으면 발바닥 법선이 아닐 수 있음 — 쿼터니언 차이로 판정)
+                _dn_f.append([-(2.0 * (_fx * _fz + _fw * _fy)), -(2.0 * (_fy * _fz - _fw * _fx)), -(1.0 - 2.0 * (_fx * _fx + _fy * _fy))])
+            row["feet_quat_wxyz"] = [[float(v) for v in _qf] for _qf in _bq_f]; row["feet_down_w"] = _dn_f
         if bool(st.get("cable_on", False)):   # 케이블 모델 진단: 실제 적용 장력·앵커-후크 거리 (0912, 편심 스윕이 비트동일 → 힘 작용 여부 확인용)
             row["cbl_T"] = float(st["cbl_T"][k]); row["cbl_dist"] = float(st["cbl_dist"][k]); row["cbl_L0"] = float(st["cbl_L0"][k]); row["cbl_d0"] = float(st["cbl_d0"][k])
             row["base_z"] = float(robot.data.root_pos_w[k, 2])

@@ -1216,24 +1216,33 @@ LIFT_STOP_S = 1.0   # 0910 승윤님 지시: 0.6→1.0s (A1 3회에서 두 발 �
 #: 기존 리프트 가드(양발 무접촉 LIFT_STOP_S → 동결)는 0803 공중 발버둥 사고의 방지책이라 **삭제·완화하지 않는다**.
 #: stand 명령에 hang_arm:true 를 **명시**한 경우에만, 접촉을 한 번도 얻기 전(PRE_CONTACT_HANG_ALLOWED)
 #: 무접촉을 허용한다. 양발 접촉이 CONTACT_CONFIRM_S 지속되면 CONTACT_ACQUIRED — 그 뒤로는 기존 가드 그대로.
-#: PRE_CONTACT 에도 상한(HANG_MAX_S)이 있다. 상태는 앞으로만 간다(접촉 뒤 다시 들리면 기존과 동일하게 동결).
+#: PRE_CONTACT 에도 상한(HANG_MAX_S)이 있다. 0913 승윤님 결정(실물 5회: 접지 뒤 재조정 때마다 동결): hang_arm 모드에서
+#: CONTACT_ACQUIRED 중 양발 무접촉 LIFT_STOP_S 가 지속되면 동결 대신 PRE_CONTACT(새 HANG_MAX_S 창)로 **되돌아간다** —
+#: 최대 HANG_MAX_RELIFTS 회, FREE_STAND(줄 느슨·자립 판정 뒤) 재들림은 종전대로 동결(잡힌 상태에서 정책 발버둥 방지).
+#: hang_arm 이 없으면 종전과 비트 단위로 같다.
 #: 중력·발진·프레임·CAN 게이트는 무관·불변. hang_arm 이 없으면 종전과 비트 단위로 같은 동작이다(셀프테스트로 고정).
 HANG_MAX_S = 120.0            # 접지 없이 정책이 공중에 살아 있을 수 있는 최대 시간
+HANG_MAX_RELIFTS = 5          # 0913: 접지 뒤 재들림 → 공중 허용 복귀 허용 횟수(초과 시 종전 lift_guard 동결)
 CONTACT_CONFIRM_S = 0.3       # 양발 접촉이 이만큼 지속돼야 '접지 획득'
 HANG_BODY_WEIGHT_N = 172.9    # 정보용(FREE_STAND 표시): 0904 저울 17.62kg — 콘솔 BODY_WEIGHT_N 과 같은 값
 FREE_STAND_LOAD_FRAC = 0.8
 
 
 class HangGuard:
-    """리프트 가드 상태기 — PRE_CONTACT_HANG_ALLOWED → CONTACT_ACQUIRED → FREE_STAND (되돌아가지 않음)."""
+    """리프트 가드 상태기 — PRE_CONTACT_HANG_ALLOWED → CONTACT_ACQUIRED → FREE_STAND.
+    0913: hang_mode 에서 CONTACT_ACQUIRED 중 양발 무접촉 lift_stop_s 지속 = 재들림 → PRE_CONTACT 로 복귀(≤ max_relifts, 새 hang_max 창).
+    FREE_STAND 재들림·hang_mode 아님·재들림 초과는 종전대로 동결."""
 
     PRE_CONTACT = "PRE_CONTACT_HANG_ALLOWED"
     CONTACT_ACQUIRED = "CONTACT_ACQUIRED"
     FREE_STAND = "FREE_STAND"
 
     def __init__(self, hang_mode=False, t0=None, lift_stop_s=LIFT_STOP_S, hang_max_s=HANG_MAX_S,
-                 confirm_s=CONTACT_CONFIRM_S, body_weight_n=HANG_BODY_WEIGHT_N, free_frac=FREE_STAND_LOAD_FRAC):
+                 confirm_s=CONTACT_CONFIRM_S, body_weight_n=HANG_BODY_WEIGHT_N, free_frac=FREE_STAND_LOAD_FRAC,
+                 max_relifts=HANG_MAX_RELIFTS):
         self.hang_mode = bool(hang_mode)
+        self.max_relifts = int(max_relifts)
+        self.relifts = 0
         self.state = self.PRE_CONTACT if self.hang_mode else self.CONTACT_ACQUIRED
         self.t0 = t0
         self.lift_stop_s = float(lift_stop_s)
@@ -1276,6 +1285,14 @@ class HangGuard:
             if self.nocontact_t0 is None:
                 self.nocontact_t0 = now
             elif now - self.nocontact_t0 >= self.lift_stop_s:
+                if self.hang_mode and self.state == self.CONTACT_ACQUIRED and self.relifts < self.max_relifts:
+                    # 0913 승윤님 결정: 접지 뒤 재들림 = 재착지 허용 (공중 허용 상태로 복귀, 새 hang_max 창)
+                    self.relifts += 1
+                    self.t0 = now
+                    self.contact_t0 = None
+                    self.nocontact_t0 = None
+                    self._go(self.PRE_CONTACT, now)
+                    return None
                 return f"lift_guard: 양발 무접촉 {self.lift_stop_s}s 지속"
         else:
             self.nocontact_t0 = None
@@ -1609,9 +1626,27 @@ def _selftest_hang_guard():
     assert g.state == HangGuard.PRE_CONTACT, "0.2s 접촉은 확인 시간 미달"
     assert run(g, [(0.4, B, 60.0)])[0] is None and g.state == HangGuard.CONTACT_ACQUIRED
     assert [s for s, _ in g.pop_transitions()] == [HangGuard.CONTACT_ACQUIRED]
-    # 접지 뒤 재들림 = 종전 가드 (0.6s → 동결), 상태 역행 없음
+    # (0913) 접지 뒤 재들림(hang_arm) = 동결 대신 PRE_CONTACT 복귀, 재착지하면 다시 CONTACT_ACQUIRED
     why, _ = run(g, [(0.3, B, 120.0), (LIFT_STOP_S + 0.1, NONE, 0.0)])
-    assert why and why.startswith("lift_guard") and g.state == HangGuard.CONTACT_ACQUIRED, why
+    assert why is None and g.state == HangGuard.PRE_CONTACT and g.relifts == 1, (why, g.state, g.relifts)
+    assert [s for s, _ in g.pop_transitions()] == [HangGuard.PRE_CONTACT]
+    assert run(g, [(30.0, NONE, 0.0), (0.4, B, 60.0)])[0] is None and g.state == HangGuard.CONTACT_ACQUIRED, "재착지 30 s 뒤 재접지"
+    # 재들림 허용 횟수 초과 → 종전 lift_guard 동결
+    for _ in range(HANG_MAX_RELIFTS - 1):
+        assert run(g, [(LIFT_STOP_S + 0.1, NONE, 0.0), (0.4, B, 60.0)])[0] is None
+    assert g.relifts == HANG_MAX_RELIFTS
+    why, _ = run(g, [(LIFT_STOP_S + 0.1, NONE, 0.0)])
+    assert why and why.startswith("lift_guard"), why
+    # hang_arm 아님: 재들림 동결 그대로 (케이스 1 과 동일, 회귀 고정)
+    g2 = HangGuard(hang_mode=False)
+    why, _ = run(g2, [(0.3, B, 120.0), (LIFT_STOP_S + 0.1, NONE, 0.0)])
+    assert why and why.startswith("lift_guard") and g2.relifts == 0, why
+    # FREE_STAND 뒤 재들림 = 동결 (잡힌 상태에서 정책 발버둥 방지)
+    g3 = HangGuard(hang_mode=True, t0=0.0)
+    run(g3, [(0.4, B, 50.0), (0.1, B, 0.85 * HANG_BODY_WEIGHT_N)])
+    assert g3.state == HangGuard.FREE_STAND
+    why, _ = run(g3, [(LIFT_STOP_S + 0.1, NONE, 0.0)])
+    assert why and why.startswith("lift_guard") and g3.state == HangGuard.FREE_STAND, why
     # FREE_STAND 표시: 발력 ≥ 0.8·체중
     g = HangGuard(hang_mode=True, t0=0.0)
     run(g, [(0.4, B, 50.0), (0.1, B, 0.85 * HANG_BODY_WEIGHT_N)])
@@ -1621,7 +1656,7 @@ def _selftest_hang_guard():
     why, t = run(g, [(6.0, NONE, 0.0)])
     assert why and why.startswith("hang_guard") and abs(t - 5.0) < 0.03, (why, t)
     return (f"hang_arm 없음=종전 동일({LIFT_STOP_S}s 동결) · 행잉 ARM 10s 무접촉 허용 · 접지 {CONTACT_CONFIRM_S}s 확인 · "
-            f"재들림 동결 · FREE_STAND 표시 · 상한 {HANG_MAX_S:.0f}s 동결 — 6케이스 통과")
+            f"재들림 → 공중 허용 복귀(≤{HANG_MAX_RELIFTS}회, 초과 동결) · hang_arm 아님/FREE_STAND 재들림 동결 · 상한 {HANG_MAX_S:.0f}s 동결 — 9케이스 통과")
 
 
 def run_selftest(required=()):

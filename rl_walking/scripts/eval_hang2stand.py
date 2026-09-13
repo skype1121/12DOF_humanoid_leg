@@ -54,6 +54,8 @@ parser.add_argument("--delay_steps", type=str, default=None,
 parser.add_argument("--dump_envs", type=int, default=0,
                     help="처음 N개 env 의 시계열을 실물 블랙박스 형식으로 log_picture/simbb_<tag>_env<i>.jsonl 에 기록 "
                          "(jetson/scripts/analyze_hang2stand_trial.py 로 시뮬/실물 '최초 이상 발생 순서' 비교, 0911)")
+parser.add_argument("--dump_obs", action="store_true", default=False, help="덤프 레코드에 정책 관측 벡터(obs, 320/245) 포함 — 실물 블랙박스 obs 와 항별 대조용(0914)")
+parser.add_argument("--flip_joints", type=str, default="", help="0914 좌표계 가설 시험: 지정 관절(쉼표)을 정책 기준으로 물리 반전 — 액션 목표는 기본자세 기준 부호 반전(지연 버퍼·보정기 뒤 = 최종 물리 목표), 관측 joint_pos/joint_vel/joint_vel_ema 의 해당 열도 부호 반전(엔코더가 자기 일관되게 뒤집힌 상황 = 실물 발목롤 추정)")
 parser.add_argument("--hook_dxy", type=str, default=None, help="0913: 힘 모델(줄) 작용점을 몸통 로컬 (dx,dy)[m] 로 고정 (y+ = 왼쪽). 실물 후크가 무게중심에서 옆으로 벗어난 경우 재현 — 매 스텝 st[px,py] 덮어씀")
 parser.add_argument("--roll_comp", type=str, default=None,
                     help="0913 브리지형 느린 기울기 보정기: 'K,tau_s,limit_deg[,joints[,sign]]' — 몸통 롤(projected gravity, 1차 저역 τ)을 K 배로 관절 목표 오프셋(±limit) 에 더한다(액션 체인 최종 목표 뒤 = 브리지가 최종 명령에 더하는 것과 동일). joints=ankle_r|hip_a, sign=±1. 기본은 양발 진 접촉일 때만 작동(아니면 필터 0).")
@@ -516,12 +518,47 @@ class ContactPerturb:
 
 _cperturb = ContactPerturb(args_cli.contact_perturb, N, dev, _cs_lo, _cs_hi, args_cli.perturb_seed)
 
+# ── 0914 관절 물리 반전(좌표계 가설): 액션 최종 목표 + 관측 열 부호 반전 ──
+_FLIP_COLS = []
+_FLIP_OBS_IDX = []
+if args_cli.flip_joints:
+    _fj = [x.strip() for x in args_cli.flip_joints.split(",") if x.strip()]
+    _FLIP_COLS = [_jidx[n] for n in _fj]
+    try:
+        for _nm, _o, _d in _layout:
+            if _nm in ("joint_pos", "joint_vel", "joint_vel_ema") and _d % 12 == 0:
+                _H = _d // 12
+                for _h in range(_H):
+                    for _c in _FLIP_COLS:
+                        _FLIP_OBS_IDX.append(_o + _h * 12 + _c)
+    except NameError:
+        pass
+    _FLIP_OBS_IDX = torch.tensor(sorted(set(_FLIP_OBS_IDX)), dtype=torch.long, device=dev) if _FLIP_OBS_IDX else None
+    _rct_f = uenv.action_manager.get_term("joint_pos")
+    _prev_hook = getattr(_rct_f, "pre_delay_hook", None)
+    _flip_cols_t = torch.tensor(_FLIP_COLS, dtype=torch.long, device=dev)
+    def _flip_hook(target, _ph=_prev_hook):
+        out = target if _ph is None else _ph(target)
+        out = out.clone()
+        out[:, _flip_cols_t] = 2.0 * _DEF[:, _flip_cols_t] - out[:, _flip_cols_t]
+        return out
+    _rct_f.pre_delay_hook = _flip_hook
+    print(f"[flip] 물리 반전 관절 {_fj} (열 {_FLIP_COLS}), 관측 반전 인덱스 {0 if _FLIP_OBS_IDX is None else int(_FLIP_OBS_IDX.numel())}개 (기존 pre_delay_hook {'래핑' if _prev_hook is not None else '없음'})")
+def _flip_obs(obs):
+    if _FLIP_OBS_IDX is None or not _FLIP_COLS:
+        return obs
+    if torch.is_tensor(obs):
+        obs = obs.clone(); obs[:, _FLIP_OBS_IDX] = -obs[:, _FLIP_OBS_IDX]; return obs
+    t = obs["policy"].clone(); t[:, _FLIP_OBS_IDX] = -t[:, _FLIP_OBS_IDX]
+    obs = dict(obs); obs["policy"] = t; return obs
+
 # ── 시뮬 블랙박스 덤프 (0911): 실물 rl_bridge 블랙박스와 같은 키·같은 JOINT_ORDER(좌우 교대)로 기록 ──
 import json as _json
 _JO_REAL = ["left_hip_f_joint", "right_hip_f_joint", "left_hip_a_joint", "right_hip_a_joint",
             "left_hip_r_joint", "right_hip_r_joint", "left_knee_joint", "right_knee_joint",
             "left_ankle_f_joint", "right_ankle_f_joint", "left_ankle_r_joint", "right_ankle_r_joint"]
 _DUMP = []; _dump_dead = []
+_LAST_OBS = [None]
 if args_cli.dump_envs > 0:
     os.makedirs("log_picture", exist_ok=True)
     _DUMP = [open(f"log_picture/simbb_{args_cli.out_tag}_env{k}.jsonl", "w", encoding="utf-8") for k in range(min(args_cli.dump_envs, N))]
@@ -549,6 +586,8 @@ def _dump_step(i, a, roll, pitch, contact, term, st):
                "contact": [float(contact[k, 0]), float(contact[k, 1])],
                "hang_state": "CONTACT_ACQUIRED" if float(st["touch_t"][k]) >= 0.0 else "PRE_CONTACT_HANG_ALLOWED",
                "support_r": float(st["r"][k]), "support_gone": bool(_sg[k]), "blend_alpha": 1.0}
+        if args_cli.dump_obs and _LAST_OBS[0] is not None:
+            row["obs"] = [float(x) for x in _LAST_OBS[0][k]]
         if bool(st.get("cable_on", False)):   # 케이블 모델 진단: 실제 적용 장력·앵커-후크 거리 (0912, 편심 스윕이 비트동일 → 힘 작용 여부 확인용)
             row["cbl_T"] = float(st["cbl_T"][k]); row["cbl_dist"] = float(st["cbl_dist"][k]); row["cbl_L0"] = float(st["cbl_L0"][k]); row["cbl_d0"] = float(st["cbl_d0"][k])
             row["base_z"] = float(robot.data.root_pos_w[k, 2])
@@ -570,9 +609,11 @@ for i in range(STEPS):
             if _hs is not None and "px" in _hs:
                 _hdx, _hdy = _pair(args_cli.hook_dxy); _hs["px"][:] = float(_hdx); _hs["py"][:] = float(_hdy)
         obs = _cperturb(obs, i)          # actor 접촉 obs 교란(정답/물리 불변) — none 이면 무변
+        obs = _flip_obs(obs)              # 0914 관절 반전 가설: 관측 열 부호 반전(물리 불변)
         if _RC_ON and args_cli.roll_comp_gate_src == "obs" and _cs_hi is not None:
             _tt = obs["policy"] if not torch.is_tensor(obs) else obs
             _RC_OBS_BITS = _tt[:, _cs_hi - 2:_cs_hi] > 0.5     # 이력 마지막 칸 [new_L, new_R] = 정책이 이번 틱에 보는 비트
+        _LAST_OBS[0] = obs["policy"] if not torch.is_tensor(obs) else obs   # 덤프용(0914): 이번 틱 정책 입력
         a = torch.zeros(N, 12, device=dev) if policy is None else policy(obs)
         _stp = getattr(uenv, "_hang", None)
         if _stp is not None:             # 스텝 '전' 상태 보존 — env.step 은 종료 env 를 즉시 리셋한다(0913 정정: 종전 r_at_death 는 리셋값 r0 을 읽었음)

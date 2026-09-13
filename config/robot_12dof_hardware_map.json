@@ -670,5 +670,22 @@
     "lat": 1.3,
     "fwd": -0.6,
     "note": "0912 22:50/23:10 지그 수평 접지 실측 lat +1.2~1.4, fwd −0.2~−1.1 (rp_deg/콘솔 규약, + = 왼/앞). 브리지가 정책 중력벡터에서만 뺀다(게이트·rp_deg 기록은 원시값). 젯슨 맵 반영은 별도 승인."
+  },
+  "roll_comp": {
+    "enabled": false,
+    "K": 1.0,
+    "tau_s": 1.0,
+    "limit_deg": 3.0,
+    "joints": "ankle_r",
+    "sign": 1,
+    "lr": [
+      1,
+      1
+    ],
+    "gate": "any",
+    "debounce_s": 0.2,
+    "slew_deg_per_tick": 0.25,
+    "roll_clamp_deg": 15.0,
+    "note": "0913 시뮬 확정값(v5, S8ac4 env): 줄 없이 6 Nm 31→98.4 %, 회귀 항목 ±2 pp 안. 켜는 것은 승윤님 승인 + 실행카드 §2.5(맵 두 사본 동일, imu_mount_bias_deg 필수, ARM 전 방향 확인). 대조: eval --roll_comp 1.0,1.0,3,ankle_r,+1 --roll_comp_gate any"
   }
 }

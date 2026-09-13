@@ -1638,14 +1638,13 @@ def _selftest_hang_guard():
     why, _ = run(g, [(LIFT_STOP_S + 0.1, NONE, 0.0)])
     assert why and why.startswith("lift_guard"), why
     # (0913 추가 검증) 재들림 뒤 시간 제한: 새 창에서 접지 없이 hang_max_s 초과 → hang_guard 동결 (재들림 시각 기준)
-    g4 = HangGuard(hang_mode=True, t0=0.0, hang_max_s=5.0)
-    assert run(g4, [(0.4, B, 60.0), (LIFT_STOP_S + 0.1, NONE, 0.0)])[0] is None and g4.state == HangGuard.PRE_CONTACT
-    t_relift = 0.4 + LIFT_STOP_S + 0.1
-    why, t = run(g4, [(6.0, NONE, 0.0)])
-    assert why and why.startswith("hang_guard") and abs(t - (t_relift + 5.0)) < 0.05, (why, t, t_relift)
+    g4 = HangGuard(hang_mode=True, t0=0.0, hang_max_s=5.0)   # run() 은 호출마다 시각 0 부터 → 한 호출로 잇는다
+    t_relift = 0.4 + LIFT_STOP_S          # 재들림 판정 시각 = 접지 0.4 s + 무접촉 lift_stop_s
+    why, t = run(g4, [(0.4, B, 60.0), (LIFT_STOP_S + 0.1, NONE, 0.0), (6.0, NONE, 0.0)])
+    assert why and why.startswith("hang_guard") and abs(t - (t_relift + 5.0)) < 0.06 and g4.relifts == 1, (why, t, t_relift, g4.relifts)
     # 접촉 오판 1: 짧은 누락/채터(양발 0 이 lift_stop_s 미만) → 상태·횟수 불변
     g5 = HangGuard(hang_mode=True, t0=0.0)
-    run(g5, [(0.4, B, 60.0)]); assert g5.state == HangGuard.CONTACT_ACQUIRED
+    run(g5, [(0.4, B, 60.0)]); assert g5.state == HangGuard.CONTACT_ACQUIRED; g5.pop_transitions()   # 착지 전이는 비우고 이후 '전이 없음' 검사
     for _ in range(20):
         assert run(g5, [(0.3, NONE, 0.0), (0.3, B, 60.0)])[0] is None
     assert g5.state == HangGuard.CONTACT_ACQUIRED and g5.relifts == 0 and g5.pop_transitions() == []

@@ -57,6 +57,7 @@ parser.add_argument("--dump_envs", type=int, default=0,
 parser.add_argument("--roll_comp", type=str, default=None,
                     help="0913 브리지형 느린 기울기 보정기: 'K,tau_s,limit_deg[,joints[,sign]]' — 몸통 롤(projected gravity, 1차 저역 τ)을 K 배로 관절 목표 오프셋(±limit) 에 더한다(액션 체인 최종 목표 뒤 = 브리지가 최종 명령에 더하는 것과 동일). joints=ankle_r|hip_a, sign=±1. 기본은 양발 진 접촉일 때만 작동(아니면 필터 0).")
 parser.add_argument("--roll_comp_lr", type=str, default="1,1", help="보정기 좌/우 관절 부호(예 '1,-1'; hip_a 는 좌우 규약이 반대)")
+parser.add_argument("--roll_comp_gate_src", type=str, default="true", choices=["true", "obs"], help="보정기 게이트의 접촉 출처: true=시뮬 진 접촉력(>5 N), obs=정책이 보는 접촉 비트(교란 포함 = 실물 브리지와 동일)")
 parser.add_argument("--roll_comp_gate", type=str, default="both", choices=["both", "any", "none"], help="보정기 작동 조건: both=양발 접촉, any=한 발, none=항상")
 parser.add_argument("--calib_fixed_action", action="store_true", help="--calib_fixed 편향을 관측뿐 아니라 **액션에도**(진 목표 = 정책 목표 − b) 적용 = 실제 영점 오차(브리지가 틀린 영점으로 변환) 재현. 기본은 종전대로 관측만")
 parser.add_argument("--calib_fixed", type=str, default="", help="관절 고정 편향 주입 'left_ankle_r_joint:3.6,right_hip_r_joint:3.4' [deg] — 실측 좌우 비대칭 재현")
@@ -351,6 +352,7 @@ _air_q = torch.zeros(N, 12, device=dev); _air_n = torch.zeros(N, device=dev)   #
 _jn = list(robot.joint_names); _jidx = {n: i for i, n in enumerate(_jn)}
 # ── 0913 브리지형 느린 기울기 보정기(--roll_comp): 정책 밖 외부 루프. 실물 브리지에서 IMU 롤(맵 편향 보정 후)을 저역 필터해 관절 목표에 더하는 것과 같은 자리 ──
 _RC_ON = bool(args_cli.roll_comp)
+_RC_OBS_BITS = None
 if _RC_ON:
     _p = [x.strip() for x in args_cli.roll_comp.split(",")]
     _rcK = float(_p[0]); _rcTau = max(float(_p[1]), 1e-3); _rcLim = math.radians(float(_p[2]))
@@ -369,6 +371,7 @@ if _RC_ON:
         g = robot.data.projected_gravity_b
         roll = torch.atan2(g[:, 1], -g[:, 2])
         fz = _cs.data.net_forces_w[:, [_fl, _fr], :].norm(dim=-1) > 5.0
+        if args_cli.roll_comp_gate_src == "obs" and _RC_OBS_BITS is not None: fz = _RC_OBS_BITS
         if args_cli.roll_comp_gate == "both": gate = fz[:, 0] & fz[:, 1]
         elif args_cli.roll_comp_gate == "any": gate = fz[:, 0] | fz[:, 1]
         else: gate = torch.ones_like(fz[:, 0])
@@ -521,6 +524,9 @@ _ramp_prev = torch.zeros(N, device=dev); _r_prev = torch.full((N,), float("nan")
 for i in range(STEPS):
     with torch.inference_mode():
         obs = _cperturb(obs, i)          # actor 접촉 obs 교란(정답/물리 불변) — none 이면 무변
+        if _RC_ON and args_cli.roll_comp_gate_src == "obs" and _cs_hi is not None:
+            _tt = obs["policy"] if not torch.is_tensor(obs) else obs
+            _RC_OBS_BITS = _tt[:, _cs_hi - 2:_cs_hi] > 0.5     # 이력 마지막 칸 [new_L, new_R] = 정책이 이번 틱에 보는 비트
         a = torch.zeros(N, 12, device=dev) if policy is None else policy(obs)
         _stp = getattr(uenv, "_hang", None)
         if _stp is not None:             # 스텝 '전' 상태 보존 — env.step 은 종료 env 를 즉시 리셋한다(0913 정정: 종전 r_at_death 는 리셋값 r0 을 읽었음)
@@ -669,7 +675,7 @@ txt = "\n".join(out_lines)
 if _RC_ON:
     _m = (_rc_n > 0)
     txt += ("\n보정기(--roll_comp %s, lr %s, gate %s): 작동 스텝 env 평균 %.0f · |오프셋| 평균 %.2f° · 포화(±limit) 비율 %.1f %%" % (
-        args_cli.roll_comp, args_cli.roll_comp_lr, args_cli.roll_comp_gate, _rc_n.mean().item(),
+        args_cli.roll_comp, args_cli.roll_comp_lr, args_cli.roll_comp_gate + "/" + args_cli.roll_comp_gate_src, _rc_n.mean().item(),
         math.degrees((_rc_acc[_m] / _rc_n[_m]).mean().item()) if _m.any() else 0.0,
         100.0 * (_rc_sat[_m] / _rc_n[_m]).mean().item() if _m.any() else 0.0))
 print(txt)

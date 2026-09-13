@@ -106,3 +106,4 @@
 - 실행 중: **v6dp2**(S8ac4rdp 3000 it 이어 학습 → 배터리) `scratchpad/evals/v6dp2_chain.log`. 판정: v6 대체 후보가 되려면 S8ac4r env 에서 P1(유격 2°/1°, S8ac4 nominal) ≥ 84 · C2 8~10 ≥ 66(v6d) · C2 6~9 ≥ 80 · A2 ≥ 55/64 · R6 ≥ 90 · B1 ≥ 90 · C1(3 ckpt 평균) ≥ 84 를 **동시에**. 통과 시: `scratchpad/export_register.sh` 로 export → `models/stand_hang_v7/`·브리지 CHECKPOINTS 등록·콘솔 선택지 → 패키지 재생성 → 젯슨 반영은 승인. 미달이면 v6 동봉·v5 기본 그대로(변경 없음).
 - v6dp(1500 it) 결과는 미수렴이라 근거로 쓰지 않는다(`promotion_criteria_v7.md` v6d 절에 후속 기록).
 - 실물 준비 산출물은 완료: 패키지 `deploy/stand_7차_20260913_1428.tar.gz`, 실행카드 0913(§2.5 보정기), 로컬 맵 `roll_comp`(enabled:false)·`imu_mount_bias_deg`. 승인 항목은 SUMMARY §7.
+- 15:4x **v6dp2 기각**: P1 10.9 %(3000 it 더 학습해도), 곡선 정체(96~126 진동) → 유격 DR(내재형 0~3°/0~1.5°)은 이 형태로는 무효. 정책 최종: v5 기본·v6 동봉·v6d 보관(지연 강건, 유격 약함; 실측 유격 ≤1° 면 후보). v6dp2 잔여 배터리는 기록용. **남은 자동 작업 없음**(v6dp2 배터리 완주 후 GPU 유휴).

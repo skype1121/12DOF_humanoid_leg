@@ -653,6 +653,10 @@ class Telemetry:
             "contact": br.get("contact"),
             "fault": self.bridge_fault,
             "hang_state": br.get("hang_state"),
+            # 0913: 롤 보정기(브리지 맵 키 roll_comp) 표시 전용 — 맵 키가 없으면 브리지가 필드를
+            # 아예 안 보내므로 None = 보정기 OFF. 판정·자동 진행에는 쓰지 않는다(읽기 전용 표시).
+            "roll_comp": br.get("roll_comp_deg"),
+            "roll_comp_gate": br.get("roll_comp_gate"),
         }
         return out
 

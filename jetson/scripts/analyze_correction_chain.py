@@ -30,6 +30,42 @@ def load_bb(path):
     return ticks, events
 
 
+def strip_roll_comp(ticks):
+    """브리지 롤 보정기(roll_comp) 오프셋을 목표에서 제거해 '정책 체인 목표'를 복원한다 (0913 F7).
+
+    전달비(Δ목표/Δ정책출력)는 정책이 낸 보정만 봐야 한다 — 외부 루프인 보정기 오프셋이 섞이면
+    정책이 보정한 것처럼 보인다. 각 틱에 _tgt_pre(JOINT_ORDER 순 deg)를 넣는다.
+      · targets_deg_joint_pre_rc 가 기록돼 있으면 그대로 사용(정확 — lr·부호 포함)
+      · 없으면 roll_comp_joints(없으면 ankle_r)·lr=[1,1] 을 **가정**하고 경고를 반환한다
+    반환 (활성 틱 수, |오프셋| 평균 deg, |오프셋| 최대 deg, 경고 문자열 또는 None). 추종오차는
+    최종 명령 기준이라 건드리지 않는다(관절은 오프셋 포함 명령을 따라간다).
+    """
+    n = 0; acc = 0.0; mx = 0.0; warn = None
+    for t in ticks:
+        off = t.get("roll_comp_deg")
+        if not isinstance(off, (int, float)):
+            continue
+        n += 1; acc += abs(off); mx = max(mx, abs(off))
+        pre = t.get("targets_deg_joint_pre_rc")
+        if isinstance(pre, list) and len(pre) == 12:
+            t["_tgt_pre"] = [float(v) for v in pre]
+            continue
+        j = t.get("roll_comp_joints") or "ankle_r"
+        warn = warn or f"targets_deg_joint_pre_rc 미기록 → 보정 관절 {j}·lr[1,1] **가정**하고 뺌(기록 버전 확인)"
+        cols = [JO.index(f"left_{j}_joint"), JO.index(f"right_{j}_joint")] if f"left_{j}_joint" in JO else []
+        pre = [t["targets_deg_joint"][JO[k]] for k in range(12)]
+        for c in cols:
+            pre[c] -= float(off)
+        t["_tgt_pre"] = pre
+    return n, (acc / n if n else 0.0), mx, warn
+
+
+def tgt_pre(t, k):
+    """전달비 계산용 목표[deg] — 보정기 오프셋을 뺀 값(없으면 기록 그대로)."""
+    v = t.get("_tgt_pre")
+    return v[k] if v is not None else t["targets_deg_joint"][JO[k]]
+
+
 def load_pads(path, t0, t1):
     rows = []
     if not path or not os.path.exists(path): return rows
@@ -125,6 +161,7 @@ def fall_index(ticks, i_from, roll_deg=10.0):
 def report(bb_path, stiff_path=None, pads_path=None, hwmap=None, out=print, bin_s=0.5):
     ticks, events = load_bb(bb_path)
     if not ticks: out("정책 틱 없음"); return
+    rc_n, rc_mean, rc_max, rc_warn = strip_roll_comp(ticks)
     t0 = ticks[0]["timestamp"]
     i_off, (s0, s1) = contact_first_off(ticks)
     if i_off is None:
@@ -135,10 +172,14 @@ def report(bb_path, stiff_path=None, pads_path=None, hwmap=None, out=print, bin_
     stable = ticks[s0:s1 + 1]
     # 안정창 기준값
     raw_ref = [st.mean(t["raw_action"][k] for t in stable) for k in range(12)]
-    tgt_ref = [st.mean(t["targets_deg_joint"][JO[k]] for t in stable) for k in range(12)]
+    tgt_ref = [st.mean(tgt_pre(t, k) for t in stable) for k in range(12)]
     q_ref = [st.mean(t["qpos_rad"][k] * R2D for t in stable) for k in range(12)]
     out(f"# 보정 전달 사슬: {os.path.basename(bb_path)}")
     out(f"정책 틱 {len(ticks)}개 ({ticks[-1]['timestamp'] - t0:.1f} s), 정지 이벤트: {[(e.get('reason') or '')[:30] for e in stops]}")
+    if rc_n:
+        out(f"보정기 roll_comp 작동: 틱 {rc_n}/{len(ticks)} · |오프셋| 평균 {rc_mean:.2f}° (최대 {rc_max:.2f}°) — "
+            f"전달비 계산에서는 이 오프셋을 뺀 '정책 체인 목표'를 쓴다(추종오차는 최종 명령 기준)"
+            + (f" · ⚠ {rc_warn}" if rc_warn else ""))
     out(f"안정창(양발 접촉 연속): {ticks[s0]['timestamp'] - t0:.2f}~{ticks[s1]['timestamp'] - t0:.2f} s ({ticks[s1]['timestamp'] - ticks[s0]['timestamp']:.1f} s) | 첫 접촉 OFF: {ticks[i_off]['timestamp'] - t0:.2f} s (contact={ticks[i_off].get('contact')}) | 롤/피치 10° 도달: {ticks[i_fall]['timestamp'] - t0:.2f} s")
     # 패드 / stiff
     pads = load_pads(pads_path, ticks[w0]["timestamp"] - 1, ticks[w1]["timestamp"] + 1) if pads_path else []
@@ -199,7 +240,7 @@ def report(bb_path, stiff_path=None, pads_path=None, hwmap=None, out=print, bin_
         summary["blend_min"] = min(summary["blend_min"], blend); summary["hang"].add(hang)
         d_raw = [st.mean(t["raw_action"][k] for t in seg) - raw_ref[k] for k in range(12)]
         d_out = [ACTION_SCALE * d * R2D for d in d_raw]
-        d_tgt = [st.mean(t["targets_deg_joint"][JO[k]] for t in seg) - tgt_ref[k] for k in range(12)]
+        d_tgt = [st.mean(tgt_pre(t, k) for t in seg) - tgt_ref[k] for k in range(12)]
         trk = [st.mean(t["targets_deg_joint"][JO[k]] - t["qpos_rad"][k] * R2D for t in seg) for k in range(12)]
         for k in range(12):
             summary["raw_max"][k] = max(summary["raw_max"][k], abs(d_out[k])); summary["tgt_max"][k] = max(summary["tgt_max"][k], abs(d_tgt[k])); summary["trk_max"][k] = max(summary["trk_max"][k], abs(trk[k]))
@@ -273,7 +314,40 @@ def selftest():
     txt = "\n".join(buf)
     assert "첫 접촉 OFF: 8.00 s" in txt, txt[:500]
     assert "보정 출력 있음" in txt and "체인 정상" in txt and "관절 추종 정상" in txt, txt[-800:]
-    print("[selftest] analyze_correction_chain: 안정창·첫 OFF·낙상 창·Δ출력/Δ목표/추종·판정 ①②③ — PASS")
+    # 0913 F7: 보정기 오프셋이 '정책이 보정한 것'으로 집계되지 않는지 — 정책 출력은 고정,
+    # ankle_r 목표에만 보정기 오프셋 3° 램프. 제거 후 Δ목표 ≈ 0 이어야 한다.
+    rows2 = []
+    for i in range(1000):
+        t = t0 + i * TICK
+        contact = [1.0, 1.0] if i < 400 or i >= 990 else ([1.0, 0.0] if i < 500 else [0.0, 0.0])
+        roll = 0.0 if i < 450 else min(15.0, (i - 450) * 0.05)
+        raw = [0.0] * 12
+        off = 0.0 if i < 420 else min(3.0, (i - 420) * 0.02)       # 보정기 오프셋 [deg]
+        pre = [DEF_DEG[k] for k in range(12)]
+        tgt = {JO[k]: pre[k] + (off if k in (10, 11) else 0.0) for k in range(12)}
+        q = [math.radians(tgt[JO[k]]) for k in range(12)]
+        rows2.append({"live": True, "timestamp": t, "rp_deg": [roll, -3.0], "gyro_rad_s": [0, 0, 0], "raw_action": raw,
+                      "targets_deg_joint": tgt, "targets_deg_motor": tgt, "qpos_rad": q, "contact": contact,
+                      "foot_n": [30, 30], "blend_alpha": 1.0, "hang_state": "CONTACT_ACQUIRED",
+                      "obs": [0.0] * 243 + contact + [0.0] * 75,
+                      "roll_comp_deg": off, "roll_comp_gate": True, "roll_comp_raw_gate": True,
+                      "roll_comp_joints": "ankle_r", "targets_deg_joint_pre_rc": pre})
+    p2 = os.path.join(tempfile.mkdtemp(), "bb_rc.jsonl")
+    with open(p2, "w") as f:
+        for r in rows2: f.write(json.dumps(r) + "\n")
+    buf2 = []; report(p2, out=buf2.append)
+    txt2 = "\n".join(buf2)
+    assert "보정기 roll_comp 작동" in txt2 and "|오프셋| 평균" in txt2, txt2[:600]
+    row = [l for l in buf2 if l.startswith("left_ankle_r_joint")][0]
+    assert float(row.split("|")[2]) < 0.1, f"보정기 오프셋이 Δ목표로 새어 들어감: {row}"
+    # pre 미기록(구 기록) 경로: 같은 로그에서 pre 를 빼면 가정·경고와 함께 같은 결과
+    for r in rows2: r.pop("targets_deg_joint_pre_rc")
+    p3 = os.path.join(tempfile.mkdtemp(), "bb_rc_nopre.jsonl")
+    with open(p3, "w") as f:
+        for r in rows2: f.write(json.dumps(r) + "\n")
+    buf3 = []; report(p3, out=buf3.append)
+    assert "⚠" in "\n".join(buf3) and float([l for l in buf3 if l.startswith("left_ankle_r_joint")][0].split("|")[2]) < 0.1
+    print("[selftest] analyze_correction_chain: 안정창·첫 OFF·낙상 창·Δ출력/Δ목표/추종·판정 ①②③ + 보정기 오프셋 제거(기록/가정 2경로) — PASS")
 
 
 def main():

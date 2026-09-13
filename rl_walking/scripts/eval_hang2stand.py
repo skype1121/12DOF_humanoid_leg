@@ -59,7 +59,10 @@ parser.add_argument("--roll_comp", type=str, default=None,
 parser.add_argument("--roll_comp_lr", type=str, default="1,1", help="보정기 좌/우 관절 부호(예 '1,-1'; hip_a 는 좌우 규약이 반대)")
 parser.add_argument("--roll_comp_gate_src", type=str, default="obs", choices=["true", "obs"], help="보정기 게이트의 접촉 출처: true=시뮬 진 접촉력(>5 N), obs=정책이 보는 접촉 비트(교란 포함 = 실물 브리지와 동일)")
 parser.add_argument("--roll_comp_site", type=str, default="pre", choices=["pre", "post"], help="보정기 삽입 자리: pre=액션 항 지연 버퍼 앞(오프셋이 전송 지연·슬루·백래시를 통과 = 브리지와 같은 자리, 기본), post=액션 체인 최종 목표 뒤(구동 모델 우회 — 상한 참고용)")
-parser.add_argument("--roll_comp_gate", type=str, default="both", choices=["both", "any", "none"], help="보정기 작동 조건: both=양발 접촉, any=한 발, none=항상")
+parser.add_argument("--roll_comp_gate", type=str, default="both", choices=["both", "any", "none"], help="보정기 작동 조건: both=양발 접촉, any=한 발, none=항상 (실물 브리지는 none 을 거부한다 — 시뮬 진단 전용)")
+parser.add_argument("--roll_comp_debounce_s", type=float, default=0.2, help="보정기 게이트 디바운스 [s] — 접촉 비트가 이 시간 미만으로 끊기면 실효 게이트 유지(필터·오프셋 유지). 브리지 기본 0.2")
+parser.add_argument("--roll_comp_slew_deg", type=float, default=0.25, help="보정기 출력 슬루 한계 [deg/틱] — 오프셋 계단 금지(0913 F2). 브리지 기본 0.25 (=12.5°/s)")
+parser.add_argument("--roll_comp_roll_clamp_deg", type=float, default=15.0, help="보정기 입력 롤 클램프 [deg] — 공중·낙상 중 큰 기울기가 필터를 끌고 가지 못하게. 브리지 기본 15")
 parser.add_argument("--calib_fixed_action", action="store_true", help="--calib_fixed 편향을 관측뿐 아니라 **액션에도**(진 목표 = 정책 목표 − b) 적용 = 실제 영점 오차(브리지가 틀린 영점으로 변환) 재현. 기본은 종전대로 관측만")
 parser.add_argument("--calib_fixed", type=str, default="", help="관절 고정 편향 주입 'left_ankle_r_joint:3.6,right_hip_r_joint:3.4' [deg] — 실측 좌우 비대칭 재현")
 parser.add_argument("--anchor_x", type=float, default=None, help="[케이블 태스크] 앵커 전후 오프셋 고정 [m] (+앞) — 줄 모멘트(후크 비연직) 가설 H2b 스윕용")
@@ -365,36 +368,46 @@ if _RC_ON:
     _rc_f = torch.zeros(N, device=dev); _rc_off = torch.zeros(N, device=dev)
     _rc_acc = torch.zeros(N, device=dev); _rc_n = torch.zeros(N, device=dev); _rc_sat = torch.zeros(N, device=dev)
     _rc_dt = float(uenv.step_dt)
+    # 0913 적대검수 F2 (브리지 rl_bridge_node.RollComp 와 같은 법칙): 게이트 디바운스 → 유지, 실효 해제 뒤엔
+    # 같은 τ 로 0 을 향해 감쇠, 출력은 틱당 ±slew 로 제한, 입력 롤은 ±roll_clamp 로 자른다. 오프셋 계단 금지.
+    _rc_gate_off_ticks = torch.zeros(N, device=dev)      # env별 연속 raw-gate-off 틱 수
+    _rc_deb_ticks = max(1, int(round(args_cli.roll_comp_debounce_s / _rc_dt)))
+    _rc_slew_r = math.radians(args_cli.roll_comp_slew_deg)
+    _rc_rollcl = math.radians(args_cli.roll_comp_roll_clamp_deg)
     _rc_o = _rct.process_actions
     def _rc_patched(actions, _t=_rct, _o=_rc_o):
-        global _rc_f, _rc_off, _rc_acc, _rc_n, _rc_sat
+        """post 자리: 액션 체인 최종 목표 뒤에 가산(구동 모델 우회 — 상한 참고용). 법칙은 _rc_core 공유."""
         _o(actions)
-        g = robot.data.projected_gravity_b
-        roll = torch.atan2(g[:, 1], -g[:, 2])
-        fz = _cs.data.net_forces_w[:, [_fl, _fr], :].norm(dim=-1) > 5.0
-        if args_cli.roll_comp_gate_src == "obs" and _RC_OBS_BITS is not None: fz = _RC_OBS_BITS
-        if args_cli.roll_comp_gate == "both": gate = fz[:, 0] & fz[:, 1]
-        elif args_cli.roll_comp_gate == "any": gate = fz[:, 0] | fz[:, 1]
-        else: gate = torch.ones_like(fz[:, 0])
-        _rc_f = torch.where(gate, _rc_f + (_rc_dt / _rcTau) * (roll - _rc_f), torch.zeros_like(_rc_f))
-        _rc_off = torch.clamp(_rcSign * _rcK * _rc_f, -_rcLim, _rcLim)
-        _t._processed_actions[:, _rc_cols[0]] += _rcLR[0] * _rc_off
-        _t._processed_actions[:, _rc_cols[1]] += _rcLR[1] * _rc_off
-        _rc_acc += _rc_off.abs() * gate; _rc_n += gate.float(); _rc_sat += ((_rc_off.abs() >= _rcLim - 1e-6) & gate).float()
+        off = _rc_core()
+        _t._processed_actions[:, _rc_cols[0]] += _rcLR[0] * off
+        _t._processed_actions[:, _rc_cols[1]] += _rcLR[1] * off
     def _rc_core(_t=_rct):
-        """게이트·필터·오프셋 계산(한 스텝 1회). 반환: 오프셋[rad] (N,)"""
-        global _rc_f, _rc_off, _rc_acc, _rc_n, _rc_sat
+        """게이트·필터·오프셋 계산(한 스텝 1회). 반환: 오프셋[rad] (N,).
+
+        브리지 RollComp.update 와 같은 법칙(0913 F2): 롤 클램프 → raw 게이트 → 디바운스(유지) →
+        해제 시 같은 τ 로 감쇠 → 출력 슬루 제한. 게이트 접촉원은 --roll_comp_gate_src(기본 obs =
+        정책이 보는 비트 = 브리지와 동일). 시뮬엔 HangGuard 가 없으므로 브리지의 '접지 확인(F3)'
+        추가 조건은 없다 — 실물이 더 보수적인 쪽(같은 조건 + 접지 확인)이다.
+        """
+        global _rc_f, _rc_off, _rc_acc, _rc_n, _rc_sat, _rc_gate_off_ticks
         g = robot.data.projected_gravity_b
         roll = torch.atan2(g[:, 1], -g[:, 2])
+        roll = torch.where(torch.isfinite(roll), roll, torch.zeros_like(roll))
+        roll = torch.clamp(roll, -_rc_rollcl, _rc_rollcl)
         fz = _cs.data.net_forces_w[:, [_fl, _fr], :].norm(dim=-1) > 5.0
         if args_cli.roll_comp_gate_src == "obs" and _RC_OBS_BITS is not None: fz = _RC_OBS_BITS
-        if args_cli.roll_comp_gate == "both": gate = fz[:, 0] & fz[:, 1]
-        elif args_cli.roll_comp_gate == "any": gate = fz[:, 0] | fz[:, 1]
-        else: gate = torch.ones_like(fz[:, 0])
-        roll = torch.where(torch.isfinite(roll), roll, torch.zeros_like(roll))
-        _rc_f = torch.where(gate, _rc_f + (_rc_dt / _rcTau) * (roll - _rc_f), torch.zeros_like(_rc_f))
-        _rc_off = torch.clamp(_rcSign * _rcK * _rc_f, -_rcLim, _rcLim)
-        _rc_acc += _rc_off.abs() * gate; _rc_n += gate.float(); _rc_sat += ((_rc_off.abs() >= _rcLim - 1e-6) & gate).float()
+        if args_cli.roll_comp_gate == "both": raw_gate = fz[:, 0] & fz[:, 1]
+        elif args_cli.roll_comp_gate == "any": raw_gate = fz[:, 0] | fz[:, 1]
+        else: raw_gate = torch.ones_like(fz[:, 0])
+        _rc_gate_off_ticks = torch.where(raw_gate, torch.zeros_like(_rc_gate_off_ticks), _rc_gate_off_ticks + 1.0)
+        eff_gate = raw_gate | (_rc_gate_off_ticks < _rc_deb_ticks)
+        _f_upd = _rc_f + (_rc_dt / _rcTau) * (roll - _rc_f)          # raw 게이트: 정상 갱신
+        _f_dec = _rc_f + (_rc_dt / _rcTau) * (0.0 - _rc_f)           # 실효 해제: 0 으로 감쇠
+        _rc_f = torch.where(raw_gate, _f_upd, torch.where(eff_gate, _rc_f, _f_dec))
+        _tgt = torch.clamp(_rcSign * _rcK * _rc_f, -_rcLim, _rcLim)
+        _rc_off = _rc_off + torch.clamp(_tgt - _rc_off, -_rc_slew_r, _rc_slew_r)
+        _rc_acc += _rc_off.abs() * eff_gate; _rc_n += eff_gate.float()
+        _rc_sat += ((_rc_off.abs() >= _rcLim - 1e-6) & eff_gate).float()
         return _rc_off
     def _rc_pre(target):
         off = _rc_core()
@@ -406,7 +419,8 @@ if _RC_ON:
         _rct.pre_delay_hook = _rc_pre
     else:
         _rct.process_actions = _rc_patched
-    print(f"[roll_comp] K={_rcK} tau={_rcTau}s limit=±{math.degrees(_rcLim):.1f}° joints={_rcJ} sign={_rcSign:+.0f} lr={_rcLR} gate={args_cli.roll_comp_gate}/{args_cli.roll_comp_gate_src} site={args_cli.roll_comp_site} cols={_rc_cols} dt={_rc_dt}")
+    print(f"[roll_comp] K={_rcK} tau={_rcTau}s limit=±{math.degrees(_rcLim):.1f}° joints={_rcJ} sign={_rcSign:+.0f} lr={_rcLR} gate={args_cli.roll_comp_gate}/{args_cli.roll_comp_gate_src} site={args_cli.roll_comp_site} cols={_rc_cols} dt={_rc_dt} "
+          f"debounce={args_cli.roll_comp_debounce_s}s({_rc_deb_ticks}틱) slew={args_cli.roll_comp_slew_deg}°/틱 roll_clamp=±{args_cli.roll_comp_roll_clamp_deg}° (F2 계단 금지 = 브리지와 같은 법칙)")
 try:
     from rl_walking.mdp_hang import _feet_cfg as _fcfg, _support_gone_mask
     _fc = _fcfg(); _fc.resolve(env.unwrapped.scene); _FEET = _fc.name; _FEET_IDS = _fc.body_ids
@@ -702,7 +716,8 @@ txt = "\n".join(out_lines)
 if _RC_ON:
     _m = (_rc_n > 0)
     txt += ("\n보정기(--roll_comp %s, lr %s, gate %s): 작동 스텝 env 평균 %.0f · |오프셋| 평균 %.2f° · 포화(±limit) 비율 %.1f %%" % (
-        args_cli.roll_comp, args_cli.roll_comp_lr, args_cli.roll_comp_gate + "/" + args_cli.roll_comp_gate_src + "/" + args_cli.roll_comp_site, _rc_n.mean().item(),
+        args_cli.roll_comp, args_cli.roll_comp_lr,
+        f"{args_cli.roll_comp_gate}/{args_cli.roll_comp_gate_src}/{args_cli.roll_comp_site}/deb{args_cli.roll_comp_debounce_s}/slew{args_cli.roll_comp_slew_deg}/clamp{args_cli.roll_comp_roll_clamp_deg}", _rc_n.mean().item(),
         math.degrees((_rc_acc[_m] / _rc_n[_m]).mean().item()) if _m.any() else 0.0,
         100.0 * (_rc_sat[_m] / _rc_n[_m]).mean().item() if _m.any() else 0.0))
 print(txt)

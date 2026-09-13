@@ -27,14 +27,17 @@ def _slope(xs, ys):
     sxx = sum((x-mx)**2 for x in xs); sxy = sum((x-mx)*(y-my) for x, y in zip(xs, ys))
     return sxy/sxx if sxx > 1e-9 else None
 def _xcorr_lag(a, b, dt, max_lag_s=0.6):
-    """b 가 a 를 얼마나 늦게 따르는지(초). 표본 부족이면 None."""
+    """b 가 a 를 얼마나 늦게 따르는지(초): b[i+lag] ≈ a[i] 의 잔차 RMS 를 최소화하는 lag (램프 신호에서도 안정). 표본 부족/변화 없음이면 None."""
     n = min(len(a), len(b))
     if n < 100: return None
-    a = a[:n]; b = b[:n]; ma = sum(a)/n; mb = sum(b)/n; a = [x-ma for x in a]; b = [x-mb for x in b]
-    best, bl = -1e18, 0
-    for lag in range(0, int(max_lag_s/dt)+1):
-        c = sum(a[i]*b[i+lag] for i in range(n-lag))
-        if c > best: best, bl = c, lag
+    a = a[:n]; b = b[:n]
+    if max(a) - min(a) < 0.2: return None
+    best, bl = 1e18, 0
+    L = int(max_lag_s/dt)
+    for lag in range(0, L+1):
+        m = n - L
+        e = sum((a[i]-b[i+lag])**2 for i in range(m)) / m
+        if e < best: best, bl = e, lag
     return bl*dt
 def analyze(recs, dt=0.02):
     recs = [r for r in recs if isinstance(r.get("rp_deg"), list) and isinstance(r.get("qpos_rad"), list) and isinstance(r.get("contact"), list)]

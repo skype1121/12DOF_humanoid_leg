@@ -39,16 +39,19 @@ def _xcorr_lag(a, b, dt, max_lag_s=0.6):
         e = sum((a[i]-b[i+lag])**2 for i in range(m)) / m
         if e < best: best, bl = e, lag
     return bl*dt
-def analyze(recs, dt=0.02, roll_min=0.5):
+def analyze(recs, dt=0.02, roll_min=0.5, window="contact"):
     recs = [r for r in recs if isinstance(r.get("rp_deg"), list) and isinstance(r.get("qpos_rad"), list) and isinstance(r.get("contact"), list)]
     if not recs: return {"error": "no records"}
-    ic = next((i for i, r in enumerate(recs) if str(r.get("hang_state", "")).startswith("CONTACT")), None)
-    if ic is None:  # 시뮬 덤프엔 hang_state 가 없을 수 있음 → 양발 접촉 첫 시각
-        ic = next((i for i, r in enumerate(recs) if r["contact"][0] > 0.5 and r["contact"][1] > 0.5), None)
-    if ic is None: return {"error": "no contact"}
+    if window == "all":   # 공중 응답 테스트(접촉 없음): 기록 전체가 창, 낙상/이탈 지표는 무의미
+        ic = 0
+    else:
+        ic = next((i for i, r in enumerate(recs) if str(r.get("hang_state", "")).startswith("CONTACT")), None)
+        if ic is None:  # 시뮬 덤프엔 hang_state 가 없을 수 있음 → 양발 접촉 첫 시각
+            ic = next((i for i, r in enumerate(recs) if r["contact"][0] > 0.5 and r["contact"][1] > 0.5), None)
+        if ic is None: return {"error": "no contact"}
     t0 = recs[ic]["timestamp"]
     seg = recs[ic:]
-    iend = next((i for i, r in enumerate(seg) if r["contact"][0] < 0.5 and r["contact"][1] < 0.5), None)
+    iend = None if window == "all" else next((i for i, r in enumerate(seg) if r["contact"][0] < 0.5 and r["contact"][1] < 0.5), None)
     survive = (seg[iend]["timestamp"]-t0) if iend is not None else (seg[-1]["timestamp"]-t0)
     il = next((r["timestamp"]-t0 for r in seg if r["contact"][0] < 0.5 and r["contact"][1] > 0.5), None)
     win = seg[:iend] if iend is not None else seg
@@ -104,7 +107,7 @@ def _selftest():
     assert o["survive_s"] > 7.9, o
     print("[selftest] analyze_roll_response: 이득 −0.5 °/° · 지연 ≤0.1 s · 추종 지연 0.06 s · 생존 — PASS")
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(); ap.add_argument("files", nargs="*"); ap.add_argument("--selftest", action="store_true"); ap.add_argument("--dt", type=float, default=0.02); ap.add_argument("--roll_min", type=float, default=0.5, help="회귀 창 하한 [deg] (시뮬처럼 롤이 거의 안 커지면 0.2)")
+    ap = argparse.ArgumentParser(); ap.add_argument("files", nargs="*"); ap.add_argument("--selftest", action="store_true"); ap.add_argument("--dt", type=float, default=0.02); ap.add_argument("--roll_min", type=float, default=0.5, help="회귀 창 하한 [deg] (시뮬처럼 롤이 거의 안 커지면 0.2)"); ap.add_argument("--window", choices=["contact", "all"], default="contact", help="all = 접촉 없이 기록 전체(공중 응답 테스트)")
     a = ap.parse_args()
     if a.selftest: _selftest(); sys.exit(0)
     print("| 파일 | 생존 s | 왼발 이탈 s | 롤 사전/최소 | 최대 롤속도 °/s | 이득 발목 비대칭 °/° | 발목 대칭 | 힙 비대칭 | 힙 대칭 | 지연 s | 추종 RMS 발목/힙 ° | 추종 lag s | 플래토 Δroll/Δ발목비대칭/Δ힙대칭 ° |")
@@ -113,6 +116,6 @@ if __name__ == "__main__":
         for l in open(f, encoding="utf-8", errors="replace"):
             try: recs.append(json.loads(l))
             except Exception: pass
-        o = analyze(recs, a.dt, a.roll_min)
+        o = analyze(recs, a.dt, a.roll_min, a.window)
         if "error" in o: print(f"| {f} | {o['error']} |"); continue
         print(f"| {f.split('/')[-1]} | {o['survive_s']} | {o['left_off_s']} | {o['roll_pre']}/{o['roll_min']} | {o['roll_rate_max_deg_s']} | {o['gain_ank_asym']} | {o['gain_ank_sym']} | {o['gain_hip_asym']} | {o['gain_hip_sym']} | {o['latency_s']} | {o['track_rms_ankle_r']}/{o['track_rms_hip_a']} | {o['track_lag_s_ankle_asym']} | {o.get('d_roll_plateau')}/{o.get('d_ank_asym_plateau')}/{o.get('d_hip_sym_plateau')} |")

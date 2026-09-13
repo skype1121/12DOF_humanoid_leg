@@ -52,6 +52,10 @@
     전원사이클 자체는 저널로 감지 불가 — 절차(사이클 후 재판정)가 원칙이고 이
     게이트는 백스톱. --force-frame 으로만 우회.
   - 하드웨어맵 결함(12관절 direction/stand_zero_deg 미비) 시 기동 자체 차단.
+  - 느린 기울기 롤 보정기(맵 선택 키 roll_comp): 기본 OFF — 키가 없으면 종전과
+    완전히 동일(계산·기록 없음). 켜면 정책 최종 관절 목표에 ±limit 이내 롤
+    오프셋을 더한다(시뮬 eval_hang2stand.py --roll_comp 와 같은 식·같은 자리).
+    가드·임계는 불변이며 오프셋은 타깃 발진 가드가 보는 명령에 포함된다.
   - 발진 가드(0802 공중 발진 사고 재발 방지): live 중 어느 관절이든 0.5s 창에
     속도 부호반전 ≥6회+진폭 ≥2° (또는 |qvel|>12rad/s) → 자동 STOP_ALL·비활성.
     이후 절차 = 줄 재인장 → release_all.py. estop 손명령은 발진 속도를 못 따라감.
@@ -263,12 +267,13 @@ class FrameMap:
     """
 
     def __init__(self, path, dir_by_joint, sz_by_joint, motor_id_by_joint,
-                 gains_by_joint):
+                 gains_by_joint, roll_comp=None):
         self.path = path
         self.dir_by_joint = dir_by_joint            # {관절: ±1}
         self.sz_by_joint = sz_by_joint              # {관절: 모터 프레임 deg}
         self.motor_id_by_joint = motor_id_by_joint  # {관절: 1..12}
         self.gains_by_joint = gains_by_joint        # {관절: (kp, kd)}
+        self.roll_comp = roll_comp                  # 느린 기울기 롤 보정기 설정 dict 또는 None(=OFF)
 
     def motor_deg_to_joint_rad(self, joint, motor_deg):
         """입력 변환: 모터 인코더 절대각 deg → URDF 관절각 rad."""
@@ -328,6 +333,13 @@ def load_frame_map():
         print(f"[FrameMap] IMU 장착 편향 보정 lat {float(_lat):+.2f}° fwd {float(_fwd):+.2f}° (정책 중력벡터에만 적용)")
     else:
         IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = 0.0, 0.0
+    # 느린 기울기 롤 보정기 (선택 키, 기본 OFF). 키 없음/enabled=false → None = 완전 OFF.
+    # 범위·오타는 여기서 ValueError (imu_mount_bias_deg 와 같은 규약 — 조용히 무시하지 않는다).
+    _rc_cfg = _validate_roll_comp(_full.get("roll_comp"))
+    if _rc_cfg:
+        print(f"[FrameMap] roll_comp 활성 — K={_rc_cfg['K']:g} tau={_rc_cfg['tau_s']:g}s "
+              f"limit=±{_rc_cfg['limit_deg']:g}° joints={_rc_cfg['joints']} sign={_rc_cfg['sign']:+.0f} "
+              f"lr={_rc_cfg['lr']} gate={_rc_cfg['gate']} (최종 관절 목표에 가산; 시뮬 --roll_comp 와 동일식)")
     dir_by, sz_by, mid_by, gains_by = {}, {}, {}, {}
     problems = []
     for name in JOINT_ORDER:
@@ -359,7 +371,7 @@ def load_frame_map():
     if sorted(mid_by.values()) != list(range(1, 13)):
         raise ValueError(
             f"하드웨어맵 motor_id 이상 (1..12 전단사 아님): {mid_by} ({path})")
-    return FrameMap(path, dir_by, sz_by, mid_by, gains_by)
+    return FrameMap(path, dir_by, sz_by, mid_by, gains_by, roll_comp=_rc_cfg)
 
 
 def projected_gravity(quat_wxyz):
@@ -399,6 +411,147 @@ def correct_gravity(g, bias_deg=None):
     tx, ty = math.tan(pitch), math.tan(roll)
     c = 1.0 / math.sqrt(1.0 + tx * tx + ty * ty)
     return (c * tx, c * ty, -c)
+
+
+# ── 느린 기울기 롤 보정기(roll_comp) — 하드웨어맵 선택 키, 기본 OFF (0913) ──────────
+#: 시뮬 대조 원본: rl_walking/scripts/eval_hang2stand.py --roll_comp (같은 식·같은 자리·같은 lr 규약).
+#: 맵 키 예 (없으면 완전 OFF = 종전과 비트 동일):
+#:   "roll_comp": {"enabled": false, "K": 1.0, "tau_s": 1.0, "limit_deg": 5.0,
+#:                 "joints": "ankle_r", "sign": 1, "lr": [1, 1], "gate": "both"}
+#: 값은 시뮬 검증(--roll_comp 스윕) 으로 확정한 뒤에만 켠다 — 코드에 기본값을 박지 않는다.
+ROLL_COMP_JOINT_CHOICES = ("ankle_r", "hip_a")
+ROLL_COMP_GATE_CHOICES = ("both", "any", "none")
+ROLL_COMP_K_MAX = 3.0
+ROLL_COMP_TAU_MIN_S, ROLL_COMP_TAU_MAX_S = 0.1, 10.0
+ROLL_COMP_LIMIT_MAX_DEG = 8.0
+ROLL_COMP_KEYS = frozenset(
+    ("enabled", "K", "tau_s", "limit_deg", "joints", "sign", "lr", "gate", "note"))
+
+
+def _rc_num(rc, key, val, lo, hi):
+    """roll_comp 수치 필드 → float. 유한 float·lo~hi 아니면 ValueError (bool 거부)."""
+    if (isinstance(val, bool) or not isinstance(val, (int, float))
+            or not math.isfinite(float(val)) or not (lo <= float(val) <= hi)):
+        raise ValueError(
+            f"하드웨어맵 roll_comp {key}={val!r} 이상 (유한 float, {lo}~{hi} 필요): {rc!r}")
+    return float(val)
+
+
+def _validate_roll_comp(rc):
+    """하드웨어맵 roll_comp dict → 정규화 설정 dict. 키 없음 또는 enabled=false → None(완전 OFF).
+
+    범위 밖·오타 키는 조용히 무시하지 않고 기동 시점에 ValueError
+    (imu_mount_bias_deg 와 같은 규약 — 잘못된 보정 상수가 말없이 실물에 실리는 경로 차단).
+    """
+    if rc is None:
+        return None
+    if not isinstance(rc, dict):
+        raise ValueError(f"하드웨어맵 roll_comp 형식 오류: {rc!r} (dict 필요)")
+    unknown = set(rc) - ROLL_COMP_KEYS
+    if unknown:
+        raise ValueError(
+            f"하드웨어맵 roll_comp 미지의 키 {sorted(unknown)} — 오타 의심 "
+            f"(허용 {sorted(ROLL_COMP_KEYS)})")
+    k = _rc_num(rc, "K", rc.get("K", 1.0), 0.0, ROLL_COMP_K_MAX)
+    tau = _rc_num(rc, "tau_s", rc.get("tau_s", 1.0),
+                  ROLL_COMP_TAU_MIN_S, ROLL_COMP_TAU_MAX_S)
+    lim = _rc_num(rc, "limit_deg", rc.get("limit_deg", 5.0), 0.0, ROLL_COMP_LIMIT_MAX_DEG)
+    joints = rc.get("joints", "ankle_r")
+    if joints not in ROLL_COMP_JOINT_CHOICES:
+        raise ValueError(
+            f"하드웨어맵 roll_comp joints={joints!r} 이상 ({list(ROLL_COMP_JOINT_CHOICES)} 중 하나)")
+    sign = rc.get("sign", 1)
+    if isinstance(sign, bool) or sign not in (-1, 1):
+        raise ValueError(f"하드웨어맵 roll_comp sign={sign!r} 이상 (±1 만 허용)")
+    lr = rc.get("lr", [1, 1])
+    if not isinstance(lr, (list, tuple)) or len(lr) != 2:
+        raise ValueError(f"하드웨어맵 roll_comp lr={lr!r} 이상 (길이 2 리스트 [좌, 우])")
+    lr = [_rc_num(rc, "lr", v, -1.0, 1.0) for v in lr]
+    gate = rc.get("gate", "both")
+    if gate not in ROLL_COMP_GATE_CHOICES:
+        raise ValueError(
+            f"하드웨어맵 roll_comp gate={gate!r} 이상 ({list(ROLL_COMP_GATE_CHOICES)} 중 하나)")
+    enabled = rc.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ValueError(f"하드웨어맵 roll_comp enabled={enabled!r} 이상 (true/false)")
+    if not enabled:
+        return None
+    return {"K": k, "tau_s": tau, "limit_deg": lim, "limit_rad": math.radians(lim),
+            "joints": joints, "sign": float(sign), "lr": lr, "gate": gate}
+
+
+class RollComp:
+    """느린 기울기(롤) 보정기 — 기본 OFF. 시뮬 eval_hang2stand.py --roll_comp 의 실물판.
+
+    한 틱(50Hz):
+      roll = atan2(g_y, −g_z)         g = 정책에 넣은 투영중력(장착 편향 correct_gravity 적용 후,
+                                          시뮬 robot.data.projected_gravity_b 와 같은 부호 규약)
+      게이트 = 정책 구동 중 AND 접촉 비트(정책에 준 그 비트) 조건(both/any/none)
+      f   += (dt/τ)·(roll − f)        게이트 꺼지면 f=0 리셋·오프셋 0
+      off  = clamp(sign·K·f, ±limit)  → 선택 관절 2개에 좌 lr[0]·우 lr[1] 배수로 가산
+
+    적용 자리(브리지 _tick): 러너 슬루 → stand LPF **뒤**, 타깃 발진 가드·프레임 변환·
+    온셋 블렌딩 **앞**. 근거:
+      · 가드 의미 보존 — 타깃 발진 가드(osc_tgt)는 '최종 관절 목표'를 감시하는 가드다.
+        오프셋을 가드 뒤에 넣으면 가드가 실제로 나가는 명령을 못 보게 된다. 가드 앞에
+        넣어 가드가 오프셋 포함 명령을 그대로 보게 한다(가드 임계·판정식은 일절 불변).
+        블랙박스 targets_deg_joint/targets_deg_motor 도 같은 이유로 오프셋을 포함한다.
+      · 시뮬과의 유일한 차이 — 시뮬은 온셋 블렌딩 뒤에 더한다. 브리지는 블렌딩 앞이라
+        인계 크로스페이드(BLEND_S=1.5s) 동안 오프셋도 α(0→1) 배가 된다. 오프셋이
+        **작아지는** 쪽(보수적)이고 그 구간은 명령 직후라 필터 f 가 아직 0 근처다.
+        α=1 이후(정상 구간)는 시뮬과 완전히 동일하다.
+      · LPF 상태 오염 금지 — stand 계열에서 targets_rad 는 self.tgt_filt **그 객체**다.
+        제자리 가산하면 오프셋이 LPF 상태로 되먹임돼 매 틱 누적한다. add_to 는 절대
+        입력을 건드리지 않고 새 리스트를 낸다.
+    """
+
+    def __init__(self, cfg=None, dt=TICK_SEC):
+        self.cfg = cfg or None
+        self.dt = float(dt)
+        self.f = 0.0            # 저역 필터 상태 [rad]
+        self.off = 0.0          # 마지막 오프셋 [rad]
+        self.gate_on = False
+        self.cols = ([JOINT_ORDER.index(f"left_{self.cfg['joints']}_joint"),
+                      JOINT_ORDER.index(f"right_{self.cfg['joints']}_joint")]
+                     if self.cfg else [])
+
+    @property
+    def enabled(self):
+        return self.cfg is not None
+
+    def reset(self):
+        """정책 미구동(재명령·워밍업 등) → 필터·오프셋 0."""
+        self.f = 0.0
+        self.off = 0.0
+        self.gate_on = False
+
+    def update(self, grav, contact2, active=True):
+        """한 틱 갱신 → (오프셋 [rad], 게이트). OFF 거나 게이트 꺼지면 (0.0, False) + 필터 리셋."""
+        if self.cfg is None or grav is None:   # grav None = 정책 미구동(코어가 아직 중력벡터를 안 채움)
+            return 0.0, False
+        c0 = float(contact2[0]) > 0.5
+        c1 = float(contact2[1]) > 0.5
+        g = self.cfg["gate"]
+        gate = bool(active) and (
+            (c0 and c1) if g == "both" else (c0 or c1) if g == "any" else True)
+        roll = math.atan2(float(grav[1]), -float(grav[2])) if gate else 0.0
+        if not gate or not math.isfinite(roll):   # 비유한은 상류 관측 게이트가 이미 막지만 NaN 명령은 절대 금지
+            self.reset()
+            return 0.0, False
+        self.f += (self.dt / self.cfg["tau_s"]) * (roll - self.f)
+        lim = self.cfg["limit_rad"]
+        self.off = max(-lim, min(lim, self.cfg["sign"] * self.cfg["K"] * self.f))
+        self.gate_on = True
+        return self.off, True
+
+    def add_to(self, targets_rad, off):
+        """선택 관절 2개에만 lr 배수로 가산한 **새 리스트**. off=0/OFF 면 입력을 그대로 돌려준다."""
+        if self.cfg is None or off == 0.0:
+            return targets_rad
+        out = list(targets_rad)
+        out[self.cols[0]] += self.cfg["lr"][0] * off
+        out[self.cols[1]] += self.cfg["lr"][1] * off
+        return out
 
 
 #: 중력 정합 게이트 (0905 감사 A4): stand/walk/march 시작 시 |g−(0,0,−1)| 가 이 값을 넘으면 기동 거부.
@@ -460,6 +613,7 @@ class BridgeCore:
         self.cmd = (0.0, 0.0, 0.0)
         self.heading_hold = True
         self.active = False          # stand/walk/march 시작 여부
+        self.last_grav = None        # 이번 틱에 정책이 받은 투영중력(장착 편향 보정 후) — roll_comp 가 같은 벡터를 쓴다
 
     def reset(self, checkpoint=None):
         if checkpoint and checkpoint != self.ckpt_name:
@@ -474,6 +628,7 @@ class BridgeCore:
         """관측 → 목표각 12 [rad, 절대] (JOINT_ORDER 순)."""
         w, x, y, z = quat_wxyz
         grav = correct_gravity(projected_gravity(quat_wxyz))   # world -z 를 body 프레임으로 (게이트와 동일식) + 장착 편향 보정(맵 키 있을 때만)
+        self.last_grav = grav
         vx, vy, wz = self.cmd
         if self.heading_hold and abs(wz) < 1e-6:
             yaw = yaw_from_quat_wxyz(w, x, y, z)
@@ -667,6 +822,81 @@ def _selftest_imu_mount():
     # 큰 기울기(> ~73°)에선 보정 생략(원시값 그대로)
     g_fall = (0.0, 0.95, -0.2); assert correct_gravity(g_fall, [1.3, -0.6]) == g_fall
     return f"편향 {rp_b[0]:+.2f}/{rp_b[1]:+.2f}° 보정 → (0,0,−1) 오차 <1e-4 · +10° 기울기 → {abs(roll_t):.2f}° · 한계 {IMU_MOUNT_BIAS_MAX_DEG}° · 범위/타입 4종 거부 · 73° 초과 기울기 보정 생략"
+
+
+def _selftest_roll_comp():
+    """(0913) 느린 기울기 롤 보정기 — 시뮬 eval_hang2stand.py --roll_comp 와 같은 식인지 검증.
+
+    (a) 맵 키 없음/enabled=false → 완전 OFF (목표 리스트 객체 그대로 = 출력 비트 동일)
+    (b) 양발 접촉 + 롤 +3° 를 5s(50Hz) → 오프셋 → sign·K·3° (5% 이내), 선택 관절 2개만 변화
+    (c) 게이트 해제(한 발 0) → 오프셋 0 + 필터 리셋 / any·none·정책 비구동
+    (d) ±limit 클램프 · sign=−1 반전
+    (e) 불량 설정 거부 (범위·선택지·오타 키·타입)
+    """
+    base = [0.1 * (k + 1) for k in range(12)]
+    g3 = (0.0, math.sin(math.radians(3.0)), -math.cos(math.radians(3.0)))   # roll=atan2(g_y,−g_z)=+3°
+    assert abs(math.degrees(math.atan2(g3[1], -g3[2])) - 3.0) < 1e-9
+    # (a) OFF
+    assert _validate_roll_comp(None) is None
+    assert _validate_roll_comp({"enabled": False, "K": 2.0, "joints": "hip_a"}) is None
+    rc_off = RollComp(_validate_roll_comp(None))
+    assert not rc_off.enabled
+    assert rc_off.update(g3, [1.0, 1.0]) == (0.0, False)
+    assert rc_off.add_to(base, 0.0) is base          # 새 객체조차 만들지 않음
+    # (b) 수렴
+    cfg = _validate_roll_comp({"enabled": True, "K": 1.0, "tau_s": 1.0, "limit_deg": 5.0,
+                               "joints": "ankle_r", "sign": 1, "lr": [1, 1], "gate": "both"})
+    rc = RollComp(cfg)
+    off = gate = None
+    for _ in range(250):                            # 5s @ 50Hz
+        off, gate = rc.update(g3, [1.0, 1.0])
+    conv = math.degrees(off)
+    assert gate and abs(conv - 3.0) <= 3.0 * 0.05, conv
+    out = rc.add_to(base, off)
+    chg = [k for k in range(12) if out[k] != base[k]]
+    assert chg == [JOINT_ORDER.index("left_ankle_r_joint"),
+                   JOINT_ORDER.index("right_ankle_r_joint")] == [10, 11], chg
+    assert abs((out[10] - base[10]) - off) < 1e-12 and abs((out[11] - base[11]) - off) < 1e-12
+    assert base == [0.1 * (k + 1) for k in range(12)], "입력 리스트를 건드렸다(LPF 상태 오염 경로)"
+    # joints=hip_a → 열 2·3, lr 좌우 배수 각각
+    rc_h = RollComp(_validate_roll_comp({"enabled": True, "joints": "hip_a", "lr": [1, -1]}))
+    oh = rc_h.add_to(base, 0.05)
+    assert [k for k in range(12) if oh[k] != base[k]] == [2, 3], oh
+    assert abs((oh[2] - base[2]) - 0.05) < 1e-12 and abs((oh[3] - base[3]) + 0.05) < 1e-12
+    # (c) 게이트
+    assert rc.update(g3, [1.0, 0.0]) == (0.0, False) and rc.f == 0.0, "both 게이트 해제 시 리셋"
+    assert rc.add_to(base, 0.0) is base
+    rc_any = RollComp(_validate_roll_comp({"enabled": True, "gate": "any"}))
+    assert rc_any.update(g3, [1.0, 0.0])[1] and not rc_any.update(g3, [0.0, 0.0])[1]
+    rc_none = RollComp(_validate_roll_comp({"enabled": True, "gate": "none"}))
+    assert rc_none.update(g3, [0.0, 0.0])[1]
+    assert rc_none.update(g3, [1.0, 1.0], False) == (0.0, False), "정책 비구동 → OFF"
+    # (d) 클램프 · 부호
+    rc_lim = RollComp(_validate_roll_comp({"enabled": True, "K": 1.0, "tau_s": 0.1, "limit_deg": 1.0}))
+    for _ in range(250):
+        off_lim, _g = rc_lim.update(g3, [1.0, 1.0])
+    assert abs(math.degrees(off_lim) - 1.0) < 1e-9, math.degrees(off_lim)
+    rc_neg = RollComp(_validate_roll_comp({"enabled": True, "sign": -1, "tau_s": 0.1}))
+    for _ in range(250):
+        off_neg, _g = rc_neg.update(g3, [1.0, 1.0])
+    assert abs(math.degrees(off_neg) + 3.0) < 0.05, math.degrees(off_neg)
+    # (e) 불량 설정 거부
+    bads = ({"enabled": True, "K": 5.0}, {"enabled": True, "tau_s": 0.05},
+            {"enabled": True, "limit_deg": 20.0}, {"enabled": True, "joints": "knee"},
+            {"enabled": True, "sign": 0}, {"enabled": True, "gate": "always"},
+            {"enabled": True, "lr": [1]}, {"enabled": True, "taus": 1.0},
+            {"enabled": True, "K": float("nan")}, {"enabled": "yes"}, [1, 2])
+    for bad in bads:
+        try:
+            _validate_roll_comp(bad)
+            raise AssertionError(f"불량 설정 미거부: {bad}")
+        except ValueError:
+            pass
+    fm = load_frame_map()
+    return (f"키 없음 OFF(현재 맵 {'키 없음' if fm.roll_comp is None else fm.roll_comp}) · "
+            f"+3° 5s → {conv:+.3f}° (오차 {abs(conv - 3.0) / 3.0 * 100:.2f}%) · 변화 관절 {chg}(ankle_r) · "
+            f"hip_a lr[1,−1] 열 2·3 · 게이트 both/any/none·비구동 · 클램프 ±1.0° · sign−1 {math.degrees(off_neg):+.2f}° · "
+            f"불량 {len(bads)}종 거부")
 
 
 def _selftest_grav_gate():
@@ -1284,6 +1514,7 @@ def run_selftest(required=()):
              ("프레임 게이트", _selftest_frame_gate),
              ("중력 게이트", _selftest_grav_gate),
              ("IMU 장착 편향", _selftest_imu_mount),
+             ("롤 보정기", _selftest_roll_comp),
              ("인계 워밍업", _selftest_warmup),
              ("롤/피치 기록", _selftest_roll_pitch),
              ("발진 가드", _selftest_osc_guard),
@@ -1365,6 +1596,7 @@ def main():
             super().__init__("humanoid_rl_bridge")
             self.core = BridgeCore(args.checkpoint)
             self.frames = frames        # 모터↔관절 프레임 변환 (기동 시 검증 완료)
+            self.roll_comp = RollComp(frames.roll_comp)   # 느린 기울기 롤 보정기 — 맵 키 없으면 OFF(no-op)
             self.live = bool(args.live)
             self.joint_deg = {}         # {관절: '모터 인코더 프레임' deg} — 변환 전 원본
             self.joint_ts = 0.0
@@ -1643,6 +1875,7 @@ def main():
                         f"행잉 ARM — 접지 전 무접촉 허용(최대 {HANG_MAX_S:.0f}s), 양발 접촉 {CONTACT_CONFIRM_S}s 후 "
                         "기존 리프트 가드 복원")
                 self.tgt_filt = None
+                self.roll_comp.reset()
                 self.osc_tgt = OscGuard(JOINT_ORDER)
                 self.prev_tgt = None
                 self.core.reset(checkpoint=ck)
@@ -1678,6 +1911,7 @@ def main():
             proceed, wact = warmup_gate(fresh, self.warmed, now, self.warmup_until)
             if not proceed:
                 self.prev_qpos = None
+                self.roll_comp.reset()   # 정책 미구동(홀드-프라임) → 보정기 필터 0
                 if wact == "prime":
                     self._send_hold_prime()
                     if now - getattr(self, "_warm_log_t", 0.0) >= 0.5:   # 판별 측정: 무엇이 낡았나 (H1 관절 한 분기 vs H3 status 전체)
@@ -1791,6 +2025,15 @@ def main():
             if self.core.ckpt_name.startswith("stand"):
                 self.tgt_filt = lpf_step(self.tgt_filt, targets_rad)
                 targets_rad = self.tgt_filt
+            # 느린 기울기 롤 보정기 (맵 키 roll_comp, 기본 OFF — 키가 없으면 이 블록 전체가 no-op).
+            # 자리: 슬루·LPF 뒤 / 타깃 발진 가드·프레임 변환·온셋 블렌딩 앞. 가드가 오프셋 포함
+            # 최종 명령을 그대로 보게 하려는 선택 (근거·시뮬 차이는 RollComp docstring).
+            # add_to 는 새 리스트를 내므로 LPF 상태(self.tgt_filt)는 오염되지 않는다.
+            rc_off, rc_gate = 0.0, False
+            if self.roll_comp.enabled:
+                rc_off, rc_gate = self.roll_comp.update(
+                    self.core.last_grav, contact2, self.core.active)
+                targets_rad = self.roll_comp.add_to(targets_rad, rc_off)
             # 타깃 측 발진 가드 (0803 분석: 두 발진 모두 타깃이 몸을 80~100ms
             # 선행 — 정책 출력 감시가 절반 진폭·0.3~1.2s 조기 컷. 러너 슬루
             # 4°/틱=3.5rad/s 상한이라 정상 타깃은 과속 트립 불가)
@@ -1879,6 +2122,9 @@ def main():
                    "grav_gate": self.grav_last,
                    "foot_raw_sum": self.foot_raw_sum,
                    "last_reject_reason": self.reject_reason}
+            if self.roll_comp.enabled:   # OFF(키 없음)면 기록 스키마도 종전과 동일
+                dbg["roll_comp_deg"] = round(math.degrees(rc_off), 4)
+                dbg["roll_comp_gate"] = bool(rc_gate)
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
             if not (self.live and self.armed):

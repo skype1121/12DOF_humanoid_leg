@@ -58,7 +58,7 @@ def _state(env):
               # 케이블 실제 상태 기록 (item 4c: 지지 제거를 스케줄 r 이 아니라 실제 장력으로 판정)
               "cbl_T": z(), "cbl_dist": z(),
               "avx": z(), "avy": z(),   # 0912 앵커 드리프트 속도 [m/s] (시간 가변 당김 재현용)
-              "ramp_rate": z(), "ramp_cap": z(), "ramp_start": z(),   # 0912 준정적 롤 토크 램프 [Nm/s, Nm, s] (실물 준정적 이탈 재현용)
+              "ramp_rate": z(), "ramp_cap": z(), "ramp_start": z(), "yaw_c": z(),  # 0914 공중 응답 기준 시험용 요 감쇠 [Nm·s/rad] (기본 0 = 종전 동일)   # 0912 준정적 롤 토크 램프 [Nm/s, Nm, s] (실물 준정적 이탈 재현용)
               "tp_d": z(), "tp_kp": z(), "tp_kd": z()}   # 0913 앞뒤 2점 현수: 후크 간격 d [m](0=끔), 피치 구속 강성/감쇠 — 토크 cap = T·d/2 (줄은 당기기만)
         env._hang = st
     return st
@@ -154,6 +154,8 @@ def _apply(env, st, ids, asset_cfg):
     ramp = st["ramp_rate"][ids] * _dt
     _capm = st["ramp_cap"][ids].abs(); ramp = torch.maximum(torch.minimum(ramp, _capm), -_capm)   # 0913 정정: 크기 기준 클램프(rate·cap 부호가 달라도 무제한 토크 방지)
     tau = tau + torch.stack([ramp, torch.zeros_like(ramp), torch.zeros_like(ramp)], dim=-1)
+    _yz = -st["yaw_c"][ids] * w[:, 2]                                   # 0914 요 감쇠(기본 0)
+    tau = tau + torch.stack([torch.zeros_like(_yz), torch.zeros_like(_yz), _yz], dim=-1)
     # 0913 앞뒤 2점 현수 피치 구속 (tp_d>0 일 때만; cap = Fz·d/2 — 줄이 풀리면(Fz→0) 자동 소멸)
     _ty = _two_point_pitch_torque(pgv, w, st["tp_kp"][ids], st["tp_kd"][ids], Fz * st["tp_d"][ids] * 0.5)
     tau = tau + torch.stack([torch.zeros_like(_ty), _ty, torch.zeros_like(_ty)], dim=-1)
@@ -194,7 +196,8 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
                        anchor_h_range=(1.0, 1.6), cbl_k_range=(1500.0, 3000.0), cbl_c_range=(20.0, 120.0),
                        cbl_slack_range=(0.05, 0.15), cable_force_mode=False, anchor_vx_range=(0.0, 0.0), anchor_vy_range=(0.0, 0.0), ramp_roll_torque=(0.0, 0.0, 0.0),
                        ramp_rate_range=None, ramp_cap_range=None, ramp_start_range=None, ramp_sign_random=False,
-                       two_point_d_range=(0.0, 0.0), two_point_kp_range=(200.0, 200.0), two_point_kd_range=(10.0, 10.0)):
+                       two_point_d_range=(0.0, 0.0), two_point_kp_range=(200.0, 200.0), two_point_kd_range=(10.0, 10.0),
+                       yaw_damp=0.0):
     """mode="reset": 에피소드마다 지지 스케줄·로프 기하를 새로 뽑고 첫 지지력을 즉시 건다.
     two_point_d_range: 0913 승윤님 확인 '줄은 몸통 앞·뒤 2점' — 두 줄이 팽팽한 동안 피치를 구속한다(롤은 진자 그대로).
     토크 = clip(−kp·pitch − kd·ω_y, ±T·d/2) (줄은 당기기만 하므로 한 줄이 전 장력을 받을 때가 최대). d=0 이면 종전(단일 후크)과 동일.
@@ -218,6 +221,7 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
     st["lvl_k"][ids] = U(*level_gain_range)      # 수평 유지 강성 [Nm/rad] (실물 두 줄 현가 ≈ 강함)
     st["lvl_c"][ids] = U(*level_damp_range)      # 감쇠 [Nm·s/rad]
     st["ramp_rate"][ids] = float(ramp_roll_torque[0]); st["ramp_cap"][ids] = float(ramp_roll_torque[1]); st["ramp_start"][ids] = float(ramp_roll_torque[2])
+    st["yaw_c"][ids] = float(yaw_damp)   # 0914: 공중 롤 응답 기준 시험에서 요 회전(0913 sig4 오염 원인) 억제용
     st["tp_d"][ids] = U(*two_point_d_range); st["tp_kp"][ids] = U(*two_point_kp_range); st["tp_kd"][ids] = U(*two_point_kd_range)
     if ramp_rate_range is not None:   # 학습용 DR(0912 S8ac4q): 준정적 롤 토크 램프를 env 마다 다르게, 부호 랜덤
         st["ramp_rate"][ids] = U(*ramp_rate_range); st["ramp_cap"][ids] = U(*ramp_cap_range); st["ramp_start"][ids] = U(*ramp_start_range)

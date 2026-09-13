@@ -1637,6 +1637,22 @@ def _selftest_hang_guard():
     assert g.relifts == HANG_MAX_RELIFTS
     why, _ = run(g, [(LIFT_STOP_S + 0.1, NONE, 0.0)])
     assert why and why.startswith("lift_guard"), why
+    # (0913 추가 검증) 재들림 뒤 시간 제한: 새 창에서 접지 없이 hang_max_s 초과 → hang_guard 동결 (재들림 시각 기준)
+    g4 = HangGuard(hang_mode=True, t0=0.0, hang_max_s=5.0)
+    assert run(g4, [(0.4, B, 60.0), (LIFT_STOP_S + 0.1, NONE, 0.0)])[0] is None and g4.state == HangGuard.PRE_CONTACT
+    t_relift = 0.4 + LIFT_STOP_S + 0.1
+    why, t = run(g4, [(6.0, NONE, 0.0)])
+    assert why and why.startswith("hang_guard") and abs(t - (t_relift + 5.0)) < 0.05, (why, t, t_relift)
+    # 접촉 오판 1: 짧은 누락/채터(양발 0 이 lift_stop_s 미만) → 상태·횟수 불변
+    g5 = HangGuard(hang_mode=True, t0=0.0)
+    run(g5, [(0.4, B, 60.0)]); assert g5.state == HangGuard.CONTACT_ACQUIRED
+    for _ in range(20):
+        assert run(g5, [(0.3, NONE, 0.0), (0.3, B, 60.0)])[0] is None
+    assert g5.state == HangGuard.CONTACT_ACQUIRED and g5.relifts == 0 and g5.pop_transitions() == []
+    # 접촉 오판 2: 한 발 비트 고착 0(정책은 [0,1]) → 양발 무접촉이 아니므로 재들림도 동결도 없음(종전 동일)
+    assert run(g5, [(30.0, L, 60.0)])[0] is None and g5.state == HangGuard.CONTACT_ACQUIRED and g5.relifts == 0
+    # 접촉 오판 3: 한 발 비트 고착 1(공중에서도 [1,0]) → 실제 들려도 재들림 판정 불가 = 종전과 같은 사각(문서화)
+    assert run(g5, [(30.0, L, 0.0)])[0] is None and g5.state == HangGuard.CONTACT_ACQUIRED
     # hang_arm 아님: 재들림 동결 그대로 (케이스 1 과 동일, 회귀 고정)
     g2 = HangGuard(hang_mode=False)
     why, _ = run(g2, [(0.3, B, 120.0), (LIFT_STOP_S + 0.1, NONE, 0.0)])
@@ -1656,7 +1672,7 @@ def _selftest_hang_guard():
     why, t = run(g, [(6.0, NONE, 0.0)])
     assert why and why.startswith("hang_guard") and abs(t - 5.0) < 0.03, (why, t)
     return (f"hang_arm 없음=종전 동일({LIFT_STOP_S}s 동결) · 행잉 ARM 10s 무접촉 허용 · 접지 {CONTACT_CONFIRM_S}s 확인 · "
-            f"재들림 → 공중 허용 복귀(≤{HANG_MAX_RELIFTS}회, 초과 동결) · hang_arm 아님/FREE_STAND 재들림 동결 · 상한 {HANG_MAX_S:.0f}s 동결 — 9케이스 통과")
+            f"재들림 → 공중 허용 복귀(≤{HANG_MAX_RELIFTS}회, 초과 동결) · 재들림 창 상한 재적용 · 채터/한발 고착0·1 불변 · hang_arm 아님/FREE_STAND 재들림 동결 · 상한 {HANG_MAX_S:.0f}s 동결 — 12케이스 통과")
 
 
 def run_selftest(required=()):

@@ -679,6 +679,17 @@ class Biped12HangStandS8ac4rdEnvCfg(Biped12HangStandS8ac4rEnvCfg):
         self.actions.joint_pos.max_delay_steps = 11
 
 
+@configclass
+class Biped12HangStandS8ac4rdpEnvCfg(Biped12HangStandS8ac4rdEnvCfg):
+    """S8ac4rdp(0913 13시): S8ac4rd(v6 + 지연 4~11틱) + 기계 유격 DR(내재형 DeadzoneImplicit, 피치 0~3°·횡 0~1.5° env 별).
+    v6d 가 지연 6~9/8~10틱을 82/70 % 로 메웠지만 유격 P1(2°/1°, 느린 방출)이 92 → 48 % 로 빠짐 → 유격을 학습 분포에 넣어 둘 다 잡는 시도.
+    v6d(2026-09-13_12-33-22_v6d model_142985) 웜스타트 1500 it. 단일 변수 = 유격 DR."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _apply_joint_play(self, pitch_deg=3.0, lat_deg=1.5, rng=(0.0, 1.0))
+
+
 def _level_off(cfg):
     """0913 감사: S8ac4 직계 후보는 hang_support_reset 의 수평 유지 토크(lvl_k 50~300)가 0912 수정(set+add) 이후 학습에 **실제로 걸린다**.
     v5(학습 당시 미적용)·v6(S8ac4q 는 명시 OFF)과 조건을 맞추기 위해 끈다. v8·v9(0913 03~05시 학습)는 이 토크가 켜진 채 학습됨 → 결과에 교란 표기."""

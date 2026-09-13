@@ -43,6 +43,7 @@ for f in jetson/scripts/rl_bridge_node.py jetson/scripts/analyze_fall.py jetson/
          jetson/scripts/stiffness_log.py \
          jetson/scripts/foot_force_adapter_node.py jetson/scripts/sensors_up.sh jetson/scripts/release_all.py jetson/scripts/zero_kinematic_check.py \
          jetson/scripts/cop_from_pads.py jetson/scripts/boot_pose_check.py \
+         docs/A1_stand_hang_실행카드_0913.md jetson/scripts/stage8_12axis_mit_control_node.py \
          jetson/calib_data/sim_default_stand_targets_20260727.json; do   # selftest 수치 앵커 대조 파일
   mkdir -p "$STAGE/$(dirname "$f")"; cp "$f" "$STAGE/$f"
 done

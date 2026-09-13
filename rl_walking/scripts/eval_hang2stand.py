@@ -57,7 +57,8 @@ parser.add_argument("--dump_envs", type=int, default=0,
 parser.add_argument("--roll_comp", type=str, default=None,
                     help="0913 브리지형 느린 기울기 보정기: 'K,tau_s,limit_deg[,joints[,sign]]' — 몸통 롤(projected gravity, 1차 저역 τ)을 K 배로 관절 목표 오프셋(±limit) 에 더한다(액션 체인 최종 목표 뒤 = 브리지가 최종 명령에 더하는 것과 동일). joints=ankle_r|hip_a, sign=±1. 기본은 양발 진 접촉일 때만 작동(아니면 필터 0).")
 parser.add_argument("--roll_comp_lr", type=str, default="1,1", help="보정기 좌/우 관절 부호(예 '1,-1'; hip_a 는 좌우 규약이 반대)")
-parser.add_argument("--roll_comp_gate_src", type=str, default="true", choices=["true", "obs"], help="보정기 게이트의 접촉 출처: true=시뮬 진 접촉력(>5 N), obs=정책이 보는 접촉 비트(교란 포함 = 실물 브리지와 동일)")
+parser.add_argument("--roll_comp_gate_src", type=str, default="obs", choices=["true", "obs"], help="보정기 게이트의 접촉 출처: true=시뮬 진 접촉력(>5 N), obs=정책이 보는 접촉 비트(교란 포함 = 실물 브리지와 동일)")
+parser.add_argument("--roll_comp_site", type=str, default="pre", choices=["pre", "post"], help="보정기 삽입 자리: pre=액션 항 지연 버퍼 앞(오프셋이 전송 지연·슬루·백래시를 통과 = 브리지와 같은 자리, 기본), post=액션 체인 최종 목표 뒤(구동 모델 우회 — 상한 참고용)")
 parser.add_argument("--roll_comp_gate", type=str, default="both", choices=["both", "any", "none"], help="보정기 작동 조건: both=양발 접촉, any=한 발, none=항상")
 parser.add_argument("--calib_fixed_action", action="store_true", help="--calib_fixed 편향을 관측뿐 아니라 **액션에도**(진 목표 = 정책 목표 − b) 적용 = 실제 영점 오차(브리지가 틀린 영점으로 변환) 재현. 기본은 종전대로 관측만")
 parser.add_argument("--calib_fixed", type=str, default="", help="관절 고정 편향 주입 'left_ankle_r_joint:3.6,right_hip_r_joint:3.4' [deg] — 실측 좌우 비대칭 재현")
@@ -380,8 +381,32 @@ if _RC_ON:
         _t._processed_actions[:, _rc_cols[0]] += _rcLR[0] * _rc_off
         _t._processed_actions[:, _rc_cols[1]] += _rcLR[1] * _rc_off
         _rc_acc += _rc_off.abs() * gate; _rc_n += gate.float(); _rc_sat += ((_rc_off.abs() >= _rcLim - 1e-6) & gate).float()
-    _rct.process_actions = _rc_patched
-    print(f"[roll_comp] K={_rcK} tau={_rcTau}s limit=±{math.degrees(_rcLim):.1f}° joints={_rcJ} sign={_rcSign:+.0f} lr={_rcLR} gate={args_cli.roll_comp_gate} cols={_rc_cols} dt={_rc_dt}")
+    def _rc_core(_t=_rct):
+        """게이트·필터·오프셋 계산(한 스텝 1회). 반환: 오프셋[rad] (N,)"""
+        global _rc_f, _rc_off, _rc_acc, _rc_n, _rc_sat
+        g = robot.data.projected_gravity_b
+        roll = torch.atan2(g[:, 1], -g[:, 2])
+        fz = _cs.data.net_forces_w[:, [_fl, _fr], :].norm(dim=-1) > 5.0
+        if args_cli.roll_comp_gate_src == "obs" and _RC_OBS_BITS is not None: fz = _RC_OBS_BITS
+        if args_cli.roll_comp_gate == "both": gate = fz[:, 0] & fz[:, 1]
+        elif args_cli.roll_comp_gate == "any": gate = fz[:, 0] | fz[:, 1]
+        else: gate = torch.ones_like(fz[:, 0])
+        roll = torch.where(torch.isfinite(roll), roll, torch.zeros_like(roll))
+        _rc_f = torch.where(gate, _rc_f + (_rc_dt / _rcTau) * (roll - _rc_f), torch.zeros_like(_rc_f))
+        _rc_off = torch.clamp(_rcSign * _rcK * _rc_f, -_rcLim, _rcLim)
+        _rc_acc += _rc_off.abs() * gate; _rc_n += gate.float(); _rc_sat += ((_rc_off.abs() >= _rcLim - 1e-6) & gate).float()
+        return _rc_off
+    def _rc_pre(target):
+        off = _rc_core()
+        out = target.clone()
+        out[:, _rc_cols[0]] += _rcLR[0] * off
+        out[:, _rc_cols[1]] += _rcLR[1] * off
+        return out
+    if args_cli.roll_comp_site == "pre":
+        _rct.pre_delay_hook = _rc_pre
+    else:
+        _rct.process_actions = _rc_patched
+    print(f"[roll_comp] K={_rcK} tau={_rcTau}s limit=±{math.degrees(_rcLim):.1f}° joints={_rcJ} sign={_rcSign:+.0f} lr={_rcLR} gate={args_cli.roll_comp_gate}/{args_cli.roll_comp_gate_src} site={args_cli.roll_comp_site} cols={_rc_cols} dt={_rc_dt}")
 try:
     from rl_walking.mdp_hang import _feet_cfg as _fcfg, _support_gone_mask
     _fc = _fcfg(); _fc.resolve(env.unwrapped.scene); _FEET = _fc.name; _FEET_IDS = _fc.body_ids
@@ -401,6 +426,8 @@ try:
         if _nm == "feet_contact":
             _cs_lo, _cs_hi = _off, _off + _d
         _off += _d
+    if _RC_ON and args_cli.roll_comp_gate_src == "obs":
+        print(f"[roll_comp] 게이트 출처 obs: feet_contact 슬라이스={_cs_lo}:{_cs_hi}" + (" — 없음 → 진 접촉력으로 대체(브리지와 다름!)" if _cs_hi is None else " (마지막 2칸 [new_L,new_R])"))
     if args_cli.contact_perturb != "none":
         print(f"[obs 레이아웃] policy dim={_off}, feet_contact 슬라이스={_cs_lo}:{_cs_hi} "
               f"(항 {len(_terms)}개). 교란={args_cli.contact_perturb} seed={args_cli.perturb_seed}")
@@ -675,7 +702,7 @@ txt = "\n".join(out_lines)
 if _RC_ON:
     _m = (_rc_n > 0)
     txt += ("\n보정기(--roll_comp %s, lr %s, gate %s): 작동 스텝 env 평균 %.0f · |오프셋| 평균 %.2f° · 포화(±limit) 비율 %.1f %%" % (
-        args_cli.roll_comp, args_cli.roll_comp_lr, args_cli.roll_comp_gate + "/" + args_cli.roll_comp_gate_src, _rc_n.mean().item(),
+        args_cli.roll_comp, args_cli.roll_comp_lr, args_cli.roll_comp_gate + "/" + args_cli.roll_comp_gate_src + "/" + args_cli.roll_comp_site, _rc_n.mean().item(),
         math.degrees((_rc_acc[_m] / _rc_n[_m]).mean().item()) if _m.any() else 0.0,
         100.0 * (_rc_sat[_m] / _rc_n[_m]).mean().item() if _m.any() else 0.0))
 print(txt)

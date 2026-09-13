@@ -32,6 +32,8 @@ class SlewJointPositionAction(JointPositionAction):
     def __init__(self, cfg: "SlewJointPositionActionCfg", env) -> None:
         super().__init__(cfg, env)
         self._max_delta = float(cfg.max_delta_per_step)
+        # 0913 평가 전용 선택 훅: 지연 버퍼 **앞** 목표(rad)를 변조(브리지형 보정기 정합). 기본 None = 학습·종전 동작 불변.
+        self.pre_delay_hook = None
         # 직전에 실제로 내보낸 목표각 (슬루의 기준점)
         self._prev_target = torch.zeros(self.num_envs, self.action_dim, device=self.device)
         # 리셋 직후 env는 현재 관절위치에서 슬루를 시작해야 함
@@ -106,6 +108,8 @@ class SlewJointPositionAction(JointPositionAction):
                 self._bl_out[ids] = cur
             self._needs_init[ids] = False
         target = self._processed_actions
+        if self.pre_delay_hook is not None:
+            target = self.pre_delay_hook(target)
         # env별 액션 지연: 버퍼 밀고 d틱 前 목표를 꺼냄
         if self._max_delay > 0:
             self._buf = torch.roll(self._buf, 1, dims=0)

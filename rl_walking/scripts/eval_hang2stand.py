@@ -54,6 +54,7 @@ parser.add_argument("--delay_steps", type=str, default=None,
 parser.add_argument("--dump_envs", type=int, default=0,
                     help="처음 N개 env 의 시계열을 실물 블랙박스 형식으로 log_picture/simbb_<tag>_env<i>.jsonl 에 기록 "
                          "(jetson/scripts/analyze_hang2stand_trial.py 로 시뮬/실물 '최초 이상 발생 순서' 비교, 0911)")
+parser.add_argument("--hook_dxy", type=str, default=None, help="0913: 힘 모델(줄) 작용점을 몸통 로컬 (dx,dy)[m] 로 고정 (y+ = 왼쪽). 실물 후크가 무게중심에서 옆으로 벗어난 경우 재현 — 매 스텝 st[px,py] 덮어씀")
 parser.add_argument("--roll_comp", type=str, default=None,
                     help="0913 브리지형 느린 기울기 보정기: 'K,tau_s,limit_deg[,joints[,sign]]' — 몸통 롤(projected gravity, 1차 저역 τ)을 K 배로 관절 목표 오프셋(±limit) 에 더한다(액션 체인 최종 목표 뒤 = 브리지가 최종 명령에 더하는 것과 동일). joints=ankle_r|hip_a, sign=±1. 기본은 양발 진 접촉일 때만 작동(아니면 필터 0).")
 parser.add_argument("--roll_comp_lr", type=str, default="1,1", help="보정기 좌/우 관절 부호(예 '1,-1'; hip_a 는 좌우 규약이 반대)")
@@ -564,6 +565,10 @@ t0 = time.time()
 _ramp_prev = torch.zeros(N, device=dev); _r_prev = torch.full((N,), float("nan"), device=dev)
 for i in range(STEPS):
     with torch.inference_mode():
+        if args_cli.hook_dxy:
+            _hs = getattr(uenv, "_hang", None)
+            if _hs is not None and "px" in _hs:
+                _hdx, _hdy = _pair(args_cli.hook_dxy); _hs["px"][:] = float(_hdx); _hs["py"][:] = float(_hdy)
         obs = _cperturb(obs, i)          # actor 접촉 obs 교란(정답/물리 불변) — none 이면 무변
         if _RC_ON and args_cli.roll_comp_gate_src == "obs" and _cs_hi is not None:
             _tt = obs["policy"] if not torch.is_tensor(obs) else obs

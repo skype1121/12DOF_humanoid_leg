@@ -1,0 +1,7 @@
+[rc_rescue] start 01:33:00
+rcr_v5_g05_comyR03_K1L3: 15/64 (23.4%) | 방출 후 낙상 49 / 방출 전 낙상 0 | 최대 |롤| 평균 12.80° | 보정기(--roll_comp 1.0,1.0,3.0, lr 1,1, gate any/obs/pre/deb0.2/slew0.25/clamp15.0): 작
+rcr_v5_g05_comyR03_K15L5: 10/64 (15.6%) | 방출 후 낙상 54 / 방출 전 낙상 0 | 최대 |롤| 평균 15.15° | 보정기(--roll_comp 1.5,1.0,5.0, lr 1,1, gate any/obs/pre/deb0.2/slew0.25/clamp15.0): 작
+rcr_v5_g05_comyR04_K1L3: 0/64 (0.0%) | 방출 후 낙상 64 / 방출 전 낙상 0 | 최대 |롤| 평균 16.24° | 보정기(--roll_comp 1.0,1.0,3.0, lr 1,1, gate any/obs/pre/deb0.2/slew0.25/clamp15.0): 작
+rcr_v5_g05_comyR04_K15L5: 0/64 (0.0%) | 방출 후 낙상 64 / 방출 전 낙상 0 | 최대 |롤| 평균 17.78° | 보정기(--roll_comp 1.5,1.0,5.0, lr 1,1, gate any/obs/pre/deb0.2/slew0.25/clamp15.0): 작
+rcr_v5_g04_comyR02_K15L5: 0/64 (0.0%) | 방출 후 낙상 64 / 방출 전 낙상 0 | 최대 |롤| 평균 8.90° | 보정기(--roll_comp 1.5,1.0,5.0, lr 1,1, gate any/obs/pre/deb0.2/slew0.25/clamp15.0): 작
+RCR_DONE 01:37:20

@@ -54,6 +54,10 @@ parser.add_argument("--delay_steps", type=str, default=None,
 parser.add_argument("--dump_envs", type=int, default=0,
                     help="처음 N개 env 의 시계열을 실물 블랙박스 형식으로 log_picture/simbb_<tag>_env<i>.jsonl 에 기록 "
                          "(jetson/scripts/analyze_hang2stand_trial.py 로 시뮬/실물 '최초 이상 발생 순서' 비교, 0911)")
+parser.add_argument("--roll_comp", type=str, default=None,
+                    help="0913 브리지형 느린 기울기 보정기: 'K,tau_s,limit_deg[,joints[,sign]]' — 몸통 롤(projected gravity, 1차 저역 τ)을 K 배로 관절 목표 오프셋(±limit) 에 더한다(액션 체인 최종 목표 뒤 = 브리지가 최종 명령에 더하는 것과 동일). joints=ankle_r|hip_a, sign=±1. 기본은 양발 진 접촉일 때만 작동(아니면 필터 0).")
+parser.add_argument("--roll_comp_lr", type=str, default="1,1", help="보정기 좌/우 관절 부호(예 '1,-1'; hip_a 는 좌우 규약이 반대)")
+parser.add_argument("--roll_comp_gate", type=str, default="both", choices=["both", "any", "none"], help="보정기 작동 조건: both=양발 접촉, any=한 발, none=항상")
 parser.add_argument("--calib_fixed_action", action="store_true", help="--calib_fixed 편향을 관측뿐 아니라 **액션에도**(진 목표 = 정책 목표 − b) 적용 = 실제 영점 오차(브리지가 틀린 영점으로 변환) 재현. 기본은 종전대로 관측만")
 parser.add_argument("--calib_fixed", type=str, default="", help="관절 고정 편향 주입 'left_ankle_r_joint:3.6,right_hip_r_joint:3.4' [deg] — 실측 좌우 비대칭 재현")
 parser.add_argument("--anchor_x", type=float, default=None, help="[케이블 태스크] 앵커 전후 오프셋 고정 [m] (+앞) — 줄 모멘트(후크 비연직) 가설 H2b 스윕용")
@@ -345,6 +349,36 @@ _ss_ar2 = torch.zeros(N, device=dev); _ss_r2 = torch.zeros(N, device=dev); _ss_p
 _ss_aa2 = torch.zeros(N, device=dev); _ss_pm = torch.zeros(N, device=dev); _prev_a2 = None   # 액션 2차차분(채터 겨냥 보상의 직접 지표)·정착 피치 부호 평균
 _air_q = torch.zeros(N, 12, device=dev); _air_n = torch.zeros(N, device=dev)   # 0910: 공중(지지비>0.9) 관절각 평균 — 실물 공중 비대칭(왼 힙a +11 vs 오른 +6) 대조
 _jn = list(robot.joint_names); _jidx = {n: i for i, n in enumerate(_jn)}
+# ── 0913 브리지형 느린 기울기 보정기(--roll_comp): 정책 밖 외부 루프. 실물 브리지에서 IMU 롤(맵 편향 보정 후)을 저역 필터해 관절 목표에 더하는 것과 같은 자리 ──
+_RC_ON = bool(args_cli.roll_comp)
+if _RC_ON:
+    _p = [x.strip() for x in args_cli.roll_comp.split(",")]
+    _rcK = float(_p[0]); _rcTau = max(float(_p[1]), 1e-3); _rcLim = math.radians(float(_p[2]))
+    _rcJ = _p[3] if len(_p) > 3 else "ankle_r"; _rcSign = float(_p[4]) if len(_p) > 4 else 1.0
+    _rcLR = [float(x) for x in args_cli.roll_comp_lr.split(",")]
+    _rct = uenv.action_manager.get_term("joint_pos")
+    _rc_tj = list(range(_nj)) if isinstance(_rct._joint_ids, slice) else [int(i) for i in _rct._joint_ids]
+    _rc_cols = [_rc_tj.index(_jidx[f"left_{_rcJ}_joint"]), _rc_tj.index(_jidx[f"right_{_rcJ}_joint"])]
+    _rc_f = torch.zeros(N, device=dev); _rc_off = torch.zeros(N, device=dev)
+    _rc_acc = torch.zeros(N, device=dev); _rc_n = torch.zeros(N, device=dev); _rc_sat = torch.zeros(N, device=dev)
+    _rc_dt = float(uenv.step_dt)
+    _rc_o = _rct.process_actions
+    def _rc_patched(actions, _t=_rct, _o=_rc_o):
+        global _rc_f, _rc_off, _rc_acc, _rc_n, _rc_sat
+        _o(actions)
+        g = robot.data.projected_gravity_b
+        roll = torch.atan2(g[:, 1], -g[:, 2])
+        fz = _cs.data.net_forces_w[:, [_fl, _fr], :].norm(dim=-1) > 5.0
+        if args_cli.roll_comp_gate == "both": gate = fz[:, 0] & fz[:, 1]
+        elif args_cli.roll_comp_gate == "any": gate = fz[:, 0] | fz[:, 1]
+        else: gate = torch.ones_like(fz[:, 0])
+        _rc_f = torch.where(gate, _rc_f + (_rc_dt / _rcTau) * (roll - _rc_f), torch.zeros_like(_rc_f))
+        _rc_off = torch.clamp(_rcSign * _rcK * _rc_f, -_rcLim, _rcLim)
+        _t._processed_actions[:, _rc_cols[0]] += _rcLR[0] * _rc_off
+        _t._processed_actions[:, _rc_cols[1]] += _rcLR[1] * _rc_off
+        _rc_acc += _rc_off.abs() * gate; _rc_n += gate.float(); _rc_sat += ((_rc_off.abs() >= _rcLim - 1e-6) & gate).float()
+    _rct.process_actions = _rc_patched
+    print(f"[roll_comp] K={_rcK} tau={_rcTau}s limit=±{math.degrees(_rcLim):.1f}° joints={_rcJ} sign={_rcSign:+.0f} lr={_rcLR} gate={args_cli.roll_comp_gate} cols={_rc_cols} dt={_rc_dt}")
 try:
     from rl_walking.mdp_hang import _feet_cfg as _fcfg, _support_gone_mask
     _fc = _fcfg(); _fc.resolve(env.unwrapped.scene); _FEET = _fc.name; _FEET_IDS = _fc.body_ids
@@ -632,6 +666,12 @@ for k in range(0, STEPS, 25):
     P(f"   {k/50:5.1f}  {ratio_trace[k]:5.2f}  {contact_trace[k]:5.2f}  {z_trace[k]:5.3f}  {pitch_trace[k]:+6.2f}")
 P(f"소요 {time.time()-t0:.0f}s")
 txt = "\n".join(out_lines)
+if _RC_ON:
+    _m = (_rc_n > 0)
+    txt += ("\n보정기(--roll_comp %s, lr %s, gate %s): 작동 스텝 env 평균 %.0f · |오프셋| 평균 %.2f° · 포화(±limit) 비율 %.1f %%" % (
+        args_cli.roll_comp, args_cli.roll_comp_lr, args_cli.roll_comp_gate, _rc_n.mean().item(),
+        math.degrees((_rc_acc[_m] / _rc_n[_m]).mean().item()) if _m.any() else 0.0,
+        100.0 * (_rc_sat[_m] / _rc_n[_m]).mean().item() if _m.any() else 0.0))
 print(txt)
 tag = args_cli.out_tag or time.strftime("%m%d_%H%M%S")
 os.makedirs(os.path.join(REPO, "log_picture"), exist_ok=True); os.makedirs(os.path.join(REPO, "demo_output"), exist_ok=True)

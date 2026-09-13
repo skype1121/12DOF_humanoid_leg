@@ -666,6 +666,19 @@ class Biped12HangStandS8ac4rEnvCfg(Biped12HangStandS8ac4qEnvCfg):
         self.events.hang_support_reset.params["ramp_cap_range"] = (2.0, 12.0)
 
 
+@configclass
+class Biped12HangStandS8ac4rdEnvCfg(Biped12HangStandS8ac4rEnvCfg):
+    """S8ac4rd(0913 12시, 승윤님 지시 '느린 기울기도 감지하고 서 있어야'): S8ac4r(램프 DR + 실측 잡음/IMU 편향 대역 + 강성 0.3) 에
+    액션 지연 DR 을 실측 정책루프 지연(중앙 6.3틱, p95 8.9)에 맞춰 4~11 틱으로 확장. v6 의 강점(램프 15 Nm 홀드 자립 61~63/64·정적 모멘트·연성)은
+    유지하고 약점(지연 6~10틱 −11~−30 pp)을 학습 분포로 메우는 단일 변수 실험. v6(2026-09-13_00-40-49 model_141486) 웜스타트 1500 it.
+    수평 유지 토크는 S8ac4q 에서 명시 OFF(상속)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.min_delay_steps = 4
+        self.actions.joint_pos.max_delay_steps = 11
+
+
 def _level_off(cfg):
     """0913 감사: S8ac4 직계 후보는 hang_support_reset 의 수평 유지 토크(lvl_k 50~300)가 0912 수정(set+add) 이후 학습에 **실제로 걸린다**.
     v5(학습 당시 미적용)·v6(S8ac4q 는 명시 OFF)과 조건을 맞추기 위해 끈다. v8·v9(0913 03~05시 학습)는 이 토크가 켜진 채 학습됨 → 결과에 교란 표기."""

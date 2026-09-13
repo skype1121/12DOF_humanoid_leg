@@ -39,7 +39,7 @@ def _xcorr_lag(a, b, dt, max_lag_s=0.6):
         e = sum((a[i]-b[i+lag])**2 for i in range(m)) / m
         if e < best: best, bl = e, lag
     return bl*dt
-def analyze(recs, dt=0.02):
+def analyze(recs, dt=0.02, roll_min=0.5):
     recs = [r for r in recs if isinstance(r.get("rp_deg"), list) and isinstance(r.get("qpos_rad"), list) and isinstance(r.get("contact"), list)]
     if not recs: return {"error": "no records"}
     ic = next((i for i, r in enumerate(recs) if str(r.get("hang_state", "")).startswith("CONTACT")), None)
@@ -59,7 +59,7 @@ def analyze(recs, dt=0.02):
     ank_asym_q = [(q[10]-q[11])/2 for q in Q]
     # 사전 평균(접지 뒤 첫 1 s)
     n0 = min(len(win), 50); pre_roll = sum(roll[:n0])/n0; pre_aa = sum(ank_asym_t[:n0])/n0
-    sel = [i for i in range(len(win)) if 0.5 <= abs(roll[i]-pre_roll) <= 8.0]
+    sel = [i for i in range(len(win)) if roll_min <= abs(roll[i]-pre_roll) <= 8.0]
     xs = [roll[i]-pre_roll for i in sel]
     out = {"n_ticks": len(win), "survive_s": round(survive, 2), "left_off_s": (round(il, 2) if il is not None else None),
            "roll_pre": round(pre_roll, 2), "roll_min": round(min(roll), 2), "roll_max": round(max(roll), 2),
@@ -78,6 +78,13 @@ def analyze(recs, dt=0.02):
     out["track_rms_ankle_r"] = round(math.sqrt(sum(e*e for e in err_a)/max(1, len(err_a))), 2)
     out["track_rms_hip_a"] = round(math.sqrt(sum(e*e for e in err_h)/max(1, len(err_h))), 2)
     out["track_lag_s_ankle_asym"] = _xcorr_lag(ank_asym_t, ank_asym_q, dt)
+    nl = min(len(win), 250)
+    if nl >= 50:
+        out["d_roll_plateau"] = round(sum(roll[-nl:])/nl - pre_roll, 2)
+        out["d_ank_asym_plateau"] = round(sum(ank_asym_t[-nl:])/nl - pre_aa, 2)
+        out["d_hip_sym_plateau"] = round(sum(hip_sym_t[-nl:])/nl - sum(hip_sym_t[:n0])/n0, 2)
+        out["d_hip_asym_plateau"] = round(sum(hip_asym_t[-nl:])/nl - sum(hip_asym_t[:n0])/n0, 2)
+        out["d_ank_sym_plateau"] = round(sum(ank_sym_t[-nl:])/nl - sum(ank_sym_t[:n0])/n0, 2)
     for k in ("gain_ank_asym", "gain_ank_sym", "gain_hip_asym", "gain_hip_sym"):
         if out[k] is not None: out[k] = round(out[k], 3)
     return out
@@ -97,15 +104,15 @@ def _selftest():
     assert o["survive_s"] > 7.9, o
     print("[selftest] analyze_roll_response: 이득 −0.5 °/° · 지연 ≤0.1 s · 추종 지연 0.06 s · 생존 — PASS")
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(); ap.add_argument("files", nargs="*"); ap.add_argument("--selftest", action="store_true"); ap.add_argument("--dt", type=float, default=0.02)
+    ap = argparse.ArgumentParser(); ap.add_argument("files", nargs="*"); ap.add_argument("--selftest", action="store_true"); ap.add_argument("--dt", type=float, default=0.02); ap.add_argument("--roll_min", type=float, default=0.5, help="회귀 창 하한 [deg] (시뮬처럼 롤이 거의 안 커지면 0.2)")
     a = ap.parse_args()
     if a.selftest: _selftest(); sys.exit(0)
-    print("| 파일 | 생존 s | 왼발 이탈 s | 롤 사전/최소 | 최대 롤속도 °/s | 이득 발목 비대칭 °/° | 발목 대칭 | 힙 비대칭 | 힙 대칭 | 지연 s | 추종 RMS 발목/힙 ° | 추종 lag s |")
+    print("| 파일 | 생존 s | 왼발 이탈 s | 롤 사전/최소 | 최대 롤속도 °/s | 이득 발목 비대칭 °/° | 발목 대칭 | 힙 비대칭 | 힙 대칭 | 지연 s | 추종 RMS 발목/힙 ° | 추종 lag s | 플래토 Δroll/Δ발목비대칭/Δ힙대칭 ° |")
     for f in a.files:
         recs = []
         for l in open(f, encoding="utf-8", errors="replace"):
             try: recs.append(json.loads(l))
             except Exception: pass
-        o = analyze(recs, a.dt)
+        o = analyze(recs, a.dt, a.roll_min)
         if "error" in o: print(f"| {f} | {o['error']} |"); continue
-        print(f"| {f.split('/')[-1]} | {o['survive_s']} | {o['left_off_s']} | {o['roll_pre']}/{o['roll_min']} | {o['roll_rate_max_deg_s']} | {o['gain_ank_asym']} | {o['gain_ank_sym']} | {o['gain_hip_asym']} | {o['gain_hip_sym']} | {o['latency_s']} | {o['track_rms_ankle_r']}/{o['track_rms_hip_a']} | {o['track_lag_s_ankle_asym']} |")
+        print(f"| {f.split('/')[-1]} | {o['survive_s']} | {o['left_off_s']} | {o['roll_pre']}/{o['roll_min']} | {o['roll_rate_max_deg_s']} | {o['gain_ank_asym']} | {o['gain_ank_sym']} | {o['gain_hip_asym']} | {o['gain_hip_sym']} | {o['latency_s']} | {o['track_rms_ankle_r']}/{o['track_rms_hip_a']} | {o['track_lag_s_ankle_asym']} | {o.get('d_roll_plateau')}/{o.get('d_ank_asym_plateau')}/{o.get('d_hip_sym_plateau')} |")

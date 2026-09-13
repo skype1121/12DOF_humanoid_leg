@@ -690,6 +690,23 @@ class Biped12HangStandS8ac4rdpEnvCfg(Biped12HangStandS8ac4rdEnvCfg):
         _apply_joint_play(self, pitch_deg=3.0, lat_deg=1.5, rng=(0.0, 1.0))
 
 
+@configclass
+class Biped12HangStandS8ac4rdAEnvCfg(Biped12HangStandS8ac4rdEnvCfg):
+    """S8ac4rdA(0913 20시, 승윤님 지시 '찔끔찔끔 말고 더 적극적으로 균형'): S8ac4rd(v6 + 실측 지연 4~11틱)에서 학습 목표를
+    정숙 → 생존 쪽으로 옮긴다. action_rate 벌점 절반(−0.2→−0.1), settle_quiet_bonus 절반(2.0→1.0), 낙상 비용 3배(termination −10→−30),
+    방출 후 생존 보상 2배(1→2), 횡 CoM DR y ±5 cm(실물 0913 착지 후 오른쪽 롤의 기구 편심 후보 폭). 실물 5회(0913 19~20시)에서
+    v5·v5+보정기·v6 전부 착지/방출 직후 오른쪽으로 넘어간 뒤의 후보 — 원인 재현 스윕(sig_sweep)과 병행. v6d 웜스타트."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.action_rate_l2.weight = -0.1
+        self.rewards.settle_quiet_bonus.weight = 1.0
+        self.rewards.termination_penalty.weight = -30.0
+        self.rewards.survive_after_release.weight = 2.0
+        cr = self.events.base_com.params["com_range"]
+        cr["y"] = (-0.05, 0.05)
+
+
 def _level_off(cfg):
     """0913 감사: S8ac4 직계 후보는 hang_support_reset 의 수평 유지 토크(lvl_k 50~300)가 0912 수정(set+add) 이후 학습에 **실제로 걸린다**.
     v5(학습 당시 미적용)·v6(S8ac4q 는 명시 OFF)과 조건을 맞추기 위해 끈다. v8·v9(0913 03~05시 학습)는 이 토크가 켜진 채 학습됨 → 결과에 교란 표기."""

@@ -1,5 +1,6 @@
 835942d385988a859941c3edfd474e25  ./config/joint_limits_12dof.json
 6f6ba20df5728522c6cb08f0c791f33c  ./docs/A1_stand_hang_v5_실행카드.md
+2e9fdb97637aeaf93540e39c087b1702  ./docs/A1_stand_hang_실행카드_0913.md
 df95d2f15417fa02eb4315a3daf55c4f  ./docs/hang_to_stand_실물절차.md
 39c6ef2d02e2c1a116ea22affdbf2108  ./docs/operator_console_renewal.md
 2a3d34eb12188c08090833e05975abee  ./docs/stand_v18_7차_실행카드.md
@@ -8,14 +9,15 @@ df95d2f15417fa02eb4315a3daf55c4f  ./docs/hang_to_stand_실물절차.md
 cf24508e46fc65b88cd7ab3287f4273d  ./jetson/scripts/boot_pose_check.py
 63db208b408be595b33c0becd1f9a10c  ./jetson/scripts/console_demo.py
 fbf20698d79d48fe87972196e793b660  ./jetson/scripts/console_state.py
-2a82422389f3128fcdeeffb63e395e25  ./jetson/scripts/console_ui.html
+18cae6f0d501d70cc501d70ecaefbb9b  ./jetson/scripts/console_ui.html
 c16ae314f533e6b542433a71c8a72708  ./jetson/scripts/cop_from_pads.py
 b6c6255817a7f2cd2c804980259556a6  ./jetson/scripts/foot_force_adapter_node.py
-bb2cc002cb5f3a71770521451be2559d  ./jetson/scripts/operator_console.py
+b03c5370decd8c216cf0dd643c737fa1  ./jetson/scripts/operator_console.py
 0dd26fc3c7584343ade75e4801a4cd95  ./jetson/scripts/posture_probe.py
 931bd59d930071755e973c0d936bed1e  ./jetson/scripts/release_all.py
-4ae6099fae9bc3c0a9fa2b8735ff3128  ./jetson/scripts/rl_bridge_node.py
+8d9334272dd2d6f408f44c0f220ea6af  ./jetson/scripts/rl_bridge_node.py
 73fec1f34e9d548ad2ab25754a68990d  ./jetson/scripts/sensors_up.sh
+47a1c6898bc35a31f3c319a180eae05e  ./jetson/scripts/stage8_12axis_mit_control_node.py
 5fd81b219266f3cde77d5fe08df93413  ./jetson/scripts/stiffness_log.py
 e83d0872d5136a37657148ed261a11f3  ./jetson/scripts/zero_kinematic_check.py
 c577a65a3edbd9f856fbc4b0912f5908  ./logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/exported/policy.onnx
@@ -30,7 +32,7 @@ fd6ba6a2da8f9b4331e6a66d03357668  ./logs/rsl_rl/biped12_stage4/2026-09-09_19-15-
 8d73ba2b345ab57c6806aacae7b68310  ./logs/rsl_rl/biped12_stage4/2026-09-13_00-40-49/exported/policy.onnx
 daece308ee920bf2125869700a253cec  ./logs/rsl_rl/biped12_stage4/2026-09-13_00-40-49/exported/policy.pt
 c8cf475336a6b8207abd5a41c138312f  ./logs/rsl_rl/biped12_stage4/2026-09-13_00-40-49/params/env.yaml
-621eb1c801a6f4941b40c6a057503544  ./rl_walking/__init__.py
+503559eb7e6ee518ea1978fa1b130e9d  ./rl_walking/__init__.py
 01666387d44695c71b8048ad63f0714d  ./rl_walking/deploy/__init__.py
 fe1f7e821cc0def4b468c9419e714fc1  ./rl_walking/deploy/bench_stage8_mock.py
 4e9f917e299ed0a1f607724362bd6da6  ./rl_walking/deploy/deploy_chain.py

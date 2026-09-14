@@ -70,6 +70,7 @@ UNFREEZE_FILE = "/tmp/hang_trim_unfreeze"
 JOINT_TRIM_FILE = "/tmp/joint_trim_deg.json"     # 0914 12축 개별 제어기: {관절명: deg(관절 프레임)} — 콘솔이 씀
 STATUS_FILE = "/tmp/hang_stand_status.json"      # 0914 콘솔 표시용 상태(0.5 s)
 JOINT_TRIM_LIM_DEG = 10.0                          # 관절당 개별 조정 상한 [deg, 관절 프레임]
+JOINT_TRIM_RATE_DEG_S = 8.0                        # 개별 조정 램프 [deg/s] — 0914 승윤님 "바로 따라오게": 에어램프(5)·posture_probe(10) 사이, 슬루 제한은 유지
 HW_MAP = "/home/mama/rl_calib/robot_12dof_hardware_map.json"
 IDS = list(range(1, 13))
 
@@ -508,6 +509,7 @@ def main():
                     if any(abs(v) > 0.0 for v in jt_req_raw.values()) and now - jt_notice_t > 10.0:
                         jt_notice_t = now
                         say("[개별제어] 운용 게인(kp150) 도달 전 — 요청은 보류(0 유지)")
+                jstep = JOINT_TRIM_RATE_DEG_S * dt
                 for m, j in jt.items():
                     # 요청은 모터 프레임; ROM 마진 안으로 추가 클램프(스탠드 목표 기준)
                     want = jt_req_raw.get(m, 0.0) if jt_on else 0.0
@@ -519,7 +521,7 @@ def main():
                     if j["frozen"] is not None:
                         lim = min(lim, j["frozen"]) if j["fdir"] > 0 else max(lim, j["frozen"])
                     cur = j["cur"]
-                    new = ramp_toward(cur, lim, step)
+                    new = ramp_toward(cur, lim, jstep)
                     crossed = (new == 0.0) or (new * cur < 0.0)
                     if crossed:
                         j["base"] = None; j["stall"] = 0

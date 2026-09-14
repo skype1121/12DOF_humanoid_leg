@@ -606,18 +606,9 @@ def main():
                                 f"(오탐이면 touch {UNFREEZE_FILE})")
                             break
 
-            if not grounded:
-                for m, j in jt.items():
-                    if j["frozen"] is not None or j["base"] is None or abs(j["cur"]) <= 0.3:
-                        continue
-                    inc = abs((pos[m] - cmd_of(m, frac)) - j["base"])
-                    j["stall"] = j["stall"] + 1 if inc > TRIM_STALL_AIR_DEG else 0
-                    if j["stall"] >= TRIM_STALL_TICKS:
-                        fz = j["cur"] - math.copysign(1.0, j["cur"])
-                        j["frozen"] = 0.0 if fz * j["cur"] < 0.0 else fz
-                        j["fdir"] = 1 if j["cur"] > 0.0 else -1
-                        say(f"[개별제어] {joint_of.get(m, m)} 오차 증분 {inc:+.1f}° — 하드스톱 의심, "
-                            f"{j['frozen']:+.1f}°(모터 프레임)로 동결 (오탐이면 touch {UNFREEZE_FILE})")
+            # 0914: 12축 개별 조정(jt)은 공중에서 동결하지 않는다 — 빠른 램프(30°/s)로 공중 추종오차가
+            #        스톨 임계(2.5°)를 넘어 오동결하던 문제(오른발목앞뒤 −6 고착). 실제 하드스톱 보호는
+            #        DEV_ABORT(15°)가 담당. 채널 트림(a/h/k)의 공중 스톨가드는 종전대로 유지(위 블록).
             hard_fault = [m for m, c in fault_cnt.items() if c >= FAULT_ABORT_N]
             if hard_fault:
                 abort = "모터 폴트 " + " ".join(

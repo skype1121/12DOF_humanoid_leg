@@ -1033,7 +1033,7 @@ STOPPABLE = {"stage8", "hang_stand", "bridge"}
 PAGE = Path(__file__).with_name("console_ui.html").read_text(encoding="utf-8")
 DEMO_SOURCE = None
 CONFIRM_ACTIONS = {"hang_stand", "gain_ramp", "ground", "handoff", "arm", "stand",
-                   "release", "support_confirm", "op_slack_done", "new_trial"}
+                   "release", "support_confirm", "op_slack_done", "new_trial", "zero_multiple", "zero_recapture"}
 
 
 def json_safe(value):

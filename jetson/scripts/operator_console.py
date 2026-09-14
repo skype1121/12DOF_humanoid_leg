@@ -836,6 +836,67 @@ TRIM_FILES = {"a": "/tmp/ankle_trim_deg", "h": "/tmp/hip_trim_deg",
 #: 한계 — hang_stand.TRIM_CH 와 일치시킬 것 (0809 확대: a16/h10/k14)
 TRIM_LIM = {"a": (-4.0, 16.0), "h": (-4.0, 10.0), "k": (-2.0, 14.0)}
 
+# ── 0914 12축 개별 제어기(승윤님 요청): 콘솔은 관절 프레임 요청 파일만 쓰고, 자세 유지 스크립트(hang_stand.py)가
+#    운용 게인(kp150) 도달 뒤에만 0.5°/s 로 램프해 적용한다. 정책 브리지가 살아 있으면 콘솔 상태기가 거부한다.
+JOINT_TRIM_FILE = "/tmp/joint_trim_deg.json"
+HANG_STATUS_FILE = "/tmp/hang_stand_status.json"
+JOINT_TRIM_LIM = 10.0        # [deg] 관절당 상한 (hang_stand 도 같은 값으로 클램프)
+JOINT_TRIM_STEP_MAX = 2.0    # [deg] 한 번 클릭에 허용하는 최대 변화
+JOINT_NAMES = ["left_hip_f_joint", "right_hip_f_joint", "left_hip_a_joint", "right_hip_a_joint",
+               "left_hip_r_joint", "right_hip_r_joint", "left_knee_joint", "right_knee_joint",
+               "left_ankle_f_joint", "right_ankle_f_joint", "left_ankle_r_joint", "right_ankle_r_joint"]
+
+
+def _read_joint_trim():
+    try:
+        with open(JOINT_TRIM_FILE, encoding="utf-8") as f:
+            raw = json.load(f)
+        return {k: float(raw.get(k, 0.0)) for k in JOINT_NAMES} if isinstance(raw, dict) else {k: 0.0 for k in JOINT_NAMES}
+    except (OSError, ValueError, TypeError):
+        return {k: 0.0 for k in JOINT_NAMES}
+
+
+def _write_joint_trim(req):
+    tmp = JOINT_TRIM_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({k: round(float(req.get(k, 0.0)), 3) for k in JOINT_NAMES}, f)
+    os.replace(tmp, JOINT_TRIM_FILE)
+
+
+def act_joint_trim(payload):
+    """관절 하나의 개별 조정 요청. delta(클릭) 또는 value(절대). 한계 밖은 거부(자동 클램프 없음 — 트림과 같은 원칙)."""
+    joint = payload.get("joint")
+    _need(joint in JOINT_NAMES, "허용되지 않은 관절 이름입니다")
+    req = _read_joint_trim()
+    if "delta" in payload:
+        d = float(payload["delta"])
+        _need(math.isfinite(d) and abs(d) <= JOINT_TRIM_STEP_MAX + 1e-9,
+              f"한 번에 ±{JOINT_TRIM_STEP_MAX:g}° 까지만 바꿀 수 있습니다")
+        v = req[joint] + d
+    else:
+        v = float(payload.get("value", 0.0))
+    _need(math.isfinite(v) and abs(v) <= JOINT_TRIM_LIM + 1e-9,
+          f"{joint} 조정 {v:+.1f}° 는 한계 ±{JOINT_TRIM_LIM:g}° 밖입니다")
+    req[joint] = v
+    _write_joint_trim(req)
+    return True, f"개별 조정 {joint.replace('_joint', '')} → {v:+.1f}° (관절 프레임, 0.5°/s 램프)"
+
+
+def act_joint_trim_zero(payload):
+    _write_joint_trim({k: 0.0 for k in JOINT_NAMES})
+    return True, "개별 조정 12관절 전부 0 (0.5°/s 로 복귀)"
+
+
+def read_hang_status(max_age=2.0):
+    try:
+        with open(HANG_STATUS_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        if not isinstance(d, dict) or time.time() - float(d.get("ts", 0)) > max_age:
+            return None
+        return d
+    except (OSError, ValueError, TypeError):
+        return None
+
 
 def act_trim(payload):
     """트림 3채널 설정. 한계 밖 값은 거부한다(자동 클램프하지 않는다 —
@@ -910,6 +971,9 @@ ACTIONS = {
                     "정책 평형 자세 트림(v8)"),
     "trim_zero":  (lambda p: act_trim({"a": 0.0, "h": 0.0, "k": 0.0}),
                    "트림 전부 0"),
+    # 0914 12축 개별 제어기 — 상태기(console_state.MANUAL)가 '운용 게인 도달·브리지 없음' 을 강제한다.
+    "joint_trim": (act_joint_trim, "개별 관절 조정"),
+    "joint_trim_zero": (act_joint_trim_zero, "개별 조정 전부 0"),
     # 게인 램프 — **착지 전에** 공중에서 kp20→kp150 (hang_stand 문서 3단계).
     # 전 모터 오차 3° 미만일 때만 수락된다(아니면 스크립트가 파일 삭제+거부).
     "gain_ramp":  (lambda p: act_marker("/tmp/hang_gain"), "게인 램프 kp150"),
@@ -985,6 +1049,8 @@ def console_snapshot():
             st["process_check_ok"] = not PROCESS_HEALTH["error"] and now() - PROCESS_HEALTH["ts"] < 4.0
         st["session"] = SESSION.status()
         st["demo"] = DEMO
+        st["hang_hold"] = None if DEMO else read_hang_status()
+        st["joint_trim_req"] = None if DEMO else _read_joint_trim()
         TRIAL.update(st)
         st["trial"] = TRIAL.snapshot()
         if BUSY:
@@ -1022,7 +1088,8 @@ def dispatch_action(payload):
             TRIAL.emit("stop_delivery", ok=bool(ok), message=msg)
         return 200, {"ok": bool(ok), "message": msg, "confirmed": False}
 
-    immediate = action in EVENTS | {"support_confirm", "configure", "new_trial", "session_start", "session_end"}
+    immediate = action in EVENTS | {"support_confirm", "configure", "new_trial", "session_start", "session_end",
+                                    "joint_trim", "joint_trim_zero"}
     if not DEMO and not immediate:
         poll_processes()
     with STATE_LOCK:
@@ -1094,6 +1161,18 @@ def dispatch_action(payload):
                 else:
                     DEMO_SOURCE = type(DEMO_SOURCE)()
                 TRIAL.emit("new_trial")
+            elif action in ("joint_trim", "joint_trim_zero"):
+                try:
+                    ok, msg = ACTIONS[action][0](payload)
+                except Exception as exc:
+                    ok, msg = False, f"{LABELS[action]} 실패: {exc}"
+                SESSION.event("joint_trim", action=action, ok=bool(ok), message=msg,
+                              joint=payload.get("joint"), delta=payload.get("delta"), value=payload.get("value"))
+                TRIAL.revision += 1
+                result = (200 if ok else 400, {"ok": bool(ok), "message": msg + record_warning})
+                REQUESTS[request_id] = (fingerprint, result)
+                console_snapshot()
+                return result
             elif action == "session_end":
                 TRIAL.completed.add("session_end")
                 TRIAL.revision += 1
@@ -1197,6 +1276,33 @@ def selftest():
             recorder.sample(Telemetry().view())
             assert recorder.status()["samples"] == 1
             recorder.close("test complete")
+        # 0914 12축 개별 제어기: 액션 등록·요청 파일 쓰기·한계 거부·상태기 허용 규칙
+        assert {"joint_trim", "joint_trim_zero"} <= set(ACTIONS) and {"joint_trim", "joint_trim_zero"} <= set(LABELS)
+        with patch.dict(globals(), JOINT_TRIM_FILE=os.path.join(directory, "joint_trim_deg.json"),
+                        HANG_STATUS_FILE=os.path.join(directory, "hang_stand_status.json")):
+            ok, msg = act_joint_trim({"joint": "left_ankle_r_joint", "delta": 0.5}); assert ok, msg
+            ok, msg = act_joint_trim({"joint": "left_ankle_r_joint", "delta": 2.0}); assert ok, msg
+            assert abs(_read_joint_trim()["left_ankle_r_joint"] - 2.5) < 1e-9
+            for bad in ({"joint": "nope", "delta": 1.0}, {"joint": "left_knee_joint", "delta": 3.0},
+                        {"joint": "left_knee_joint", "value": 11.0}, {"joint": "left_knee_joint", "value": float("nan")}):
+                try:
+                    act_joint_trim(bad); raise AssertionError(f"거부돼야 함: {bad}")
+                except ValueError:
+                    pass
+            ok, _ = act_joint_trim_zero({}); assert ok and all(v == 0.0 for v in _read_joint_trim().values())
+            assert read_hang_status() is None
+            with open(HANG_STATUS_FILE, "w", encoding="utf-8") as f:
+                json.dump({"ts": time.time(), "kp": 150.0, "joint_trim_enabled": True}, f)
+            assert read_hang_status()["kp"] == 150.0
+        _ts = TrialState(CKPT_DEFAULT); _ts.completed.update({"can_up", "sensors", "boot_pose", "selftest", "stage8", "hang_stand", "gain_ramp"})
+        _base = {"server_time": 1000.0, "fresh": {"status": True, "imu": True, "foot": True, "bridge": False}, "stage8": {"waiting": True},
+                 "bridge": {"live": False}, "procs": {"hang_stand": {"alive": True, "hold": {"kp": 150.0, "ts": 999.5}}, "stage8": {"alive": True}},
+                 "process_check_ok": True, "session": {"active": True}, "external_controls": []}
+        _ts.view = _base; assert _ts.reason("joint_trim") is None and _ts.reason("joint_trim_zero") is None
+        _v = dict(_base); _v["procs"] = {"hang_stand": {"alive": True, "hold": {"kp": 20.0, "ts": 999.5}}, "stage8": {"alive": True}}
+        _ts.view = _v; assert "운용 게인" in _ts.reason("joint_trim")
+        _v = dict(_base); _v["procs"] = dict(_base["procs"], bridge={"alive": True}); _ts.view = _v; assert "브리지" in _ts.reason("joint_trim")
+        _ts.view = _base; _ts.completed.add("handoff"); assert _ts.reason("joint_trim") is not None; _ts.completed.discard("handoff")
         t = TrialState(CKPT_DEFAULT)
         assert t.reason("estop") is None
         assert t.reason("arm") is not None

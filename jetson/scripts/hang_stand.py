@@ -67,6 +67,9 @@ TRIM_FILE = "/tmp/ankle_trim_deg"
 HIP_TRIM_FILE = "/tmp/hip_trim_deg"
 KNEE_TRIM_FILE = "/tmp/knee_trim_deg"
 UNFREEZE_FILE = "/tmp/hang_trim_unfreeze"
+JOINT_TRIM_FILE = "/tmp/joint_trim_deg.json"     # 0914 12축 개별 제어기: {관절명: deg(관절 프레임)} — 콘솔이 씀
+STATUS_FILE = "/tmp/hang_stand_status.json"      # 0914 콘솔 표시용 상태(0.5 s)
+JOINT_TRIM_LIM_DEG = 10.0                          # 관절당 개별 조정 상한 [deg, 관절 프레임]
 HW_MAP = "/home/mama/rl_calib/robot_12dof_hardware_map.json"
 IDS = list(range(1, 13))
 
@@ -179,6 +182,83 @@ def load_stand_zero():
     return zero
 
 
+def load_map_extras():
+    """하드웨어맵에서 관절명→모터·direction. 12축 개별 조정(관절 프레임)을 모터 프레임으로 바꾸는 데 쓴다.
+    joint_deg = direction × (motor − zero)  (stage8 규약) ⇒ motor_delta = direction × joint_delta."""
+    hw = json.load(open(HW_MAP))
+    motor_of, direction = {}, {}
+    for name, j in hw["joints"].items():
+        m = int(j["motor_id"]); d = int(j.get("direction", 1))
+        if d not in (-1, 1):
+            raise SystemExit(f"[중단] 하드웨어맵 {name} direction={d!r} (±1 만 허용)")
+        motor_of[name] = m; direction[m] = d
+    if len(motor_of) != 12 or len(direction) != 12:
+        raise SystemExit("[중단] 하드웨어맵 관절 12개·모터 12개가 아님")
+    return motor_of, direction
+
+
+def joint_trim_req_motor(raw, motor_of, direction, lim=JOINT_TRIM_LIM_DEG):
+    """콘솔 JSON({관절명: deg 관절 프레임}) → {모터: deg 모터 프레임}. 모르는 키·비수치·NaN 은 무시, |값|>lim 은 클램프."""
+    out = {}
+    if not isinstance(raw, dict):
+        return out
+    for name, v in raw.items():
+        m = motor_of.get(name)
+        if m is None:
+            continue
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(v):
+            continue
+        v = max(-lim, min(lim, v))
+        out[m] = direction[m] * v
+    return out
+
+
+def ramp_toward(cur, lim, step):
+    """한 틱 램프: cur 에서 lim 쪽으로 최대 step 만큼."""
+    return min(cur + step, lim) if cur < lim else max(cur - step, lim)
+
+
+def read_joint_trim_req(prev, motor_of, direction):
+    """JOINT_TRIM_FILE 을 읽어 모터별 요청(deg 모터 프레임)으로. 읽기 실패 시 이전 값 유지."""
+    try:
+        with open(JOINT_TRIM_FILE, encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception:
+        return prev
+    req = {m: 0.0 for m in IDS}
+    req.update(joint_trim_req_motor(raw, motor_of, direction))
+    return req
+
+
+def write_status(path, payload):
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def selftest():
+    motor_of = {"left_ankle_r_joint": 6, "right_ankle_r_joint": 12, "left_knee_joint": 4}
+    direction = {6: 1, 12: -1, 4: 1}
+    r = joint_trim_req_motor({"left_ankle_r_joint": 3.0, "right_ankle_r_joint": 3.0, "left_knee_joint": 30.0,
+                              "bogus": 1.0, "left_hip_f_joint": 2.0}, motor_of, direction)
+    assert r == {6: 3.0, 12: -3.0, 4: 10.0}, r            # direction 적용·클램프·모르는 키 무시
+    r2 = joint_trim_req_motor({"left_ankle_r_joint": "x", "right_ankle_r_joint": float("nan")}, motor_of, direction)
+    assert r2 == {}, r2                                     # 비수치·NaN 무시
+    assert joint_trim_req_motor("notadict", motor_of, direction) == {}
+    assert ramp_toward(0.0, 3.0, 0.01) == 0.01 and ramp_toward(2.995, 3.0, 0.01) == 3.0
+    assert ramp_toward(-1.0, 0.0, 0.5) == -0.5 and ramp_toward(0.2, -1.0, 0.5) == -0.3
+    print("hang_stand selftest: joint_trim_req_motor(direction·클램프·무시) · ramp_toward — ALL PASS")
+    return 0
+
+
 def read_trim_req(ch, cur_req):
     cfg = TRIM_CH[ch]
     try:
@@ -194,12 +274,16 @@ def main():
     ap.add_argument("--hold", type=float, default=900.0,
                     help="유지 상한(초). 운용게인 상태면 초과해도 자동 릴리즈 안 함")
     ap.add_argument("--channel", default="can1")
+    ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
+    if a.selftest:
+        return selftest()
 
     # hang_handoff_state.json: 이전 세션의 낡은 핸드오프 잔재가 stage8에
     # 재소비되는 경로 차단 (최종점검 — ts 게이트 120s의 이중 방어)
     for f in (STOP_FILE, KILL_FILE, HANDOFF_FILE, GAIN_FILE, GROUND_FILE,
               TRIM_FILE, HIP_TRIM_FILE, KNEE_TRIM_FILE, UNFREEZE_FILE,
+              JOINT_TRIM_FILE, STATUS_FILE,
               "/tmp/hang_handoff_state.json",
               "/tmp/hang_handoff_state.json.tmp"):
         if os.path.exists(f):
@@ -212,6 +296,8 @@ def main():
         signal.signal(s, on_signal)
 
     zero = load_stand_zero()
+    motor_of, direction = load_map_extras()
+    joint_of = {m: n for n, m in motor_of.items()}
     tgt = {m: min(max(zero[m], zero[m] + ROM_REL[m][0] + 3),
                   zero[m] + ROM_REL[m][1] - 3) for m in IDS}
     for m in IDS:
@@ -284,6 +370,11 @@ def main():
                      "base": None,
                      "stall": {m: 0 for m in TRIM_CH[ch]["gain"]}}
                 for ch in TRIM_CH}
+        # 0914 12축 개별 제어기(콘솔): 관절 프레임 요청 → 모터 프레임, 운용 게인(kp150) 도달 뒤에만 램프
+        jt = {m: {"req": 0.0, "cur": 0.0, "frozen": None, "fdir": 1, "base": None, "stall": 0} for m in IDS}
+        jt_req_raw = {m: 0.0 for m in IDS}
+        jt_notice_t = 0.0
+        t_status = 0.0
         grounded = False
         t0 = time.monotonic()
         t_show = t0
@@ -297,6 +388,7 @@ def main():
                 g = cfg["gain"].get(m)
                 if g:
                     c += g * trim[ch]["cur"]
+            c += jt[m]["cur"]
             return c
 
         while True:
@@ -326,7 +418,8 @@ def main():
                 say("[안내] 착지했으면 touch /tmp/hang_ground — 선언 전엔 "
                     "스톨가드가 부하 오차를 하드스톱으로 오인할 수 있음")
 
-            if any(t["frozen"] is not None for t in trim.values()) \
+            if (any(t["frozen"] is not None for t in trim.values())
+                    or any(j["frozen"] is not None for j in jt.values())) \
                     and os.path.exists(UNFREEZE_FILE):
                 try:
                     mt = os.path.getmtime(UNFREEZE_FILE)
@@ -346,6 +439,9 @@ def main():
                         t["base"] = {m: pos[m] - cmd_of(m, frac)
                                      for m in TRIM_CH[ch]["gain"]}
                         t["stall"] = {m: 0 for m in TRIM_CH[ch]["gain"]}
+                    for m, j in jt.items():
+                        if j["frozen"] is not None:
+                            j["frozen"] = None; j["base"] = pos[m] - cmd_of(m, frac); j["stall"] = 0
                     say("[동결 해제] 베이스라인 재캡처 — 트림 재조정 가능")
 
             if gain_t0 is None and frac >= 1.0 and os.path.exists(GAIN_FILE):
@@ -405,6 +501,31 @@ def main():
                                      for m in TRIM_CH[ch]["gain"]}
                         t["stall"] = {m: 0 for m in TRIM_CH[ch]["gain"]}
                     t["cur"] = new
+                # ── 0914 12축 개별 조정: 운용 게인 완료(kp150) 뒤에만 움직인다 ──
+                jt_req_raw = read_joint_trim_req(jt_req_raw, motor_of, direction)
+                jt_on = gain_t0 is not None and kp >= KP_MAX - 1e-6
+                if not jt_on:
+                    if any(abs(v) > 0.0 for v in jt_req_raw.values()) and now - jt_notice_t > 10.0:
+                        jt_notice_t = now
+                        say("[개별제어] 운용 게인(kp150) 도달 전 — 요청은 보류(0 유지)")
+                for m, j in jt.items():
+                    # 요청은 모터 프레임; ROM 마진 안으로 추가 클램프(스탠드 목표 기준)
+                    want = jt_req_raw.get(m, 0.0) if jt_on else 0.0
+                    lo = zero[m] + ROM_REL[m][0] + 3.0 - tgt[m]
+                    hi = zero[m] + ROM_REL[m][1] - 3.0 - tgt[m]
+                    want = max(lo, min(hi, want))
+                    j["req"] = want
+                    lim = want
+                    if j["frozen"] is not None:
+                        lim = min(lim, j["frozen"]) if j["fdir"] > 0 else max(lim, j["frozen"])
+                    cur = j["cur"]
+                    new = ramp_toward(cur, lim, step)
+                    crossed = (new == 0.0) or (new * cur < 0.0)
+                    if crossed:
+                        j["base"] = None; j["stall"] = 0
+                    if j["base"] is None and new != 0.0 and (crossed or cur == 0.0):
+                        j["base"] = pos[m] - cmd_of(m, frac); j["stall"] = 0
+                    j["cur"] = new
 
             for m in IDS:
                 try:
@@ -435,6 +556,18 @@ def main():
                                 f"(오탐이면 touch {UNFREEZE_FILE})")
                             break
 
+            if not grounded:
+                for m, j in jt.items():
+                    if j["frozen"] is not None or j["base"] is None or abs(j["cur"]) <= 0.3:
+                        continue
+                    inc = abs((pos[m] - cmd_of(m, frac)) - j["base"])
+                    j["stall"] = j["stall"] + 1 if inc > TRIM_STALL_AIR_DEG else 0
+                    if j["stall"] >= TRIM_STALL_TICKS:
+                        fz = j["cur"] - math.copysign(1.0, j["cur"])
+                        j["frozen"] = 0.0 if fz * j["cur"] < 0.0 else fz
+                        j["fdir"] = 1 if j["cur"] > 0.0 else -1
+                        say(f"[개별제어] {joint_of.get(m, m)} 오차 증분 {inc:+.1f}° — 하드스톱 의심, "
+                            f"{j['frozen']:+.1f}°(모터 프레임)로 동결 (오탐이면 touch {UNFREEZE_FILE})")
             hard_fault = [m for m, c in fault_cnt.items() if c >= FAULT_ABORT_N]
             if hard_fault:
                 abort = "모터 폴트 " + " ".join(
@@ -498,6 +631,22 @@ def main():
                     say(f"[시그널 {SIG_STOP[0]}] 소프트 정지 경로")
                 break
 
+            if now - t_status >= 0.5:
+                t_status = now
+                _phase = ("에어램프" if frac < 1.0 else
+                          "게인램프" if gain_t0 and kp < KP_MAX - 1e-6 else
+                          "에어유지" if gain_t0 is None else
+                          "하중유지" if grounded else "운용대기")
+                write_status(STATUS_FILE, {
+                    "ts": time.time(), "phase": _phase, "kp": kp, "grounded": grounded,
+                    "joint_trim_enabled": bool(gain_t0 is not None and kp >= KP_MAX - 1e-6),
+                    "trim": {ch: trim[ch]["cur"] for ch in trim},
+                    # 관절 프레임(deg): joint = direction × motor
+                    "joint_trim": {joint_of[m]: {"req": direction[m] * jt[m]["req"], "cur": direction[m] * jt[m]["cur"],
+                                                 "frozen": jt[m]["frozen"] is not None} for m in IDS},
+                    "joint_pos_deg": {joint_of[m]: direction[m] * (pos[m] - zero[m]) for m in IDS},
+                    "joint_cmd_deg": {joint_of[m]: direction[m] * (cmd_of(m, frac) - zero[m]) for m in IDS},
+                    "err_deg": {joint_of[m]: pos[m] - cmd_of(m, frac) for m in IDS}})
             if now - t_show >= 1.0:
                 t_show = now
                 errs = {m: pos[m] - cmd_of(m, frac) for m in IDS}
@@ -506,11 +655,14 @@ def main():
                          "게인램프" if gain_t0 and kp < KP_MAX - 1e-6 else
                          "에어유지" if gain_t0 is None else
                          "하중유지" if grounded else "운용대기")
+                jt_txt = " ".join(f"{joint_of[m].replace('_joint','')}{direction[m]*jt[m]['cur']:+.1f}"
+                                  for m in IDS if abs(jt[m]["cur"]) > 0.05)
                 say(f"[{phase} {now - t0:5.1f}s] kp{kp:5.1f} 트림 "
                     f"a{trim['a']['cur']:.2f}/h{trim['h']['cur']:.2f}/"
                     f"k{trim['k']['cur']:.2f}° "
                     f"| 최대오차 모터{worst} {errs[worst]:+.2f}° | 평균 "
-                    f"{statistics.mean(abs(v) for v in errs.values()):.2f}°")
+                    f"{statistics.mean(abs(v) for v in errs.values()):.2f}°"
+                    + (f" | 개별 {jt_txt}" if jt_txt else ""))
             time.sleep(max(0.0, TICK - (time.monotonic() - now)))
 
         if handoff:

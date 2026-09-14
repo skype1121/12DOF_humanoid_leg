@@ -21,7 +21,9 @@ LABELS = {
     "op_slack_done": "모든 줄 느슨·무보조 확인", "op_assist": "외부 보조 기록",
     "op_note": "메모 기록", "analyze": "이 시험 로그 분석", "estop": "정지 요청",
     "configure": "시험 설정", "new_trial": "새 시험 준비",
+    "joint_trim": "개별 관절 조정", "joint_trim_zero": "개별 조정 전부 0",
 }
+MANUAL = {"joint_trim", "joint_trim_zero"}   # 0914 12축 개별 제어기(자세 유지 스크립트의 관절 트림). 운용 게인 뒤에만.
 PREP = ("can_up", "sensors", "boot_pose", "selftest", "stage8", "hang_stand", "gain_ramp")
 CONTROL = ("stage8", "hang_stand", "bridge", "stage8_arm", "stage8_baseline")
 EVENTS = {k for k in LABELS if k.startswith("op_")}
@@ -172,6 +174,19 @@ class TrialState:
             return "회수 중입니다. 회수 완료 후 새 시험을 준비하세요"
         if external:
             return "콘솔 추적 밖 제어기 감지 — 기존 제어 상태를 확인하세요"
+        if action in MANUAL:
+            # 0914 개별 제어기: 자세 유지 스크립트가 살아 있고 운용 게인(kp150)에 도달한 뒤, 정책 브리지가 없는 동안만.
+            proc = self.view.get("procs", {}).get("hang_stand", {})
+            hold = proc.get("hold", {})
+            if not proc.get("alive") or self.view.get("server_time", 0) - hold.get("ts", 0) >= 3:
+                return "자세 유지 프로세스의 신선한 상태 확인 필요"
+            if hold.get("kp", 0) < 150:
+                return "운용 게인(kp150) 도달 뒤에만 개별 조정이 가능합니다"
+            if "handoff" in self.completed or self.view.get("procs", {}).get("bridge", {}).get("alive") or b.get("live"):
+                return "제어 인계·정책 브리지 이후에는 개별 조정이 불가합니다"
+            if not self.view.get("process_check_ok"):
+                return "잔존 제어 프로세스 확인 필요"
+            return None
         if action == "configure":
             return "제어 시작 후에는 설정·영점을 바꿀 수 없습니다" if owners or self.completed.intersection(CONTROL) else None
         if action in self.completed:

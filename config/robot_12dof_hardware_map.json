@@ -68,7 +68,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": -0.12
+      "stand_zero_deg": 71.88
     },
     "left_knee_joint": {
       "joint_name": "left_knee_joint",
@@ -110,7 +110,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 40.64
+      "stand_zero_deg": 4.64
     },
     "left_ankle_r_joint": {
       "joint_name": "left_ankle_r_joint",
@@ -236,7 +236,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 20.69
+      "stand_zero_deg": 56.69
     },
     "right_ankle_r_joint": {
       "joint_name": "right_ankle_r_joint",
@@ -257,7 +257,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 8.99
+      "stand_zero_deg": 18.99
     }
   },
   "_provenance": {
@@ -687,6 +687,33 @@
           }
         ],
         "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260914_221529.json"
+      },
+      {
+        "at": "20260914_224634",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "left_hip_r_joint",
+            "from": -0.12,
+            "to": 71.88
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": 40.64,
+            "to": 4.64
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 20.69,
+            "to": 56.69
+          },
+          {
+            "joint": "right_ankle_r_joint",
+            "from": 8.99,
+            "to": 18.99
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260914_224634.json"
       }
     ],
     "direction_history": [

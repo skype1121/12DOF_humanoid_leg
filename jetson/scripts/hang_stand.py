@@ -73,7 +73,7 @@ JOINT_TRIM_LIM_DEG = 100.0                         # 관절당 개별 조정 상
 JOINT_LIMIT_FILES = ("/home/mama/rl_calib/joint_limits_12dof.json",
                      "/home/mama/humanoid_repo/config/joint_limits_12dof.json")
 JOINT_LIMIT_MARGIN_DEG = 1.0                       # 소프트 한계 안쪽 여유 [deg]
-JOINT_TRIM_RATE_DEG_S = 8.0                        # 개별 조정 램프 [deg/s] — 0914 승윤님 "바로 따라오게": 에어램프(5)·posture_probe(10) 사이, 슬루 제한은 유지
+JOINT_TRIM_RATE_DEG_S = 30.0                       # 개별 조정 램프 [deg/s] — 0914 승윤님 "바로 따라오게": 에어램프(5)·posture_probe(10) 사이, 슬루 제한은 유지
 HW_MAP = "/home/mama/rl_calib/robot_12dof_hardware_map.json"
 IDS = list(range(1, 13))
 

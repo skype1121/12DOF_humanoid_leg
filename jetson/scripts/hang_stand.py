@@ -556,10 +556,10 @@ def main():
                     if soft_lim is not None:
                         sj = direction[m] * (tgt[m] - zero[m])          # 스탠드 목표의 관절각(관절 프레임)
                         jmin, jmax = soft_lim[m]
-                        a = jmin + JOINT_LIMIT_MARGIN_DEG - sj           # 허용 관절 δ 하한
-                        b = jmax - JOINT_LIMIT_MARGIN_DEG - sj           # 허용 관절 δ 상한
-                        c1, c2 = direction[m] * a, direction[m] * b      # 모터 프레임 δ 로 (direction=±1, 부호 뒤집힘 처리)
-                        lo, hi = min(c1, c2), max(c1, c2)
+                        djo_lo = jmin + JOINT_LIMIT_MARGIN_DEG - sj      # 허용 관절 δ 하한
+                        djo_hi = jmax - JOINT_LIMIT_MARGIN_DEG - sj      # 허용 관절 δ 상한
+                        cm1, cm2 = direction[m] * djo_lo, direction[m] * djo_hi   # 모터 프레임 δ (direction=±1, 부호 뒤집힘 처리)
+                        lo, hi = min(cm1, cm2), max(cm1, cm2)
                     else:
                         lo = zero[m] + ROM_REL[m][0] + 3.0 - tgt[m]
                         hi = zero[m] + ROM_REL[m][1] - 3.0 - tgt[m]

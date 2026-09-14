@@ -22,10 +22,10 @@ LABELS = {
     "op_note": "메모 기록", "analyze": "이 시험 로그 분석", "estop": "정지 요청",
     "configure": "시험 설정", "new_trial": "새 시험 준비",
     "joint_trim": "개별 관절 조정", "joint_trim_zero": "개별 조정 전부 0",
-    "joint_trim_preset": "수평 기준 자세 적용",
+    "joint_trim_preset": "수평 기준 자세 적용", "hold_kd": "홀드 감쇠 kd",
     "zero_multiple": "영점 배수 보정", "zero_recapture": "영점 재캡처", "zero_kin": "영점 기구학 검증",
 }
-MANUAL = {"joint_trim", "joint_trim_zero", "joint_trim_preset"}
+MANUAL = {"joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd"}
 ZERO_TOOLS = {"zero_multiple", "zero_recapture", "zero_kin"}   # 0914 영점 도구 — 제어 시작 전(준비)에서만   # 0914 12축 개별 제어기(자세 유지 스크립트의 관절 트림). 운용 게인 뒤에만.
 PREP = ("can_up", "sensors", "boot_pose", "selftest", "stage8", "hang_stand", "gain_ramp")
 CONTROL = ("stage8", "hang_stand", "bridge", "stage8_arm", "stage8_baseline")

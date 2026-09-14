@@ -68,7 +68,8 @@ HIP_TRIM_FILE = "/tmp/hip_trim_deg"
 KNEE_TRIM_FILE = "/tmp/knee_trim_deg"
 UNFREEZE_FILE = "/tmp/hang_trim_unfreeze"
 JOINT_TRIM_FILE = "/tmp/joint_trim_deg.json"     # 0914 12축 개별 제어기: {관절명: deg(관절 프레임)} — 콘솔이 씀
-STATUS_FILE = "/tmp/hang_stand_status.json"      # 0914 콘솔 표시용 상태(0.5 s)
+STATUS_FILE = "/tmp/hang_stand_status.json"
+HOLD_KD_FILE = "/tmp/hold_kd"                      # 0914 자세 홀드 kd 라이브 조절(콘솔 슬라이더). 없으면 KD_MAX(=5)      # 0914 콘솔 표시용 상태(0.5 s)
 JOINT_TRIM_LIM_DEG = 100.0                         # 관절당 개별 조정 상한 [deg, 관절 프레임] — 0914 승윤님 요청 ±100(실효 한계는 ROM 마진 3° 클램프)
 JOINT_LIMIT_FILES = ("/home/mama/rl_calib/joint_limits_12dof.json",
                      "/home/mama/humanoid_repo/config/joint_limits_12dof.json")
@@ -319,7 +320,7 @@ def main():
     # 재소비되는 경로 차단 (최종점검 — ts 게이트 120s의 이중 방어)
     for f in (STOP_FILE, KILL_FILE, HANDOFF_FILE, GAIN_FILE, GROUND_FILE,
               TRIM_FILE, HIP_TRIM_FILE, KNEE_TRIM_FILE, UNFREEZE_FILE,
-              JOINT_TRIM_FILE, STATUS_FILE,
+              JOINT_TRIM_FILE, STATUS_FILE, HOLD_KD_FILE,
               "/tmp/hang_handoff_state.json",
               "/tmp/hang_handoff_state.json.tmp"):
         if os.path.exists(f):
@@ -577,10 +578,17 @@ def main():
                         j["base"] = pos[m] - cmd_of(m, frac); j["stall"] = 0
                     j["cur"] = new
 
+            kd_send = kd
+            if kp >= KP_MAX - 1e-6:                    # 운용 게인 도달 후에만 kd 라이브 조절 허용(에어/램프는 원래대로)
+                try:
+                    with open(HOLD_KD_FILE) as _f:
+                        kd_send = min(30.0, max(1.0, float(_f.read().strip())))
+                except Exception:
+                    kd_send = kd
             for m in IDS:
                 try:
                     tx(bus, m, pack_ak_mit_command(
-                        math.radians(cmd_of(m, frac)), 0.0, kp, kd, 0.0))
+                        math.radians(cmd_of(m, frac)), 0.0, kp, kd_send, 0.0))
                 except Exception as e:
                     abort = f"송신실패 {type(e).__name__}"
                     break
@@ -679,7 +687,7 @@ def main():
                           "에어유지" if gain_t0 is None else
                           "하중유지" if grounded else "운용대기")
                 write_status(STATUS_FILE, {
-                    "ts": time.time(), "phase": _phase, "kp": kp, "grounded": grounded,
+                    "ts": time.time(), "phase": _phase, "kp": kp, "kd": kd_send if "kd_send" in dir() else kd, "grounded": grounded,
                     "joint_trim_enabled": bool(gain_t0 is not None and kp >= KP_MAX - 1e-6),
                     "trim": {ch: trim[ch]["cur"] for ch in trim},
                     # 관절 프레임(deg): joint = direction × motor

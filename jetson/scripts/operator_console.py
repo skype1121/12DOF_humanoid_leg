@@ -886,6 +886,21 @@ def act_joint_trim(payload):
 LEVEL_POSE_0914 = {"left_hip_f_joint": 20.5, "right_hip_f_joint": -20.5, "left_hip_a_joint": 0.0, "right_hip_a_joint": 0.0, "left_hip_r_joint": 0.0, "right_hip_r_joint": 0.0, "left_knee_joint": -30.0, "right_knee_joint": 30.0, "left_ankle_f_joint": 19.0, "right_ankle_f_joint": -19.0, "left_ankle_r_joint": 0.0, "right_ankle_r_joint": 0.0}
 
 
+HOLD_KD_FILE = "/tmp/hold_kd"
+HOLD_KD_MIN, HOLD_KD_MAX = 1.0, 30.0
+
+
+def act_hold_kd(payload):
+    """자세 홀드 감쇠 kd 라이브 조절(운용 게인 kp150 도달 후에만 hang_stand 가 반영). kp 는 정책 호환 위해 150 고정."""
+    v = float(payload.get("value", 5.0))
+    _need(math.isfinite(v) and HOLD_KD_MIN <= v <= HOLD_KD_MAX, f"kd 는 {HOLD_KD_MIN}~{HOLD_KD_MAX} 범위여야 합니다")
+    tmp = HOLD_KD_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(f"{v}\n")
+    os.replace(tmp, HOLD_KD_FILE)
+    return True, f"홀드 kd → {v:.0f} (운용 게인에서 반영)"
+
+
 def act_joint_trim_preset(payload):
     """캡처해 둔 수평 기준 자세를 개별 조정 요청 파일에 그대로 쓴다(hang_stand 가 8~30°/s 로 램프·소프트한계 클램프)."""
     _write_joint_trim(LEVEL_POSE_0914)
@@ -985,6 +1000,7 @@ ACTIONS = {
     "joint_trim": (act_joint_trim, "개별 관절 조정"),
     "joint_trim_zero": (act_joint_trim_zero, "개별 조정 전부 0"),
     "joint_trim_preset": (act_joint_trim_preset, "수평 기준 자세 적용"),
+    "hold_kd": (act_hold_kd, "홀드 감쇠 kd"),
     # 게인 램프 — **착지 전에** 공중에서 kp20→kp150 (hang_stand 문서 3단계).
     # 전 모터 오차 3° 미만일 때만 수락된다(아니면 스크립트가 파일 삭제+거부).
     "gain_ramp":  (lambda p: act_marker("/tmp/hang_gain"), "게인 램프 kp150"),
@@ -1100,7 +1116,7 @@ def dispatch_action(payload):
         return 200, {"ok": bool(ok), "message": msg, "confirmed": False}
 
     immediate = action in EVENTS | {"support_confirm", "configure", "new_trial", "session_start", "session_end",
-                                    "joint_trim", "joint_trim_zero", "joint_trim_preset"}
+                                    "joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd"}
     if not DEMO and not immediate:
         poll_processes()
     with STATE_LOCK:
@@ -1172,7 +1188,7 @@ def dispatch_action(payload):
                 else:
                     DEMO_SOURCE = type(DEMO_SOURCE)()
                 TRIAL.emit("new_trial")
-            elif action in ("joint_trim", "joint_trim_zero", "joint_trim_preset"):
+            elif action in ("joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd"):
                 try:
                     ok, msg = ACTIONS[action][0](payload)
                 except Exception as exc:

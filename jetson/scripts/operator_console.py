@@ -840,7 +840,7 @@ TRIM_LIM = {"a": (-4.0, 16.0), "h": (-4.0, 10.0), "k": (-2.0, 14.0)}
 #    운용 게인(kp150) 도달 뒤에만 0.5°/s 로 램프해 적용한다. 정책 브리지가 살아 있으면 콘솔 상태기가 거부한다.
 JOINT_TRIM_FILE = "/tmp/joint_trim_deg.json"
 HANG_STATUS_FILE = "/tmp/hang_stand_status.json"
-JOINT_TRIM_LIM = 10.0        # [deg] 관절당 상한 (hang_stand 도 같은 값으로 클램프)
+JOINT_TRIM_LIM = 100.0       # [deg] 관절당 상한 (hang_stand 도 같은 값; 실효 한계는 ROM 마진 클램프) — 0914 승윤님 요청
 JOINT_TRIM_STEP_MAX = 2.0    # [deg] 한 번 클릭에 허용하는 최대 변화
 JOINT_NAMES = ["left_hip_f_joint", "right_hip_f_joint", "left_hip_a_joint", "right_hip_a_joint",
                "left_hip_r_joint", "right_hip_r_joint", "left_knee_joint", "right_knee_joint",
@@ -1284,7 +1284,7 @@ def selftest():
             ok, msg = act_joint_trim({"joint": "left_ankle_r_joint", "delta": 2.0}); assert ok, msg
             assert abs(_read_joint_trim()["left_ankle_r_joint"] - 2.5) < 1e-9
             for bad in ({"joint": "nope", "delta": 1.0}, {"joint": "left_knee_joint", "delta": 3.0},
-                        {"joint": "left_knee_joint", "value": 11.0}, {"joint": "left_knee_joint", "value": float("nan")}):
+                        {"joint": "left_knee_joint", "value": 101.0}, {"joint": "left_knee_joint", "value": float("nan")}):
                 try:
                     act_joint_trim(bad); raise AssertionError(f"거부돼야 함: {bad}")
                 except ValueError:

@@ -69,7 +69,7 @@ KNEE_TRIM_FILE = "/tmp/knee_trim_deg"
 UNFREEZE_FILE = "/tmp/hang_trim_unfreeze"
 JOINT_TRIM_FILE = "/tmp/joint_trim_deg.json"     # 0914 12축 개별 제어기: {관절명: deg(관절 프레임)} — 콘솔이 씀
 STATUS_FILE = "/tmp/hang_stand_status.json"      # 0914 콘솔 표시용 상태(0.5 s)
-JOINT_TRIM_LIM_DEG = 10.0                          # 관절당 개별 조정 상한 [deg, 관절 프레임]
+JOINT_TRIM_LIM_DEG = 100.0                         # 관절당 개별 조정 상한 [deg, 관절 프레임] — 0914 승윤님 요청 ±100(실효 한계는 ROM 마진 3° 클램프)
 JOINT_TRIM_RATE_DEG_S = 8.0                        # 개별 조정 램프 [deg/s] — 0914 승윤님 "바로 따라오게": 에어램프(5)·posture_probe(10) 사이, 슬루 제한은 유지
 HW_MAP = "/home/mama/rl_calib/robot_12dof_hardware_map.json"
 IDS = list(range(1, 13))
@@ -248,9 +248,9 @@ def write_status(path, payload):
 def selftest():
     motor_of = {"left_ankle_r_joint": 6, "right_ankle_r_joint": 12, "left_knee_joint": 4}
     direction = {6: 1, 12: -1, 4: 1}
-    r = joint_trim_req_motor({"left_ankle_r_joint": 3.0, "right_ankle_r_joint": 3.0, "left_knee_joint": 30.0,
+    r = joint_trim_req_motor({"left_ankle_r_joint": 3.0, "right_ankle_r_joint": 3.0, "left_knee_joint": 130.0,
                               "bogus": 1.0, "left_hip_f_joint": 2.0}, motor_of, direction)
-    assert r == {6: 3.0, 12: -3.0, 4: 10.0}, r            # direction 적용·클램프·모르는 키 무시
+    assert r == {6: 3.0, 12: -3.0, 4: 100.0}, r           # direction 적용·클램프(±100)·모르는 키 무시
     r2 = joint_trim_req_motor({"left_ankle_r_joint": "x", "right_ankle_r_joint": float("nan")}, motor_of, direction)
     assert r2 == {}, r2                                     # 비수치·NaN 무시
     assert joint_trim_req_motor("notadict", motor_of, direction) == {}

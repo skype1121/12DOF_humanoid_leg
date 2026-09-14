@@ -1,0 +1,12 @@
+{
+  "captured": "2026-09-14T22:25 (기계시계)",
+  "note": "수동 튜닝(12축 개별 제어기)으로 찾은 수평 기준 자세. 관절 프레임 deg. 하중유지(kp150)·양발 접촉에서 fwd -2/lat +1.4. 대칭(좌우 반대부호). 콘솔 '수평 기준 자세 적용' 버튼(joint_trim_preset)이 이 값을 씀. 능동 균형 아님(고정 자세 홀드).",
+  "trims_joint_frame_deg": {
+    "left_hip_f_joint": 16.5, "right_hip_f_joint": -16.5,
+    "left_hip_a_joint": 0.0, "right_hip_a_joint": 0.0,
+    "left_hip_r_joint": 0.0, "right_hip_r_joint": 0.0,
+    "left_knee_joint": -30.0, "right_knee_joint": 30.0,
+    "left_ankle_f_joint": 19.0, "right_ankle_f_joint": -19.0,
+    "left_ankle_r_joint": 0.0, "right_ankle_r_joint": 0.0
+  }
+}

@@ -131,7 +131,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 4.35
+      "stand_zero_deg": 14.35
     },
     "right_hip_f_joint": {
       "joint_name": "right_hip_f_joint",
@@ -675,11 +675,23 @@
           }
         ],
         "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260913_191609.json"
+      },
+      {
+        "at": "20260914_221529",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 4.35,
+            "to": 14.35
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260914_221529.json"
       }
     ],
     "direction_history": [
       {
-        "at": "20260914_141123",
+        "at": "20260914_141059",
         "changed": [
           {
             "joint": "left_ankle_r_joint",
@@ -693,7 +705,7 @@
           }
         ],
         "why": "0914 발목롤 관절 프레임 반전(URDF 외번=+ vs 실물 손 시험 안쪽아래=−)",
-        "backup": "config/robot_12dof_hardware_map.json.bak_ankle_r_dir_20260914_141123"
+        "backup": "/home/mama/rl_calib/robot_12dof_hardware_map.json.bak_ankle_r_dir_20260914_141059"
       }
     ]
   },

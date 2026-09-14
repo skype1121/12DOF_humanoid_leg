@@ -883,7 +883,7 @@ def act_joint_trim(payload):
 
 
 # 0914 수평 기준 자세 프리셋 — 수동 튜닝으로 찾은 자세(22:25, fwd −2·lat +1.4·양발접촉). 관절 프레임 deg.
-LEVEL_POSE_0914 = {"left_hip_f_joint": 16.5, "right_hip_f_joint": -16.5, "left_hip_a_joint": 0.0, "right_hip_a_joint": 0.0, "left_hip_r_joint": 0.0, "right_hip_r_joint": 0.0, "left_knee_joint": -30.0, "right_knee_joint": 30.0, "left_ankle_f_joint": 19.0, "right_ankle_f_joint": -19.0, "left_ankle_r_joint": 0.0, "right_ankle_r_joint": 0.0}
+LEVEL_POSE_0914 = {"left_hip_f_joint": 20.5, "right_hip_f_joint": -20.5, "left_hip_a_joint": 0.0, "right_hip_a_joint": 0.0, "left_hip_r_joint": 0.0, "right_hip_r_joint": 0.0, "left_knee_joint": -30.0, "right_knee_joint": 30.0, "left_ankle_f_joint": 19.0, "right_ankle_f_joint": -19.0, "left_ankle_r_joint": 0.0, "right_ankle_r_joint": 0.0}
 
 
 def act_joint_trim_preset(payload):

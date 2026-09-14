@@ -70,6 +70,9 @@ UNFREEZE_FILE = "/tmp/hang_trim_unfreeze"
 JOINT_TRIM_FILE = "/tmp/joint_trim_deg.json"     # 0914 12축 개별 제어기: {관절명: deg(관절 프레임)} — 콘솔이 씀
 STATUS_FILE = "/tmp/hang_stand_status.json"      # 0914 콘솔 표시용 상태(0.5 s)
 JOINT_TRIM_LIM_DEG = 100.0                         # 관절당 개별 조정 상한 [deg, 관절 프레임] — 0914 승윤님 요청 ±100(실효 한계는 ROM 마진 3° 클램프)
+JOINT_LIMIT_FILES = ("/home/mama/rl_calib/joint_limits_12dof.json",
+                     "/home/mama/humanoid_repo/config/joint_limits_12dof.json")
+JOINT_LIMIT_MARGIN_DEG = 1.0                       # 소프트 한계 안쪽 여유 [deg]
 JOINT_TRIM_RATE_DEG_S = 8.0                        # 개별 조정 램프 [deg/s] — 0914 승윤님 "바로 따라오게": 에어램프(5)·posture_probe(10) 사이, 슬루 제한은 유지
 HW_MAP = "/home/mama/rl_calib/robot_12dof_hardware_map.json"
 IDS = list(range(1, 13))
@@ -198,6 +201,29 @@ def load_map_extras():
     return motor_of, direction
 
 
+def load_joint_soft_limits(motor_of):
+    """joint_limits_12dof.json 의 소프트 한계(관절 프레임, 좌우 대칭)를 {모터:(min,max)} 로. 없으면 None → ROM 표로 폴백."""
+    for path in JOINT_LIMIT_FILES:
+        try:
+            raw = json.load(open(path, encoding="utf-8"))
+        except Exception:
+            continue
+        found = {}
+        def walk(o):
+            if isinstance(o, dict):
+                if "soft_min" in o and "soft_max" in o:
+                    return (float(o["soft_min"]), float(o["soft_max"]))
+                for k, v in o.items():
+                    r = walk(v)
+                    if isinstance(r, tuple) and k in motor_of:
+                        found[motor_of[k]] = r
+            return None
+        walk(raw)
+        if len(found) == 12:
+            return found
+    return None
+
+
 def joint_trim_req_motor(raw, motor_of, direction, lim=JOINT_TRIM_LIM_DEG):
     """콘솔 JSON({관절명: deg 관절 프레임}) → {모터: deg 모터 프레임}. 모르는 키·비수치·NaN 은 무시, |값|>lim 은 클램프."""
     out = {}
@@ -256,7 +282,16 @@ def selftest():
     assert joint_trim_req_motor("notadict", motor_of, direction) == {}
     assert ramp_toward(0.0, 3.0, 0.01) == 0.01 and ramp_toward(2.995, 3.0, 0.01) == 3.0
     assert ramp_toward(-1.0, 0.0, 0.5) == -0.5 and ramp_toward(0.2, -1.0, 0.5) == -0.3
-    print("hang_stand selftest: joint_trim_req_motor(direction·클램프·무시) · ramp_toward — ALL PASS")
+    # 좌우 대칭 소프트 한계 클램프 산식: 관절 프레임 [jmin,jmax] → 모터 프레임 δ 구간 (direction 부호 처리)
+    def motor_delta_bounds(direction, tgt, zero, jmin, jmax, margin=1.0):
+        sj = direction * (tgt - zero)
+        a = jmin + margin - sj; b = jmax - margin - sj
+        c1, c2 = direction * a, direction * b
+        return min(c1, c2), max(c1, c2)
+    # 왼 무릎(dir 가정 +1, zero=tgt) soft[-83.5,4] → δ∈[-82.5,3]; 오른 무릎(dir −1) soft[-4,80] → δ∈[-79,3] (부호 뒤집혀 대칭)
+    lo, hi = motor_delta_bounds(+1, 0.0, 0.0, -83.5, 4.0); assert abs(lo + 82.5) < 1e-9 and abs(hi - 3.0) < 1e-9, (lo, hi)
+    lo, hi = motor_delta_bounds(-1, 0.0, 0.0, -4.0, 80.0); assert abs(lo + 79.0) < 1e-9 and abs(hi - 3.0) < 1e-9, (lo, hi)
+    print("hang_stand selftest: joint_trim_req_motor · ramp_toward · 대칭 소프트한계 클램프 — ALL PASS")
     return 0
 
 
@@ -299,6 +334,11 @@ def main():
     zero = load_stand_zero()
     motor_of, direction = load_map_extras()
     joint_of = {m: n for n, m in motor_of.items()}
+    soft_lim = load_joint_soft_limits(motor_of)   # 관절 프레임(좌우 대칭) 소프트 한계; None 이면 ROM 폴백
+    if soft_lim is not None:
+        say("[개별제어] 관절 한계표(좌우 대칭 소프트 한계) 로드 — ROM 표 대신 사용")
+    else:
+        say("[개별제어] 관절 한계표 없음 — ROM 표(좌우 비대칭)로 폴백")
     tgt = {m: min(max(zero[m], zero[m] + ROM_REL[m][0] + 3),
                   zero[m] + ROM_REL[m][1] - 3) for m in IDS}
     for m in IDS:
@@ -511,10 +551,18 @@ def main():
                         say("[개별제어] 운용 게인(kp150) 도달 전 — 요청은 보류(0 유지)")
                 jstep = JOINT_TRIM_RATE_DEG_S * dt
                 for m, j in jt.items():
-                    # 요청은 모터 프레임; ROM 마진 안으로 추가 클램프(스탠드 목표 기준)
+                    # 요청은 모터 프레임(δ). 관절 프레임 = direction·(motor−zero). 좌우 대칭 소프트 한계로 클램프.
                     want = jt_req_raw.get(m, 0.0) if jt_on else 0.0
-                    lo = zero[m] + ROM_REL[m][0] + 3.0 - tgt[m]
-                    hi = zero[m] + ROM_REL[m][1] - 3.0 - tgt[m]
+                    if soft_lim is not None:
+                        sj = direction[m] * (tgt[m] - zero[m])          # 스탠드 목표의 관절각(관절 프레임)
+                        jmin, jmax = soft_lim[m]
+                        a = jmin + JOINT_LIMIT_MARGIN_DEG - sj           # 허용 관절 δ 하한
+                        b = jmax - JOINT_LIMIT_MARGIN_DEG - sj           # 허용 관절 δ 상한
+                        c1, c2 = direction[m] * a, direction[m] * b      # 모터 프레임 δ 로 (direction=±1, 부호 뒤집힘 처리)
+                        lo, hi = min(c1, c2), max(c1, c2)
+                    else:
+                        lo = zero[m] + ROM_REL[m][0] + 3.0 - tgt[m]
+                        hi = zero[m] + ROM_REL[m][1] - 3.0 - tgt[m]
                     want = max(lo, min(hi, want))
                     j["req"] = want
                     lim = want

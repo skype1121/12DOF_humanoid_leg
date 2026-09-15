@@ -902,8 +902,8 @@ def act_hold_kd(payload):
 
 
 AIR_GAIT_FILE = "/tmp/air_gait.json"
-AIR_GAIT_LIM = {"freq_hz": (0.2, 1.0), "hip_deg": (0.0, 30.0), "knee_deg": (0.0, 45.0), "ankle_deg": (0.0, 15.0)}
-AIR_GAIT_DEFAULT = {"freq_hz": 0.5, "hip_deg": 20.0, "knee_deg": 30.0, "ankle_deg": 8.0}
+AIR_GAIT_LIM = {"freq_hz": (0.2, 1.0), "hip_deg": (0.0, 40.0), "hip_ext_deg": (0.0, 25.0), "knee_deg": (0.0, 45.0), "ankle_deg": (0.0, 15.0)}
+AIR_GAIT_DEFAULT = {"freq_hz": 0.5, "hip_deg": 30.0, "hip_ext_deg": 12.0, "knee_deg": 30.0, "ankle_deg": 8.0}
 
 
 def _read_air_gait():
@@ -934,8 +934,8 @@ def act_air_gait_on(payload):
             _need(math.isfinite(v) and lo <= v <= hi, f"{k}={v} 는 허용 범위 [{lo}, {hi}] 밖입니다")
             params[k] = v
     _write_air_gait(True, params)
-    return True, (f"에어 보행 시작 요청 {params['freq_hz']:.2f} Hz · 힙 {params['hip_deg']:.0f}° · 무릎 {params['knee_deg']:.0f}° · "
-                  f"발목 {params['ankle_deg']:.0f}° (공중·kp150 에서 2 s 페이드인)")
+    return True, (f"에어 보행 시작 요청 {params['freq_hz']:.2f} Hz · 힙 앞 {params['hip_deg']:.0f}°/뒤 {params['hip_ext_deg']:.0f}° · "
+                  f"무릎 {params['knee_deg']:.0f}° · 발목 {params['ankle_deg']:.0f}° (공중·kp150 에서 2 s 페이드인)")
 
 
 def act_air_gait_off(payload):

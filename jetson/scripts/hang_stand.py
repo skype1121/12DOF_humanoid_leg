@@ -75,8 +75,9 @@ JOINT_LIMIT_FILES = ("/home/mama/rl_calib/joint_limits_12dof.json",
                      "/home/mama/humanoid_repo/config/joint_limits_12dof.json")
 JOINT_LIMIT_MARGIN_DEG = 1.0                       # 소프트 한계 안쪽 여유 [deg]
 AIR_GAIT_FILE = "/tmp/air_gait.json"               # 0915 에어 보행(사진용): {"on":bool,"freq_hz","hip_deg","knee_deg","ankle_deg"} — 콘솔/robotctl 이 씀
-AIR_GAIT_LIM = {"freq_hz": (0.2, 1.0), "hip_deg": (0.0, 30.0), "knee_deg": (0.0, 45.0), "ankle_deg": (0.0, 15.0)}
-AIR_GAIT_DEFAULT = {"on": False, "freq_hz": 0.5, "hip_deg": 20.0, "knee_deg": 30.0, "ankle_deg": 8.0}
+AIR_GAIT_LIM = {"freq_hz": (0.2, 1.0), "hip_deg": (0.0, 40.0), "hip_ext_deg": (0.0, 25.0), "knee_deg": (0.0, 45.0), "ankle_deg": (0.0, 15.0)}
+AIR_GAIT_DEFAULT = {"on": False, "freq_hz": 0.5, "hip_deg": 30.0, "hip_ext_deg": 12.0, "knee_deg": 30.0, "ankle_deg": 8.0}
+# hip_deg = 앞스윙(굴곡) 진폭, hip_ext_deg = 뒤스윙(신전) 진폭. 힙앞뒤 소프트 한계(왼 −29~45 / 오른 −40.7~29)에 맞춰 상한 40/25.
 AIR_GAIT_FADE_S = 2.0                              # 시작/정지 진폭 페이드 [s]
 JOINT_TRIM_RATE_DEG_S = 30.0                       # 개별 조정 램프 [deg/s] — 0914 승윤님 "바로 따라오게": 에어램프(5)·posture_probe(10) 사이, 슬루 제한은 유지
 HW_MAP = "/home/mama/rl_calib/robot_12dof_hardware_map.json"
@@ -251,14 +252,20 @@ def read_air_gait_req(prev):
 
 
 def air_gait_joint_deg(phase, amp, p):
-    """공중 제자리 걸음 패턴(관절 프레임 deg). 왼다리 위상 phase, 오른다리 phase+π. 들어올림 = sin²(위상 양의 반주기) → 속도 연속.
-    부호(FK·수평자세 실측): 힙 굴곡 왼 +/오른 −, 무릎 굴곡 왼 −/오른 +, 발목 배굴 왼 +/오른 −. 힙벌림·힙회전·발목롤 0."""
+    """공중 걷기 패턴(관절 프레임 deg). 왼다리 위상 phase, 오른다리 phase+π.
+    힙: 앞뒤 완전 스윙 h(φ)=a·sinφ+b·sin²φ (a=(F+E)/2, b=(F−E)/2 → 앞 최대 +F, 뒤 최대 −E, 무한 미분 가능=속도 연속).
+    무릎·발목: 앞스윙 때만 접힘 sin²(양의 반주기). 부호(FK·수평자세 실측): 힙 굴곡 왼 +/오른 −, 무릎 굴곡 왼 −/오른 +, 발목 배굴 왼 +/오른 −."""
+    F, E = p["hip_deg"], p.get("hip_ext_deg", 0.0)
+    a, b = (F + E) / 2.0, (F - E) / 2.0
+    def swing(ph):
+        sn = math.sin(ph)
+        return a * sn + b * sn * sn
     def lift(ph):
         sn = math.sin(ph)
         return sn * sn if sn > 0.0 else 0.0
     l_l, l_r = lift(phase), lift(phase + math.pi)
     return {
-        "left_hip_f_joint": +amp * p["hip_deg"] * l_l, "right_hip_f_joint": -amp * p["hip_deg"] * l_r,
+        "left_hip_f_joint": +amp * swing(phase), "right_hip_f_joint": -amp * swing(phase + math.pi),
         "left_knee_joint": -amp * p["knee_deg"] * l_l, "right_knee_joint": +amp * p["knee_deg"] * l_r,
         "left_ankle_f_joint": +amp * p["ankle_deg"] * l_l, "right_ankle_f_joint": -amp * p["ankle_deg"] * l_r,
     }
@@ -332,13 +339,16 @@ def selftest():
     lo, hi = motor_delta_bounds(+1, 0.0, 0.0, -83.5, 4.0); assert abs(lo + 82.5) < 1e-9 and abs(hi - 3.0) < 1e-9, (lo, hi)
     lo, hi = motor_delta_bounds(-1, 0.0, 0.0, -4.0, 80.0); assert abs(lo + 79.0) < 1e-9 and abs(hi - 3.0) < 1e-9, (lo, hi)
     # 에어 보행 패턴: 위상 π/2 = 왼다리 최대 들림(힙+·무릎−·발목+), 오른다리 0; 3π/2 = 반대. 진폭 amp 스케일.
-    P = {"freq_hz": 0.5, "hip_deg": 20.0, "knee_deg": 30.0, "ankle_deg": 8.0}
-    g = air_gait_joint_deg(math.pi / 2, 1.0, P)
-    assert abs(g["left_hip_f_joint"] - 20.0) < 1e-9 and abs(g["left_knee_joint"] + 30.0) < 1e-9 and abs(g["left_ankle_f_joint"] - 8.0) < 1e-9, g
-    assert g["right_hip_f_joint"] == 0.0 and g["right_knee_joint"] == 0.0, g
-    g = air_gait_joint_deg(3 * math.pi / 2, 0.5, P)
-    assert abs(g["right_hip_f_joint"] + 10.0) < 1e-9 and abs(g["right_knee_joint"] - 15.0) < 1e-9 and g["left_hip_f_joint"] == 0.0, g
+    P = {"freq_hz": 0.5, "hip_deg": 30.0, "hip_ext_deg": 12.0, "knee_deg": 30.0, "ankle_deg": 8.0}
+    g = air_gait_joint_deg(math.pi / 2, 1.0, P)      # 왼다리 앞스윙 최대: 힙 +30, 무릎 −30, 발목 +8; 오른다리 뒤스윙 최대: 힙 +12(신전=오른쪽 +), 무릎 0
+    assert abs(g["left_hip_f_joint"] - 30.0) < 1e-9 and abs(g["left_knee_joint"] + 30.0) < 1e-9 and abs(g["left_ankle_f_joint"] - 8.0) < 1e-9, g
+    assert abs(g["right_hip_f_joint"] - 12.0) < 1e-9 and g["right_knee_joint"] == 0.0, g
+    g = air_gait_joint_deg(3 * math.pi / 2, 0.5, P)  # 반대: 오른 앞스윙(−15 = 굴곡·amp 0.5), 왼 뒤스윙(−6)
+    assert abs(g["right_hip_f_joint"] + 15.0) < 1e-9 and abs(g["right_knee_joint"] - 15.0) < 1e-9 and abs(g["left_hip_f_joint"] + 6.0) < 1e-9, g
     assert air_gait_joint_deg(0.0, 1.0, P)["left_hip_f_joint"] == 0.0     # 위상 0 = 양다리 0(연속)
+    # 속도 연속성: 위상 0 근방에서 힙 기울기 급변 없음(수치 미분 좌우 차 < 5 %)
+    d = 1e-4; f = lambda ph: air_gait_joint_deg(ph, 1.0, P)["left_hip_f_joint"]
+    assert abs((f(d) - f(0)) - (f(0) - f(-d))) < 0.05 * abs(f(d) - f(0)), "힙 파형 기울기 불연속"
     r = read_air_gait_req(dict(AIR_GAIT_DEFAULT)); assert r["on"] is False and r["freq_hz"] == 0.5   # 파일 없음 → 이전값
     print("hang_stand selftest: joint_trim_req_motor · ramp_toward · 대칭 소프트한계 클램프 · 에어보행 패턴 — ALL PASS")
     return 0

@@ -10,7 +10,7 @@
   robotctl hang [-y]         공중 자세 유지 시작 → 운용 게인(kp150)  ※ 줄이 로봇을 지지해야 함
   robotctl level             수평 기준 자세(어제 캡처: 힙앞뒤 ±20.5·무릎 ±30·발목앞뒤 ±19)
   robotctl zero              에어 보행 정지 + 개별 조정 전부 0 = 매달림 기준(제로) 자세
-  robotctl walk [-y] [--f 0.5 --hip 20 --knee 30 --ankle 8]   공중 제자리걸음 시작 (공중·kp150 에서만)
+  robotctl walk [-y] [--f 0.5 --hip 30 --hipext 12 --knee 30 --ankle 8]   공중 걷기(힙 앞뒤 스윙) 시작 (공중·kp150 에서만)
   robotctl stop              에어 보행 정지(자세는 유지)
   robotctl kd N              홀드 감쇠 kd (1~30, 기본 5)
   robotctl trim JOINT DEG    관절 하나 개별 조정 (예: trim left_knee -25)
@@ -198,6 +198,8 @@ def cmd_walk(a):
         extra["freq_hz"] = a.f
     if a.hip is not None:
         extra["hip_deg"] = a.hip
+    if a.hipext is not None:
+        extra["hip_ext_deg"] = a.hipext
     if a.knee is not None:
         extra["knee_deg"] = a.knee
     if a.ankle is not None:
@@ -267,7 +269,8 @@ def main():
     sub.add_parser("level").set_defaults(fn=cmd_level)
     sub.add_parser("zero").set_defaults(fn=cmd_zero)
     s = sub.add_parser("walk"); s.add_argument("-y", dest="yes", action="store_true")
-    s.add_argument("--f", type=float, default=None, help="Hz 0.2~1.0"); s.add_argument("--hip", type=float, default=None, help="deg 0~30")
+    s.add_argument("--f", type=float, default=None, help="Hz 0.2~1.0"); s.add_argument("--hip", type=float, default=None, help="앞스윙 deg 0~40")
+    s.add_argument("--hipext", type=float, default=None, help="뒤스윙 deg 0~25")
     s.add_argument("--knee", type=float, default=None, help="deg 0~45"); s.add_argument("--ankle", type=float, default=None, help="deg 0~15")
     s.set_defaults(fn=cmd_walk)
     sub.add_parser("stop").set_defaults(fn=cmd_stop)

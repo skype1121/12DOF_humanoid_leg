@@ -901,6 +901,49 @@ def act_hold_kd(payload):
     return True, f"홀드 kd → {v:.0f} (운용 게인에서 반영)"
 
 
+AIR_GAIT_FILE = "/tmp/air_gait.json"
+AIR_GAIT_LIM = {"freq_hz": (0.2, 1.0), "hip_deg": (0.0, 30.0), "knee_deg": (0.0, 45.0), "ankle_deg": (0.0, 15.0)}
+AIR_GAIT_DEFAULT = {"freq_hz": 0.5, "hip_deg": 20.0, "knee_deg": 30.0, "ankle_deg": 8.0}
+
+
+def _read_air_gait():
+    try:
+        with open(AIR_GAIT_FILE, encoding="utf-8") as f:
+            raw = json.load(f)
+        if isinstance(raw, dict):
+            return {k: float(raw.get(k, v)) for k, v in AIR_GAIT_DEFAULT.items()} | {"on": bool(raw.get("on", False))}
+    except (OSError, ValueError, TypeError):
+        pass
+    return dict(AIR_GAIT_DEFAULT) | {"on": False}
+
+
+def _write_air_gait(on, params):
+    tmp = AIR_GAIT_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"on": bool(on), **{k: round(float(params[k]), 3) for k in AIR_GAIT_DEFAULT}}, f)
+    os.replace(tmp, AIR_GAIT_FILE)
+
+
+def act_air_gait_on(payload):
+    """에어 보행(사진용, 공중 제자리 걸음) 시작 요청. hang_stand 가 운용 게인·미접지에서만 2 s 페이드로 적용. 한계 밖은 거부."""
+    cur = _read_air_gait()
+    params = {k: cur[k] for k in AIR_GAIT_DEFAULT}
+    for k, (lo, hi) in AIR_GAIT_LIM.items():
+        if k in payload:
+            v = float(payload[k])
+            _need(math.isfinite(v) and lo <= v <= hi, f"{k}={v} 는 허용 범위 [{lo}, {hi}] 밖입니다")
+            params[k] = v
+    _write_air_gait(True, params)
+    return True, (f"에어 보행 시작 요청 {params['freq_hz']:.2f} Hz · 힙 {params['hip_deg']:.0f}° · 무릎 {params['knee_deg']:.0f}° · "
+                  f"발목 {params['ankle_deg']:.0f}° (공중·kp150 에서 2 s 페이드인)")
+
+
+def act_air_gait_off(payload):
+    cur = _read_air_gait()
+    _write_air_gait(False, {k: cur[k] for k in AIR_GAIT_DEFAULT})
+    return True, "에어 보행 정지(2 s 페이드아웃 → 현재 개별 조정 자세)"
+
+
 def act_joint_trim_preset(payload):
     """캡처해 둔 수평 기준 자세를 개별 조정 요청 파일에 그대로 쓴다(hang_stand 가 8~30°/s 로 램프·소프트한계 클램프)."""
     _write_joint_trim(LEVEL_POSE_0914)
@@ -1001,6 +1044,8 @@ ACTIONS = {
     "joint_trim_zero": (act_joint_trim_zero, "개별 조정 전부 0"),
     "joint_trim_preset": (act_joint_trim_preset, "수평 기준 자세 적용"),
     "hold_kd": (act_hold_kd, "홀드 감쇠 kd"),
+    "air_gait_on": (act_air_gait_on, "에어 보행 시작"),
+    "air_gait_off": (act_air_gait_off, "에어 보행 정지"),
     # 게인 램프 — **착지 전에** 공중에서 kp20→kp150 (hang_stand 문서 3단계).
     # 전 모터 오차 3° 미만일 때만 수락된다(아니면 스크립트가 파일 삭제+거부).
     "gain_ramp":  (lambda p: act_marker("/tmp/hang_gain"), "게인 램프 kp150"),
@@ -1049,7 +1094,7 @@ STOPPABLE = {"stage8", "hang_stand", "bridge"}
 PAGE = Path(__file__).with_name("console_ui.html").read_text(encoding="utf-8")
 DEMO_SOURCE = None
 CONFIRM_ACTIONS = {"hang_stand", "gain_ramp", "ground", "handoff", "arm", "stand",
-                   "release", "support_confirm", "op_slack_done", "new_trial", "zero_multiple", "zero_recapture"}
+                   "release", "support_confirm", "op_slack_done", "new_trial", "zero_multiple", "zero_recapture", "air_gait_on"}
 
 
 def json_safe(value):
@@ -1078,6 +1123,7 @@ def console_snapshot():
         st["demo"] = DEMO
         st["hang_hold"] = None if DEMO else read_hang_status()
         st["joint_trim_req"] = None if DEMO else _read_joint_trim()
+        st["air_gait_req"] = None if DEMO else _read_air_gait()
         TRIAL.update(st)
         st["trial"] = TRIAL.snapshot()
         if BUSY:
@@ -1116,7 +1162,7 @@ def dispatch_action(payload):
         return 200, {"ok": bool(ok), "message": msg, "confirmed": False}
 
     immediate = action in EVENTS | {"support_confirm", "configure", "new_trial", "session_start", "session_end",
-                                    "joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd"}
+                                    "joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd", "air_gait_on", "air_gait_off"}
     if not DEMO and not immediate:
         poll_processes()
     with STATE_LOCK:
@@ -1188,7 +1234,7 @@ def dispatch_action(payload):
                 else:
                     DEMO_SOURCE = type(DEMO_SOURCE)()
                 TRIAL.emit("new_trial")
-            elif action in ("joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd"):
+            elif action in ("joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd", "air_gait_on", "air_gait_off"):
                 try:
                     ok, msg = ACTIONS[action][0](payload)
                 except Exception as exc:

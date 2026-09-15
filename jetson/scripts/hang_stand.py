@@ -74,6 +74,10 @@ JOINT_TRIM_LIM_DEG = 100.0                         # 관절당 개별 조정 상
 JOINT_LIMIT_FILES = ("/home/mama/rl_calib/joint_limits_12dof.json",
                      "/home/mama/humanoid_repo/config/joint_limits_12dof.json")
 JOINT_LIMIT_MARGIN_DEG = 1.0                       # 소프트 한계 안쪽 여유 [deg]
+AIR_GAIT_FILE = "/tmp/air_gait.json"               # 0915 에어 보행(사진용): {"on":bool,"freq_hz","hip_deg","knee_deg","ankle_deg"} — 콘솔/robotctl 이 씀
+AIR_GAIT_LIM = {"freq_hz": (0.2, 1.0), "hip_deg": (0.0, 30.0), "knee_deg": (0.0, 45.0), "ankle_deg": (0.0, 15.0)}
+AIR_GAIT_DEFAULT = {"on": False, "freq_hz": 0.5, "hip_deg": 20.0, "knee_deg": 30.0, "ankle_deg": 8.0}
+AIR_GAIT_FADE_S = 2.0                              # 시작/정지 진폭 페이드 [s]
 JOINT_TRIM_RATE_DEG_S = 30.0                       # 개별 조정 램프 [deg/s] — 0914 승윤님 "바로 따라오게": 에어램프(5)·posture_probe(10) 사이, 슬루 제한은 유지
 HW_MAP = "/home/mama/rl_calib/robot_12dof_hardware_map.json"
 IDS = list(range(1, 13))
@@ -225,6 +229,41 @@ def load_joint_soft_limits(motor_of):
     return None
 
 
+def read_air_gait_req(prev):
+    """AIR_GAIT_FILE → {on, freq_hz, hip_deg, knee_deg, ankle_deg}. 읽기 실패 시 이전 값. 파라미터는 AIR_GAIT_LIM 으로 클램프."""
+    try:
+        with open(AIR_GAIT_FILE, encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception:
+        return prev
+    if not isinstance(raw, dict):
+        return prev
+    out = dict(prev)
+    out["on"] = bool(raw.get("on", False))
+    for k, (lo, hi) in AIR_GAIT_LIM.items():
+        try:
+            v = float(raw.get(k, prev[k]))
+        except (TypeError, ValueError):
+            v = prev[k]
+        if math.isfinite(v):
+            out[k] = max(lo, min(hi, v))
+    return out
+
+
+def air_gait_joint_deg(phase, amp, p):
+    """공중 제자리 걸음 패턴(관절 프레임 deg). 왼다리 위상 phase, 오른다리 phase+π. 들어올림 = sin²(위상 양의 반주기) → 속도 연속.
+    부호(FK·수평자세 실측): 힙 굴곡 왼 +/오른 −, 무릎 굴곡 왼 −/오른 +, 발목 배굴 왼 +/오른 −. 힙벌림·힙회전·발목롤 0."""
+    def lift(ph):
+        sn = math.sin(ph)
+        return sn * sn if sn > 0.0 else 0.0
+    l_l, l_r = lift(phase), lift(phase + math.pi)
+    return {
+        "left_hip_f_joint": +amp * p["hip_deg"] * l_l, "right_hip_f_joint": -amp * p["hip_deg"] * l_r,
+        "left_knee_joint": -amp * p["knee_deg"] * l_l, "right_knee_joint": +amp * p["knee_deg"] * l_r,
+        "left_ankle_f_joint": +amp * p["ankle_deg"] * l_l, "right_ankle_f_joint": -amp * p["ankle_deg"] * l_r,
+    }
+
+
 def joint_trim_req_motor(raw, motor_of, direction, lim=JOINT_TRIM_LIM_DEG):
     """콘솔 JSON({관절명: deg 관절 프레임}) → {모터: deg 모터 프레임}. 모르는 키·비수치·NaN 은 무시, |값|>lim 은 클램프."""
     out = {}
@@ -292,7 +331,16 @@ def selftest():
     # 왼 무릎(dir 가정 +1, zero=tgt) soft[-83.5,4] → δ∈[-82.5,3]; 오른 무릎(dir −1) soft[-4,80] → δ∈[-79,3] (부호 뒤집혀 대칭)
     lo, hi = motor_delta_bounds(+1, 0.0, 0.0, -83.5, 4.0); assert abs(lo + 82.5) < 1e-9 and abs(hi - 3.0) < 1e-9, (lo, hi)
     lo, hi = motor_delta_bounds(-1, 0.0, 0.0, -4.0, 80.0); assert abs(lo + 79.0) < 1e-9 and abs(hi - 3.0) < 1e-9, (lo, hi)
-    print("hang_stand selftest: joint_trim_req_motor · ramp_toward · 대칭 소프트한계 클램프 — ALL PASS")
+    # 에어 보행 패턴: 위상 π/2 = 왼다리 최대 들림(힙+·무릎−·발목+), 오른다리 0; 3π/2 = 반대. 진폭 amp 스케일.
+    P = {"freq_hz": 0.5, "hip_deg": 20.0, "knee_deg": 30.0, "ankle_deg": 8.0}
+    g = air_gait_joint_deg(math.pi / 2, 1.0, P)
+    assert abs(g["left_hip_f_joint"] - 20.0) < 1e-9 and abs(g["left_knee_joint"] + 30.0) < 1e-9 and abs(g["left_ankle_f_joint"] - 8.0) < 1e-9, g
+    assert g["right_hip_f_joint"] == 0.0 and g["right_knee_joint"] == 0.0, g
+    g = air_gait_joint_deg(3 * math.pi / 2, 0.5, P)
+    assert abs(g["right_hip_f_joint"] + 10.0) < 1e-9 and abs(g["right_knee_joint"] - 15.0) < 1e-9 and g["left_hip_f_joint"] == 0.0, g
+    assert air_gait_joint_deg(0.0, 1.0, P)["left_hip_f_joint"] == 0.0     # 위상 0 = 양다리 0(연속)
+    r = read_air_gait_req(dict(AIR_GAIT_DEFAULT)); assert r["on"] is False and r["freq_hz"] == 0.5   # 파일 없음 → 이전값
+    print("hang_stand selftest: joint_trim_req_motor · ramp_toward · 대칭 소프트한계 클램프 · 에어보행 패턴 — ALL PASS")
     return 0
 
 
@@ -320,7 +368,7 @@ def main():
     # 재소비되는 경로 차단 (최종점검 — ts 게이트 120s의 이중 방어)
     for f in (STOP_FILE, KILL_FILE, HANDOFF_FILE, GAIN_FILE, GROUND_FILE,
               TRIM_FILE, HIP_TRIM_FILE, KNEE_TRIM_FILE, UNFREEZE_FILE,
-              JOINT_TRIM_FILE, STATUS_FILE, HOLD_KD_FILE,
+              JOINT_TRIM_FILE, STATUS_FILE, HOLD_KD_FILE, AIR_GAIT_FILE,
               "/tmp/hang_handoff_state.json",
               "/tmp/hang_handoff_state.json.tmp"):
         if os.path.exists(f):
@@ -416,6 +464,9 @@ def main():
         jt = {m: {"req": 0.0, "cur": 0.0, "frozen": None, "fdir": 1, "base": None, "stall": 0} for m in IDS}
         jt_req_raw = {m: 0.0 for m in IDS}
         jt_notice_t = 0.0
+        gait = dict(AIR_GAIT_DEFAULT)      # 0915 에어 보행 요청(파일)
+        gait_phase, gait_amp, gait_notice_t = 0.0, 0.0, 0.0
+        gait_off_m = {m: 0.0 for m in IDS}   # 모터 프레임 δ 오버레이
         t_status = 0.0
         grounded = False
         t0 = time.monotonic()
@@ -430,7 +481,7 @@ def main():
                 g = cfg["gain"].get(m)
                 if g:
                     c += g * trim[ch]["cur"]
-            c += jt[m]["cur"]
+            c += jt[m]["cur"] + gait_off_m[m]
             return c
 
         while True:
@@ -565,6 +616,7 @@ def main():
                         lo = zero[m] + ROM_REL[m][0] + 3.0 - tgt[m]
                         hi = zero[m] + ROM_REL[m][1] - 3.0 - tgt[m]
                     want = max(lo, min(hi, want))
+                    j["lo"], j["hi"] = lo, hi
                     j["req"] = want
                     lim = want
                     if j["frozen"] is not None:
@@ -577,6 +629,23 @@ def main():
                     if j["base"] is None and new != 0.0 and (crossed or cur == 0.0):
                         j["base"] = pos[m] - cmd_of(m, frac); j["stall"] = 0
                     j["cur"] = new
+                # ── 0915 에어 보행(사진용): 운용 게인·미접지에서만, 진폭 2 s 페이드, 개별 조정과 합산 뒤 소프트 한계 클램프 ──
+                gait = read_air_gait_req(gait)
+                gait_ok = jt_on and not grounded
+                if gait["on"] and not gait_ok and now - gait_notice_t > 10.0:
+                    gait_notice_t = now
+                    say("[에어보행] 보류 — 운용 게인(kp150)·미접지 상태에서만 켜집니다")
+                gait_amp = ramp_toward(gait_amp, 1.0 if (gait["on"] and gait_ok) else 0.0, dt / AIR_GAIT_FADE_S)
+                if gait_amp > 0.0:
+                    gait_phase = (gait_phase + 2.0 * math.pi * gait["freq_hz"] * dt) % (2.0 * math.pi)
+                    gj = air_gait_joint_deg(gait_phase, gait_amp, gait)
+                else:
+                    gait_phase = 0.0
+                    gj = {}
+                for m in IDS:
+                    gm = direction[m] * gj.get(joint_of[m], 0.0)
+                    lo_m, hi_m = jt[m].get("lo", -1e9), jt[m].get("hi", 1e9)
+                    gait_off_m[m] = max(lo_m - jt[m]["cur"], min(hi_m - jt[m]["cur"], gm))
 
             kd_send = kd
             if kp >= KP_MAX - 1e-6:                    # 운용 게인 도달 후에만 kd 라이브 조절 허용(에어/램프는 원래대로)
@@ -695,7 +764,9 @@ def main():
                                                  "frozen": jt[m]["frozen"] is not None} for m in IDS},
                     "joint_pos_deg": {joint_of[m]: direction[m] * (pos[m] - zero[m]) for m in IDS},
                     "joint_cmd_deg": {joint_of[m]: direction[m] * (cmd_of(m, frac) - zero[m]) for m in IDS},
-                    "err_deg": {joint_of[m]: pos[m] - cmd_of(m, frac) for m in IDS}})
+                    "err_deg": {joint_of[m]: pos[m] - cmd_of(m, frac) for m in IDS},
+                    "gait": {"on": gait["on"], "active": gait_amp > 0.0, "amp": round(gait_amp, 3),
+                             "freq_hz": gait["freq_hz"], "hip_deg": gait["hip_deg"], "knee_deg": gait["knee_deg"], "ankle_deg": gait["ankle_deg"]}})
             if now - t_show >= 1.0:
                 t_show = now
                 errs = {m: pos[m] - cmd_of(m, frac) for m in IDS}
@@ -711,7 +782,8 @@ def main():
                     f"k{trim['k']['cur']:.2f}° "
                     f"| 최대오차 모터{worst} {errs[worst]:+.2f}° | 평균 "
                     f"{statistics.mean(abs(v) for v in errs.values()):.2f}°"
-                    + (f" | 개별 {jt_txt}" if jt_txt else ""))
+                    + (f" | 개별 {jt_txt}" if jt_txt else "")
+                    + (f" | 보행 {gait['freq_hz']:.2f}Hz amp{gait_amp:.2f}" if gait_amp > 0.0 else ""))
             time.sleep(max(0.0, TICK - (time.monotonic() - now)))
 
         if handoff:

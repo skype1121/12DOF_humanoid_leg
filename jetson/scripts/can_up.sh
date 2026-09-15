@@ -14,9 +14,27 @@ if ! lsmod | grep -q '^peak_usb'; then
     sudo insmod /home/mama/peak_build/peak_usb.ko && echo "[can_up] peak_usb 로드"
 fi
 sleep 1
-if [ ! -e /sys/class/net/can1 ]; then
-    echo "[can_up] can1 없음 — PCAN USB를 뽑았다 다시 꽂은 뒤 재실행하세요" >&2
+# 0915: 재부팅 후 내장 mttcan 이 can1 을 선점하고 PCAN 이 can0 으로 뜬 사고(모터 12/12 무응답).
+#       '이름'이 아니라 '드라이버(peak_usb)'로 PCAN 을 찾아 항상 can1 로 고정한다(내장 CAN 은 tegracan0 로 이동).
+#       영구화는 /etc/systemd/network/10-pcan-can1.link · 10-tegra-mttcan.link (0915) — 여기는 이중 방어.
+pcan=""
+for c in /sys/class/net/*; do
+    [ -e "$c/device/driver" ] || continue
+    if [ "$(basename "$(readlink "$c/device/driver")")" = "peak_usb" ]; then pcan=$(basename "$c"); break; fi
+done
+if [ -z "$pcan" ]; then
+    echo "[can_up] PCAN(peak_usb) 인터페이스 없음 — PCAN USB를 뽑았다 다시 꽂은 뒤 재실행하세요" >&2
     exit 1
+fi
+if [ "$pcan" != "can1" ]; then
+    if [ -e /sys/class/net/can1 ]; then
+        echo "[can_up] can1 이 PCAN 이 아님(driver=$(basename "$(readlink /sys/class/net/can1/device/driver 2>/dev/null)")) → tegracan0 로 이동"
+        sudo ip link set can1 down 2>/dev/null
+        sudo ip link set can1 name tegracan0
+    fi
+    echo "[can_up] PCAN 인터페이스 $pcan → can1 로 개명"
+    sudo ip link set "$pcan" down 2>/dev/null
+    sudo ip link set "$pcan" name can1
 fi
 sudo ip link set can1 down 2>/dev/null
 sudo ip link set can1 type can bitrate 1000000 restart-ms 100

@@ -353,7 +353,8 @@ class TrialState:
         action = p["action"]
         procs = view.get("procs", {})
         key = {"baseline": "stage8_baseline", "arm": "stage8_arm",
-               "gain_ramp": "hang_stand", "ground": "hang_stand", "handoff": "hang_stand"}.get(action, action)
+               "gain_ramp": "hang_stand", "ground": "hang_stand", "handoff": "hang_stand",
+               "zero_multiple": "zero", "zero_recapture": "zero", "zero_preview": "zero", "zero_kin": "zerokin"}.get(action, action)
         proc = procs.get(key, {})
         received = view.get("received", {})
         status_new = fresh.get("status") and received.get("status", 0) > p["wall"]
@@ -398,6 +399,9 @@ class TrialState:
                   and status_new and s.get("armed") and s.get("running"))
         elif action == "stack_down":
             ok = not self.active_processes() and not fresh.get("status") and not fresh.get("bridge")
+        elif action in ("zero_multiple", "zero_recapture", "zero_preview", "zero_kin"):
+            # 0915: 영점 도구는 프로세스 정상 종료(rc 0)가 완료. (이전엔 분기가 없어 성공해도 30 s 뒤 '시간 초과' 오판)
+            ok = proc.get("rc") == 0 and not proc.get("alive")
         elif action in ("boot_pose", "selftest", "release", "analyze"):
             ok = proc.get("rc") == 0 and not proc.get("alive")
             if action == "selftest":
@@ -412,7 +416,7 @@ class TrialState:
         if proc and not proc.get("alive") and proc.get("rc") not in (None, 0, 3):
             return self.finish(False, f"프로세스 종료 코드 {proc['rc']}")
         # 0911 호환검수 R2: stand 는 브리지 인계 워밍업(최대 4 s)+블렌딩 안에 응답하므로 30 s 는 브리지발 정지를 26 s 동안 가린다
-        timeout = 300 if action in ("boot_pose", "selftest", "analyze") else (8 if action == "stand" else 30)
+        timeout = 300 if action in ("boot_pose", "selftest", "analyze", "zero_multiple", "zero_recapture", "zero_preview", "zero_kin") else (8 if action == "stand" else 30)
         if self.clock() - p["started"] > timeout:
             self.finish(False, "확인 시간 초과 — 실제 상태를 확인하세요")
 

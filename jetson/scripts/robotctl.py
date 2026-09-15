@@ -79,14 +79,18 @@ def act(action, extra=None, confirmed=True, quiet=False):
 
 
 def line(st):
-    t, b, im, ft = st["trial"], st["bridge"], st["imu"], st["foot"]
+    # 센서 기동 직후엔 imu/foot/bridge 가 None 일 수 있다(0915 prep 크래시) — 전부 dict 로 정규화
+    t = st.get("trial") or {}
+    b = st.get("bridge") or {}
+    im = st.get("imu") or {}
+    ft = st.get("foot") or {}
     hh = st.get("hang_hold") or {}
     g = hh.get("gait") or {}
     jt = hh.get("joint_trim") or {}
     trims = " ".join(f"{k.replace('_joint', '')}{v['cur']:+.0f}" for k, v in jt.items() if abs(v.get("cur", 0)) > 0.5)
     hold = f"{hh.get('phase')} kp{hh.get('kp', 0):.0f} kd{hh.get('kd', 0):.0f}" if hh else "-"
     c = ft.get("contact") or [None, None]
-    parts = [f"[{t['phase']}]", f"홀드 {hold}",
+    parts = [f"[{t.get('phase')}]", f"홀드 {hold}",
              f"fwd {im.get('fwd', 0):+.1f} lat {im.get('lat', 0):+.1f}",
              f"접촉 L{int(bool(c[0]))} R{int(bool(c[1]))}"]
     if trims:
@@ -98,7 +102,7 @@ def line(st):
     if t.get("fault"):
         parts.append(f"⚠ {t['fault']}")
     if t.get("next_action"):
-        parts.append(f"다음: {t['allowed'].get(t['next_action'], {}).get('label', t['next_action'])}")
+        parts.append(f"다음: {(t.get('allowed') or {}).get(t['next_action'], {}).get('label', t['next_action'])}")
     return " | ".join(parts)
 
 

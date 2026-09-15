@@ -1367,6 +1367,15 @@ def selftest():
             with open(HANG_STATUS_FILE, "w", encoding="utf-8") as f:
                 json.dump({"ts": time.time(), "kp": 150.0, "joint_trim_enabled": True}, f)
             assert read_hang_status()["kp"] == 150.0
+        # 0915: 영점 배수 보정 완료 판정 — 프로세스 키 'zero' rc 0 → finish(True) (이전: 분기 없음 → 시간 초과 오판)
+        _tz = TrialState(CKPT_DEFAULT); _tz.completed.update({"can_up", "sensors"})
+        _tz.view = {"server_time": 1000.0, "fresh": {"status": False, "imu": True, "foot": True, "bridge": False}, "stage8": {}, "bridge": {},
+                    "procs": {}, "process_check_ok": True, "session": {"active": True}, "external_controls": [], "received": {}}
+        assert _tz.reason("zero_multiple") is None, _tz.reason("zero_multiple")
+        _tz.begin("zero_multiple", 999.0); _tz.pending["launched"] = True
+        _tz.view = dict(_tz.view, procs={"zero": {"alive": False, "rc": 0}}); _tz.update(_tz.view)
+        assert _tz.pending is None and "zero_multiple" in _tz.completed and _tz.last_result["ok"], (_tz.pending, _tz.last_result)
+        assert _tz.reason("zero_multiple") is None   # 재실행 허용(완료 목록과 무관)
         _ts = TrialState(CKPT_DEFAULT); _ts.completed.update({"can_up", "sensors", "boot_pose", "selftest", "stage8", "hang_stand", "gain_ramp"})
         _base = {"server_time": 1000.0, "fresh": {"status": True, "imu": True, "foot": True, "bridge": False}, "stage8": {"waiting": True},
                  "bridge": {"live": False}, "procs": {"hang_stand": {"alive": True, "hold": {"kp": 150.0, "ts": 999.5}}, "stage8": {"alive": True}},

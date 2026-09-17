@@ -1,0 +1,18 @@
+{
+  "name": "stand_crouch_v1c",
+  "run": "2026-09-18_02-52-27_s9c3",
+  "checkpoint": "model_155500.pt",
+  "checkpoint_md5": "45a3ae0de714ab25878dc0f47aaf19fb",
+  "task": "Biped12-HangStand-S9c-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "stand_crouch_v1b model_150484",
+  "summary": "S9c 계속학습 붕괴(156000) 전 인양 체크포인트 155500: 명목 58.2 %·DR 8.6 %",
+  "legacy": false,
+  "files": {
+    "policy.pt": "805f0aba322277079e782c0383ed9712",
+    "policy.onnx": "848afe40d01d86e08afb521458c08813",
+    "env.yaml": "feeba104f7ccef1af28ebb6ca048c303",
+    "agent.yaml": "d16fd396d9b8d13e253810df69f35874"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-18_02-52-27_s9c3"
+}

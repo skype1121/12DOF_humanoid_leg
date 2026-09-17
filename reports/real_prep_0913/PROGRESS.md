@@ -158,3 +158,5 @@
 - 00:13 **S9c** 환경(크라우치 기본자세 v3 + env 별 물리 기본자세 편향 DR 힙±12°·무릎±5°·발목±8° + 스폰 피치 ±8° + 지면 연성 k2e3) 12it 스모크 통과 → 00:14 본 학습 시작(v6 model_141486 웜스타트, 4096 env, +3000 it, run `2026-09-18_00-14-13_s9c`, ETA ~51 min). 러너 `default_pose_rad`, 브리지 `CKPT_DEFAULT_POSE`, 체크포인트명 **stand_crouch_v1**(콘솔 드롭다운 1번).
 - 판정 예정(학습 뒤): eval_hang2stand S9c 256env — (a) stand_crouch_v1 DR, (b) nominal, (c) `--hold` 대조(고정 자세 kp150), (d) v6 를 S9c(크라우치 출발)에서 = 아침 인계 시 옛 정책 거동 예측. 승격 기준: (a)≥v6@S9c +20pp 이고 (c)보다 우위, 낙상 방향·정착 피치 보고.
 - 이후: eval_policy 로 export → register_model stand_crouch_v1 → deploy_package(GENS=stand_crouch_v1) → 젯슨 배포·브리지 selftest → 콘솔 재시작 → 운용 카드 갱신 → 아침 보고(MORNING_0918.md).
+- 01:07 stand_crouch_v1(model_144485) 평가: S9c 256env 명목 35.9 % / DR 7.4 % / 홀드 대조 0 % / v6@크라우치 1.2 % → 미승격·실험용. 젯슨 배포(패키지 0107)·브리지 selftest ALL PASS(np NameError 수정).
+- 02:50 stand_crouch_v1b(+6000it, model_150484): 명목 38.3 % / DR 10.2 % / 지지0 도달 92.6 %. 젯슨 배포(패키지 0250)·콘솔 기본 선택 v1b·재시작. v1c(+12000it, run 02-52-27_s9c3) 학습 시작, 종료 시 자동 평가·등록·패키지(scratchpad/s9c3_post_chain.sh). 아침 보고 MORNING_0918.md.

@@ -1,0 +1,23 @@
+train: TRAIN_RC=0
+ckpt=model_144485.pt
+합계 2604
+drwxrwxr-x 2 ryu ryu    4096  9월 18 01:04 .
+drwxrwxr-x 5 ryu ryu    4096  9월 18 01:04 ..
+-rw-rw-r-- 1 ryu ryu 1321751  9월 18 01:04 policy.onnx
+-rw-rw-r-- 1 ryu ryu 1332626  9월 18 01:04 policy.pt
+ckpt=model_144485.pt
+s9c_new_dr rc=0 지지 0 도달(살아서)        : 146/256 (57.0%)  평균 방출완료 시각 8.11s  그때 피치 -2.06° **지지 0 이후 5s 생존**   : 19/256 (7.4%)   ← 핵심 지표 **지지 0 이후 5s 생존**(미검증 0: 방출 후 관측창 <5s) 
+s9c_new_nom rc=0 지지 0 도달(살아서)        : 211/256 (82.4%)  평균 방출완료 시각 8.02s  그때 피치 -0.30° **지지 0 이후 5s 생존**   : 92/256 (35.9%)   ← 핵심 지표 **지지 0 이후 5s 생존**(미검증 0: 방출 후 관측창 <5s) 
+s9c_hold_dr rc=0 지지 0 도달(살아서)        : 18/256 (7.0%)  평균 방출완료 시각 6.83s  그때 피치 +2.01° **지지 0 이후 5s 생존**   : 0/256 (0.0%)   ← 핵심 지표 **지지 0 이후 5s 생존**(미검증 0: 방출 후 관측창 <5s) 
+s9c_v6_dr rc=0 지지 0 도달(살아서)        : 87/256 (34.0%)  평균 방출완료 시각 7.83s  그때 피치 +3.45° **지지 0 이후 5s 생존**   : 3/256 (1.2%)   ← 핵심 지표 **지지 0 이후 5s 생존**(미검증 0: 방출 후 관측창 <5s) 
+S9C_EVAL_DONE
+/home/ryu/humanoid_leg_test1/models/stand_crouch_v1 {
+ "policy.pt": "049c6609f432ad814a580d121ee956f4",
+ "policy.onnx": "4c154afe387ca1dfd28066bf1591c531",
+ "env.yaml": "6bc7007a50bd265a75dfd89ab340b118",
+ "agent.yaml": "8509ea006bf671ef737f12f3e9e6f537"
+}
+  stand_crouch_v1 → logs/rsl_rl/biped12_stage4/2026-09-18_00-14-13_s9c/exported/policy.pt (049c6609…)
+패키지: deploy/stand_7차_20260918_0107.tar.gz (2.6M, 파일 41개)
+복사: bash jetson/deploy_to_jetson.sh (또는 scp deploy/stand_7차_20260918_0107.tar.gz mama@<젯슨IP>:~/) → 젯슨에서 tar xzf + LC_ALL=C md5sum -c --quiet deploy/MANIFEST.md5 + --selftest
+POST_DONE

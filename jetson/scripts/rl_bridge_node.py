@@ -248,7 +248,7 @@ _CROUCH_V1_POSE = {
     "left_ankle_r_joint": 0.0, "right_ankle_r_joint": 0.0,
 }
 CKPT_DEFAULT_POSE = {
-    "stand_crouch_v1": np.array([_CROUCH_V1_POSE[j] for j in JOINT_ORDER], dtype=np.float32),
+    "stand_crouch_v1": [float(_CROUCH_V1_POSE[j]) for j in JOINT_ORDER],   # 러너가 np.float32 로 변환
 }
 
 

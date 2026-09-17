@@ -1,0 +1,18 @@
+{
+  "name": "stand_crouch_v1",
+  "run": "2026-09-18_00-14-13_s9c",
+  "checkpoint": "model_144485.pt",
+  "checkpoint_md5": "1a04a6d8f86f3bf2a62598f4c4c9c112",
+  "task": "Biped12-HangStand-S9c-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "stand_hang_v6 model_141486",
+  "summary": "S9c 크라우치 기본자세(v3)+물리 편향 DR+스폰피치±8°+지면연성 k2e3; 0918 밤 자율",
+  "legacy": false,
+  "files": {
+    "policy.pt": "049c6609f432ad814a580d121ee956f4",
+    "policy.onnx": "4c154afe387ca1dfd28066bf1591c531",
+    "env.yaml": "6bc7007a50bd265a75dfd89ab340b118",
+    "agent.yaml": "8509ea006bf671ef737f12f3e9e6f537"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-18_00-14-13_s9c"
+}

@@ -734,3 +734,43 @@ def _selftest_s8():
 
 if __name__ == "__main__":
     selftest()
+
+
+# ─────────────────────── 0918 S9c: 물리 기본자세 편향 DR ───────────────────────
+def resample_default_pose_bias(env, env_ids, hip_f_rad=(-0.21, 0.21), knee_rad=(-0.087, 0.087),
+                               ankle_f_rad=(-0.14, 0.14), reset_noise_rad: float = 0.05,
+                               action_term: str = "joint_pos", asset_cfg=None):
+    """에피소드마다 env 별로 '물리 기본자세'를 nominal + 편향으로 바꾼다.
+
+    모델: 실물 영점 오차·사슬 오프셋 = 정책 프레임(엔코더 D)이 물리 자세와 어긋나는 것. 시뮬 등가 =
+    env 의 default_joint_pos(관측 joint_pos_rel 기준 · 액션 오프셋 기준)를 nominal+b 로 두는 것 —
+    정책은 nominal 프레임에서 '0' 을 보지만 물리는 b 만큼 다른 자세. 0917 실측: 같은 관절각에서 시뮬 몸통 +5°
+    vs 실물 −1~+9°, 수평 서기 힙 15~26°(URDF 9.5°) → 힙 ±12°, 발목 ±8°, 무릎 ±5° 로 시작.
+    action term 의 _offset(use_default_offset 캐시)과 관절 상태(리셋 자세)도 같이 갱신한다.
+    """
+    asset = env.scene[asset_cfg.name if asset_cfg is not None else "robot"]
+    names = list(asset.data.joint_names)
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    if not hasattr(env, "_nominal_default_joint_pos"):
+        env._nominal_default_joint_pos = asset.data.default_joint_pos[0].clone()
+        env._default_pose_bias = torch.zeros_like(asset.data.default_joint_pos)
+    nom = env._nominal_default_joint_pos
+    bias = torch.zeros(len(ids), len(names), device=env.device)
+    for rng, key in ((hip_f_rad, "_hip_f_joint"), (knee_rad, "_knee_joint"), (ankle_f_rad, "_ankle_f_joint")):
+        if rng is None:
+            continue
+        cols = torch.tensor([i for i, n in enumerate(names) if n.endswith(key)], device=env.device)
+        bias[:, cols] = torch.empty(len(ids), len(cols), device=env.device).uniform_(float(rng[0]), float(rng[1]))
+    new = nom.unsqueeze(0) + bias
+    asset.data.default_joint_pos[ids] = new
+    env._default_pose_bias[ids] = bias
+    term = env.action_manager.get_term(action_term)
+    off = getattr(term, "_offset", None)
+    if isinstance(off, torch.Tensor):
+        jid = getattr(term, "_joint_ids", slice(None))
+        off[ids] = new[:, jid] if not isinstance(jid, slice) else new
+    # 리셋 자세 = 새 기본자세 + 작은 잡음 (reset_robot_joints 가 앞서 구 기본자세로 썼을 수 있으므로 덮어씀)
+    q = new + torch.empty_like(new).uniform_(-reset_noise_rad, reset_noise_rad)
+    lo, hi = asset.data.soft_joint_pos_limits[ids, :, 0], asset.data.soft_joint_pos_limits[ids, :, 1]
+    q = torch.clamp(q, lo, hi)
+    asset.write_joint_state_to_sim(q, torch.zeros_like(q), env_ids=ids)

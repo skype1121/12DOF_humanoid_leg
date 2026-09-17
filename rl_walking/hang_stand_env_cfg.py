@@ -875,3 +875,47 @@ class Biped12HangStandS8ac4k6EnvCfg(Biped12HangStandS8ac4EnvCfg):
         super().__post_init__()
         _level_off(self)
         self.events.actuator_gains.params["stiffness_distribution_params"] = (0.6, 1.1)
+
+
+# ─────────────────────── 0918 S9c: 크라우치 기본자세 + 물리 편향 DR ───────────────────────
+#: 손 튜닝 수평 기준 자세 계열(0917: v3 힙 ±15·무릎 ∓30·발목앞뒤 ±20.5; v4 힙 ±26). 시뮬 URDF 는 힙 9.5° 에서 몸통 수평,
+#: 실물은 15~26° 에서 수평 → nominal 힙 15°(중간), 물리 편향 DR 힙 ±12° 로 3~27° 를 덮는다.
+CROUCH_DEFAULT_RAD = {
+    "left_hip_f_joint": 0.2618, "right_hip_f_joint": -0.2618,      # ±15°
+    "left_hip_a_joint": 0.0, "right_hip_a_joint": 0.0,
+    "left_hip_r_joint": 0.0, "right_hip_r_joint": 0.0,
+    "left_knee_joint": -0.5236, "right_knee_joint": 0.5236,        # ∓30°
+    "left_ankle_f_joint": 0.3578, "right_ankle_f_joint": -0.3578,  # ±20.5°
+    "left_ankle_r_joint": 0.0, "right_ankle_r_joint": 0.0,
+}
+
+
+@configclass
+class Biped12HangStandS9cEnvCfg(Biped12HangStandS8ac4rEnvCfg):
+    """S9c (0918 밤, 승윤님 방향): **크라우치 기본자세(v3) + 물리 기본자세 편향 DR + 착지 기울기 + 지면 연성**.
+    배경: 정책 기본자세(무릎 6°·발목 1.4°)는 URDF 에서도 몸통이 4.6° 뒤로 누움 → 실물(−17.5° 홀드)에서 매번 뒤로 낙상.
+    손 튜닝 v3/v4 크라우치는 실물 무보조 자립(0914~17). 같은 관절각에서 시뮬 몸통 +5° vs 실물 −1~+9°(착지마다 다름) →
+    (1) 기본자세를 크라우치로, (2) 실물 영점/사슬 오프셋을 env 별 물리 기본자세 편향(힙 ±12°·무릎 ±5°·발목 ±8°)으로,
+    (3) 스폰 피치 ±8°, (4) 지면 연성 k 2e3(0914 실물 패드·구조 연성 에뮬레이션에서 v5 87%·v6 100% 생존 조건).
+    배포 계약: 이 정책의 DEFAULT_POSE = CROUCH_DEFAULT_RAD (러너·브리지 체크포인트별 기본자세)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.robot.init_state.joint_pos = dict(CROUCH_DEFAULT_RAD)
+        if getattr(self.rewards, "knee_stance_flexion", None) is not None:
+            self.rewards.knee_stance_flexion.params["band_rad"] = (0.40, 0.65)     # 23~37° (크라우치)
+        if getattr(self.rewards, "base_height_l2", None) is not None:
+            self.rewards.base_height_l2.params["target_height"] = 0.58
+        self.events.default_pose_bias = EventTerm(
+            func=mdp_hang.resample_default_pose_bias, mode="reset",
+            params={"hip_f_rad": (-0.21, 0.21), "knee_rad": (-0.087, 0.087), "ankle_f_rad": (-0.14, 0.14),
+                    "reset_noise_rad": 0.05, "action_term": "joint_pos", "asset_cfg": _BASE})
+        pr = self.events.reset_base.params["pose_range"]
+        pr["pitch"] = (-0.14, 0.14)
+        self.scene.terrain.physics_material.compliant_contact_stiffness = 2000.0
+        self.scene.terrain.physics_material.compliant_contact_damping = 40.0
+
+
+@configclass
+class Biped12HangStandS9cHoldEnvCfg(Biped12HangStandS9cEnvCfg):
+    """S9c 대조군 설정(평가용, 학습 안 함): 같은 조건에서 --hold(고정 자세 kp150)가 서는지."""

@@ -694,6 +694,7 @@ for i in range(STEPS):
             _hs = getattr(uenv, "_hang", None)
             if _hs is not None and "px" in _hs:
                 _hdx, _hdy = _pair(args_cli.hook_dxy); _hs["px"][:] = float(_hdx); _hs["py"][:] = float(_hdy)
+        _DEF.copy_(robot.data.default_joint_pos)   # 0918 S9c: env 별 물리 기본자세 편향 DR 뒤 배포체인 기준 갱신
         obs = _cperturb(obs, i)          # actor 접촉 obs 교란(정답/물리 불변) — none 이면 무변
         obs = _flip_obs(obs)              # 0914 관절 반전 가설: 관측 열 부호 반전(물리 불변)
         obs = _rotor_obs(obs)             # 0914 로터측 엔코더 에뮬레이션(관측만)

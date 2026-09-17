@@ -252,7 +252,8 @@ class PolicyRunnerStage4:
     """
 
     def __init__(self, model_path=DEFAULT_MODEL_DIR_STAGE4, backend: str = "auto",
-                 gait_freq: float = GAIT_FREQ_HZ, obs_dim: int | None = None):
+                 gait_freq: float = GAIT_FREQ_HZ, obs_dim: int | None = None,
+                 default_pose_rad=None):
         """model_path: exported/ 디렉토리 또는 .onnx/.pt 파일 경로 (callable=스텁).
         backend: 'auto'(onnx 우선→torch 폴백) | 'onnx' | 'torch'.
         gait_freq: 클록 주파수 [Hz] — 반드시 체크포인트의 학습 클록과 일치
@@ -260,6 +261,9 @@ class PolicyRunnerStage4:
         obs_dim: 245(기존) | 320(S8a raw+EMA). None = 모델에서 검출 (스텁은 245 기본).
         """
         self.gait_freq = float(gait_freq)
+        # 0918: 체크포인트별 기본자세(S9c 크라우치 등). None = 학습 공통 DEFAULT_POSE_RAD. 관측 joint_pos·액션 오프셋 둘 다 이 값.
+        self.default_pose = (np.asarray(default_pose_rad, dtype=np.float32).reshape(12)
+                             if default_pose_rad is not None else DEFAULT_POSE_RAD.copy())
         self.backend, self._net = _load_backend(model_path, backend)
         if obs_dim is None:
             obs_dim = OBS_DIM_STAGE4 if self.backend == "stub" else _probe_obs_dim(self._net)
@@ -329,7 +333,7 @@ class PolicyRunnerStage4:
             "base_ang_vel": vec(gyro_rad_s, 3, "gyro_rad_s"),
             "projected_gravity": vec(gravity_unit, 3, "gravity_unit"),
             "velocity_commands": vec(cmd, 3, "cmd"),
-            "joint_pos": vec(qpos_rad, 12, "qpos_rad") - DEFAULT_POSE_RAD,
+            "joint_pos": vec(qpos_rad, 12, "qpos_rad") - self.default_pose,
             "joint_vel": vec(qvel_rad_s, 12, "qvel_rad_s"),
             "actions": self.last_action,
             "gait_clock": gait_clock_stage4(self._tick, self.gait_freq),
@@ -380,7 +384,7 @@ class PolicyRunnerStage4:
         # 깨져 실물 발진 사고의 근원이 됐다 (폐루프 검증 목표각 오차 3.6°).
         # 위치 안전 울타리는 Stage8 노드의 절대각(soft/hard) 검사가 '방출 명령'
         # 기준으로 담당한다 — cansend 사고 후속 보호는 그 계층에서 유지됨.
-        target = DEFAULT_POSE_RAD + ACTION_SCALE * raw
+        target = self.default_pose + ACTION_SCALE * raw
         if self._prev_emitted is None:
             self._prev_emitted = qpos.copy()
         emitted = self._prev_emitted + np.clip(

@@ -10,7 +10,7 @@ import argparse, json, os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import robotctl as rc
 
-ABORT_DEG = 8.0
+ABORT_DEG = 8.0   # 기준(base0) 대비 편차 한계
 # (라벨, {관절: 부호}) — 대칭 규약(FK 검증): 힙앞뒤·무릎·발목앞뒤는 좌우 반대 부호
 GROUPS = [("hip_f", {"left_hip_f_joint": +1, "right_hip_f_joint": -1}),
           ("knee", {"left_knee_joint": -1, "right_knee_joint": +1}),      # + = 더 굽힘
@@ -35,7 +35,7 @@ def set_joint(j, v):
     if not ok: raise SystemExit(f"조정 거부: {j}={v}")
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--step", type=float, default=3.0); ap.add_argument("--settle", type=float, default=10.0)
+    ap = argparse.ArgumentParser(); ap.add_argument("--step", type=float, default=2.0); ap.add_argument("--settle", type=float, default=10.0)
     ap.add_argument("--measure", type=float, default=3.0); a = ap.parse_args()
     st = rc.state(); base = dict(st.get("joint_trim_req") or {})
     h = st.get("hang_hold") or {}
@@ -46,21 +46,27 @@ def main():
     def restore():
         for j, v in base.items():
             if any(j in g for _, g in GROUPS): set_joint(j, v)
+    ref = {"fwd": None}
     def watch_settle(sec):
         t0 = time.time()
         while time.time() - t0 < sec:
-            im = rc.state().get("imu") or {}
-            if abs(float(im.get("fwd", 0))) > ABORT_DEG:
-                print(f"!! fwd {im.get('fwd'):+.1f}° > {ABORT_DEG} → 원복", flush=True); restore(); raise SystemExit(2)
+            im = rc.state().get("imu") or {}; f = float(im.get("fwd", 0))
+            lim_ok = ref["fwd"] is None or abs(f - ref["fwd"]) <= ABORT_DEG
+            if not lim_ok or abs(f) > 20.0:
+                print(f"!! fwd {f:+.1f}° (기준 {ref['fwd']}) 편차 > {ABORT_DEG} → 원복", flush=True); restore(); raise SystemExit(2)
             time.sleep(0.5)
     try:
-        print("▶ 기준 측정", flush=True); watch_settle(a.settle); r = snap(a.measure); r["label"] = "base0"; rows.append(r); print(f"   base0 fwd {r['fwd']:+.2f} lat {r['lat']:+.2f}", flush=True)
+        print("▶ 기준 측정", flush=True); watch_settle(a.settle); r = snap(a.measure); r["label"] = "base0"; rows.append(r); ref["fwd"] = r["fwd"]; print(f"   base0 fwd {r['fwd']:+.2f} lat {r['lat']:+.2f} (이후 편차 한계 ±{ABORT_DEG}°)", flush=True)
+        if abs(r["fwd"]) > 5.0 or r["fwd_sd"] > 1.0:
+            raise SystemExit(f"기준이 불안정/기움(fwd {r['fwd']:+.1f}°, sd {r['fwd_sd']:.2f}) — 수평 근처로 다시 세운 뒤 실행")
         for label, grp in GROUPS:
-            for sgn in (+1, -1):
+            for sgn in (-1, +1):          # 뒤 방향(무게중심 뒤로) 먼저 — v4 는 앞 여유가 없어 +부터 가면 넘어짐(0917)
                 d = sgn * a.step
                 for j, s in grp.items(): set_joint(j, base.get(j, 0.0) + s * d)
                 print(f"▶ {label} {d:+.0f}°", flush=True); watch_settle(a.settle); r = snap(a.measure); r["label"] = f"{label}{d:+.0f}"; rows.append(r)
                 print(f"   {r['label']:10s} fwd {r['fwd']:+.2f} lat {r['lat']:+.2f} (sd {r['fwd_sd']:.2f}, gyro {r['gyro_max']:.0f})", flush=True)
+                if abs(r["fwd"] - ref["fwd"]) > 6.0:
+                    print("!! 이 스텝에서 몸통이 6° 이상 이동 — 균형 경계. 원복 후 중단", flush=True); restore(); watch_settle(a.settle); break
                 restore(); print("▶ 기준 복귀", flush=True); watch_settle(a.settle); r = snap(a.measure); r["label"] = f"base_after_{label}{d:+.0f}"; rows.append(r)
                 print(f"   base      fwd {r['fwd']:+.2f} lat {r['lat']:+.2f}", flush=True)
     except KeyboardInterrupt:

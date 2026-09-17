@@ -160,3 +160,4 @@
 - 이후: eval_policy 로 export → register_model stand_crouch_v1 → deploy_package(GENS=stand_crouch_v1) → 젯슨 배포·브리지 selftest → 콘솔 재시작 → 운용 카드 갱신 → 아침 보고(MORNING_0918.md).
 - 01:07 stand_crouch_v1(model_144485) 평가: S9c 256env 명목 35.9 % / DR 7.4 % / 홀드 대조 0 % / v6@크라우치 1.2 % → 미승격·실험용. 젯슨 배포(패키지 0107)·브리지 selftest ALL PASS(np NameError 수정).
 - 02:50 stand_crouch_v1b(+6000it, model_150484): 명목 38.3 % / DR 10.2 % / 지지0 도달 92.6 %. 젯슨 배포(패키지 0250)·콘솔 기본 선택 v1b·재시작. v1c(+12000it, run 02-52-27_s9c3) 학습 시작, 종료 시 자동 평가·등록·패키지(scratchpad/s9c3_post_chain.sh). 아침 보고 MORNING_0918.md.
+- 06:14 v1c(+12000it, run 02-52-27_s9c3): 보상 150500 31 → 152500~155500 **60~75(v1b 의 ~50 보다 높음)** → **156000 에서 붕괴**(−5, 에피소드 61) → 최종 model_162483 평가 0 %. 배포 안 함(젯슨은 v1b 유지). 붕괴 전 체크포인트 model_155500·model_153500 을 명목·DR 로 평가해 v1b 보다 나으면 v1c 로 살림(진행 중).

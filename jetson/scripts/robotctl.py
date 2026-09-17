@@ -17,6 +17,8 @@
   robotctl autolevel off
   robotctl trim JOINT DEG    관절 하나 개별 조정 (예: trim left_knee -25)
   robotctl ground            접지 확인 (발을 바닥에 대고 서게 할 때만)
+  robotctl handoff [-y]      제어 인계 → 기준점 → ARM → 정책 로드 (선택 정책은 콘솔 설정; 자동 수평은 먼저 끔)
+  robotctl stand [-y]        정책 시작 (인계·ARM·정책 로드 뒤)
   robotctl down [-y]         회수: 줄 지지 확인 → 제어 프로세스 종료 → 토크 해제
   robotctl estop             정지 요청
   robotctl new               새 시험 준비 (회수·토크 해제 뒤)
@@ -250,6 +252,31 @@ def cmd_down(a):
     print("✓ 회수 완료 → 새 시험은 robotctl new", flush=True)
 
 
+def cmd_handoff(a):
+    st = state()
+    if (st.get("auto_level") or {}).get("on"):
+        act("auto_level_off", quiet=True)
+    im = st.get("imu") or {}
+    print(f"현재 fwd {im.get('fwd', 0):+.1f}° lat {im.get('lat', 0):+.1f}° | 선택 정책 {st['trial'].get('checkpoint')}", flush=True)
+    if not confirm("제어 인계: 발이 바닥에 있고 줄이 느슨하며 몸통이 거의 수평인가요?", a.yes):
+        die("취소")
+    for action, tmo in (("handoff", 20), ("baseline", 20), ("arm", 20), ("bridge", 60)):
+        print(f"▶ {state()['trial']['allowed'][action]['label']}", flush=True)
+        if not act(action):
+            sys.exit(1)
+        wait_completed(action, tmo)
+    print("✓ 인계·ARM·정책 로드 완료 → robotctl stand", flush=True)
+
+
+def cmd_stand(a):
+    st = state()
+    if not confirm(f"정책 시작({st['trial'].get('checkpoint')}): 줄 느슨·손 떼기 확인?", a.yes):
+        die("취소")
+    if act("stand"):
+        wait_completed("stand", 15)
+        print("✓ 정책 제어 중 — 'robotctl watch' 로 관찰, 문제 시 robotctl estop", flush=True)
+
+
 def cmd_status(a):
     print(line(state()), flush=True)
 
@@ -294,6 +321,8 @@ def main():
     s = sub.add_parser("autolevel"); s.add_argument("mode", choices=("on", "off")); s.add_argument("--target", type=float, default=0.0); s.set_defaults(fn=cmd_autolevel)
     s = sub.add_parser("trim"); s.add_argument("joint"); s.add_argument("deg", type=float); s.set_defaults(fn=cmd_trim)
     sub.add_parser("ground").set_defaults(fn=lambda a: act("ground"))
+    s = sub.add_parser("handoff"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_handoff)
+    s = sub.add_parser("stand"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_stand)
     s = sub.add_parser("down"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_down)
     sub.add_parser("estop").set_defaults(fn=lambda a: act("estop", confirmed=False))
     sub.add_parser("new").set_defaults(fn=lambda a: act("new_trial"))

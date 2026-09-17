@@ -1,0 +1,10 @@
+pose_json jetson/calib_data/level_pose_0914.json
+task Biped12-Velocity-Stage4V2-Stand-V14-v0 kd_scale 0.8 settle 150 steps
+총질량(시뮬) 17.635 kg | 골반높이 0.634 m
+몸통 pitch(+앞) +4.15° roll(+왼) -0.00°
+전신 CoM: 발목축 대비 앞 +0.09 cm, 높이 0.532 m
+발 수직력 합 172.9 N (L 86.2 / R 86.7) — 체중 173.0 N
+관절 추종오차(실제−목표, deg): left_hip_f-0.4 right_hip_f+0.7 left_hip_a-0.1 right_hip_a+0.1 left_hip_r-0.1 right_hip_r+0.2 left_knee-1.7 right_knee+1.7 left_ankle_f+0.8 right_ankle_f-1.0 left_ankle_r-0.1 right_ankle_r-0.1
+관절 실제각(deg): left_hip_f+14.6 right_hip_f-14.3 left_hip_a-0.1 right_hip_a+0.1 left_hip_r-0.1 right_hip_r+0.2 left_knee-31.7 right_knee+31.7 left_ankle_f+21.3 right_ankle_f-21.5 left_ankle_r-0.1 right_ankle_r-0.1
+홀드 10 s 결과: 낙상 없음(정적 자립)
+최종 몸통 pitch +4.14° roll -0.00°

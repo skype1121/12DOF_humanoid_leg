@@ -4,6 +4,7 @@
 모든 명령은 콘솔 서버의 선행조건·허용 규칙을 그대로 통과한다(우회 없음). 버튼 대신 타이핑일 뿐이다.
 
   robotctl status            현재 상태 한 줄
+  robotctl config air|ground [CKPT]   시험 방식·정책 설정 (제어 시작 전; air = 접촉 게이트 대신 HangGuard — 왼발 패드 탈락 상태 권장)
   robotctl watch             1초마다 상태 (Ctrl-C 로 종료)
   robotctl prep              CAN 준비 → 센서 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 (완료된 단계는 건너뜀)
   robotctl zero-fix          영점 배수 보정(전원 재투입 뒤 영점 확인이 '창 어긋남' 이면) → 다시 prep
@@ -277,6 +278,12 @@ def cmd_stand(a):
         print("✓ 정책 제어 중 — 'robotctl watch' 로 관찰, 문제 시 robotctl estop", flush=True)
 
 
+def cmd_config(a):
+    st = state()
+    ck = a.ckpt or st["trial"].get("checkpoint")
+    act("configure", {"mode": a.mode, "checkpoint": ck}, confirmed=False)
+
+
 def cmd_status(a):
     print(line(state()), flush=True)
 
@@ -305,6 +312,7 @@ def main():
     ap = argparse.ArgumentParser(prog="robotctl", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status").set_defaults(fn=cmd_status)
+    s = sub.add_parser("config"); s.add_argument("mode", choices=("air", "ground")); s.add_argument("ckpt", nargs="?", default=None); s.set_defaults(fn=cmd_config)
     sub.add_parser("watch").set_defaults(fn=cmd_watch)
     sub.add_parser("prep").set_defaults(fn=cmd_prep)
     s = sub.add_parser("zero-fix"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_zero_fix)

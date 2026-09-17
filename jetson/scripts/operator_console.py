@@ -883,7 +883,7 @@ def act_joint_trim(payload):
 
 
 # 0914 수평 기준 자세 프리셋 — 수동 튜닝으로 찾은 자세(22:25, fwd −2·lat +1.4·양발접촉). 관절 프레임 deg.
-LEVEL_POSE_0914 = {"left_hip_f_joint": 20.5, "right_hip_f_joint": -20.5, "left_hip_a_joint": 0.0, "right_hip_a_joint": 0.0, "left_hip_r_joint": 0.0, "right_hip_r_joint": 0.0, "left_knee_joint": -30.0, "right_knee_joint": 30.0, "left_ankle_f_joint": 19.0, "right_ankle_f_joint": -19.0, "left_ankle_r_joint": 0.0, "right_ankle_r_joint": 0.0}
+LEVEL_POSE_0914 = {"left_hip_f_joint": 15.0, "right_hip_f_joint": -15.0, "left_hip_a_joint": 0.0, "right_hip_a_joint": 0.0, "left_hip_r_joint": 0.0, "right_hip_r_joint": 0.0, "left_knee_joint": -30.0, "right_knee_joint": 30.0, "left_ankle_f_joint": 20.5, "right_ankle_f_joint": -20.5, "left_ankle_r_joint": 0.0, "right_ankle_r_joint": 0.0}
 
 
 HOLD_KD_FILE = "/tmp/hold_kd"
@@ -944,10 +944,33 @@ def act_air_gait_off(payload):
     return True, "에어 보행 정지(2 s 페이드아웃 → 현재 개별 조정 자세)"
 
 
+LEVEL_POSE_FILE = os.path.join(CALIB, "level_pose.json")   # 0917: 프리셋을 파일에서 매번 읽음 → 갱신에 콘솔 재시작 불필요
+
+
+def _level_pose():
+    """~/rl_calib/level_pose.json 의 trims_joint_frame_deg(12관절 전부, 유한값)만 채택; 아니면 코드 상수."""
+    try:
+        with open(LEVEL_POSE_FILE, encoding="utf-8") as f:
+            raw = json.load(f)
+        t = raw.get("trims_joint_frame_deg") if isinstance(raw, dict) else None
+        if isinstance(t, dict) and set(t) == set(JOINT_NAMES) and all(math.isfinite(float(v)) for v in t.values()):
+            kd = raw.get("hold_kd")
+            kd = float(kd) if isinstance(kd, (int, float)) and HOLD_KD_MIN <= float(kd) <= HOLD_KD_MAX else None
+            return {k: float(t[k]) for k in JOINT_NAMES}, kd
+    except (OSError, ValueError, TypeError):
+        pass
+    return dict(LEVEL_POSE_0914), None
+
+
 def act_joint_trim_preset(payload):
-    """캡처해 둔 수평 기준 자세를 개별 조정 요청 파일에 그대로 쓴다(hang_stand 가 8~30°/s 로 램프·소프트한계 클램프)."""
-    _write_joint_trim(LEVEL_POSE_0914)
-    return True, "수평 기준 자세(0914) 적용 — 개별 조정으로 램프"
+    """캡처해 둔 수평 기준 자세를 개별 조정 요청 파일에 그대로 쓴다(hang_stand 가 램프·소프트한계 클램프)."""
+    pose, kd = _level_pose()
+    _write_joint_trim(pose)
+    if kd is not None:
+        act_hold_kd({"value": kd})
+    return True, (f"수평 기준 자세 적용 — 힙앞뒤 {pose['left_hip_f_joint']:+.1f}/{pose['right_hip_f_joint']:+.1f} · "
+                  f"무릎 {pose['left_knee_joint']:+.1f}/{pose['right_knee_joint']:+.1f} · 발목앞뒤 {pose['left_ankle_f_joint']:+.1f}/{pose['right_ankle_f_joint']:+.1f}"
+                  + (f" · kd {kd:.0f}" if kd is not None else ""))
 
 
 def act_joint_trim_zero(payload):

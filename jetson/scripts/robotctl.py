@@ -13,6 +13,8 @@
   robotctl walk [-y] [--f 0.5 --hip 30 --hipext 12 --knee 30 --ankle 8]   공중 걷기(힙 앞뒤 스윙) 시작 (공중·kp150 에서만)
   robotctl stop              에어 보행 정지(자세는 유지)
   robotctl kd N              홀드 감쇠 kd (1~30, 기본 5)
+  robotctl autolevel on [--target 0]   접지 뒤 IMU 기준 자동 수평(힙앞뒤 트림, 0.5°/s, ±10°)
+  robotctl autolevel off
   robotctl trim JOINT DEG    관절 하나 개별 조정 (예: trim left_knee -25)
   robotctl ground            접지 확인 (발을 바닥에 대고 서게 할 때만)
   robotctl down [-y]         회수: 줄 지지 확인 → 제어 프로세스 종료 → 토크 해제
@@ -97,6 +99,9 @@ def line(st):
         parts.append(f"조정 {trims}")
     if g.get("active"):
         parts.append(f"보행 {g.get('freq_hz')}Hz amp{g.get('amp')}")
+    al = st.get("auto_level") or {}
+    if al.get("on"):
+        parts.append(f"자동수평 {al.get('status')} off{al.get('offset', 0):+.1f}")
     if b.get("live"):
         parts.append(f"정책 LIVE {b.get('loaded_checkpoint')}")
     if t.get("fault"):
@@ -215,6 +220,13 @@ def cmd_stop(a):
     act("air_gait_off")
 
 
+def cmd_autolevel(a):
+    if a.mode == "on":
+        act("auto_level_on", {"target": a.target})
+    else:
+        act("auto_level_off")
+
+
 def cmd_kd(a):
     act("hold_kd", {"value": a.value})
 
@@ -279,6 +291,7 @@ def main():
     s.set_defaults(fn=cmd_walk)
     sub.add_parser("stop").set_defaults(fn=cmd_stop)
     s = sub.add_parser("kd"); s.add_argument("value", type=float); s.set_defaults(fn=cmd_kd)
+    s = sub.add_parser("autolevel"); s.add_argument("mode", choices=("on", "off")); s.add_argument("--target", type=float, default=0.0); s.set_defaults(fn=cmd_autolevel)
     s = sub.add_parser("trim"); s.add_argument("joint"); s.add_argument("deg", type=float); s.set_defaults(fn=cmd_trim)
     sub.add_parser("ground").set_defaults(fn=lambda a: act("ground"))
     s = sub.add_parser("down"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_down)

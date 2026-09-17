@@ -962,6 +962,72 @@ def _level_pose():
     return dict(LEVEL_POSE_0914), None
 
 
+# ── 0918 자동 수평(auto level): 접지 상태에서 IMU fwd 를 목표(기본 0°)로 맞추도록 힙앞뒤 트림을 천천히 돌린다.
+#    근거: 같은 관절각이라도 착지마다 몸통 기울기가 −1~+9° 로 달랐고(0917), 고정 홀드엔 수평 피드백이 없다.
+#    부호(실측 0914~17): 힙앞뒤 굴곡(왼 +, 오른 −)을 키우면 fwd(앞 기울기)가 +로 간다(≈1:1).
+#    안전: kp150·hang_stand 살아 있을 때만, 발 접촉이 하나라도 있을 때만, 편차 |err|>AL_PAUSE_DEG 이면 일시정지(넘어짐/줄 지지 의심),
+#          총 조정폭 ±AL_MAX_DEG, 속도 ≤AL_RATE_DEG_S. 파일 쓰기는 개별 조정과 같은 경로(hang_stand 램프·소프트 한계 클램프).
+AL_STATE_FILE = "/tmp/auto_level.json"
+AL_RATE_DEG_S = 0.5
+AL_MAX_DEG = 10.0
+AL_DEADBAND_DEG = 0.3
+AL_GAIN = 0.6              # [deg 힙 / deg 오차] per tick 비례(속도 제한 안에서)
+AL_PAUSE_DEG = 8.0
+AL_TICK_S = 0.5
+AUTO_LEVEL = {"on": False, "target": 0.0, "offset": 0.0, "base": None, "status": "off", "err": None, "ts": 0.0}
+
+
+def _al_write(req):
+    _write_joint_trim(req)
+
+
+def act_auto_level_on(payload):
+    target = float(payload.get("target", 0.0))
+    _need(math.isfinite(target) and -5.0 <= target <= 5.0, "목표 fwd 는 −5~+5° 안이어야 합니다")
+    with STATE_LOCK:
+        req = _read_joint_trim()
+        AUTO_LEVEL.update(on=True, target=target, offset=0.0, status="armed", err=None,
+                          base={"left_hip_f_joint": req["left_hip_f_joint"], "right_hip_f_joint": req["right_hip_f_joint"]})
+    return True, f"자동 수평 ON — 목표 fwd {target:+.1f}° (힙앞뒤 트림 ≤{AL_RATE_DEG_S}°/s, 최대 ±{AL_MAX_DEG}°, 접촉 있을 때만)"
+
+
+def act_auto_level_off(payload):
+    with STATE_LOCK:
+        AUTO_LEVEL.update(on=False, status="off")
+    return True, f"자동 수평 OFF (현재 힙 오프셋 {AUTO_LEVEL['offset']:+.1f}° 는 유지)"
+
+
+def auto_level_tick(view):
+    """샘플러에서 AL_TICK_S 마다 호출. view = console_snapshot()."""
+    if not AUTO_LEVEL["on"]:
+        return
+    hh = view.get("hang_hold") or {}
+    fresh = view.get("fresh") or {}
+    im = view.get("imu") or {}
+    contact = (view.get("foot") or {}).get("contact") or [False, False]
+    if not (hh.get("kp", 0) >= 150 and fresh.get("imu")):
+        AUTO_LEVEL["status"] = "대기(운용 게인·IMU 필요)"; return
+    if not any(bool(c) for c in contact):
+        AUTO_LEVEL["status"] = "대기(발 접촉 없음)"; return
+    fwd = float(im.get("fwd", 0.0)); err = AUTO_LEVEL["target"] - fwd
+    AUTO_LEVEL["err"] = round(err, 2)
+    if abs(err) > AL_PAUSE_DEG:
+        AUTO_LEVEL["status"] = f"일시정지(편차 {err:+.1f}° > {AL_PAUSE_DEG})"; return
+    if abs(err) <= AL_DEADBAND_DEG:
+        AUTO_LEVEL["status"] = "수평"; return
+    step = max(-AL_RATE_DEG_S * AL_TICK_S, min(AL_RATE_DEG_S * AL_TICK_S, AL_GAIN * err))
+    new_off = max(-AL_MAX_DEG, min(AL_MAX_DEG, AUTO_LEVEL["offset"] + step))
+    if new_off == AUTO_LEVEL["offset"]:
+        AUTO_LEVEL["status"] = f"한계(±{AL_MAX_DEG}°)"; return
+    AUTO_LEVEL["offset"] = new_off
+    req = _read_joint_trim(); b = AUTO_LEVEL["base"] or {"left_hip_f_joint": 0.0, "right_hip_f_joint": 0.0}
+    req["left_hip_f_joint"] = b["left_hip_f_joint"] + new_off      # 앞으로 더 기울이려면(err>0) 굴곡 증가
+    req["right_hip_f_joint"] = b["right_hip_f_joint"] - new_off
+    _al_write(req)
+    AUTO_LEVEL["status"] = f"조정 중 (오프셋 {new_off:+.1f}°)"
+    AUTO_LEVEL["ts"] = time.time()
+
+
 def act_joint_trim_preset(payload):
     """캡처해 둔 수평 기준 자세를 개별 조정 요청 파일에 그대로 쓴다(hang_stand 가 램프·소프트한계 클램프)."""
     pose, kd = _level_pose()
@@ -974,6 +1040,7 @@ def act_joint_trim_preset(payload):
 
 
 def act_joint_trim_zero(payload):
+    AUTO_LEVEL.update(on=False, status="off", offset=0.0)
     _write_joint_trim({k: 0.0 for k in JOINT_NAMES})
     return True, "개별 조정 12관절 전부 0 (0.5°/s 로 복귀)"
 
@@ -1067,6 +1134,8 @@ ACTIONS = {
     "joint_trim_zero": (act_joint_trim_zero, "개별 조정 전부 0"),
     "joint_trim_preset": (act_joint_trim_preset, "수평 기준 자세 적용"),
     "hold_kd": (act_hold_kd, "홀드 감쇠 kd"),
+    "auto_level_on": (act_auto_level_on, "자동 수평 ON"),
+    "auto_level_off": (act_auto_level_off, "자동 수평 OFF"),
     "air_gait_on": (act_air_gait_on, "에어 보행 시작"),
     "air_gait_off": (act_air_gait_off, "에어 보행 정지"),
     # 게인 램프 — **착지 전에** 공중에서 kp20→kp150 (hang_stand 문서 3단계).
@@ -1147,6 +1216,7 @@ def console_snapshot():
         st["hang_hold"] = None if DEMO else read_hang_status()
         st["joint_trim_req"] = None if DEMO else _read_joint_trim()
         st["air_gait_req"] = None if DEMO else _read_air_gait()
+        st["auto_level"] = dict(AUTO_LEVEL)
         TRIAL.update(st)
         st["trial"] = TRIAL.snapshot()
         if BUSY:
@@ -1185,7 +1255,7 @@ def dispatch_action(payload):
         return 200, {"ok": bool(ok), "message": msg, "confirmed": False}
 
     immediate = action in EVENTS | {"support_confirm", "configure", "new_trial", "session_start", "session_end",
-                                    "joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd", "air_gait_on", "air_gait_off"}
+                                    "joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd", "air_gait_on", "air_gait_off", "auto_level_on", "auto_level_off"}
     if not DEMO and not immediate:
         poll_processes()
     with STATE_LOCK:
@@ -1257,7 +1327,7 @@ def dispatch_action(payload):
                 else:
                     DEMO_SOURCE = type(DEMO_SOURCE)()
                 TRIAL.emit("new_trial")
-            elif action in ("joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd", "air_gait_on", "air_gait_off"):
+            elif action in ("joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd", "air_gait_on", "air_gait_off", "auto_level_on", "auto_level_off"):
                 try:
                     ok, msg = ACTIONS[action][0](payload)
                 except Exception as exc:
@@ -1399,6 +1469,16 @@ def selftest():
         _tz.view = dict(_tz.view, procs={"zero": {"alive": False, "rc": 0}}); _tz.update(_tz.view)
         assert _tz.pending is None and "zero_multiple" in _tz.completed and _tz.last_result["ok"], (_tz.pending, _tz.last_result)
         assert _tz.reason("zero_multiple") is None   # 재실행 허용(완료 목록과 무관)
+        # 0918 자동 수평: 접촉 없으면 대기, 편차 크면 일시정지, 정상이면 힙앞뒤 트림을 속도 제한 안에서 조정(부호: err>0 → 왼 +/오른 −)
+        with patch.dict(globals(), JOINT_TRIM_FILE=os.path.join(directory, "joint_trim_al.json")):
+            _write_joint_trim({k: 0.0 for k in JOINT_NAMES}); act_auto_level_on({"target": 0.0})
+            base_view = {"hang_hold": {"kp": 150.0}, "fresh": {"imu": True}, "imu": {"fwd": -3.0}, "foot": {"contact": [False, False]}}
+            auto_level_tick(base_view); assert "접촉" in AUTO_LEVEL["status"], AUTO_LEVEL["status"]
+            auto_level_tick(dict(base_view, foot={"contact": [False, True]}, imu={"fwd": -20.0})); assert "일시정지" in AUTO_LEVEL["status"]
+            auto_level_tick(dict(base_view, foot={"contact": [False, True]})); r = _read_joint_trim()
+            assert abs(r["left_hip_f_joint"] - 0.25) < 1e-9 and abs(r["right_hip_f_joint"] + 0.25) < 1e-9, r   # 0.5°/s × 0.5 s = 0.25°
+            auto_level_tick(dict(base_view, foot={"contact": [True, True]}, imu={"fwd": 0.1})); assert AUTO_LEVEL["status"] == "수평"
+            act_auto_level_off({}); assert not AUTO_LEVEL["on"]
         _ts = TrialState(CKPT_DEFAULT); _ts.completed.update({"can_up", "sensors", "boot_pose", "selftest", "stage8", "hang_stand", "gain_ramp"})
         _base = {"server_time": 1000.0, "fresh": {"status": True, "imu": True, "foot": True, "bridge": False}, "stage8": {"waiting": True},
                  "bridge": {"live": False}, "procs": {"hang_stand": {"alive": True, "hold": {"kp": 150.0, "ts": 999.5}}, "stage8": {"alive": True}},
@@ -1472,6 +1552,11 @@ def main():
                         SESSION.event("can_busoff", count=after, delta=after-before)
                 view = console_snapshot()
                 SESSION.sample(view)
+                if not DEMO and tick % max(1, int(SAMPLE_HZ * AL_TICK_S)) == 0:
+                    try:
+                        auto_level_tick(view)
+                    except Exception as _exc:
+                        AUTO_LEVEL["status"] = f"오류 {type(_exc).__name__}"
             except Exception as exc:
                 with STATE_LOCK:
                     TRIAL.latch(f"상태·기록 처리 오류: {type(exc).__name__}")

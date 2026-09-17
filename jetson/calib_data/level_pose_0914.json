@@ -1,9 +1,9 @@
 {
-  "captured": "2026-09-17 (기계시계)",
-  "note": "수평 기준 자세 v3 — 승윤님 밀기 시험 튜닝: 힙앞뒤 ±15·무릎 ∓30·발목앞뒤 ±20.5 (v2 힙 ±20.5·발목 ±19 대비 힙 덜 굽히고 발목 더 세움). kp150·kd4 홀드 fwd −0.4/lat +0.3·양발 접촉. 콘솔 '수평 기준 자세 적용'(joint_trim_preset)은 젯슨 ~/rl_calib/level_pose.json 을 매번 읽음(없으면 코드 상수).",
+  "captured": "2026-09-17 19:3x (기계시계)",
+  "note": "수평 기준 자세 v4 — 승윤님 착지 튜닝: 힙앞뒤 ±26·무릎 ∓30·발목앞뒤 ±20.5·kd4. 착지 상태 fwd −0.3/lat +1.6·양발 접촉. (v3 = 힙 ±15, v2 = 힙 ±20.5·발목 ±19.) 콘솔 '수평 기준 자세 적용'은 젯슨 ~/rl_calib/level_pose.json 을 매번 읽음.",
   "trims_joint_frame_deg": {
-    "left_hip_f_joint": 15.0,
-    "right_hip_f_joint": -15.0,
+    "left_hip_f_joint": 26.0,
+    "right_hip_f_joint": -26.0,
     "left_hip_a_joint": 0.0,
     "right_hip_a_joint": 0.0,
     "left_hip_r_joint": 0.0,
@@ -15,5 +15,25 @@
     "left_ankle_r_joint": 0.0,
     "right_ankle_r_joint": 0.0
   },
-  "hold_kd": 4.0
+  "hold_kd": 4.0,
+  "history": [
+    {
+      "version": "v3_0917",
+      "trims": {
+        "left_hip_f_joint": 15.0,
+        "right_hip_f_joint": -15.0,
+        "left_hip_a_joint": 0.0,
+        "right_hip_a_joint": 0.0,
+        "left_hip_r_joint": 0.0,
+        "right_hip_r_joint": 0.0,
+        "left_knee_joint": -30.0,
+        "right_knee_joint": 30.0,
+        "left_ankle_f_joint": 20.5,
+        "right_ankle_f_joint": -20.5,
+        "left_ankle_r_joint": 0.0,
+        "right_ankle_r_joint": 0.0
+      },
+      "hold_kd": 4.0
+    }
+  ]
 }

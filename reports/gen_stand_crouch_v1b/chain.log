@@ -1,0 +1,18 @@
+train: TRAIN_RC=0
+ckpt=model_150484.pt
+policy.onnx
+policy.pt
+s9c2_new_nom rc=0 지지 0 도달(살아서)        : 237/256 (92.6%)  평균 방출완료 시각 8.09s  그때 피치 -0.13° **지지 0 이후 5s 생존**   : 98/256 (38.3%)   ← 핵심 지표 **지지 0 이후 5s 생존**(미검증 0: 방출 후 관측창 <5s) 
+s9c2_new_dr rc=0 지지 0 도달(살아서)        : 167/256 (65.2%)  평균 방출완료 시각 8.05s  그때 피치 -1.38° **지지 0 이후 5s 생존**   : 26/256 (10.2%)   ← 핵심 지표 **지지 0 이후 5s 생존**(미검증 0: 방출 후 관측창 <5s) 
+s9c2_new_nom_nopush rc=0 지지 0 도달(살아서)        : 237/256 (92.6%)  평균 방출완료 시각 8.09s  그때 피치 -0.13° **지지 0 이후 5s 생존**   : 98/256 (38.3%)   ← 핵심 지표 **지지 0 이후 5s 생존**(미검증 0: 방출 후 관측창 <5s) 
+/home/ryu/humanoid_leg_test1/models/stand_crouch_v1b {
+ "policy.pt": "b99b34cebb2636832963c542b04ad107",
+ "policy.onnx": "0497c821a6c20e8b5777ff03f6fbc006",
+ "env.yaml": "f1f4b9b504071b9b57de573467e21989",
+ "agent.yaml": "50f2a239b1deee53743f4c997ca0bc99"
+}
+  stand_crouch_v1 → logs/rsl_rl/biped12_stage4/2026-09-18_00-14-13_s9c/exported/policy.pt (049c6609…)
+  stand_crouch_v1b → logs/rsl_rl/biped12_stage4/2026-09-18_01-08-37_s9c2/exported/policy.pt (b99b34ce…)
+패키지: deploy/stand_7차_20260918_0250.tar.gz (5.0M, 파일 44개)
+복사: bash jetson/deploy_to_jetson.sh (또는 scp deploy/stand_7차_20260918_0250.tar.gz mama@<젯슨IP>:~/) → 젯슨에서 tar xzf + LC_ALL=C md5sum -c --quiet deploy/MANIFEST.md5 + --selftest
+POST2_DONE

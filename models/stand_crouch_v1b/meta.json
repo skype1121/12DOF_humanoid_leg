@@ -1,0 +1,18 @@
+{
+  "name": "stand_crouch_v1b",
+  "run": "2026-09-18_01-08-37_s9c2",
+  "checkpoint": "model_150484.pt",
+  "checkpoint_md5": "1b480dda31536a2de039134443e824d3",
+  "task": "Biped12-HangStand-S9c-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "stand_crouch_v1 model_144485",
+  "summary": "S9c +6000it 계속 학습; 0918 밤 자율",
+  "legacy": false,
+  "files": {
+    "policy.pt": "b99b34cebb2636832963c542b04ad107",
+    "policy.onnx": "0497c821a6c20e8b5777ff03f6fbc006",
+    "env.yaml": "f1f4b9b504071b9b57de573467e21989",
+    "agent.yaml": "50f2a239b1deee53743f4c997ca0bc99"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-18_01-08-37_s9c2"
+}

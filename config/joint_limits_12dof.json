@@ -14,8 +14,8 @@
     "right_hip_r_joint":   {"soft_min": -29.0, "soft_max": 29.0, "hard_min": -30.0,  "hard_max": 30.0},
     "left_knee_joint":     {"soft_min": -83.5, "soft_max": 4.0,  "hard_min": -120.0, "hard_max": 5.0},
     "right_knee_joint":    {"soft_min": -4.0,  "soft_max": 80.0, "hard_min": -5.0,   "hard_max": 120.0},
-    "left_ankle_f_joint":  {"soft_min": -22.0, "soft_max": 29.0, "hard_min": -45.0,  "hard_max": 30.0},
-    "right_ankle_f_joint": {"soft_min": -29.0, "soft_max": 18.5, "hard_min": -30.0,  "hard_max": 45.0},
+    "left_ankle_f_joint":  {"soft_min": -22.0, "soft_max": 39.0, "hard_min": -45.0,  "hard_max": 40.0},
+    "right_ankle_f_joint": {"soft_min": -39.0, "soft_max": 18.5, "hard_min": -40.0,  "hard_max": 45.0},
     "left_ankle_r_joint":  {"soft_min": -19.0, "soft_max": 19.0, "hard_min": -20.0,  "hard_max": 20.0},
     "right_ankle_r_joint": {"soft_min": -19.0, "soft_max": 19.0, "hard_min": -20.0,  "hard_max": 20.0}
   }

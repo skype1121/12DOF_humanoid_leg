@@ -31,6 +31,52 @@ MANUAL = {"joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd", "air_
 ZERO_TOOLS = {"zero_multiple", "zero_recapture", "zero_kin"}   # 0914 영점 도구 — 제어 시작 전(준비)에서만   # 0914 12축 개별 제어기(자세 유지 스크립트의 관절 트림). 운용 게인 뒤에만.
 PREP = ("can_up", "sensors", "boot_pose", "selftest", "stage8", "hang_stand", "gain_ramp")
 CONTROL = ("stage8", "hang_stand", "bridge", "stage8_arm", "stage8_baseline")
+
+#: 0918 프로세스 종료 코드 → (뜻, 할 일). 키 = 액션 이름 또는 프로세스 키. 3 = 정상(핸드오프)라 실패로 안 잡음.
+RC_HINTS = {
+    "zero_multiple": {
+        1: ("불량 모터 있음(무응답·폴트·불안정)", "robotctl motors 로 응답·표 확인 → 커넥터·전원"),
+        2: ("차단: CAN 쓰는 프로세스가 살아 있거나, 창 어긋남이 없어 보정할 것이 없음(자세불일치만 남음)",
+            "robotctl motors 표의 조치 열대로 — 자세불일치면 그 관절을 기준 자세로 맞추기, 지그에서 맞는데도 남으면 zero-recap"),
+    },
+    "zero_recapture": {
+        1: ("불량 모터 있음(무응답·폴트·불안정)", "robotctl motors 로 응답 확인 → 커넥터·전원"),
+        2: ("차단: 창 어긋남이 남아 있음(재캡처하면 어긋난 프레임이 영구 박힘) 또는 CAN 쓰는 프로세스 살아 있음",
+            "robotctl zero-fix 먼저 → 다시 motors → 그 뒤 zero-recap"),
+    },
+    "zero_kin": {
+        1: ("가드로 중단(현 자세 홀드 유지)", "자세·줄 확인 뒤 재실행"),
+        2: ("선행조건 미충족(stage8 ARMED 아님 / 센서 미수신 / 브리지 live)", "순서 확인: 인계·ARM 뒤, 정책 시작 전"),
+    },
+    "boot_pose": {
+        1: ("영점 확인 실패: 잔차 초과 관절 또는 읽기 실패", "robotctl motors 표의 조치 열대로 (창 어긋남 zero-fix / 자세 맞추기 / 무응답 커넥터)"),
+    },
+    "hang_stand": {
+        1: ("시작 실패: 모터 시작각 읽기 실패 또는 스탠드 대비 12° 초과 이탈", "영점 확인(boot_pose)부터 다시, 매달림 직립 정렬 후 재실행"),
+        2: ("가드 릴리즈(관절 이탈 DEV_ABORT·오차 초과) — 전 모터 무토크", "줄 확인 → robotctl down (모터 전원 OFF 면 robotctl reset) → motors 로 창 어긋남 확인"),
+    },
+    "stage8": {
+        1: ("12축 제어기 기동 실패(인자·ROS2) 또는 비정상 종료", "콘솔 로그 확인 → 회수 후 prep 부터 다시"),
+    },
+    "selftest": {
+        1: ("셀프테스트 FAIL 항목 있음", "로그의 [FAIL] 줄 확인(정책 등록·계약·경로)"),
+    },
+    "release": {
+        1: ("토크 해제 송신/피드백 오류", "모터 전원 OFF·이미 무토크면 robotctl reset, 아니면 전원 확인 뒤 재시도"),
+    },
+    "bridge": {
+        1: ("정책 브리지 종료(가드 정지·estop·오류)", "회수(robotctl down) → 블랙박스 로그 확인"),
+    },
+}
+
+
+def explain_rc(key, rc):
+    """종료 코드 설명 문자열. 모르는 조합이면 코드만."""
+    try:
+        meaning, todo = RC_HINTS.get(key, {})[int(rc)]
+    except (KeyError, TypeError, ValueError):
+        return f"프로세스 종료 코드 {rc}"
+    return f"프로세스 종료 코드 {rc}: {meaning} → {todo}"
 EVENTS = {k for k in LABELS if k.startswith("op_")}
 RECOVERY = {"support_confirm", "stack_down", "release", "session_end", "analyze"}
 
@@ -327,7 +373,9 @@ class TrialState:
             if "hang_stand" in self.completed and "handoff" not in self.completed and not in_handoff:
                 hp = view.get("procs", {}).get("hang_stand", {})
                 if not hp.get("alive"):
-                    self.latch("자세 유지 프로세스 종료 — 회수 상태 확인 필요")
+                    rc = hp.get("rc")
+                    self.latch("자세 유지 프로세스 종료 — 회수 상태 확인 필요"
+                               + (f" ({explain_rc('hang_stand', rc)})" if rc not in (None, 0, 3) else ""))
             if "handoff" in self.completed and not fresh.get("status"):
                 self.latch("인수 후 제어기 상태 수신 끊김")
         if "stand" in self.completed and "stack_down" not in self.completed and not self.support:
@@ -423,7 +471,7 @@ class TrialState:
             message = "해제 명령 전송 완료 보고 · 실제 토크 상태는 현장 확인 필요" if action == "release" else "실제 응답 확인 완료"
             return self.finish(True, message)
         if proc and not proc.get("alive") and proc.get("rc") not in (None, 0, 3):
-            return self.finish(False, f"프로세스 종료 코드 {proc['rc']}")
+            return self.finish(False, explain_rc(action, proc["rc"]))
         # 0911 호환검수 R2: stand 는 브리지 인계 워밍업(최대 4 s)+블렌딩 안에 응답하므로 30 s 는 브리지발 정지를 26 s 동안 가린다
         timeout = 300 if action in ("boot_pose", "selftest", "analyze", "zero_multiple", "zero_recapture", "zero_preview", "zero_kin") else (8 if action == "stand" else 30)
         if self.clock() - p["started"] > timeout:

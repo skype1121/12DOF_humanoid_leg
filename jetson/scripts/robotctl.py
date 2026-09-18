@@ -10,6 +10,7 @@
   robotctl joints            12관절 실제각·명령·오차·신선도 표 (읽기 전용)
   robotctl prep              CAN 준비 → 센서 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 (완료된 단계는 건너뜀)
   robotctl zero-fix          영점 배수 보정(전원 재투입 뒤 영점 확인이 '창 어긋남' 이면) → 다시 prep
+  robotctl codes             프로세스 종료 코드 표(뜻·할 일)
   robotctl reset             강제 초기화: 가드 릴리즈·모터 전원 OFF 로 토크 해제 단계가 안 끝날 때(무토크 확인 뒤). 제어 프로세스 살아 있으면 거부
   robotctl zero-recap        영점 재캡처(지그 기준 자세에서, 시프트 0인데 잔차만 남았을 때; 12관절 앵커를 지금 읽기값으로 — 맵 자동 백업) → 다시 prep
   robotctl hang [-y]         공중 자세 유지 시작 → 운용 게인(kp150)  ※ 줄이 로봇을 지지해야 함
@@ -181,6 +182,15 @@ def cmd_zero_fix(a):
     if act("zero_multiple"):
         wait_completed("zero_multiple", 60)
         print("✓ 배수 보정 완료 → robotctl prep (영점 확인부터 이어감)", flush=True)
+
+
+def cmd_codes(a):
+    sys.path.insert(0, "/home/mama/humanoid_repo/jetson/scripts")
+    from console_state import RC_HINTS
+    print("종료 코드 0 = 정상, 3 = 정상 핸드오프 종료(자세유지). 그 외:")
+    for key, m in RC_HINTS.items():
+        for rc, (meaning, todo) in sorted(m.items()):
+            print(f"  {key:<15} {rc}: {meaning}\n{'':19}→ {todo}")
 
 
 def cmd_reset(a):
@@ -413,6 +423,7 @@ def main():
     sub.add_parser("joints").set_defaults(fn=cmd_joints)
     sub.add_parser("prep").set_defaults(fn=cmd_prep)
     s = sub.add_parser("zero-fix"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_zero_fix)
+    sub.add_parser("codes").set_defaults(fn=cmd_codes)
     s = sub.add_parser("reset"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_reset)
     s = sub.add_parser("zero-recap"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_zero_recap)
     s = sub.add_parser("hang"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_hang)

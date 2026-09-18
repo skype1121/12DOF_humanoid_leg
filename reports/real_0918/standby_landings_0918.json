@@ -1,0 +1,68 @@
+{
+ "landing1": {
+  "n": 13,
+  "fwd": -0.7,
+  "lat": -0.5,
+  "cmd": {
+   "left_hip_f_joint": 30.26,
+   "right_hip_f_joint": -30.26,
+   "left_hip_a_joint": 0.0,
+   "right_hip_a_joint": 0.0,
+   "left_hip_r_joint": 0.0,
+   "right_hip_r_joint": 0.0,
+   "left_knee_joint": -38.5,
+   "right_knee_joint": 38.5,
+   "left_ankle_f_joint": 28.0,
+   "right_ankle_f_joint": -28.0,
+   "left_ankle_r_joint": 0.0,
+   "right_ankle_r_joint": 0.0
+  },
+  "actual": {
+   "left_hip_f_joint": 29.54,
+   "right_hip_f_joint": -30.14,
+   "left_hip_a_joint": 0.13,
+   "right_hip_a_joint": -0.28,
+   "left_hip_r_joint": -0.16,
+   "right_hip_r_joint": -0.18,
+   "left_knee_joint": -41.26,
+   "right_knee_joint": 41.23,
+   "left_ankle_f_joint": 27.43,
+   "right_ankle_f_joint": -27.73,
+   "left_ankle_r_joint": 0.55,
+   "right_ankle_r_joint": -0.07
+  }
+ },
+ "landing2": {
+  "n": 24,
+  "fwd": -0.21,
+  "lat": -0.35,
+  "cmd": {
+   "left_hip_f_joint": 34.09,
+   "right_hip_f_joint": -34.09,
+   "left_hip_a_joint": 0.0,
+   "right_hip_a_joint": 0.0,
+   "left_hip_r_joint": 0.0,
+   "right_hip_r_joint": 0.0,
+   "left_knee_joint": -38.5,
+   "right_knee_joint": 38.5,
+   "left_ankle_f_joint": 28.0,
+   "right_ankle_f_joint": -28.0,
+   "left_ankle_r_joint": 0.0,
+   "right_ankle_r_joint": 0.0
+  },
+  "actual": {
+   "left_hip_f_joint": 33.26,
+   "right_hip_f_joint": -33.83,
+   "left_hip_a_joint": 0.29,
+   "right_hip_a_joint": -0.45,
+   "left_hip_r_joint": 0.01,
+   "right_hip_r_joint": -0.29,
+   "left_knee_joint": -41.55,
+   "right_knee_joint": 41.37,
+   "left_ankle_f_joint": 26.88,
+   "right_ankle_f_joint": -27.43,
+   "left_ankle_r_joint": 0.17,
+   "right_ankle_r_joint": -0.2
+  }
+ }
+}

@@ -1,0 +1,3 @@
+[kinematic] pose_json /tmp/claude-1000/-home-ryu-humanoid-leg-test1/e53dc80b-9c62-45a7-a400-3cd12071b2f1/scratchpad/pose_l2_enc.json 물리각(deg): left_hip_f+33.3 right_hip_f-33.3 left_knee-41.6 right_knee+41.6 left_ankle_f+26.9 right_ankle_f-26.9
+URDF FK 발평평 몸통피치 +18.60° | 시뮬 관절 고정 뒤 몸통 pitch +18.46° roll +0.03° | 발 기울기 -0.00°
+전신 CoM 발목축 대비 앞 +0.13 cm (URDF 질량 17.62 kg 기준)

@@ -6,7 +6,8 @@
   robotctl status            현재 상태 한 줄
   robotctl config air|ground [CKPT]   시험 방식·정책 설정 (제어 시작 전; air = 접촉 게이트 대신 HangGuard — 왼발 패드 탈락 상태 권장)
   robotctl watch             1초마다 상태 (Ctrl-C 로 종료)
-  robotctl motors            12관절 실제각·명령·오차·신선도 표 (읽기 전용; 자세유지 중엔 hang_stand 값, 정책 중엔 stage8 값)
+  robotctl motors            12모터 CAN 응답 일괄 점검(0토크 폴링, ~/rl_calib/ping_all.py) — 제어 스택이 살아 있으면 거부
+  robotctl joints            12관절 실제각·명령·오차·신선도 표 (읽기 전용)
   robotctl prep              CAN 준비 → 센서 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 (완료된 단계는 건너뜀)
   robotctl zero-fix          영점 배수 보정(전원 재투입 뒤 영점 확인이 '창 어긋남' 이면) → 다시 prep
   robotctl hang [-y]         공중 자세 유지 시작 → 운용 게인(kp150)  ※ 줄이 로봇을 지지해야 함
@@ -286,6 +287,18 @@ def cmd_config(a):
 
 
 def cmd_motors(a):
+    import subprocess
+    st = state(); alive = [k for k, v in (st.get("procs") or {}).items() if v.get("alive") and k in ("stage8", "hang_stand", "bridge")]
+    ext = st.get("external_controls") or []
+    if alive or ext:
+        print(f"✗ 제어 프로세스가 살아 있어 CAN 폴링 불가({alive or ext}) — 회수(robotctl down) 뒤 실행. 대신 관절 표:", flush=True)
+        return cmd_joints(a)
+    r = subprocess.run([sys.executable, "/home/mama/rl_calib/ping_all.py", "--channel", "can1"], capture_output=True, text=True)
+    print((r.stdout or "") + (r.stderr or ""), flush=True)
+    return r.returncode
+
+
+def cmd_joints(a):
     st = state(); hh = st.get("hang_hold") or {}; s8 = st.get("stage8") or {}
     src = "hang_stand" if hh.get("joint_pos_deg") else "stage8"
     print(f"[{(st.get('trial') or {}).get('phase')}] 출처 {src} | fwd {(st.get('imu') or {}).get('fwd', 0):+.1f} lat {(st.get('imu') or {}).get('lat', 0):+.1f} | 접촉 {(st.get('foot') or {}).get('contact')}", flush=True)
@@ -333,6 +346,7 @@ def main():
     s = sub.add_parser("config"); s.add_argument("mode", choices=("air", "ground")); s.add_argument("ckpt", nargs="?", default=None); s.set_defaults(fn=cmd_config)
     sub.add_parser("watch").set_defaults(fn=cmd_watch)
     sub.add_parser("motors").set_defaults(fn=cmd_motors)
+    sub.add_parser("joints").set_defaults(fn=cmd_joints)
     sub.add_parser("prep").set_defaults(fn=cmd_prep)
     s = sub.add_parser("zero-fix"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_zero_fix)
     s = sub.add_parser("hang"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_hang)

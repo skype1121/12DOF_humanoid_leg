@@ -6,6 +6,7 @@
   robotctl status            현재 상태 한 줄
   robotctl config air|ground [CKPT]   시험 방식·정책 설정 (제어 시작 전; air = 접촉 게이트 대신 HangGuard — 왼발 패드 탈락 상태 권장)
   robotctl watch             1초마다 상태 (Ctrl-C 로 종료)
+  robotctl motors            12관절 실제각·명령·오차·신선도 표 (읽기 전용; 자세유지 중엔 hang_stand 값, 정책 중엔 stage8 값)
   robotctl prep              CAN 준비 → 센서 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 (완료된 단계는 건너뜀)
   robotctl zero-fix          영점 배수 보정(전원 재투입 뒤 영점 확인이 '창 어긋남' 이면) → 다시 prep
   robotctl hang [-y]         공중 자세 유지 시작 → 운용 게인(kp150)  ※ 줄이 로봇을 지지해야 함
@@ -284,6 +285,23 @@ def cmd_config(a):
     act("configure", {"mode": a.mode, "checkpoint": ck}, confirmed=False)
 
 
+def cmd_motors(a):
+    st = state(); hh = st.get("hang_hold") or {}; s8 = st.get("stage8") or {}
+    src = "hang_stand" if hh.get("joint_pos_deg") else "stage8"
+    print(f"[{(st.get('trial') or {}).get('phase')}] 출처 {src} | fwd {(st.get('imu') or {}).get('fwd', 0):+.1f} lat {(st.get('imu') or {}).get('lat', 0):+.1f} | 접촉 {(st.get('foot') or {}).get('contact')}", flush=True)
+    print(f"{'관절':22s} {'실제°':>8s} {'명령°':>8s} {'오차°':>7s}  비고")
+    for j in JOINTS:
+        if src == "hang_stand":
+            q = hh["joint_pos_deg"].get(j); c = (hh.get("joint_cmd_deg") or {}).get(j); e = (hh.get("err_deg") or {}).get(j)
+            note = ("동결 " if ((hh.get("joint_trim") or {}).get(j) or {}).get("frozen") else "")
+        else:
+            x = (s8.get("joints") or {}).get(j) or {}
+            q = x.get("latest_actual_deg"); c = x.get("commanded_relative_deg"); e = (q - c) if (q is not None and c is not None) else None
+            note = ("STALE " if x.get("feedback_stale") else "") + (f"err0x{x.get('feedback_error_raw'):X} " if x.get("feedback_error_raw") else "")
+        f = lambda v: f"{v:+8.1f}" if isinstance(v, (int, float)) else f"{'—':>8s}"
+        print(f"{j.replace('_joint',''):22s} {f(q)} {f(c)} {f(e)[1:] if e is not None else '     —'}  {note}", flush=True)
+
+
 def cmd_status(a):
     print(line(state()), flush=True)
 
@@ -314,6 +332,7 @@ def main():
     sub.add_parser("status").set_defaults(fn=cmd_status)
     s = sub.add_parser("config"); s.add_argument("mode", choices=("air", "ground")); s.add_argument("ckpt", nargs="?", default=None); s.set_defaults(fn=cmd_config)
     sub.add_parser("watch").set_defaults(fn=cmd_watch)
+    sub.add_parser("motors").set_defaults(fn=cmd_motors)
     sub.add_parser("prep").set_defaults(fn=cmd_prep)
     s = sub.add_parser("zero-fix"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_zero_fix)
     s = sub.add_parser("hang"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_hang)

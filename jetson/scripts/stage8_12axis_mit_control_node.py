@@ -309,6 +309,8 @@ class Stage8TwelveAxisMitControlCore:
         self.armed = False
         self.baseline_deg_by_joint = {}
         self.baseline_set_time = None
+        self.baseline_source = None                 # "takeover_hold" | "actual" (0918)
+        self.baseline_hold_minus_actual_deg = {}    # 홀드 명령 − 실측 [deg] (0918 진단)
         self.warnings = []
         self.errors = []
         self.last_takeover_event = None   # 인수홀드 수명 이벤트 (명령 처리로 소거 안 됨)
@@ -413,7 +415,13 @@ class Stage8TwelveAxisMitControlCore:
             # 슬루 기준점을 '현재 실측'으로 초기화 (적대 시뮬 검증: 종전 0 고정은
             # 캡처 후 자세가 변했으면 첫 명령이 베이스라인 자세로 점프 —
             # kp150×6° ≈ 15.7Nm급 순간 인장. 러너의 qpos 초기화와 대칭)
+            # 0918: 기준이 인수 홀드 명령각이면 슬루 기준점 = 0 (명령 연속). 홀드가
+            # 직전 틱까지 정확히 그 명령을 스트리밍했으므로 점프가 없고, 실측(처진
+            # 값)으로 초기화하면 첫 명령이 처진 각도로 떨어졌다 되돌아오는 침하 딥이 생긴다.
             for joint in self.baseline_deg_by_joint:
+                if self.baseline_source == "takeover_hold":
+                    self.commanded_relative_deg_by_joint[joint] = 0.0
+                    continue
                 actual = self.latest_actual_deg_by_joint.get(joint)
                 if actual is not None:
                     rel = float(actual) - self.baseline_deg_by_joint[joint]
@@ -740,10 +748,24 @@ class Stage8TwelveAxisMitControlCore:
                 return self._reject("feedback_stale:all_baseline_missing")
             return self._reject("baseline_missing_actual:all")
 
+        # 0918 핸드오프 침하 수정: 인수 홀드 중이면 기준 = 홀드 명령각(hang_stand 의
+        # 마지막 명령). 실측으로 잡으면 하중 관절의 PD 추종오차만큼 토크가 풀려 ARM
+        # 직후 한 번 더 처진다 — 0918 실기: 무릎 −30.4→−35.6°·발목 1.3° 침하 →
+        # 무게중심 후방 이동 → 뒤꿈치 강체 회전 낙상(정책 미개입). 실측 신선도
+        # 게이트는 그대로 두고(무피드백 ARM 금지), 값만 명령각을 쓴다.
+        hold = self.takeover_hold
+        self.baseline_source = "takeover_hold" if hold else "actual"
         self.baseline_deg_by_joint = {
-            joint: float(self.latest_actual_deg_by_joint[joint])
+            joint: (float(hold[joint][0]) if hold and joint in hold
+                    else float(self.latest_actual_deg_by_joint[joint]))
             for joint in available
         }
+        # 진단: 홀드 명령 − 실측 (= 하중 처짐, 사후 분석용)
+        self.baseline_hold_minus_actual_deg = (
+            {joint: round(float(hold[joint][0])
+                          - float(self.latest_actual_deg_by_joint[joint]), 3)
+             for joint in available if joint in hold}
+            if hold else {})
         self.baseline_set_time = self.now_fn()
         for joint in JOINT_NAMES_12DOF:
             self.desired_relative_deg_by_joint[joint] = 0.0
@@ -1373,6 +1395,8 @@ class Stage8TwelveAxisMitControlCore:
             "soft_clamp_counts": dict(self.soft_clamp_counts),
             "soft_clamp_total": sum(self.soft_clamp_counts.values()),
             "takeover": self._takeover_status(),
+            "baseline_source": self.baseline_source,
+            "baseline_hold_minus_actual_deg": self.baseline_hold_minus_actual_deg,
             "warnings": list(self.warnings),
             "errors": list(self.errors),
             "mapping_valid": self.mapping_valid,

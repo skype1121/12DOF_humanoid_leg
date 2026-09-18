@@ -919,3 +919,43 @@ class Biped12HangStandS9cEnvCfg(Biped12HangStandS8ac4rEnvCfg):
 @configclass
 class Biped12HangStandS9cHoldEnvCfg(Biped12HangStandS9cEnvCfg):
     """S9c 대조군 설정(평가용, 학습 안 함): 같은 조건에서 --hold(고정 자세 kp150)가 서는지."""
+
+
+# ─────────────────────── 0918 저녁 S9d: 기본자세 = 실물 v4 명령 + 식별된 무릎 직렬 처짐 편향 ───────────────────────
+#: 손 튜닝 수평 기준 v4(0917, 실물 무보조 자립·밀기 검증): 힙 ±26·무릎 ∓30·발목앞뒤 ±20.5 (명령값).
+CROUCH_V4_DEFAULT_RAD = {
+    "left_hip_f_joint": 0.4538, "right_hip_f_joint": -0.4538,      # ±26°
+    "left_hip_a_joint": 0.0, "right_hip_a_joint": 0.0,
+    "left_hip_r_joint": 0.0, "right_hip_r_joint": 0.0,
+    "left_knee_joint": -0.5236, "right_knee_joint": 0.5236,        # ∓30°
+    "left_ankle_f_joint": 0.3578, "right_ankle_f_joint": -0.3578,  # ±20.5°
+    "left_ankle_r_joint": 0.0, "right_ankle_r_joint": 0.0,
+}
+
+
+@configclass
+class Biped12HangStandS9dEnvCfg(Biped12HangStandS9cEnvCfg):
+    """S9d (0918 저녁): **기본자세 = 실물 v4 명령 + 엔코더 뒤 무릎 직렬 처짐을 공유 물리 편향으로**.
+    배경(0918 실기): v1c 정책은 실물에서 힙을 ~7° 로 펴(시뮬 정상상태 힙 9°) 13° 후방 스윙·발목 포화 발진 → 리프트가드.
+    실물 v4 서기(엔코더 29.9/−34.9/19.1°, IMU −0.3°)는 URDF 강체로는 몸통 +14°. 균일 연성(k≈65)은 CoM 을 뒤꿈치 밖(−8.5 cm)으로
+    보내 서기 불가 → 기각. **무릎 단독 직렬 연성 k≈40 Nm/rad**: 피치 +0.3°·CoM 발목축 뒤 5 cm(뒤 여유 1.5 cm = '뒤로 밀면 약함'
+    실측과 부합, 0913 실측 k_struct 43.5~107 대역 안). 1점 식별 가설 — 시뮬 등가 = 무릎 공유 물리 편향 −8~−17°(중심 −13°).
+    독립 편향(영점 오차)은 힙 ±8°·무릎 ±3°·발목 ±6° 로 축소. 무릎 밴드·골반고 목표는 편향 자세(FK: base z 0.563 m)에 맞춤.
+    배포 계약: DEFAULT_POSE = CROUCH_V4_DEFAULT_RAD (실물 명령 프레임 = v4 그대로)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.robot.init_state.joint_pos = dict(CROUCH_V4_DEFAULT_RAD)
+        self.events.default_pose_bias.params.update({
+            "hip_f_rad": (-0.14, 0.14), "knee_rad": (-0.052, 0.052), "ankle_f_rad": (-0.105, 0.105),
+            "shared_knee_rad": (-0.30, -0.14),      # 왼무릎 기준 −17~−8° (오른쪽 부호 반전)
+        })
+        if getattr(self.rewards, "knee_stance_flexion", None) is not None:
+            self.rewards.knee_stance_flexion.params["band_rad"] = (0.45, 0.95)     # 26~54° (물리 무릎 = 30+8~17 + PD 처짐)
+        if getattr(self.rewards, "base_height_l2", None) is not None:
+            self.rewards.base_height_l2.params["target_height"] = 0.565
+
+
+@configclass
+class Biped12HangStandS9dHoldEnvCfg(Biped12HangStandS9dEnvCfg):
+    """S9d 대조군(평가용): 같은 플랜트에서 --hold(v4 명령 kp150 고정)가 서는지 = 식별 플랜트의 정합 검사."""

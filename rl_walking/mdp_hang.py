@@ -739,7 +739,8 @@ if __name__ == "__main__":
 # ─────────────────────── 0918 S9c: 물리 기본자세 편향 DR ───────────────────────
 def resample_default_pose_bias(env, env_ids, hip_f_rad=(-0.21, 0.21), knee_rad=(-0.087, 0.087),
                                ankle_f_rad=(-0.14, 0.14), reset_noise_rad: float = 0.05,
-                               action_term: str = "joint_pos", asset_cfg=None):
+                               action_term: str = "joint_pos", asset_cfg=None,
+                               shared_hip_f_rad=None, shared_knee_rad=None, shared_ankle_f_rad=None):
     """에피소드마다 env 별로 '물리 기본자세'를 nominal + 편향으로 바꾼다.
 
     모델: 실물 영점 오차·사슬 오프셋 = 정책 프레임(엔코더 D)이 물리 자세와 어긋나는 것. 시뮬 등가 =
@@ -761,6 +762,15 @@ def resample_default_pose_bias(env, env_ids, hip_f_rad=(-0.21, 0.21), knee_rad=(
             continue
         cols = torch.tensor([i for i, n in enumerate(names) if n.endswith(key)], device=env.device)
         bias[:, cols] = torch.empty(len(ids), len(cols), device=env.device).uniform_(float(rng[0]), float(rng[1]))
+    # 0918 S9d: 좌우 거울 공유 편향 — 왼쪽 관절 값 기준(rng), 오른쪽은 부호 반전(힙앞뒤·무릎·발목앞뒤는 좌우 반대 부호 규약).
+    # 용도 = 양다리에 같은 하중으로 생기는 엔코더 뒤 직렬 처짐(무릎 −8~−17° 식별)을 per-env 한 값으로 가산. 위 독립 편향(영점 오차)과 합산.
+    for rng, key in ((shared_hip_f_rad, "_hip_f_joint"), (shared_knee_rad, "_knee_joint"), (shared_ankle_f_rad, "_ankle_f_joint")):
+        if rng is None:
+            continue
+        v = torch.empty(len(ids), 1, device=env.device).uniform_(float(rng[0]), float(rng[1]))
+        for i, n in enumerate(names):
+            if n.endswith(key):
+                bias[:, i] += (v[:, 0] if n.startswith("left") else -v[:, 0])
     new = nom.unsqueeze(0) + bias
     asset.data.default_joint_pos[ids] = new
     env._default_pose_bias[ids] = bias

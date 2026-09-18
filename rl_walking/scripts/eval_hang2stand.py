@@ -32,6 +32,7 @@ parser.add_argument("--hold", action="store_true", help="정책 없이 액션 0 
 parser.add_argument("--no_chain", action="store_true", help="배포 체인(러너 슬루→LPF→블렌딩) 끔 — env 원생 액션")
 parser.add_argument("--nominal", action="store_true", help="DR 전부 끔 (명목 몸체)")
 parser.add_argument("--com_fix", type=float, default=None, help="base_com x 고정 [m]")
+parser.add_argument("--shared_bias", type=str, default=None, help="0918 S9d: 좌우 공유 물리 편향 고정 'hip,knee,ankle' [deg, 왼쪽 기준] (예 '0,-13,0'); --nominal 은 학습 대역 중심으로 고정")
 parser.add_argument("--usd", type=str, default="rl_walking/assets/usd_final3/biped12.usd")
 parser.add_argument("--r0", type=str, default=None); parser.add_argument("--hold_s", type=str, default=None)
 parser.add_argument("--release_s", type=str, default=None); parser.add_argument("--clearance", type=str, default=None)
@@ -182,6 +183,16 @@ if args_cli.nominal:
         env_cfg.actions.joint_pos.backlash_rad_range = (0.0, 0.0)
     if getattr(env_cfg.events, "base_com", None):
         env_cfg.events.base_com.params["com_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
+    if getattr(env_cfg.events, "default_pose_bias", None):
+        # 0918: 독립 편향(영점 오차) 0, 공유 편향(식별된 직렬 처짐)은 대역 중심 = 명목 플랜트
+        _pb = env_cfg.events.default_pose_bias.params
+        for _k in ("hip_f_rad", "knee_rad", "ankle_f_rad"):
+            if _pb.get(_k) is not None:
+                _pb[_k] = (0.0, 0.0)
+        for _k in ("shared_hip_f_rad", "shared_knee_rad", "shared_ankle_f_rad"):
+            if _pb.get(_k) is not None:
+                _c = 0.5 * (float(_pb[_k][0]) + float(_pb[_k][1])); _pb[_k] = (_c, _c)
+        _pb["reset_noise_rad"] = 0.0
     if getattr(env_cfg.events, "calib_bias", None):
         for _k in list(env_cfg.events.calib_bias.params):
             if _k.endswith("_rad") and env_cfg.events.calib_bias.params[_k] is not None:
@@ -233,6 +244,10 @@ if args_cli.imu_roll_bias_deg is not None and getattr(env_cfg.events, "calib_bia
     _rb = math.radians(args_cli.imu_roll_bias_deg)
     env_cfg.events.calib_bias.params["imu_roll_rad"] = (_rb, _rb)
     print(f"[imu] 롤 편향 고정 {args_cli.imu_roll_bias_deg:+.2f}°")
+if args_cli.shared_bias is not None and getattr(env_cfg.events, "default_pose_bias", None):
+    _h, _k, _a = [math.radians(float(x)) for x in args_cli.shared_bias.split(",")]
+    env_cfg.events.default_pose_bias.params.update({"shared_hip_f_rad": (_h, _h), "shared_knee_rad": (_k, _k), "shared_ankle_f_rad": (_a, _a)})
+    print(f"[shared_bias] 공유 물리 편향 고정 hip {math.degrees(_h):+.1f}° knee {math.degrees(_k):+.1f}° ankle {math.degrees(_a):+.1f}° (왼쪽 기준)")
 if getattr(env_cfg.events, "base_com", None) and (args_cli.com_fix is not None or args_cli.com_fix_y):
     if args_cli.com_fix is not None:
         # 종전 동작 유지: x 고정 + y 고정(com_fix_y, 기본 0) + z 0  (results_table 비교 호환)

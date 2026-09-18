@@ -242,11 +242,10 @@ CHECKPOINTS = {
     # stand_crouch_v1c (0918 새벽): v1b 에서 +12000it 계속 학습(같은 S9c).
     "stand_crouch_v1c": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-18_02-52-27_s9c3/exported"),
-    # stand_crouch_v2 (0918 저녁, S9d): **기본자세 = 실물 손튜닝 v4 명령(힙 ±26·무릎 ∓30·발목앞뒤 ±20.5)** + 식별된 무릎
-    # 직렬 처짐(−8~−17°) 공유 물리 편향 DR. v1c 실기(힙 ~7° 로 펴다 13° 후방 스윙·발목 포화 발진) 원인 = 정책 자세 ≠ 실물 서기 자세.
-    # 배포 계약: DEFAULT_POSE = CKPT_DEFAULT_POSE["stand_crouch_v2"] = v4 (인계 전 콘솔 '수평 기준 자세'와 같은 프레임).
-    "stand_crouch_v2": os.path.join(
-        REPO, "logs/rsl_rl/biped12_stage4/2026-09-18_19-06-31_s9d/exported"),
+    # stand_crouch_v2 (0918 저녁, S9d, models/stand_crouch_v2) — **등록 보류**: 기본자세 = 실물 v4 명령 + 무릎 직렬 처짐 편향 DR.
+    # 시뮬 명목 94.5 % 이나 목 센서 500틱(IMU 무반응) 시험에서 기본자세 출발도 슬루 최대로 발산(틱 34 비유한) → 공중·줄 고정
+    # 몸통에서 관절 폭주 위험. 정책 500틱 selftest 는 등록된 stand_* 전부를 순회하므로 등록 자체가 prep 게이트를 막는다.
+    # 재학습(자세 편차 벌점·목 루프 안정성 평가 추가) 후 재등록.
 }
 
 #: 0918 체크포인트별 기본자세 [rad, JOINT_ORDER 순]. 미등록 = 학습 공통 DEFAULT_POSE_RAD.
@@ -258,13 +257,12 @@ _CROUCH_V1_POSE = {
     "left_ankle_f_joint": 0.3578, "right_ankle_f_joint": -0.3578,
     "left_ankle_r_joint": 0.0, "right_ankle_r_joint": 0.0,
 }
-#: 0918 저녁 v4 (rl_walking.hang_stand_env_cfg.CROUCH_V4_DEFAULT_RAD 와 동일해야 함 — selftest 계약 검사)
+#: 0918 저녁 v4 (rl_walking.hang_stand_env_cfg.CROUCH_V4_DEFAULT_RAD 와 동일; stand_crouch_v2 재등록 시 CKPT_DEFAULT_POSE 에 연결)
 _CROUCH_V4_POSE = dict(_CROUCH_V1_POSE, left_hip_f_joint=0.4538, right_hip_f_joint=-0.4538)   # 힙 ±26°
 CKPT_DEFAULT_POSE = {
     "stand_crouch_v1": [float(_CROUCH_V1_POSE[j]) for j in JOINT_ORDER],   # 러너가 np.float32 로 변환
     "stand_crouch_v1b": [float(_CROUCH_V1_POSE[j]) for j in JOINT_ORDER],
     "stand_crouch_v1c": [float(_CROUCH_V1_POSE[j]) for j in JOINT_ORDER],
-    "stand_crouch_v2": [float(_CROUCH_V4_POSE[j]) for j in JOINT_ORDER],
 }
 
 
@@ -276,7 +274,7 @@ def ckpt_default_pose(checkpoint):
 #: 위상 어긋난 관측 → 보행 파괴). 미등록 = 1.4 (기존 가족 전체의 계약).
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
-CKPT_GAIT_FREQ = {"stand_crouch_v2": 1.1, "stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
+CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
                    "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1, "stand_hang_v1": 1.1, "stand_hang_v2": 1.1, "stand_hang_v3": 1.1, "stand_hang_v4": 1.1, "stand_hang_v5": 1.1, "stand_hang_v5p": 1.1, "stand_hang_v6": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 #: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).

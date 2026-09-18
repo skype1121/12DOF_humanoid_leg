@@ -1,0 +1,18 @@
+{
+  "name": "stand_crouch_v2",
+  "run": "2026-09-18_19-06-31_s9d",
+  "checkpoint": "model_156300.pt",
+  "checkpoint_md5": "487730f4d395e3f8751cf116cf40f99a",
+  "task": "Biped12-HangStand-S9d-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "stand_crouch_v1c model_155500",
+  "summary": "S9d(기본자세 v4 명령+무릎 직렬 처짐 편향 −8~−17°) v1c 웜스타트, 붕괴(157100) 전 인양 156300; 명목 94.5%·정착 피치 +0.1°·관절속도 0.16",
+  "legacy": false,
+  "files": {
+    "policy.pt": "60949a6b071881a061ce4c1fe5229254",
+    "policy.onnx": "34fcbb1ac3a3084bc15c5c1d20c5895e",
+    "env.yaml": "877efdf90e0d8fd38c4dcd1bd423a791",
+    "agent.yaml": "b318bc0ac119cca3b2be71ca34cf7fe5"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-18_19-06-31_s9d"
+}

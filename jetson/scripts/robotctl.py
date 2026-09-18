@@ -10,6 +10,7 @@
   robotctl joints            12관절 실제각·명령·오차·신선도 표 (읽기 전용)
   robotctl prep              CAN 준비 → 센서 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 (완료된 단계는 건너뜀)
   robotctl zero-fix          영점 배수 보정(전원 재투입 뒤 영점 확인이 '창 어긋남' 이면) → 다시 prep
+  robotctl zero-recap        영점 재캡처(지그 기준 자세에서, 시프트 0인데 잔차만 남았을 때; 12관절 앵커를 지금 읽기값으로 — 맵 자동 백업) → 다시 prep
   robotctl hang [-y]         공중 자세 유지 시작 → 운용 게인(kp150)  ※ 줄이 로봇을 지지해야 함
   robotctl level             수평 기준 자세(어제 캡처: 힙앞뒤 ±20.5·무릎 ±30·발목앞뒤 ±19)
   robotctl zero              에어 보행 정지 + 개별 조정 전부 0 = 매달림 기준(제로) 자세
@@ -181,6 +182,14 @@ def cmd_zero_fix(a):
         print("✓ 배수 보정 완료 → robotctl prep (영점 확인부터 이어감)", flush=True)
 
 
+def cmd_zero_recap(a):
+    if not confirm("영점 재캡처(가장 위험한 쓰기): 지그로 12관절이 기준 자세에 정확히 있나요? 시프트가 남아 있으면 스크립트가 거부합니다.", a.yes):
+        die("취소")
+    if act("zero_recapture"):
+        wait_completed("zero_recapture", 60)
+        print("✓ 재캡처 완료 → robotctl prep (영점 확인 잔차 0 근처인지 확인)", flush=True)
+
+
 def cmd_hang(a):
     if not confirm("줄이 로봇을 지지하고 다리 주변에 사람이 없나요? 모터가 공중 기준 자세로 움직입니다.", a.yes):
         die("취소")
@@ -349,6 +358,7 @@ def main():
     sub.add_parser("joints").set_defaults(fn=cmd_joints)
     sub.add_parser("prep").set_defaults(fn=cmd_prep)
     s = sub.add_parser("zero-fix"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_zero_fix)
+    s = sub.add_parser("zero-recap"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_zero_recap)
     s = sub.add_parser("hang"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_hang)
     sub.add_parser("level").set_defaults(fn=cmd_level)
     sub.add_parser("zero").set_defaults(fn=cmd_zero)

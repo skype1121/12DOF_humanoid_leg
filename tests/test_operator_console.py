@@ -201,7 +201,7 @@ class ConsoleTests(unittest.TestCase):
 
     def test_skipped_arm_and_legacy_actions_rejected(self):
         self.assertEqual(self.request("arm")[0], 409)
-        for name in ("march", "trim", "zero_recapture", "disarm", "posture", "rm"):
+        for name in ("march", "trim", "disarm", "posture", "rm"):   # zero_recapture 는 0914부터 정식 영점 도구
             self.assertEqual(self.request(name)[0], 403)
 
     def test_idempotency_and_stale_tabs_and_boot(self):

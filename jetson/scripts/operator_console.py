@@ -1254,7 +1254,7 @@ def dispatch_action(payload):
             TRIAL.emit("stop_delivery", ok=bool(ok), message=msg)
         return 200, {"ok": bool(ok), "message": msg, "confirmed": False}
 
-    immediate = action in EVENTS | {"support_confirm", "configure", "new_trial", "session_start", "session_end",
+    immediate = action in EVENTS | {"support_confirm", "configure", "new_trial", "force_reset", "session_start", "session_end",
                                     "joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd", "air_gait_on", "air_gait_off", "auto_level_on", "auto_level_off"}
     if not DEMO and not immediate:
         poll_processes()
@@ -1308,8 +1308,13 @@ def dispatch_action(payload):
                 TRIAL.completed.discard("selftest")
                 TRIAL.revision += 1
                 TRIAL.emit("configured", mode=TRIAL.mode, checkpoint=TRIAL.checkpoint)
-            elif action == "new_trial":
+            elif action in ("new_trial", "force_reset"):
                 previous = TRIAL
+                if action == "force_reset":
+                    # 운영자 선언: 모터 전원 차단/무토크 확인 → 토크 해제 단계 생략하고 단계 초기화 (제어 프로세스 없음은 allowed 에서 검사)
+                    SESSION.event("force_reset", note=str((payload or {}).get("note", "")),
+                                  skipped_release="release" not in previous.completed, fault=previous.fault)
+                    previous.completed.add("release")
                 SESSION.event("trial_summary", **previous.snapshot())
                 TRIAL = TrialState(previous.checkpoint)
                 TRIAL.boot_id = previous.boot_id
@@ -1326,7 +1331,7 @@ def dispatch_action(payload):
                         RUN.procs = {k: p for k, p in RUN.procs.items() if p.alive}
                 else:
                     DEMO_SOURCE = type(DEMO_SOURCE)()
-                TRIAL.emit("new_trial")
+                TRIAL.emit("new_trial" if action == "new_trial" else "force_reset")
             elif action in ("joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd", "air_gait_on", "air_gait_off", "auto_level_on", "auto_level_off"):
                 try:
                     ok, msg = ACTIONS[action][0](payload)

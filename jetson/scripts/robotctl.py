@@ -10,6 +10,7 @@
   robotctl joints            12관절 실제각·명령·오차·신선도 표 (읽기 전용)
   robotctl prep              CAN 준비 → 센서 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 (완료된 단계는 건너뜀)
   robotctl zero-fix          영점 배수 보정(전원 재투입 뒤 영점 확인이 '창 어긋남' 이면) → 다시 prep
+  robotctl reset             강제 초기화: 가드 릴리즈·모터 전원 OFF 로 토크 해제 단계가 안 끝날 때(무토크 확인 뒤). 제어 프로세스 살아 있으면 거부
   robotctl zero-recap        영점 재캡처(지그 기준 자세에서, 시프트 0인데 잔차만 남았을 때; 12관절 앵커를 지금 읽기값으로 — 맵 자동 백업) → 다시 prep
   robotctl hang [-y]         공중 자세 유지 시작 → 운용 게인(kp150)  ※ 줄이 로봇을 지지해야 함
   robotctl level             수평 기준 자세(어제 캡처: 힙앞뒤 ±20.5·무릎 ±30·발목앞뒤 ±19)
@@ -180,6 +181,20 @@ def cmd_zero_fix(a):
     if act("zero_multiple"):
         wait_completed("zero_multiple", 60)
         print("✓ 배수 보정 완료 → robotctl prep (영점 확인부터 이어감)", flush=True)
+
+
+def cmd_reset(a):
+    if not confirm("강제 초기화: 모터에 토크가 없음(전원 꺼짐/가드 릴리즈)을 확인했나요? 살아 있는 제어 프로세스가 있으면 거부됩니다.", a.yes):
+        die("취소")
+    act("air_gait_off", quiet=True)
+    st = state(); alive = [k for k, v in (st.get("procs") or {}).items() if v.get("alive") and k in ("stage8", "hang_stand", "bridge")]
+    if alive:
+        print(f"제어 프로세스 {alive} 살아 있음 → 지지 확인 + 제어 종료 먼저", flush=True)
+        act("support_confirm")
+        if act("stack_down"):
+            wait_completed("stack_down", 30)
+    if act("force_reset"):
+        print("✓ 단계 초기화 완료(토크 해제 단계 생략 기록) → robotctl prep", flush=True)
 
 
 def cmd_zero_recap(a):
@@ -358,6 +373,7 @@ def main():
     sub.add_parser("joints").set_defaults(fn=cmd_joints)
     sub.add_parser("prep").set_defaults(fn=cmd_prep)
     s = sub.add_parser("zero-fix"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_zero_fix)
+    s = sub.add_parser("reset"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_reset)
     s = sub.add_parser("zero-recap"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_zero_recap)
     s = sub.add_parser("hang"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_hang)
     sub.add_parser("level").set_defaults(fn=cmd_level)

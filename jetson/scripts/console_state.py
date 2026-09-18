@@ -20,7 +20,7 @@ LABELS = {
     "op_release_stop": "방출 정지 기록", "op_retension": "재인장 기록",
     "op_slack_done": "모든 줄 느슨·무보조 확인", "op_assist": "외부 보조 기록",
     "op_note": "메모 기록", "analyze": "이 시험 로그 분석", "estop": "정지 요청",
-    "configure": "시험 설정", "new_trial": "새 시험 준비",
+    "configure": "시험 설정", "new_trial": "새 시험 준비", "force_reset": "강제 초기화(무토크 확인)",
     "joint_trim": "개별 관절 조정", "joint_trim_zero": "개별 조정 전부 0",
     "joint_trim_preset": "수평 기준 자세 적용", "hold_kd": "홀드 감쇠 kd",
     "air_gait_on": "에어 보행 시작", "air_gait_off": "에어 보행 정지",
@@ -173,6 +173,14 @@ class TrialState:
             return None if "release" in self.completed else "회수 후 분석할 수 있습니다"
         if action == "new_trial":
             return None if "release" in self.completed and not owners and not external else "회수·토크 해제 완료 후 새 시험을 준비하세요"
+        if action == "force_reset":
+            # 0918: 가드 릴리즈·모터 전원 차단 뒤 토크 해제 단계가 CAN 무응답으로 못 끝나 새 시험이 막히는 경우.
+            # 운영자가 '무토크(전원 꺼짐)'를 선언하고 단계를 초기화한다. 살아 있는 제어 프로세스가 있으면 거부(먼저 stack_down).
+            if owners or external:
+                return "제어 프로세스가 살아 있습니다 — 먼저 제어 프로세스 종료(stack_down) 뒤 강제 초기화"
+            if fresh.get("status") and (s.get("armed") or s.get("holding")):
+                return "stage8 가 무장/홀드 중으로 보고합니다 — 제어 프로세스 종료 먼저"
+            return None
         if self.fault:
             return "정지·고장 기록이 남아 있습니다. 회수 후 새 시험을 시작하세요"
         if self.support:

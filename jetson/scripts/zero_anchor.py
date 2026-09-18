@@ -116,7 +116,7 @@ def analyze(pose):
             "stand_zero": st["stand_zero"], "k": k,
             "residual": (round(resid, 2) if resid is not None else None),
             "n_ok": st["n_ok"], "spread": round(st["spread"], 2),
-            "window": st["window"],
+            "window": st["window"], "tol": st.get("tol"),
             # 배수 보정 후의 새 앵커 / 재캡처 시의 새 앵커
             "new_multiple": (round(st["stand_zero"] + k * st["window"], 2)
                              if (k not in (None, 0) and st["stand_zero"] is not None)

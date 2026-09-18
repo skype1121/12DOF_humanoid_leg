@@ -319,6 +319,46 @@ def cmd_motors(a):
         return cmd_joints(a)
     r = subprocess.run([sys.executable, "/home/mama/rl_calib/ping_all.py", "--channel", "can1"], capture_output=True, text=True)
     print((r.stdout or "") + (r.stderr or ""), flush=True)
+    # 0918: 영점 대비 차이 표 (읽기 전용 미리보기, 쓰기 없음) — 안 맞을 때 무엇을 바꿀지 조치 열로 안내
+    z = subprocess.run([sys.executable, "/home/mama/humanoid_repo/jetson/scripts/zero_anchor.py", "--preview", "--json"],
+                       capture_output=True, text=True)
+    rep = None
+    for ln in (z.stdout or "").splitlines():
+        if ln.startswith("JSON "):
+            try:
+                rep = json.loads(ln[5:])
+            except ValueError:
+                rep = None
+    if rep is None:
+        print("영점 대비 표 없음(zero_anchor --preview 실패):", (z.stdout or z.stderr or "").strip()[-300:], flush=True)
+        return r.returncode
+    print("\n영점 대비 (읽기 − 현앵커 = 창 k×36°/10° + 잔차; 허용 AK70 8°/AK45 3.5°)", flush=True)
+    print(f"{'모터':<4}{'관절':<20}{'읽기°':>8}{'앵커°':>8}{'차이°':>8}{'창k':>4}{'잔차°':>7}  {'판정':<8} 조치", flush=True)
+    todo = set()
+    for row in rep["rows"]:
+        kind = row["kind"]; k = row.get("k"); res = row.get("residual"); rd = row.get("reading"); sz = row.get("stand_zero")
+        diff = (rd - sz) if (rd is not None and sz is not None) else None
+        if kind == "일치":
+            act_ = "-"
+        elif kind == "프레임시프트":
+            act_ = f"창 어긋남 {k:+d}×{row['window']:g}° → robotctl zero-fix"; todo.add("zero-fix")
+        elif kind == "자세불일치":
+            act_ = (f"이 관절을 기준 자세로 {-res:+.1f}° 움직여 맞추기(지그) → 다시 motors; 지그에서 맞는데도 남으면 zero-recap"
+                    if res is not None else "기준 자세로 맞추기"); todo.add("posture")
+        elif kind == "무응답":
+            act_ = "CAN 무응답 → 커넥터·전원·허브 접촉"; todo.add("bad")
+        else:
+            act_ = f"{kind} → 전원 재투입 뒤 다시 motors"; todo.add("bad")
+        f = lambda v, w=8: (f"{v:{w}.2f}" if isinstance(v, (int, float)) else f"{'-':>{w}}")
+        print(f"{row['motor']:<4}{row['joint']:<20}{f(rd)}{f(sz)}{f(diff)}{(f'{k:+d}' if isinstance(k, int) else '-'):>4}{f(res, 7)}  {kind:<8} {act_}", flush=True)
+    if "bad" in todo:
+        print("→ 먼저 무응답/폴트 모터 해결(영점 판정 불가)", flush=True)
+    elif "zero-fix" in todo:
+        print("→ 조치: robotctl zero-fix (창 어긋남만 보정, 앵커 유지) → 다시 motors", flush=True)
+    elif "posture" in todo:
+        print("→ 조치: 자세불일치 관절을 지그/손으로 기준 자세에 맞춘 뒤 다시 motors. 지그에 정확히 있는데도 남으면 robotctl zero-recap(12관절 앵커 재캡처)", flush=True)
+    else:
+        print("→ 12/12 영점 일치 — 조치 없음", flush=True)
     return r.returncode
 
 

@@ -1029,3 +1029,23 @@ class Biped12HangStandG1EnvCfg(Biped12HangStandS9cEnvCfg):
 @configclass
 class Biped12HangStandG1HoldEnvCfg(Biped12HangStandG1EnvCfg):
     """G1 대조군(평가용): 같은 플랜트·초기조건에서 --hold(v5 명령 kp150 고정)."""
+
+
+@configclass
+class Biped12HangStandG2EnvCfg(Biped12HangStandG1EnvCfg):
+    """G2 (0920 새벽, 탐색용): G1 + **짧은 지지 커리큘럼**. G1(지지 0, v1c 웜스타트)은 6000회에도 보상 8~31·에피소드 1~3.6 s 로 서기를 못 배움
+    (명목 홀드 100 % vs 정책 0 %). S9c 는 매달림 지지 75 % → 방출 커리큘럼 덕에 학습됐음. G2 는 접지 상태에서 지지 20~50 % 를 0.5~1 s 유지 뒤 1~3 s 안에 방출 —
+    실물 절차(착지 완료 뒤 인수)와 같은 '지면 위 출발'이면서 초기 탐색을 돕는다. 정책은 방출 뒤 ≥15 s 자립을 배운다. 플랜트는 G1 과 같다(가설 모델)."""
+
+    r0_range = (0.2, 0.5)
+    hold_range = (0.5, 1.0)
+    release_range = (1.0, 3.0)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.hang_support_reset.params.update({"r0_range": (0.2, 0.5), "hold_range": (0.5, 1.0), "release_range": (1.0, 3.0)})
+
+
+@configclass
+class Biped12HangStandG2HoldEnvCfg(Biped12HangStandG2EnvCfg):
+    """G2 대조군(평가용)."""

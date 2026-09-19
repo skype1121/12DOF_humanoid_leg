@@ -43,6 +43,9 @@ p.add_argument("--com_x", type=float, default=0.0, help="base 링크 CoM 전후 
 p.add_argument("--ankle_kp_scale", type=float, default=1.0, help="발목앞뒤 관절만 kp 배율 (0919 실측: 발목 전동부 8° 유격·마찰 대역 가설 — 대역 안 저강성 근사)")
 p.add_argument("--ankle_friction", type=float, default=0.0, help="발목앞뒤 관절만 PhysX 관절 마찰 계수 (히스테리시스 '버팀' 근사)")
 p.add_argument("--knee_kp_scale", type=float, default=1.0, help="무릎 관절만 kp 배율 (직렬 스프링 근사: 유효 강성 kp·k/(kp+k))")
+p.add_argument("--ankle_play_deg", type=float, default=0.0, help="발목앞뒤 관절 기계 유격 반폭 [deg] — DeadzoneImplicit(유격 안 강성 0, kd 유지). 0919 실측 발목 대역 ~8° → 반폭 4")
+p.add_argument("--knee_play_deg", type=float, default=0.0, help="무릎 관절 기계 유격 반폭 [deg]")
+p.add_argument("--push_seq", type=str, default="", help="밀기 에뮬레이션 'b:2.0:80:0.3,f:5.0:80:0.3' = (방향 b/f, 시작 s, 힘 N, 지속 s) base 링크에 수평력")
 p.add_argument("--drop_mm", type=float, default=5.0)
 p.add_argument("--pitch_jitter_deg", type=float, default=1.0)
 p.add_argument("--seed", type=int, default=0)
@@ -62,6 +65,7 @@ sys.path.insert(0, "/home/ryu/humanoid_leg_test1")
 import rl_walking                       # noqa: F401,E402
 from isaaclab_tasks.utils import load_cfg_from_registry  # noqa: E402
 import isaaclab.utils.math as mu        # noqa: E402
+from isaaclab.actuators import ImplicitActuatorCfg  # noqa: E402
 sys.path.insert(0, "/home/ryu/humanoid_leg_test1/rl_walking/scripts")
 import pose_geom as pg_fk               # noqa: E402  URDF FK (발평평 피치)
 
@@ -142,6 +146,23 @@ ec.viewer.resolution = (1280, 960)
 ec.viewer.eye = (1.5, 0.0, 0.5)
 ec.viewer.lookat = (0.0, 0.0, 0.45)
 
+if a.ankle_play_deg > 0 or a.knee_play_deg > 0:
+    # 유격 관절만 DeadzoneImplicit 로 분리 (기존 ak70 그룹에서 해당 관절 제외)
+    from rl_walking.actuators_play import DeadzoneImplicitActuatorCfg
+    import re as _re
+    acts = ec.scene.robot.actuators
+    base = acts["ak70"]
+    keep = []
+    for ex in (base.joint_names_expr if isinstance(base.joint_names_expr, (list, tuple)) else [base.joint_names_expr]):
+        if a.ankle_play_deg > 0 and _re.fullmatch(ex, "left_ankle_f_joint"): continue
+        if a.knee_play_deg > 0 and _re.fullmatch(ex, "left_knee_joint"): continue
+        keep.append(ex)
+    acts["ak70"] = ImplicitActuatorCfg(joint_names_expr=keep, effort_limit_sim=base.effort_limit_sim, velocity_limit_sim=base.velocity_limit_sim,
+                                       stiffness=base.stiffness, damping=base.damping, armature=base.armature)
+    for nm, sub, play in (("ankle_f_play", ".*_ankle_f_joint", a.ankle_play_deg), ("knee_play", ".*_knee_joint", a.knee_play_deg)):
+        if play > 0:
+            acts[nm] = DeadzoneImplicitActuatorCfg(joint_names_expr=[sub], effort_limit_sim=base.effort_limit_sim, velocity_limit_sim=base.velocity_limit_sim,
+                                                   stiffness=base.stiffness, damping=base.damping, armature=base.armature, play_rad=math.radians(play))
 env = gym.make(a.task, cfg=ec, render_mode="rgb_array")
 u = env.unwrapped
 robot = u.scene["robot"]
@@ -264,8 +285,19 @@ with torch.inference_mode():
         print(f"[spawn] 몸통 pitch {float(pt.mean()):+.2f}° (설계 {math.degrees(phi_flat):+.2f}) 발 기울기 {float(fp.mean()):+.2f}° base z {float(h0.mean()):.3f} sole_h {SOLE_H:.4f}")
         fell = torch.full((N,), -1.0, device=dev)
         pitch_hist = []; err_hist = []; contact_hist = []; fz_hist = []
-        sample_t = [int(round(t / dt_ctrl)) for t in (0.1, 0.5, 1.0, 2.0, 3.0, 5.0, 8.0, a.seconds)]
+        sample_t = sorted(set(int(round(t / dt_ctrl)) for t in [0.1, 0.5, 1.0, 2.0, 3.0, 5.0, 8.0, a.seconds] + [x * 0.5 for x in range(int(a.seconds * 2))]))
+        pushes = []
+        for tok in [t for t in a.push_seq.split(",") if t.strip()]:
+            d, t0, fN, dur = tok.split(":"); pushes.append((d.strip(), float(t0), float(fN), float(dur)))
+        base_id = bn.index("base") if "base" in bn else 0
+        fwd_axis_w = torch.tensor([0.0, -1.0, 0.0], device=dev)     # 학습 월드 전방 = −Y
         for i in range(steps):
+            tnow = i * dt_ctrl; fvec = torch.zeros(N, 1, 3, device=dev)
+            for d, t0, fN, dur in pushes:
+                if t0 <= tnow < t0 + dur:
+                    fvec[:, 0, :] += (fwd_axis_w if d == "f" else -fwd_axis_w) * fN
+            if pushes:
+                robot.set_external_force_and_torque(fvec, torch.zeros_like(fvec), body_ids=[base_id])
             env.step(act)
             pt, rl = pitch_roll_deg()
             h = robot.data.root_pos_w[:, 2] - u.scene.env_origins[:, 2]
@@ -285,7 +317,7 @@ with torch.inference_mode():
                 snap("t2s_side", (0.0, -1.6, 0.45)); snap("t2s_iso", (1.1, -1.1, 0.7))
         alive = fell < 0
         n_fall = int((~alive).sum())
-        lines = [f"[hold] pose_json {a.pose_json} kp {a.kp} kd {a.kd} | 편향 무릎 {a.knee_bias:+.1f} 힙 {a.hip_bias:+.1f} 발목 {a.ankle_bias:+.1f} | 영점오프셋 '{a.zero_offset}' | 지면 k {a.ground_k:g}/d {a.ground_d:g} | 관절마찰 {a.joint_friction:g} 감쇠 {a.joint_damping:g} | com_x {a.com_x:+.3f} m | 발목 kp×{a.ankle_kp_scale:g} 마찰 {a.ankle_friction:g} 무릎 kp×{a.knee_kp_scale:g} | drop {a.drop_mm:g} mm 피치잡음 ±{a.pitch_jitter_deg:g}° | env {N} × {a.seconds:g} s",
+        lines = [f"[hold] pose_json {a.pose_json} kp {a.kp} kd {a.kd} | 편향 무릎 {a.knee_bias:+.1f} 힙 {a.hip_bias:+.1f} 발목 {a.ankle_bias:+.1f} | 영점오프셋 '{a.zero_offset}' | 지면 k {a.ground_k:g}/d {a.ground_d:g} | 관절마찰 {a.joint_friction:g} 감쇠 {a.joint_damping:g} | com_x {a.com_x:+.3f} m | 발목 kp×{a.ankle_kp_scale:g} 마찰 {a.ankle_friction:g} 유격 {a.ankle_play_deg:g}° 무릎 kp×{a.knee_kp_scale:g} 유격 {a.knee_play_deg:g}° | push '{a.push_seq}' | drop {a.drop_mm:g} mm 피치잡음 ±{a.pitch_jitter_deg:g}° | env {N} × {a.seconds:g} s",
                  "명령(deg): " + " ".join(f"{n.replace('_joint','')}{pose_cmd.get(n,0):+.1f}" for n in jn if abs(pose_cmd.get(n, 0)) > 0.05),
                  f"스폰: 몸통 pitch 설계 {math.degrees(phi_flat):+.2f}° 실측 {float(pitch_hist[0][1].mean()):+.2f}° (t=0.1 s) | 발 기울기(t=0) {float(fp.mean()):+.2f}° | 발 원점 높이 {SOLE_H:.4f} m",
                  f"낙상: {n_fall}/{N} ({100*n_fall/N:.1f} %)" + (f"  낙상 시각 중앙 {float(fell[~alive].median()):.2f} s, 최소 {float(fell[~alive].min()):.2f}, 최대 {float(fell[~alive].max()):.2f} s" if n_fall else ""),

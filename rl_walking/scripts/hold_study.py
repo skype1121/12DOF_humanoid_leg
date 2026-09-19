@@ -40,6 +40,9 @@ p.add_argument("--ground_d", type=float, default=0.0)
 p.add_argument("--joint_friction", type=float, default=0.0)
 p.add_argument("--joint_damping", type=float, default=0.0)
 p.add_argument("--com_x", type=float, default=0.0, help="base 링크 CoM 전후 이동 [m] (+앞; base_com 이벤트 고정값) — URDF CoM 오차 가설 시험용")
+p.add_argument("--ankle_kp_scale", type=float, default=1.0, help="발목앞뒤 관절만 kp 배율 (0919 실측: 발목 전동부 8° 유격·마찰 대역 가설 — 대역 안 저강성 근사)")
+p.add_argument("--ankle_friction", type=float, default=0.0, help="발목앞뒤 관절만 PhysX 관절 마찰 계수 (히스테리시스 '버팀' 근사)")
+p.add_argument("--knee_kp_scale", type=float, default=1.0, help="무릎 관절만 kp 배율 (직렬 스프링 근사: 유효 강성 kp·k/(kp+k))")
 p.add_argument("--drop_mm", type=float, default=5.0)
 p.add_argument("--pitch_jitter_deg", type=float, default=1.0)
 p.add_argument("--seed", type=int, default=0)
@@ -217,6 +220,16 @@ def place_standing(drop_m, jitter_deg):
 
 SOLE_H = 0.0
 env.reset()
+# 관절별 강성/마찰 덮어쓰기 (리셋 이벤트 뒤)
+def _ids(sub):
+    return [k for k, n in enumerate(jn) if sub in n]
+with torch.inference_mode():
+    if a.ankle_kp_scale != 1.0:
+        ids = _ids("ankle_f_joint"); robot.write_joint_stiffness_to_sim(torch.full((N, len(ids)), a.kp * a.ankle_kp_scale, device=dev), joint_ids=ids)
+    if a.knee_kp_scale != 1.0:
+        ids = _ids("knee_joint"); robot.write_joint_stiffness_to_sim(torch.full((N, len(ids)), a.kp * a.knee_kp_scale, device=dev), joint_ids=ids)
+    if a.ankle_friction > 0:
+        ids = _ids("ankle_f_joint"); robot.write_joint_friction_coefficient_to_sim(torch.full((N, len(ids)), a.ankle_friction, device=dev), joint_ids=ids)
 # 발 링크 원점 ~ 바닥 거리 실측: 기본 스폰(강체 접촉 정착) 뒤 발 링크 z
 with torch.inference_mode():
     for _ in range(25):
@@ -272,7 +285,7 @@ with torch.inference_mode():
                 snap("t2s_side", (0.0, -1.6, 0.45)); snap("t2s_iso", (1.1, -1.1, 0.7))
         alive = fell < 0
         n_fall = int((~alive).sum())
-        lines = [f"[hold] pose_json {a.pose_json} kp {a.kp} kd {a.kd} | 편향 무릎 {a.knee_bias:+.1f} 힙 {a.hip_bias:+.1f} 발목 {a.ankle_bias:+.1f} | 영점오프셋 '{a.zero_offset}' | 지면 k {a.ground_k:g}/d {a.ground_d:g} | 관절마찰 {a.joint_friction:g} 감쇠 {a.joint_damping:g} | com_x {a.com_x:+.3f} m | drop {a.drop_mm:g} mm 피치잡음 ±{a.pitch_jitter_deg:g}° | env {N} × {a.seconds:g} s",
+        lines = [f"[hold] pose_json {a.pose_json} kp {a.kp} kd {a.kd} | 편향 무릎 {a.knee_bias:+.1f} 힙 {a.hip_bias:+.1f} 발목 {a.ankle_bias:+.1f} | 영점오프셋 '{a.zero_offset}' | 지면 k {a.ground_k:g}/d {a.ground_d:g} | 관절마찰 {a.joint_friction:g} 감쇠 {a.joint_damping:g} | com_x {a.com_x:+.3f} m | 발목 kp×{a.ankle_kp_scale:g} 마찰 {a.ankle_friction:g} 무릎 kp×{a.knee_kp_scale:g} | drop {a.drop_mm:g} mm 피치잡음 ±{a.pitch_jitter_deg:g}° | env {N} × {a.seconds:g} s",
                  "명령(deg): " + " ".join(f"{n.replace('_joint','')}{pose_cmd.get(n,0):+.1f}" for n in jn if abs(pose_cmd.get(n, 0)) > 0.05),
                  f"스폰: 몸통 pitch 설계 {math.degrees(phi_flat):+.2f}° 실측 {float(pitch_hist[0][1].mean()):+.2f}° (t=0.1 s) | 발 기울기(t=0) {float(fp.mean()):+.2f}° | 발 원점 높이 {SOLE_H:.4f} m",
                  f"낙상: {n_fall}/{N} ({100*n_fall/N:.1f} %)" + (f"  낙상 시각 중앙 {float(fell[~alive].median()):.2f} s, 최소 {float(fell[~alive].min()):.2f}, 최대 {float(fell[~alive].max()):.2f} s" if n_fall else ""),

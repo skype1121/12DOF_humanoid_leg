@@ -125,3 +125,52 @@ class DeadzoneImplicitActuatorCfg(ImplicitActuatorCfg):
     class_type: type = DeadzoneImplicitActuator
     play_rad: dict[str, float] | float = 0.0
     play_rad_range: tuple[float, float] | None = None
+
+
+class DeadzoneCoulombImplicitActuator(DeadzoneImplicitActuator):
+    """0920: 유격(DeadzoneImplicit) + **유격 안 쿨롱 마찰 토크**. 실물 발목앞뒤 실측(0919): 하중 시 출력이 엔코더 불변으로 ~8° 움직이고
+    그 안 임의 지점에 정지(마찰이 자세를 잡음). PhysX 관절 마찰계수는 반력 비례라 저하중에서 약함 → 일정 크기 쿨롱 토크를 피드포워드로 준다.
+    τ_f = −τ_c · tanh(θ̇ / v0)  (v0 로 채터 완화). 유격 밖(|e|>play)에서는 PD 가 지배하지만 마찰은 항상 더해진다(기어 마찰)."""
+    cfg: "DeadzoneCoulombImplicitActuatorCfg"
+
+    def __init__(self, cfg, *args, **kwargs):
+        super().__init__(cfg, *args, **kwargs)
+        self._tau_c_base = self._parse_joint_parameter(cfg.coulomb_nm, 0.0).clone()
+        self._tau_c = self._tau_c_base.clone()
+        self._v0 = float(cfg.coulomb_v0)
+        self._c_rng = tuple(float(v) for v in cfg.coulomb_range) if cfg.coulomb_range is not None else None
+        if self._c_rng is not None:
+            self._resample_c(None)
+
+    def _resample_c(self, env_ids):
+        if self._c_rng is None:
+            return
+        if env_ids is None:
+            n = self._tau_c.shape[0]; idx = slice(None)
+        else:
+            idx = env_ids; n = len(env_ids)
+        s = torch.empty(n, 1, device=self._tau_c.device).uniform_(*self._c_rng)
+        self._tau_c[idx] = self._tau_c_base[idx] * s
+
+    def reset(self, env_ids):
+        super().reset(env_ids)
+        if self._c_rng is None or env_ids is None:
+            return
+        if isinstance(env_ids, slice):
+            self._resample_c(None); return
+        if len(env_ids) > 0:
+            self._resample_c(torch.as_tensor(env_ids, device=self._tau_c.device, dtype=torch.long))
+
+    def compute(self, control_action, joint_pos: torch.Tensor, joint_vel: torch.Tensor):
+        control_action = super().compute(control_action, joint_pos, joint_vel)
+        ff = -self._tau_c * torch.tanh(joint_vel / self._v0)
+        control_action.joint_efforts = ff if control_action.joint_efforts is None else control_action.joint_efforts + ff
+        return control_action
+
+
+@configclass
+class DeadzoneCoulombImplicitActuatorCfg(DeadzoneImplicitActuatorCfg):
+    class_type: type = DeadzoneCoulombImplicitActuator
+    coulomb_nm: dict[str, float] | float = 0.0     # 쿨롱 마찰 토크 [Nm]
+    coulomb_v0: float = 0.05                        # tanh 속도 스케일 [rad/s]
+    coulomb_range: tuple[float, float] | None = None  # env 별 배율 U(lo,hi) (DR)

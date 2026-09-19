@@ -17,6 +17,7 @@ from isaaclab.utils import configclass
 
 from . import mdp_hang
 from .stage4_env_cfg import _FEET_SENSOR_CFG
+import math
 from .stage4_v2_env_cfg import Biped12Stage4V2StandV18EnvCfg
 
 _BASE = SceneEntityCfg("robot", body_names="base")
@@ -1049,3 +1050,44 @@ class Biped12HangStandG2EnvCfg(Biped12HangStandG1EnvCfg):
 @configclass
 class Biped12HangStandG2HoldEnvCfg(Biped12HangStandG2EnvCfg):
     """G2 대조군(평가용)."""
+
+
+def _swap_ankle_f_deadzone_coulomb(cfg, play_deg=4.0, play_range=(0.75, 1.25), coulomb_nm=2.0, coulomb_range=(0.75, 1.5)):
+    """발목앞뒤만 DeadzoneCoulombImplicit(유격+쿨롱 마찰)로 교체 — 0919 실측 발목 대역 ~8°(반폭 4)·hold_study 0920 후보(쿨롱 2 Nm) 기준."""
+    import re as _re
+    from isaaclab.actuators import ImplicitActuatorCfg as _Impl
+    from rl_walking.actuators_play import DeadzoneCoulombImplicitActuatorCfg
+    acts = cfg.scene.robot.actuators
+    base = acts["ak70"]
+    exprs = base.joint_names_expr if isinstance(base.joint_names_expr, (list, tuple)) else [base.joint_names_expr]
+    keep = [ex for ex in exprs if not _re.fullmatch(ex, "left_ankle_f_joint")]
+    acts["ak70"] = _Impl(joint_names_expr=keep, effort_limit_sim=base.effort_limit_sim, velocity_limit_sim=base.velocity_limit_sim,
+                         stiffness=base.stiffness, damping=base.damping, armature=base.armature)
+    acts["ankle_f_play"] = DeadzoneCoulombImplicitActuatorCfg(
+        joint_names_expr=[".*_ankle_f_joint"], effort_limit_sim=base.effort_limit_sim, velocity_limit_sim=base.velocity_limit_sim,
+        stiffness=base.stiffness, damping=base.damping, armature=base.armature,
+        play_rad=math.radians(play_deg), play_rad_range=tuple(play_range), coulomb_nm=coulomb_nm, coulomb_range=tuple(coulomb_range))
+
+
+@configclass
+class Biped12HangStandG3EnvCfg(Biped12HangStandG2EnvCfg):
+    """G3 (0920 새벽, 탐색용): G2 + **발목앞뒤 유격 4°(×0.75~1.25) + 쿨롱 마찰 2 Nm(×0.75~1.5)** (DeadzoneCoulombImplicit), 무릎 공유 편향 −9~−15, 힙 공유 −4~0,
+    발목 상수 편향 0(유격이 대역을 만듦). 근거: hold_study 0920 '무릎 −12.6 + 힙 −2 + 유격 4 + 쿨롱 2' = 낙상 0 %·env 별 정지점 ±3.5°·PD 오차 힙/무릎 일치·60 N 밀기 0 % 낙상.
+    ⚠ 여전히 '실측 각도 차이 + 유격/마찰 후보'로 만든 가설 플랜트. 관측은 물리 관절각(엔코더 모델은 별도 항 준비 중)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _swap_ankle_f_deadzone_coulomb(self, play_deg=4.0, play_range=(0.75, 1.25), coulomb_nm=2.0, coulomb_range=(0.75, 1.5))
+        self.events.default_pose_bias.params.update({
+            "shared_knee_rad": (-0.262, -0.157),   # −15 ~ −9°
+            "shared_hip_f_rad": (-0.07, 0.0),      # −4 ~ 0°
+            "shared_ankle_f_rad": None,
+            "ankle_f_rad": (-0.02, 0.02),
+        })
+        self.events.ankle_f_gains = None          # G1/G2 의 발목 kp 배율 후보 제거(유격 모델로 대체)
+        self.events.ankle_f_friction = None
+
+
+@configclass
+class Biped12HangStandG3HoldEnvCfg(Biped12HangStandG3EnvCfg):
+    """G3 대조군(평가용)."""

@@ -1521,8 +1521,8 @@ def selftest():
             auto_level_tick(dict(base_view, foot={"contact": [False, True]}, imu={"fwd": -20.0})); assert "일시정지" in AUTO_LEVEL["status"]
             auto_level_tick(dict(base_view, foot={"contact": [False, True]})); assert "양발" in AUTO_LEVEL["status"], AUTO_LEVEL["status"]   # 0919: 한 발 접촉은 적분 금지
             both = dict(base_view, foot={"contact": [True, True]}, imu={"fwd": -3.0, "gyro": [0.0, 0.0, 0.0]})
-            for _ in range(AL_QUIET_TICKS):
-                auto_level_tick(both); assert "정착" in AUTO_LEVEL["status"], AUTO_LEVEL["status"]      # 조용한 틱이 쌓일 때까지 대기
+            for _ in range(AL_QUIET_TICKS - 1):
+                auto_level_tick(both); assert "정착" in AUTO_LEVEL["status"], AUTO_LEVEL["status"]      # 조용한 틱이 AL_QUIET_TICKS 개 쌓일 때까지 대기
             r = _read_joint_trim(); assert abs(r["left_hip_f_joint"]) < 1e-9, r
             auto_level_tick(both); r = _read_joint_trim()
             assert abs(r["left_hip_f_joint"] - 0.25) < 1e-9 and abs(r["right_hip_f_joint"] + 0.25) < 1e-9, r   # 0.5°/s × 0.5 s = 0.25°

@@ -959,3 +959,73 @@ class Biped12HangStandS9dEnvCfg(Biped12HangStandS9cEnvCfg):
 @configclass
 class Biped12HangStandS9dHoldEnvCfg(Biped12HangStandS9dEnvCfg):
     """S9d 대조군(평가용): 같은 플랜트에서 --hold(v4 명령 kp150 고정)가 서는지 = 식별 플랜트의 정합 검사."""
+
+
+# ─────────────────────── 0919 밤 G1: 지면 출발(스탠바이 v5) 탐색용 세대 ───────────────────────
+#: 승윤님 확정 절차(0918): 캘리브 → v5 기준자세 → 착지 → 자동수평 → 정책 인수. 정책은 공중·착지를 배우지 않는다.
+#: 0919 실측(폰 링크각, 왼·오른): 무릎 = 하중 탄성 처짐 +10~12.5°(대역 무관), 발목 = 전동부 유격·마찰 대역 ~8°(뒤끝 −8 ↔ 앞끝 0, 엔코더 1.5°만 변함),
+#: 힙 −1~−4. 시뮬 후보 시험(hold_study 0919): 무릎 상수 편향 −11 + 발목 kp×0.25 + 발목 관절마찰 2.0 → 낙상 없이 env 별 피치 분산 유지.
+#: ⚠ 이것은 '히스테리시스 모델'이 아니라 강성·마찰을 바꾼 후보 시험이다. 모터 kp 를 낮추는 것과 엔코더 뒤 구조가 휘는 것(직렬 요소)은 다르다(코덱스 지적).
+#: ⚠ 탐색용: 이 플랜트는 '실측 각도 차이를 넣은 가설 모델'이며 관절별로 다르게 버티는 특성을 재현하지 않는다(승윤님·코덱스 조건). 등록·배포·기본 정책 변경 금지.
+CROUCH_V5_DEFAULT_RAD = {
+    "left_hip_f_joint": 0.5282, "right_hip_f_joint": -0.5282,      # ±30.26°
+    "left_hip_a_joint": 0.0, "right_hip_a_joint": 0.0,
+    "left_hip_r_joint": 0.0, "right_hip_r_joint": 0.0,
+    "left_knee_joint": -0.6720, "right_knee_joint": 0.6720,        # ∓38.5°
+    "left_ankle_f_joint": 0.4887, "right_ankle_f_joint": -0.4887,  # ±28.0°
+    "left_ankle_r_joint": 0.0, "right_ankle_r_joint": 0.0,
+}
+
+
+@configclass
+class Biped12HangStandG1EnvCfg(Biped12HangStandS9cEnvCfg):
+    """G1 (0919 밤, 탐색용): **지면 출발** — 스탠바이 v5(힙 ±30.26·무릎 ∓38.5·발목 ±28) 명령 자세로 지면 스폰, 줄 지지 0.
+    플랜트(가설 모델·후보): 무릎 공유 편향 −8~−14°(하중 탄성 처짐 실측 +10~12.5), 발목 공유 편향 −6~−2(대역 중심), 발목 kp×0.2~0.5 + 발목 관절마찰 1~3(강성·마찰 후보, 직렬 요소 아님),
+    힙 독립 ±4°, 무릎·발목 독립 ±2°. 지면 강체(S9c 연성 k2000 은 홀드를 악화시켜 제거). 자세 편차 벌점(정책 프레임 힙·무릎·발목)으로 램프 폭주 억제.
+    판정(사전 문서화): 실측 근사 플랜트(무릎 −11·발목 −4·kp×0.25·마찰 2)에서 같은 초기조건의 고정 v5 홀드와 비교 — 생존·흔들림·자세 이탈·관절 한계 클램프·목 루프 안정.
+    배포 계약: DEFAULT_POSE = CROUCH_V5_DEFAULT_RAD (관측 320 raw+EMA 불변). 이 결과로 모델 정합·실물 성능을 확정하지 않는다."""
+
+    r0_range = (0.0, 0.0)          # 지지 없음
+    hold_range = (0.1, 0.1)
+    release_range = (0.1, 0.2)
+    clearance_z = (0.0, 0.02)
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import EventTermCfg as _E
+        import isaaclab_tasks.manager_based.locomotion.velocity.mdp as _mdp
+        self.scene.robot.init_state.joint_pos = dict(CROUCH_V5_DEFAULT_RAD)
+        self.scene.robot.init_state.pos = (0.0, 0.0, 0.64)             # v5 자세 발바닥 ≈ 지면 (hold_study: base−발 0.58 + 발 원점 0.058)
+        self.episode_length_s = 20.0
+        # 지지 스케줄: 즉시 0 (hang_support 항은 유지 — 보상 게이트가 지지비 상태를 읽음)
+        self.events.hang_support_reset.params.update({"r0_range": (0.0, 0.0), "hold_range": (0.1, 0.1), "release_range": (0.1, 0.2)})
+        self.events.reset_base.params["pose_range"]["z"] = (0.0, 0.02)
+        self.events.reset_base.params["pose_range"]["pitch"] = (-0.05, 0.05)   # 착지 편차 ±3°
+        # 플랜트 편향(가설 모델)
+        self.events.default_pose_bias.params.update({
+            "hip_f_rad": (-0.07, 0.07), "knee_rad": (-0.035, 0.035), "ankle_f_rad": (-0.035, 0.035),
+            "shared_knee_rad": (-0.244, -0.14),     # −14 ~ −8°
+            "shared_ankle_f_rad": (-0.105, -0.035), # −6 ~ −2°
+        })
+        # 발목앞뒤 저강성 + 관절마찰 (전동부 유격·마찰 대역 근사) — 전역 actuator_gains/joint_friction(startup) 뒤에 덮어씀
+        _ank = SceneEntityCfg("robot", joint_names=[".*_ankle_f_joint"])
+        self.events.ankle_f_gains = _E(func=_mdp.randomize_actuator_gains, mode="startup",
+                                       params={"asset_cfg": _ank, "stiffness_distribution_params": (0.2, 0.5), "operation": "scale"})
+        self.events.ankle_f_friction = _E(func=_mdp.randomize_joint_parameters, mode="startup",
+                                          params={"asset_cfg": _ank, "friction_distribution_params": (1.0, 3.0), "operation": "abs"})
+        # 지면: 강체 (S9c 의 연성 접촉 제거)
+        self.scene.terrain.physics_material.compliant_contact_stiffness = 0.0
+        self.scene.terrain.physics_material.compliant_contact_damping = 0.0
+        # 보상: 무릎 밴드·골반고를 v5+처짐 물리 자세에 맞춤, 정책 프레임 자세 편차 벌점
+        if getattr(self.rewards, "knee_stance_flexion", None) is not None:
+            self.rewards.knee_stance_flexion.params["band_rad"] = (0.60, 1.05)   # 34~60° (물리 무릎 ≈ 38.5+11+처짐)
+        if getattr(self.rewards, "base_height_l2", None) is not None:
+            self.rewards.base_height_l2.params["target_height"] = 0.55
+        self.rewards.leg_pose_deviation = RewTerm(
+            func=_mdp.joint_deviation_l1, weight=-0.5,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_f_joint", ".*_knee_joint", ".*_ankle_f_joint"])})
+
+
+@configclass
+class Biped12HangStandG1HoldEnvCfg(Biped12HangStandG1EnvCfg):
+    """G1 대조군(평가용): 같은 플랜트·초기조건에서 --hold(v5 명령 kp150 고정)."""

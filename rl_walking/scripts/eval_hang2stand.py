@@ -32,6 +32,8 @@ parser.add_argument("--hold", action="store_true", help="정책 없이 액션 0 
 parser.add_argument("--no_chain", action="store_true", help="배포 체인(러너 슬루→LPF→블렌딩) 끔 — env 원생 액션")
 parser.add_argument("--nominal", action="store_true", help="DR 전부 끔 (명목 몸체)")
 parser.add_argument("--com_fix", type=float, default=None, help="base_com x 고정 [m]")
+parser.add_argument("--ankle_kp_scale", type=float, default=None, help="G1: 발목앞뒤 kp 배율 고정(이벤트 ankle_f_gains) — 가설 플랜트 지정용")
+parser.add_argument("--ankle_friction", type=float, default=None, help="G1: 발목앞뒤 관절마찰 고정(이벤트 ankle_f_friction)")
 parser.add_argument("--shared_bias", type=str, default=None, help="0918 S9d: 좌우 공유 물리 편향 고정 'hip,knee,ankle' [deg, 왼쪽 기준] (예 '0,-13,0'); --nominal 은 학습 대역 중심으로 고정")
 parser.add_argument("--usd", type=str, default="rl_walking/assets/usd_final3/biped12.usd")
 parser.add_argument("--r0", type=str, default=None); parser.add_argument("--hold_s", type=str, default=None)
@@ -193,6 +195,10 @@ if args_cli.nominal:
             if _pb.get(_k) is not None:
                 _c = 0.5 * (float(_pb[_k][0]) + float(_pb[_k][1])); _pb[_k] = (_c, _c)
         _pb["reset_noise_rad"] = 0.0
+    for _nm, _key in (("ankle_f_gains", "stiffness_distribution_params"), ("ankle_f_friction", "friction_distribution_params")):
+        _ev = getattr(env_cfg.events, _nm, None)
+        if _ev is not None:
+            _c = 0.5 * (float(_ev.params[_key][0]) + float(_ev.params[_key][1])); _ev.params[_key] = (_c, _c)   # 명목 = 대역 중심(G1 가설 플랜트)
     if getattr(env_cfg.events, "calib_bias", None):
         for _k in list(env_cfg.events.calib_bias.params):
             if _k.endswith("_rad") and env_cfg.events.calib_bias.params[_k] is not None:
@@ -244,6 +250,10 @@ if args_cli.imu_roll_bias_deg is not None and getattr(env_cfg.events, "calib_bia
     _rb = math.radians(args_cli.imu_roll_bias_deg)
     env_cfg.events.calib_bias.params["imu_roll_rad"] = (_rb, _rb)
     print(f"[imu] 롤 편향 고정 {args_cli.imu_roll_bias_deg:+.2f}°")
+if args_cli.ankle_kp_scale is not None and getattr(env_cfg.events, "ankle_f_gains", None) is not None:
+    env_cfg.events.ankle_f_gains.params["stiffness_distribution_params"] = (args_cli.ankle_kp_scale, args_cli.ankle_kp_scale)
+if args_cli.ankle_friction is not None and getattr(env_cfg.events, "ankle_f_friction", None) is not None:
+    env_cfg.events.ankle_f_friction.params["friction_distribution_params"] = (args_cli.ankle_friction, args_cli.ankle_friction)
 if args_cli.shared_bias is not None and getattr(env_cfg.events, "default_pose_bias", None):
     _h, _k, _a = [math.radians(float(x)) for x in args_cli.shared_bias.split(",")]
     env_cfg.events.default_pose_bias.params.update({"shared_hip_f_rad": (_h, _h), "shared_knee_rad": (_k, _k), "shared_ankle_f_rad": (_a, _a)})

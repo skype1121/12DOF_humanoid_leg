@@ -155,6 +155,10 @@ def release_all(bus):
             pass
 
 
+FB_TAU = {}     # 0919: 모터별 토크 추정(MIT 피드백, 부호=모터 프레임) — 상태파일 진단용(검증 전 참고값)
+FB_VEL = {}
+
+
 def drain(bus, pos, seen, fault, fault_cnt, fault_t):
     while True:
         msg = bus.recv(timeout=0.0)
@@ -166,6 +170,7 @@ def drain(bus, pos, seen, fault, fault_cnt, fault_t):
         try:
             fb = decode_ak_mit_feedback(bytes(msg.data))
             pos[m] = fb.position_deg
+            FB_TAU[m] = fb.torque_est; FB_VEL[m] = fb.velocity_rad_s
             seen[m] = time.monotonic()
             if not fb.error_ok:
                 t = time.monotonic()
@@ -775,6 +780,8 @@ def main():
                     "joint_pos_deg": {joint_of[m]: direction[m] * (pos[m] - zero[m]) for m in IDS},
                     "joint_cmd_deg": {joint_of[m]: direction[m] * (cmd_of(m, frac) - zero[m]) for m in IDS},
                     "err_deg": {joint_of[m]: pos[m] - cmd_of(m, frac) for m in IDS},
+                    "joint_tau_est": {joint_of[m]: FB_TAU.get(m) for m in IDS},          # 0919 진단용(모터 프레임, 미검증)
+                    "joint_vel_rad_s": {joint_of[m]: FB_VEL.get(m) for m in IDS},
                     "gait": {"on": gait["on"], "active": gait_amp > 0.0, "amp": round(gait_amp, 3),
                              "freq_hz": gait["freq_hz"], "hip_deg": gait["hip_deg"], "knee_deg": gait["knee_deg"], "ankle_deg": gait["ankle_deg"]}})
             if now - t_show >= 1.0:

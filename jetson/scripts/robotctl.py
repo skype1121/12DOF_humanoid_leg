@@ -10,6 +10,7 @@
   robotctl joints            12관절 실제각·명령·오차·신선도 표 (읽기 전용)
   robotctl prep              CAN 준비 → 센서 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 (완료된 단계는 건너뜀)
   robotctl zero-fix          영점 배수 보정(전원 재투입 뒤 영점 확인이 '창 어긋남' 이면) → 다시 prep
+  robotctl sensors           센서 기동/재기동(IMU·발 어댑터; 데이터가 신선하면 그대로, 멈췄으면 PID파일 소유 노드 정리 후 재기동)
   robotctl codes             프로세스 종료 코드 표(뜻·할 일)
   robotctl reset             강제 초기화: 가드 릴리즈·모터 전원 OFF 로 토크 해제 단계가 안 끝날 때(무토크 확인 뒤). 제어 프로세스 살아 있으면 거부
   robotctl zero-recap        영점 재캡처(지그 기준 자세에서, 시프트 0인데 잔차만 남았을 때; 12관절 앵커를 지금 읽기값으로 — 맵 자동 백업) → 다시 prep
@@ -182,6 +183,15 @@ def cmd_zero_fix(a):
     if act("zero_multiple"):
         wait_completed("zero_multiple", 60)
         print("✓ 배수 보정 완료 → robotctl prep (영점 확인부터 이어감)", flush=True)
+
+
+def cmd_sensors(a):
+    st = state(); fr = st.get("fresh") or {}; im = st.get("imu") or {}
+    print(f"센서 신선도 imu {fr.get('imu')} foot {fr.get('foot')} (IMU 마지막 값 {im.get('age', '?')} s 전)", flush=True)
+    if act("sensors"):
+        wait_completed("sensors", 60)
+        st = state(); fr = st.get("fresh") or {}
+        print(f"✓ 센서 imu {fr.get('imu')} foot {fr.get('foot')}", flush=True)
 
 
 def cmd_codes(a):
@@ -423,6 +433,7 @@ def main():
     sub.add_parser("joints").set_defaults(fn=cmd_joints)
     sub.add_parser("prep").set_defaults(fn=cmd_prep)
     s = sub.add_parser("zero-fix"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_zero_fix)
+    sub.add_parser("sensors").set_defaults(fn=cmd_sensors)
     sub.add_parser("codes").set_defaults(fn=cmd_codes)
     s = sub.add_parser("reset"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_reset)
     s = sub.add_parser("zero-recap"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_zero_recap)

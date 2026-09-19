@@ -407,23 +407,48 @@ class Runner:
             found += [int(x) for x in out if x.isdigit() and int(x) != os.getpid()]
         return sorted(set(found))
 
+    #: sensors_up.sh 가 자기 노드의 PID 를 적는 곳 — 이 파일들의 PID 만 '콘솔 계열이 띄운 센서'로 인정한다.
+    SENSOR_PID_DIR = os.path.expanduser("~/run")
+
+    @classmethod
+    def _sensor_pidfile_pids(cls):
+        found = set()
+        try:
+            for fn in os.listdir(cls.SENSOR_PID_DIR):
+                if fn.endswith(".pid"):
+                    with open(os.path.join(cls.SENSOR_PID_DIR, fn)) as f:
+                        v = f.read().strip()
+                    if v.isdigit():
+                        found.add(int(v))
+        except OSError:
+            pass
+        return found
+
     def start(self, key, argv, cwd=None):
         with self.lock:
             old = self.procs.get(key)
             if old is not None and old.alive:
                 return False, f"{key} 이미 실행 중 (pid {old.p.pid})"
+            note = ""
             if key in self.DUP_GUARD:
                 pids = self._foreign_pids(self.DUP_GUARD[key])
                 if pids:
-                    return False, (f"{key} 이미 실행 중 (pid {pids}, 콘솔 추적 밖) — 중복 기동 안 함. "
-                                   "기존 소유 콘솔/터미널에서 상태를 확인하세요. 이 콘솔은 외부 PID를 종료하지 않습니다")
+                    owned = self._sensor_pidfile_pids() if key == "sensors" else set()
+                    if key == "sensors" and set(pids) <= owned:
+                        # 0919: 센서 노드가 살아 있어도 DDS 가 멈추면(사용자 세션 종료 등) 데이터가 안 온다.
+                        # sensors_up.sh 는 자기 PID파일의 노드를 서명 검증 후 개별 종료하고 재기동하므로,
+                        # PID파일에 적힌 것과 같은 PID 들이면 재기동을 허용한다(외부 PID 는 여전히 거부).
+                        note = f"기존 센서 pid {pids}(PID파일 소유 확인) 정리 후 재기동 — "
+                    else:
+                        return False, (f"{key} 이미 실행 중 (pid {pids}, 콘솔 추적 밖) — 중복 기동 안 함. "
+                                       "기존 소유 콘솔/터미널에서 상태를 확인하세요. 이 콘솔은 외부 PID를 종료하지 않습니다")
             env = dict(os.environ)
             env.setdefault("PYTHONUNBUFFERED", "1")
             try:
                 self.procs[key] = Proc(key, argv, cwd=cwd, env=env)
             except OSError as exc:
                 return False, f"{key} 기동 실패: {exc}"
-            return True, f"{key} 기동 (pid {self.procs[key].p.pid})"
+            return True, f"{note}{key} 기동 (pid {self.procs[key].p.pid})"
 
     def stop(self, key):
         with self.lock:

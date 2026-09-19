@@ -998,6 +998,9 @@ AL_MAX_DEG = 10.0
 AL_DEADBAND_DEG = 0.3
 AL_GAIN = 0.6              # [deg 힙 / deg 오차] per tick 비례(속도 제한 안에서)
 AL_PAUSE_DEG = 8.0
+AL_QUIET_GYRO = 0.06      # [rad/s] 피치 각속도 이 이하일 때만 '정지' (0919: 밀기 중 적분 금지)
+AL_QUIET_DFWD = 0.4       # [deg/틱] fwd 변화 이 이하
+AL_QUIET_TICKS = 4        # 연속 정지 틱 수(AL_TICK_S 0.5 s → 2 s) 뒤에만 적분
 AL_TICK_S = 0.5
 AUTO_LEVEL = {"on": False, "target": 0.0, "offset": 0.0, "base": None, "status": "off", "err": None, "ts": 0.0}
 
@@ -1033,13 +1036,24 @@ def auto_level_tick(view):
     if not (hh.get("kp", 0) >= 150 and fresh.get("imu")):
         AUTO_LEVEL["status"] = "대기(운용 게인·IMU 필요)"; return
     if not any(bool(c) for c in contact):
-        AUTO_LEVEL["status"] = "대기(발 접촉 없음)"; return
+        AUTO_LEVEL["status"] = "대기(발 접촉 없음)"; AUTO_LEVEL["quiet"] = 0; return
     fwd = float(im.get("fwd", 0.0)); err = AUTO_LEVEL["target"] - fwd
     AUTO_LEVEL["err"] = round(err, 2)
     if abs(err) > AL_PAUSE_DEG:
-        AUTO_LEVEL["status"] = f"일시정지(편차 {err:+.1f}° > {AL_PAUSE_DEG})"; return
+        AUTO_LEVEL["status"] = f"일시정지(편차 {err:+.1f}° > {AL_PAUSE_DEG})"; AUTO_LEVEL["quiet"] = 0; return
     if abs(err) <= AL_DEADBAND_DEG:
         AUTO_LEVEL["status"] = "수평"; return
+    # 0919 결함 수정: 밀기·손 조정 중의 기울기를 영점 오차로 적분해 힙 오프셋이 쌓였음(실측 0 → +4.3°).
+    # 양발 접촉 + 자이로 조용 + fwd 변화 작음 이 AL_QUIET_TICKS 연속 유지될 때만 적분한다.
+    if not all(bool(c) for c in contact):
+        AUTO_LEVEL["status"] = "대기(양발 접촉 필요)"; AUTO_LEVEL["quiet"] = 0; return
+    gy = im.get("gyro") or [0.0, 0.0, 0.0]
+    rate = abs(float(gy[1])) if len(gy) > 1 else 0.0
+    last = AUTO_LEVEL.get("last_fwd"); AUTO_LEVEL["last_fwd"] = fwd
+    moving = rate > AL_QUIET_GYRO or (last is not None and abs(fwd - last) > AL_QUIET_DFWD)
+    AUTO_LEVEL["quiet"] = 0 if moving else AUTO_LEVEL.get("quiet", 0) + 1
+    if AUTO_LEVEL["quiet"] < AL_QUIET_TICKS:
+        AUTO_LEVEL["status"] = f"대기(외란/정착 중 {AUTO_LEVEL['quiet']}/{AL_QUIET_TICKS}, |ω| {rate:.2f})"; return
     step = max(-AL_RATE_DEG_S * AL_TICK_S, min(AL_RATE_DEG_S * AL_TICK_S, AL_GAIN * err))
     new_off = max(-AL_MAX_DEG, min(AL_MAX_DEG, AUTO_LEVEL["offset"] + step))
     if new_off == AUTO_LEVEL["offset"]:
@@ -1505,8 +1519,14 @@ def selftest():
             base_view = {"hang_hold": {"kp": 150.0}, "fresh": {"imu": True}, "imu": {"fwd": -3.0}, "foot": {"contact": [False, False]}}
             auto_level_tick(base_view); assert "접촉" in AUTO_LEVEL["status"], AUTO_LEVEL["status"]
             auto_level_tick(dict(base_view, foot={"contact": [False, True]}, imu={"fwd": -20.0})); assert "일시정지" in AUTO_LEVEL["status"]
-            auto_level_tick(dict(base_view, foot={"contact": [False, True]})); r = _read_joint_trim()
+            auto_level_tick(dict(base_view, foot={"contact": [False, True]})); assert "양발" in AUTO_LEVEL["status"], AUTO_LEVEL["status"]   # 0919: 한 발 접촉은 적분 금지
+            both = dict(base_view, foot={"contact": [True, True]}, imu={"fwd": -3.0, "gyro": [0.0, 0.0, 0.0]})
+            for _ in range(AL_QUIET_TICKS):
+                auto_level_tick(both); assert "정착" in AUTO_LEVEL["status"], AUTO_LEVEL["status"]      # 조용한 틱이 쌓일 때까지 대기
+            r = _read_joint_trim(); assert abs(r["left_hip_f_joint"]) < 1e-9, r
+            auto_level_tick(both); r = _read_joint_trim()
             assert abs(r["left_hip_f_joint"] - 0.25) < 1e-9 and abs(r["right_hip_f_joint"] + 0.25) < 1e-9, r   # 0.5°/s × 0.5 s = 0.25°
+            auto_level_tick(dict(both, imu={"fwd": -3.0, "gyro": [0.0, 0.5, 0.0]})); assert "정착" in AUTO_LEVEL["status"] and AUTO_LEVEL["quiet"] == 0   # 밀기(각속도) → 적분 정지·카운터 리셋
             auto_level_tick(dict(base_view, foot={"contact": [True, True]}, imu={"fwd": 0.1})); assert AUTO_LEVEL["status"] == "수평"
             act_auto_level_off({}); assert not AUTO_LEVEL["on"]
         _ts = TrialState(CKPT_DEFAULT); _ts.completed.update({"can_up", "sensors", "boot_pose", "selftest", "stage8", "hang_stand", "gain_ramp"})

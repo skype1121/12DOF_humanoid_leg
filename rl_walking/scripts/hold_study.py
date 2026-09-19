@@ -39,6 +39,7 @@ p.add_argument("--ground_k", type=float, default=0.0)
 p.add_argument("--ground_d", type=float, default=0.0)
 p.add_argument("--joint_friction", type=float, default=0.0)
 p.add_argument("--joint_damping", type=float, default=0.0)
+p.add_argument("--com_x", type=float, default=0.0, help="base 링크 CoM 전후 이동 [m] (+앞; base_com 이벤트 고정값) — URDF CoM 오차 가설 시험용")
 p.add_argument("--drop_mm", type=float, default=5.0)
 p.add_argument("--pitch_jitter_deg", type=float, default=1.0)
 p.add_argument("--seed", type=int, default=0)
@@ -118,7 +119,7 @@ ec.actions.joint_pos.max_delay_steps = 0
 if getattr(ec.events, "joint_friction", None) is not None:
     ec.events.joint_friction.params["friction_distribution_params"] = (a.joint_friction, a.joint_friction)
 if getattr(ec.events, "base_com", None) is not None:
-    ec.events.base_com.params["com_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
+    ec.events.base_com.params["com_range"] = {"x": (a.com_x, a.com_x), "y": (0.0, 0.0), "z": (0.0, 0.0)}
 for _t in ("add_base_mass", "base_mass", "randomize_rigid_body_mass", "payload"):
     _e = getattr(ec.events, _t, None)
     if _e is not None and "mass_distribution_params" in getattr(_e, "params", {}):
@@ -271,7 +272,7 @@ with torch.inference_mode():
                 snap("t2s_side", (0.0, -1.6, 0.45)); snap("t2s_iso", (1.1, -1.1, 0.7))
         alive = fell < 0
         n_fall = int((~alive).sum())
-        lines = [f"[hold] pose_json {a.pose_json} kp {a.kp} kd {a.kd} | 편향 무릎 {a.knee_bias:+.1f} 힙 {a.hip_bias:+.1f} 발목 {a.ankle_bias:+.1f} | 영점오프셋 '{a.zero_offset}' | 지면 k {a.ground_k:g}/d {a.ground_d:g} | 관절마찰 {a.joint_friction:g} 감쇠 {a.joint_damping:g} | drop {a.drop_mm:g} mm 피치잡음 ±{a.pitch_jitter_deg:g}° | env {N} × {a.seconds:g} s",
+        lines = [f"[hold] pose_json {a.pose_json} kp {a.kp} kd {a.kd} | 편향 무릎 {a.knee_bias:+.1f} 힙 {a.hip_bias:+.1f} 발목 {a.ankle_bias:+.1f} | 영점오프셋 '{a.zero_offset}' | 지면 k {a.ground_k:g}/d {a.ground_d:g} | 관절마찰 {a.joint_friction:g} 감쇠 {a.joint_damping:g} | com_x {a.com_x:+.3f} m | drop {a.drop_mm:g} mm 피치잡음 ±{a.pitch_jitter_deg:g}° | env {N} × {a.seconds:g} s",
                  "명령(deg): " + " ".join(f"{n.replace('_joint','')}{pose_cmd.get(n,0):+.1f}" for n in jn if abs(pose_cmd.get(n, 0)) > 0.05),
                  f"스폰: 몸통 pitch 설계 {math.degrees(phi_flat):+.2f}° 실측 {float(pitch_hist[0][1].mean()):+.2f}° (t=0.1 s) | 발 기울기(t=0) {float(fp.mean()):+.2f}° | 발 원점 높이 {SOLE_H:.4f} m",
                  f"낙상: {n_fall}/{N} ({100*n_fall/N:.1f} %)" + (f"  낙상 시각 중앙 {float(fell[~alive].median()):.2f} s, 최소 {float(fell[~alive].min()):.2f}, 최대 {float(fell[~alive].max()):.2f} s" if n_fall else ""),

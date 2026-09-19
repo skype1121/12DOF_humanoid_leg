@@ -218,7 +218,8 @@ class SessionLog:
                 "stage8_last_command": view["stage8"].get("last_command"),
                 "joints": {name: {key: joint.get(key) for key in (
                     "latest_actual_deg", "baseline_deg", "commanded_relative_deg",
-                    "desired_relative_deg", "feedback_valid", "feedback_stale", "feedback_age_sec")}
+                    "desired_relative_deg", "feedback_valid", "feedback_stale", "feedback_age_sec",
+                    "feedback_torque_est", "feedback_velocity_rad_s", "feedback_temperature_raw")}   # 0919: 토크·속도 추정치도 타임라인에(모터별 흡수 가설 검증용)
                     for name, joint in view["stage8"].get("joints", {}).items() if isinstance(joint, dict)},
                 "trial": {k: view.get("trial", {}).get(k) for k in
                           ("number", "mode", "checkpoint", "phase", "owner", "fault", "measurement", "stop")},

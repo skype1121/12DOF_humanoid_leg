@@ -980,7 +980,7 @@ CROUCH_V5_DEFAULT_RAD = {
 @configclass
 class Biped12HangStandG1EnvCfg(Biped12HangStandS9cEnvCfg):
     """G1 (0919 밤, 탐색용): **지면 출발** — 스탠바이 v5(힙 ±30.26·무릎 ∓38.5·발목 ±28) 명령 자세로 지면 스폰, 줄 지지 0.
-    플랜트(가설 모델·후보): 무릎 공유 편향 −8~−14°(하중 탄성 처짐 실측 +10~12.5), 발목 공유 편향 −6~−2(대역 중심), 발목 kp×0.2~0.5 + 발목 관절마찰 1~3(강성·마찰 후보, 직렬 요소 아님),
+    플랜트(가설 모델·후보): 무릎 공유 편향 −8~−14°(하중 탄성 처짐 실측 +10~12.5), 발목 공유 편향 −5~0, 발목 kp×0.5~1.0 + 발목 관절마찰 0.5~2(강성·마찰 후보, 직렬 요소 아님; 0.2~0.5·1~3 은 명목 홀드 100 % 낙상이라 완화),
     힙 독립 ±4°, 무릎·발목 독립 ±2°. 지면 강체(S9c 연성 k2000 은 홀드를 악화시켜 제거). 자세 편차 벌점(정책 프레임 힙·무릎·발목)으로 램프 폭주 억제.
     판정(사전 문서화): 실측 근사 플랜트(무릎 −11·발목 −4·kp×0.25·마찰 2)에서 같은 초기조건의 고정 v5 홀드와 비교 — 생존·흔들림·자세 이탈·관절 한계 클램프·목 루프 안정.
     배포 계약: DEFAULT_POSE = CROUCH_V5_DEFAULT_RAD (관측 320 raw+EMA 불변). 이 결과로 모델 정합·실물 성능을 확정하지 않는다."""
@@ -995,24 +995,24 @@ class Biped12HangStandG1EnvCfg(Biped12HangStandS9cEnvCfg):
         from isaaclab.managers import EventTermCfg as _E
         import isaaclab_tasks.manager_based.locomotion.velocity.mdp as _mdp
         self.scene.robot.init_state.joint_pos = dict(CROUCH_V5_DEFAULT_RAD)
-        self.scene.robot.init_state.pos = (0.0, 0.0, 0.64)             # v5 자세 발바닥 ≈ 지면 (hold_study: base−발 0.58 + 발 원점 0.058)
+        self.scene.robot.init_state.pos = (0.0, 0.0, 0.62)             # 편향 자세(무릎 ~49°) 발바닥 ≈ 지면 (hold_study: base−발 ≈0.56 + 발 원점 0.058)
         self.episode_length_s = 20.0
         # 지지 스케줄: 즉시 0 (hang_support 항은 유지 — 보상 게이트가 지지비 상태를 읽음)
         self.events.hang_support_reset.params.update({"r0_range": (0.0, 0.0), "hold_range": (0.1, 0.1), "release_range": (0.1, 0.2)})
-        self.events.reset_base.params["pose_range"]["z"] = (0.0, 0.02)
+        self.events.reset_base.params["pose_range"]["z"] = (0.0, 0.01)
         self.events.reset_base.params["pose_range"]["pitch"] = (-0.05, 0.05)   # 착지 편차 ±3°
         # 플랜트 편향(가설 모델)
         self.events.default_pose_bias.params.update({
             "hip_f_rad": (-0.07, 0.07), "knee_rad": (-0.035, 0.035), "ankle_f_rad": (-0.035, 0.035),
             "shared_knee_rad": (-0.244, -0.14),     # −14 ~ −8°
-            "shared_ankle_f_rad": (-0.105, -0.035), # −6 ~ −2°
+            "shared_ankle_f_rad": (-0.087, 0.0),    # −5 ~ 0° (대역 중심 −4 를 포함하되 강체 발목과도 겹치게)
         })
         # 발목앞뒤 저강성 + 관절마찰 (전동부 유격·마찰 대역 근사) — 전역 actuator_gains/joint_friction(startup) 뒤에 덮어씀
         _ank = SceneEntityCfg("robot", joint_names=[".*_ankle_f_joint"])
         self.events.ankle_f_gains = _E(func=_mdp.randomize_actuator_gains, mode="startup",
-                                       params={"asset_cfg": _ank, "stiffness_distribution_params": (0.2, 0.5), "operation": "scale"})
+                                       params={"asset_cfg": _ank, "stiffness_distribution_params": (0.5, 1.0), "operation": "scale"})   # 0.2~0.5 는 G1Hold 명목 100 % 낙상 → 완화
         self.events.ankle_f_friction = _E(func=_mdp.randomize_joint_parameters, mode="startup",
-                                          params={"asset_cfg": _ank, "friction_distribution_params": (1.0, 3.0), "operation": "abs"})
+                                          params={"asset_cfg": _ank, "friction_distribution_params": (0.5, 2.0), "operation": "abs"})
         # 지면: 강체 (S9c 의 연성 접촉 제거)
         self.scene.terrain.physics_material.compliant_contact_stiffness = 0.0
         self.scene.terrain.physics_material.compliant_contact_damping = 0.0

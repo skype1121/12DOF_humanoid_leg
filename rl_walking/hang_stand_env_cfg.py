@@ -1220,3 +1220,93 @@ class Biped12HangStandG7EnvCfg(Biped12HangStandG6EnvCfg):
 @configclass
 class Biped12HangStandG7HoldEnvCfg(Biped12HangStandG7EnvCfg):
     """G7 대조군(평가용)."""
+
+
+@configclass
+class Biped12HangStandG8EnvCfg(Biped12HangStandG6EnvCfg):
+    """G8 (0921, 승윤님 지시): G7 의 두 결함을 고치고 **기존 뒤쪽 회복 스텝 유지 → 앞쪽·지속 외력 회복 → 회복 후 정숙** 순으로 잡는다.
+
+    G7 대비 바뀐 것:
+    1. **회복 보너스 미발화 수정** — 경성 문턱(|ω|<0.15·|v|<0.05·q̇<0.3, 0.5 s 연속)은 학습 내내 0 이었다.
+       → `recovery_quality`(등급형 rational, 게이트 열린 동안 매 스텝 0~1) + `recovery_event`(균형 상실 → 실제 회복 1 회성).
+    2. **3 초 시간 게이트 → 상태 기반 게이트** — 외란 해제 3 s 뒤 벌점이 돌아와 4~6 s 째 회복 스텝을 벌줬고, 외란 이벤트 없이
+       서서히 기울 때는 창이 안 열렸다. → `recovery_gate_step`: 외란 힘 or (기울기>5°·|ω|>0.35·|v|>0.12·한 발 비접촉) 이면 열림,
+       정상 상태 0.3 s 유지되면 닫힘, 연속 8 s 안전장치. 자세·접촉·정숙 항은 **닫힌 동안에만** 적용(state_gated).
+    3. action-rate 배율·env LPF 는 **분리 실험 변수**(G8a~G8d) — G7 에서 스텝이 사라진 원인 후보.
+
+    보상 크기 주의: Isaac Lab 은 weight×값×dt(0.02). quality 5.0 → 게이트 열림 15 %·품질 0.5 면 에피소드 ~0.4(=survive 급),
+    event 30.0 → 회복 1 회당 0.6. 게이트 상태는 직전 스텝 것(보상이 interval 이벤트보다 먼저 계산됨 — 20 ms 지연, 전 항 동일)."""
+
+    AR_REST_SCALE = 1.0          # 정지 구간 action-rate 배율 (G7 = 1.5)
+    AR_OPEN_SCALE = 0.3          # 회복 창 action-rate 배율
+    LPF_RANGE = None             # env LPF β 대역 (G7 = (0.2, 0.4)), None = 없음
+    W_QUALITY = 5.0
+    W_EVENT = 30.0
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev = self.events; rw = self.rewards
+        ev.joint_limits_config = EventTerm(func=mdp_hang.set_joint_limits_from_config, mode="startup",
+                                           params={"config_path": "/home/ryu/humanoid_leg_test1/config/joint_limits_12dof.json"})
+        ev.disturbance = EventTerm(func=mdp_hang.disturbance_reset, mode="reset",
+                                   params={"n_range": (1, 3), "t0_range": (2.0, 10.0), "gap_range": (3.0, 7.0), "ramp_prob": 0.6,
+                                           "F_ramp_range": (3.0, 20.0), "rise_range": (1.0, 4.0), "hold_range": (1.0, 3.0),
+                                           "F_imp_range": (5.0, 30.0), "dur_imp_range": (0.2, 0.4), "lateral_prob": 0.3, "lateral_scale": 0.6,
+                                           "p_active": 0.9})
+        # 상태 기반 게이트는 지지력 적용(hang_support_step) 뒤에 매 스텝 갱신 — dst_F_now 최신값을 쓴다
+        ev.recovery_gate = EventTerm(func=mdp_hang.recovery_gate_step, mode="interval", interval_range_s=(0.0, 0.0),
+                                     params={"tilt_ok": 6.5, "w_ok": 1.5, "v_ok": 0.5, "settle_s": 0.3, "max_open_s": 4.0, "lift_tilt": 3.0})
+        a = self.actions.joint_pos
+        a.onset_hold_range = (0.0, 0.3); a.onset_blend_range = (1.0, 1.5); a.clamp_to_soft_limits = True
+        a.lpf_beta_range = tuple(self.LPF_RANGE) if self.LPF_RANGE is not None else (1.0, 1.0)
+        # 자세·접촉·정숙 계열 = 게이트가 닫힌(안정) 동안에만 → 필요한 스텝은 시간과 무관하게 허용
+        for name in ("feet_contact_gated", "stance_shape", "torso_pitch_band", "pose_symmetry", "leg_pose_deviation",
+                     "feet_slide", "foot_yaw_slip", "feet_gap", "march_anchor", "settle_quiet_bonus"):
+            term = getattr(rw, name, None)
+            if term is None:
+                continue
+            setattr(rw, name, RewTerm(func=mdp_hang.state_gated, weight=term.weight,
+                                      params={"func": term.func, "params": dict(term.params or {})}))
+        ar = self.rewards.action_rate_l2      # G6 상속분(래핑 전 원본)
+        base_w = ar.weight
+        rw.action_rate_l2 = RewTerm(func=mdp_hang.state_gated, weight=base_w * self.AR_REST_SCALE,
+                                    params={"func": ar.func, "params": dict(ar.params or {})})
+        rw.action_rate_window = RewTerm(func=mdp_hang.open_gated, weight=base_w * self.AR_OPEN_SCALE,
+                                        params={"func": ar.func, "params": dict(ar.params or {})})
+        rw.recovery_quality = RewTerm(func=mdp_hang.recovery_quality, weight=self.W_QUALITY,
+                                      params={"s_ang": 0.30, "s_lin": 0.10, "s_jvel": 0.50, "tilt_ok": 6.5})
+        rw.recovery_event = RewTerm(func=mdp_hang.recovery_event, weight=self.W_EVENT)
+        self.episode_length_s = 20.0
+
+
+@configclass
+class Biped12HangStandG8aEnvCfg(Biped12HangStandG8EnvCfg):
+    """분리 실험 A = G7 손잡이 그대로(action-rate ×1.5 + LPF 0.2~0.4)."""
+    AR_REST_SCALE = 1.5
+    LPF_RANGE = (0.2, 0.4)
+
+
+@configclass
+class Biped12HangStandG8bEnvCfg(Biped12HangStandG8EnvCfg):
+    """분리 실험 B = action-rate 배율만 제거(LPF 유지)."""
+    AR_REST_SCALE = 1.0
+    LPF_RANGE = (0.2, 0.4)
+
+
+@configclass
+class Biped12HangStandG8cEnvCfg(Biped12HangStandG8EnvCfg):
+    """분리 실험 C = LPF 만 제거(action-rate ×1.5 유지)."""
+    AR_REST_SCALE = 1.5
+    LPF_RANGE = None
+
+
+@configclass
+class Biped12HangStandG8dEnvCfg(Biped12HangStandG8EnvCfg):
+    """분리 실험 D = 둘 다 제거(= G6 손잡이)."""
+    AR_REST_SCALE = 1.0
+    LPF_RANGE = None
+
+
+@configclass
+class Biped12HangStandG8HoldEnvCfg(Biped12HangStandG8EnvCfg):
+    """G8 대조군(평가용)."""

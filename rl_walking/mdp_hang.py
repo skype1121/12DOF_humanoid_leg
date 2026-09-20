@@ -18,6 +18,8 @@
 from __future__ import annotations
 
 import math
+import os
+
 import torch
 
 try:  # 셀프테스트는 Isaac 없이 돈다 — 무거운 import 는 지연
@@ -66,7 +68,9 @@ def _state(env):
               # 0921 G7 외란 스케줄(에피소드당 최대 K 회): kind 0=없음 1=지속 램프 2=순간 충격; 방향은 월드 xy 단위벡터
               "dst_kind": torch.zeros(N, _DST_K, device=dev), "dst_t0": torch.zeros(N, _DST_K, device=dev), "dst_rise": torch.ones(N, _DST_K, device=dev),
               "dst_hold": torch.zeros(N, _DST_K, device=dev), "dst_F": torch.zeros(N, _DST_K, device=dev), "dst_dir": torch.zeros(N, _DST_K, 2, device=dev),
-              "dst_F_now": z(), "dst_last_end": torch.full((N,), -1.0, device=dev), "dst_pending": torch.zeros(N, device=dev), "dst_quiet_run": z(), "dst_bonus": z()}   # 0913 앞뒤 2점 현수: 후크 간격 d [m](0=끔), 피치 구속 강성/감쇠 — 토크 cap = T·d/2 (줄은 당기기만)
+              "dst_F_now": z(), "dst_last_end": torch.full((N,), -1.0, device=dev), "dst_pending": torch.zeros(N, device=dev), "dst_quiet_run": z(), "dst_bonus": z(),
+              # 0921 G8: 상태 기반 회복 게이트 — 외란 이벤트 유무와 무관하게 '균형을 잃은 동안' 열린다(서서히 기우는 경우 포함)
+              "rec_open": z(), "rec_open_t": z(), "rec_settle_run": z(), "rec_ev": z(), "rec_guard": z()}   # 0913 앞뒤 2점 현수: 후크 간격 d [m](0=끔), 피치 구속 강성/감쇠 — 토크 cap = T·d/2 (줄은 당기기만)
         env._hang = st
     return st
 
@@ -260,6 +264,102 @@ def dist_force_now(env) -> torch.Tensor:
     return _state(env)["dst_F_now"]
 
 
+def _feet_body_ids(env, sensor_name: str = "contact_forces"):
+    """접촉 센서에서 **발 링크만** 골라낸 인덱스(캐시). 0921 결함: SceneEntityCfg("contact_forces") 는 body_ids 가
+    slice(None)(전 바디)라 매니저가 해석해 주지 않는 직접 호출에서는 '양발 접촉'이 언제나 False 였다 → 게이트 상시 열림→래치."""
+    ids = getattr(env, "_hang_feet_ids", None)
+    if ids is None:
+        names = list(env.scene.sensors[sensor_name].body_names)
+        ids = [i for i, n in enumerate(names) if "ankle_r" in n]
+        assert len(ids) == 2, f"발 링크 2개를 못 찾음: {names}"
+        env._hang_feet_ids = ids
+    return ids
+
+
+def _balance_state(env, sensor_cfg=None, threshold: float = 5.0, asset_cfg=None):
+    """(both_contact, tilt_deg, |ω_xy|, |v_xy|, q̇_rms) — 게이트·보너스가 공유하는 원시 상태."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    if sensor_cfg is not None and not isinstance(getattr(sensor_cfg, "body_ids", slice(None)), slice):
+        f = env.scene.sensors[sensor_cfg.name].data.net_forces_w[:, sensor_cfg.body_ids, :]
+    else:
+        f = env.scene.sensors["contact_forces"].data.net_forces_w[:, _feet_body_ids(env), :]
+    both = (torch.norm(f, dim=-1) > threshold).all(dim=1)
+    pg = asset.data.projected_gravity_b
+    tilt = torch.rad2deg(torch.acos((-pg[:, 2]).clamp(-1.0, 1.0)))
+    w = asset.data.root_ang_vel_b[:, :2].norm(dim=1)
+    v = asset.data.root_lin_vel_b[:, :2].norm(dim=1)
+    qd = asset.data.joint_vel.pow(2).mean(1).sqrt()
+    return both, tilt, w, v, qd
+
+
+def recovery_gate_step(env, env_ids, tilt_ok: float = 6.5, w_ok: float = 1.5, v_ok: float = 0.5, settle_s: float = 0.3,
+                       max_open_s: float = 4.0, lift_tilt: float = 3.0, sensor_cfg=None, threshold: float = 5.0, asset_cfg=None):
+    """mode="interval", interval_range_s=(0,0): **상태 기반** 회복 게이트를 매 스텝 갱신한다 (0921 G8, 승윤님 지적 2).
+
+    종전(G7)은 '외란 해제 + 3 s' 라는 시간 창이었다 → 4 s 째 필요한 회복 스텝이 자세·접촉 벌점을 받았고, 외란 이벤트 없이
+    서서히 기울 때는 창이 아예 열리지 않아 스텝을 막았다. 여기서는 **실제 균형 상태**로 연다/닫는다:
+      열림  : 외란 힘이 걸려 있거나, 기울기>tilt_ok, |ω|>w_ok, |v|>v_ok, 또는 (한 발 비접촉 & 기울기>lift_tilt)
+      닫힘  : 위 조건이 모두 정상인 상태가 settle_s 연속 유지되면 (= 실제로 회복함)
+      안전장치: 연속 열림이 max_open_s 를 넘으면 실제 안정될 때까지 닫아 둔다(계속 움직여 벌점을 회피하는 전략 차단).
+
+    **임계는 학습 중 실측으로 잡았다**(0921, 액션 잡음 포함 1024 env): 정상 서기 |ω| p50 0.38·p90 0.80·p99 1.3,
+    |v| p50 0.08·p90 0.17, 기울기 p50 1.8·p90 3.7·p99 4.8°. 외란 표본과 ω·v 분포가 거의 겹쳐 **속도 기준은 정상 서기를
+    구분하지 못한다**(첫 시도: w_ok 0.35 → 게이트 97 % 열림, 자세 보상 소멸·에피소드 3.1 s). 그래서 기울기(정상 p99 4.8 <
+    tilt_ok 6.5)를 주 신호로, ω·v 는 격한 이탈만 잡는 안전망(1.5·0.5)으로 둔다. 발 들기는 기울기와 함께일 때만 연다
+    (정상 서기 중 우발적 발 들림으로 벌점이 꺼지지 않게)."""
+    st = _state(env)
+    both, tilt, w, v, _qd = _balance_state(env, sensor_cfg, threshold, asset_cfg)
+    unbal = (st["dst_F_now"] > 0.0) | (tilt > tilt_ok) | (w > w_ok) | (v > v_ok) | ((~both) & (tilt > lift_tilt))
+    st["rec_settle_run"] = torch.where(unbal, torch.zeros_like(st["rec_settle_run"]), st["rec_settle_run"] + env.step_dt)
+    settled = st["rec_settle_run"] >= settle_s
+    open_now = st["rec_open"] > 0.5
+    # 안전장치 래치: 연속 열림이 max_open_s 를 넘으면 '실제로 안정될 때까지' 게이트를 닫아 둔다(계속 움직여 벌점을 회피하는 전략 차단).
+    st["rec_open_t"] = torch.where(open_now, st["rec_open_t"] + env.step_dt, torch.zeros_like(st["rec_open_t"]))
+    guard = (st["rec_guard"] > 0.5) | (st["rec_open_t"] > max_open_s)
+    guard = guard & ~settled                                     # 실제 회복하면 래치 해제
+    want_open = unbal & ~guard
+    open_next = torch.where(want_open, torch.ones_like(st["rec_open"]),
+                            torch.where(settled | guard, torch.zeros_like(st["rec_open"]), st["rec_open"]))
+    # 회복 이벤트: 열려 있다가 **실제 안정으로** 닫혔다 = 균형을 잃었다가 되찾음(안전장치로 닫힌 경우는 제외)
+    st["rec_ev"] = (open_now & (open_next <= 0.5) & settled).to(torch.float32)
+    st["rec_open"] = open_next
+    st["rec_open_t"] = torch.where(open_next > 0.5, st["rec_open_t"], torch.zeros_like(st["rec_open_t"]))
+    st["rec_guard"] = guard.to(torch.float32)
+    if os.environ.get("HANG_GATE_DEBUG"):
+        _n = getattr(env, "_gate_dbg_n", 0) + 1; env._gate_dbg_n = _n
+        if _n % 50 == 0:
+            q = lambda x, m: (float(x[m].quantile(0.5)), float(x[m].quantile(0.9)), float(x[m].quantile(0.99))) if bool(m.any()) else (0., 0., 0.)
+            calm = (st["dst_F_now"] <= 0.0) & both & (tilt < 5.0)      # 외란 없고 양발 접촉 = '정상 서기' 표본
+            dist = st["dst_F_now"] > 0.0
+            print(f"[gate] step {_n} open {float(st['rec_open'].mean()):.3f} both {float(both.float().mean()):.3f} ev {float(st['rec_ev'].sum()):.0f} "
+                  f"| calm n{int(calm.sum())} w(p50/p90/p99) {q(w, calm)[0]:.2f}/{q(w, calm)[1]:.2f}/{q(w, calm)[2]:.2f} "
+                  f"v {q(v, calm)[0]:.3f}/{q(v, calm)[1]:.3f}/{q(v, calm)[2]:.3f} tilt {q(tilt, calm)[0]:.1f}/{q(tilt, calm)[1]:.1f}/{q(tilt, calm)[2]:.1f} "
+                  f"| dist n{int(dist.sum())} w {q(w, dist)[0]:.2f}/{q(w, dist)[1]:.2f} v {q(v, dist)[0]:.3f}/{q(v, dist)[1]:.3f} tilt {q(tilt, dist)[0]:.1f}/{q(tilt, dist)[1]:.1f}", flush=True)
+
+
+def recovery_open(env) -> torch.Tensor:
+    """(N,) 회복 게이트가 열려 있으면 1 (진단·게이트용)."""
+    return _state(env)["rec_open"]
+
+
+def recovery_quality(env, s_ang: float = 0.30, s_lin: float = 0.10, s_jvel: float = 0.50, tilt_ok: float = 6.5,
+                     sensor_cfg=None, threshold: float = 5.0, asset_cfg=None) -> torch.Tensor:
+    """**회복 게이트가 열려 있는 동안만** 주는 등급형(rational) 정숙 보상 0~1 — 문턱 미달로 0 에 갇히지 않는다.
+    σ 는 학습 중 실제 운동 수준(평가 관측 |ω|≈0.1~0.2·q̇≈0.11, 학습은 액션 잡음으로 더 큼)을 감싸도록 넉넉히 잡는다.
+    G7 의 recovery_bonus(경성 문턱 0.15/0.05/0.3 + 0.5 s 연속)는 학습 내내 0 이었다 — 그 결함의 교체항."""
+    both, tilt, w, v, qd = _balance_state(env, sensor_cfg, threshold, asset_cfg)
+    def g(x, sig):
+        return 1.0 / (1.0 + (x / sig) ** 2)
+    q = (g(w, s_ang) + g(v, s_lin) + g(qd, s_jvel)) / 3.0
+    q = q * both.to(q.dtype) * (tilt < tilt_ok).to(q.dtype)
+    return q * _state(env)["rec_open"]
+
+
+def recovery_event(env) -> torch.Tensor:
+    """(N,) 균형을 잃었다가 실제로 되찾은 스텝에 1 (recovery_gate_step 이 계산). 성공 판정과 같은 의미의 1 회성 보상."""
+    return _state(env)["rec_ev"]
+
+
 def dist_window_mask(env, recover_s: float = 3.0) -> torch.Tensor:
     """외란이 걸려 있거나 해제 뒤 recover_s 안이면 True — 자세·발접촉·정숙 항의 게이트(그 창에서는 스텝 허용)."""
     st = _state(env)
@@ -281,6 +381,19 @@ def _resolve_nested(env, params):
                 v.resolve(env.scene)
         params["_resolved"] = True
     return {k: v for k, v in params.items() if k != "_resolved"}
+
+
+def state_gated(env, func, params: dict | None = None) -> torch.Tensor:
+    """기존 보상 항 func 를 **회복 게이트가 닫힌 동안(= 실제로 안정된 동안)** 에만 적용 (0921 G8).
+    균형을 잃은 동안에는 자세·접촉·정숙 벌점이 0 → 필요한 스텝을 시간과 무관하게 허용한다."""
+    val = func(env, **_resolve_nested(env, params))
+    return val * (1.0 - _state(env)["rec_open"]).to(val.dtype)
+
+
+def open_gated(env, func, params: dict | None = None) -> torch.Tensor:
+    """func 를 회복 게이트가 열린 동안에만 적용(창 안 약한 action-rate 등)."""
+    val = func(env, **_resolve_nested(env, params))
+    return val * _state(env)["rec_open"].to(val.dtype)
 
 
 def rest_gated(env, func, recover_s: float = 3.0, params: dict | None = None) -> torch.Tensor:
@@ -386,6 +499,9 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
     def U(lo, hi):
         return torch.empty(n, device=env.device).uniform_(float(lo), float(hi))
 
+    for _k in ("rec_open", "rec_open_t", "rec_settle_run", "rec_ev", "rec_guard"):   # 0921: 회복 게이트 상태도 에피소드마다 초기화(래치 영구화 방지)
+        if _k in st:
+            st[_k][ids] = 0.0
     st["r0"][ids] = U(*r0_range)
     st["t_hold"][ids] = U(*hold_range)
     st["t_rel"][ids] = U(*release_range)

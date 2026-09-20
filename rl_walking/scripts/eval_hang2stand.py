@@ -31,6 +31,7 @@ parser.add_argument("--seconds", type=float, default=None, help="기본 = env ep
 parser.add_argument("--hold", action="store_true", help="정책 없이 액션 0 = DEFAULT_POSE kp150 홀드 (고정 Kp 기준선)")
 parser.add_argument("--no_chain", action="store_true", help="배포 체인(러너 슬루→LPF→블렌딩) 끔 — env 원생 액션")
 parser.add_argument("--nominal", action="store_true", help="DR 전부 끔 (명목 몸체)")
+parser.add_argument("--nominal_play_zero", action="store_true", help="--nominal 에서 식별 플랜트형(DeadzoneCoulomb) 발목 유격·쿨롱도 0 으로 (구 0913 규칙 재현용; 기본은 대역 중심 유지)")
 parser.add_argument("--com_fix", type=float, default=None, help="base_com x 고정 [m]")
 parser.add_argument("--ankle_kp_scale", type=float, default=None, help="G1: 발목앞뒤 kp 배율 고정(이벤트 ankle_f_gains) — 가설 플랜트 지정용")
 parser.add_argument("--ankle_friction", type=float, default=None, help="G1: 발목앞뒤 관절마찰 고정(이벤트 ankle_f_friction)")
@@ -43,6 +44,9 @@ parser.add_argument("--no_push", action="store_true", help="푸시 외란 끔 (�
 parser.add_argument("--noise_off", type=str, default="", help="관측 노이즈 채널 제거(쉼표): gyro,grav,jpos,jvel,contact,all — S8 원인 분해용")
 parser.add_argument("--noise_scale", type=float, default=1.0, help="남은 관측 노이즈 대역 스케일(0.25/0.5/0.75/1.0)")
 parser.add_argument("--no_obs_noise", action="store_true", help="관측 노이즈(enable_corruption) 끔 — 정책 고유 정지도 측정용(학습 노이즈 ±0.2rad/s 자이로 등이 잔떨림을 만드는지 분리)")
+parser.add_argument("--blend_from", type=str, default="zero", choices=("zero", "hold"), help="배포 체인 온셋 블렌딩의 출발 자세: zero = 관절 0(구 행잉 절차: 영점 매달림에서 인수), hold = 스폰 관절각(0918 지면 절차: stage8 홀드 명령에서 인수 — 브리지 blend_from=baseline+rel 과 같은 뜻). 지면 출발 태스크(G1~)는 hold 가 실물 절차")
+parser.add_argument("--blend_s", type=float, default=None, help="배포 체인 온셋 블렌딩 시간 [s] 덮어쓰기 (기본 deploy_chain.BLEND_S=1.5; 0 = 블렌딩 없음) — 체인 분해 실험용")
+parser.add_argument("--slew_deg", type=float, default=None, help="배포 체인 러너 슬루 [deg/틱] 덮어쓰기 (기본 policy_runner.SLEW_RAD=4°) — 체인 분해 실험용")
 parser.add_argument("--lpf_beta", type=float, default=None, help="배포 체인 stand LPF β 덮어쓰기 (기본 deploy_chain.STAND_LPF_BETA=0.27; 작을수록 더 부드러움) — 재학습 없이 스탠바이 흔들림을 잡는 배포측 레버 시험")
 parser.add_argument("--imu_roll_bias_deg", type=float, default=None, help="IMU 롤 장착 편향을 전 env 상수로 고정 [deg] (0910 실물 재현: 실물 콘솔 lat +1.0~1.4°)")
 parser.add_argument("--com_fix_y", type=float, default=0.0, help="횡 CoM 고정 편심 [m] (0910 진단: 실물 편하중 재현)")
@@ -302,9 +306,21 @@ if args_cli.joint_play_deg is not None:
                                                play_rad=_play_map(_a.joint_names_expr, float(args_cli.joint_play_deg), args_cli.joint_play_lat_deg))
     print(f"[play] 관절 유격 ±{args_cli.joint_play_deg:.2f}° (횡 {args_cli.joint_play_lat_deg}) (DeadzoneImplicit 내재 드라이브 목표 이동, 그룹 {list(_acts)}; 유격 안 감쇠 = 내재 kd)")
 if args_cli.nominal:
-    for _k, _a in list(env_cfg.scene.robot.actuators.items()):   # 0913 감사: S8ac4rp 계열의 내장 유격 DR 도 명목에서 끔(고정 유격은 --joint_play_deg 로만)
-        if getattr(_a, "play_rad_range", None) is not None and args_cli.joint_play_deg is None:
-            _a.play_rad_range = None; _a.play_rad = 0.0; print(f"[nominal] 액추에이터 {_k} 유격 DR OFF")
+    from rl_walking.actuators_play import DeadzoneCoulombImplicitActuatorCfg as _DZC
+    for _k, _a in list(env_cfg.scene.robot.actuators.items()):
+        if getattr(_a, "play_rad_range", None) is None or args_cli.joint_play_deg is not None:
+            continue
+        if isinstance(_a, _DZC) and not args_cli.nominal_play_zero:
+            # 0920: G3~G6 의 발목 유격·쿨롱은 '섭동'이 아니라 실측(0919 발목 대역 ~8°)으로 식별한 플랜트 → 명목 = 대역 중심 유지.
+            # (0913 감사의 "명목에서 유격 0" 은 S8ac4rp 계열의 섭동 DR 에만 해당 — 그 규칙을 여기 적용하면 학습 분포 밖 강체 발목으로 평가하게 됨: G6 0/256 오판의 원인)
+            _pc = 0.5 * (float(_a.play_rad_range[0]) + float(_a.play_rad_range[1])); _a.play_rad_range = None
+            _a.play_rad = ({k: v * _pc for k, v in _a.play_rad.items()} if isinstance(_a.play_rad, dict) else float(_a.play_rad) * _pc)
+            if getattr(_a, "coulomb_range", None) is not None:
+                _cc = 0.5 * (float(_a.coulomb_range[0]) + float(_a.coulomb_range[1])); _a.coulomb_range = None
+                _a.coulomb_nm = ({k: v * _cc for k, v in _a.coulomb_nm.items()} if isinstance(_a.coulomb_nm, dict) else float(_a.coulomb_nm) * _cc)
+            print(f"[nominal] 액추에이터 {_k} 식별 플랜트 중심 고정: play={_a.play_rad} rad, coulomb={getattr(_a, 'coulomb_nm', None)} Nm (DR OFF)")
+        else:   # 0913 감사: S8ac4rp 계열의 내장 유격 DR(섭동)은 명목에서 끔(고정 유격은 --joint_play_deg 로만)
+            _a.play_rad_range = None; _a.play_rad = 0.0; print(f"[nominal] 액추에이터 {_k} 유격 DR OFF (0)")
 if args_cli.gain_scale is not None and getattr(env_cfg.events, "actuator_gains", None):
     _gs = float(args_cli.gain_scale)
     env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (_gs, _gs)
@@ -348,7 +364,7 @@ if not args_cli.hold:
 
 obs = env.get_observations()
 _DEF = robot.data.default_joint_pos.clone()
-_LAND = torch.zeros_like(_DEF)
+_LAND = _DEF.clone() if args_cli.blend_from == "hold" else torch.zeros_like(_DEF)   # 0920: 지면 절차는 홀드 **명령각**(=env 기본자세, stage8 baseline+rel 에 대응)에서 블렌딩 — 스폰 물리각(중력 처짐 포함)·엔코더각과 구분
 _ASCALE = 0.25
 chain_desc = "없음(env 원생 액션)"
 _LAST_OUT = [None]   # 배포 체인이 마지막으로 보낸 관절 목표(rad) — 시뮬 블랙박스 덤프용
@@ -356,20 +372,26 @@ if use_chain:
     from rl_walking.deploy.deploy_chain import DeployChain, BLEND_S, STAND_LPF_BETA  # noqa: E402
     from rl_walking.deploy.policy_runner import SLEW_RAD  # noqa: E402
     _term = uenv.action_manager.get_term("joint_pos")
-    _chain = DeployChain(_DEF, _LAND, qpos0=robot.data.joint_pos.clone(), stand=True, **({"lpf_beta": args_cli.lpf_beta} if args_cli.lpf_beta is not None else {}))
+    _chain_kw = {}
+    if args_cli.lpf_beta is not None: _chain_kw["lpf_beta"] = float(args_cli.lpf_beta)
+    if args_cli.blend_s is not None: _chain_kw["blend_s"] = float(args_cli.blend_s)
+    if args_cli.slew_deg is not None: _chain_kw["slew_rad"] = math.radians(float(args_cli.slew_deg))
+    _chain = DeployChain(_DEF, _LAND, qpos0=robot.data.joint_pos.clone(), stand=True, **_chain_kw)
     _orig = _term.process_actions
 
     def _hooked(a):
         if torch.any(_term._needs_init):
             _ids = torch.nonzero(_term._needs_init).squeeze(-1)
             _chain.reset(_ids, robot.data.joint_pos)
+            if args_cli.blend_from == "hold":
+                _chain.land[_ids] = robot.data.default_joint_pos[_ids]   # 홀드 명령각 = env 기본자세(편향 DR 반영), 실측각 아님(F2: 실측으로 잡으면 추종오차만큼 침하)
         out = _chain.step(a)
         _LAST_OUT[0] = out          # 덤프용: 배포 체인이 실제로 보낸 관절 목표(rad)
         _orig((out - _DEF) / _ASCALE)
         _term._raw_actions[:] = a
 
     _term.process_actions = _hooked
-    chain_desc = f"h3 chain: 러너 슬루 {math.degrees(SLEW_RAD):.1f}°/틱 → LPF β{args_cli.lpf_beta if args_cli.lpf_beta is not None else STAND_LPF_BETA} → 블렌딩 {BLEND_S}s"
+    chain_desc = f"h3 chain: 러너 슬루 {args_cli.slew_deg if args_cli.slew_deg is not None else math.degrees(SLEW_RAD):.1f}°/틱 → LPF β{args_cli.lpf_beta if args_cli.lpf_beta is not None else STAND_LPF_BETA} → 블렌딩 {args_cli.blend_s if args_cli.blend_s is not None else BLEND_S}s (출발 {args_cli.blend_from})"
 
 # ── 기록 (첫 에피소드만 — 종료 후 자동 리셋된 env 의 새 에피소드는 무시) ──
 alive = torch.ones(N, dtype=torch.bool, device=dev)

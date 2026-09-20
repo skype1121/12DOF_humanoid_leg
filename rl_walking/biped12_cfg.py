@@ -17,8 +17,8 @@ import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
 
-# 변환된 USD (biped12_base.urdf → convert_urdf.py --merge-joints 산출)
-BIPED12_USD_PATH = "/home/ryu/humanoid_leg_test1/rl_walking/assets/usd/biped12.usd"
+# 변환된 USD — 0917 정리: 구 자산(base 10.49 kg·usd/) 삭제, final3(17.63 kg·패드 8점) 단일 자산
+BIPED12_USD_PATH = "/home/ryu/humanoid_leg_test1/rl_walking/assets/usd_final3/biped12.usd"
 
 # 스탠딩 중립 자세 (rad) — sim_walking 검증값과 동일
 BIPED12_DEFAULT_JOINT_POS = {

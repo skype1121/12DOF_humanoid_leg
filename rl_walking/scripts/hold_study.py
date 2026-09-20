@@ -45,6 +45,7 @@ p.add_argument("--ankle_friction", type=float, default=0.0, help="발목앞뒤 �
 p.add_argument("--knee_kp_scale", type=float, default=1.0, help="무릎 관절만 kp 배율 (직렬 스프링 근사: 유효 강성 kp·k/(kp+k))")
 p.add_argument("--ankle_play_deg", type=float, default=0.0, help="발목앞뒤 관절 기계 유격 반폭 [deg] — DeadzoneImplicit(유격 안 강성 0, kd 유지). 0919 실측 발목 대역 ~8° → 반폭 4")
 p.add_argument("--knee_play_deg", type=float, default=0.0, help="무릎 관절 기계 유격 반폭 [deg]")
+p.add_argument("--ankle_coulomb", type=float, default=0.0, help="발목앞뒤 유격 안 쿨롱 마찰 토크 [Nm] (DeadzoneCoulombImplicit; --ankle_play_deg 와 함께)")
 p.add_argument("--push_seq", type=str, default="", help="밀기 에뮬레이션 'b:2.0:80:0.3,f:5.0:80:0.3' = (방향 b/f, 시작 s, 힘 N, 지속 s) base 링크에 수평력")
 p.add_argument("--drop_mm", type=float, default=5.0)
 p.add_argument("--pitch_jitter_deg", type=float, default=1.0)
@@ -159,10 +160,15 @@ if a.ankle_play_deg > 0 or a.knee_play_deg > 0:
         keep.append(ex)
     acts["ak70"] = ImplicitActuatorCfg(joint_names_expr=keep, effort_limit_sim=base.effort_limit_sim, velocity_limit_sim=base.velocity_limit_sim,
                                        stiffness=base.stiffness, damping=base.damping, armature=base.armature)
+    from rl_walking.actuators_play import DeadzoneCoulombImplicitActuatorCfg
     for nm, sub, play in (("ankle_f_play", ".*_ankle_f_joint", a.ankle_play_deg), ("knee_play", ".*_knee_joint", a.knee_play_deg)):
         if play > 0:
-            acts[nm] = DeadzoneImplicitActuatorCfg(joint_names_expr=[sub], effort_limit_sim=base.effort_limit_sim, velocity_limit_sim=base.velocity_limit_sim,
-                                                   stiffness=base.stiffness, damping=base.damping, armature=base.armature, play_rad=math.radians(play))
+            if nm == "ankle_f_play" and a.ankle_coulomb > 0:
+                acts[nm] = DeadzoneCoulombImplicitActuatorCfg(joint_names_expr=[sub], effort_limit_sim=base.effort_limit_sim, velocity_limit_sim=base.velocity_limit_sim,
+                                                              stiffness=base.stiffness, damping=base.damping, armature=base.armature, play_rad=math.radians(play), coulomb_nm=a.ankle_coulomb)
+            else:
+                acts[nm] = DeadzoneImplicitActuatorCfg(joint_names_expr=[sub], effort_limit_sim=base.effort_limit_sim, velocity_limit_sim=base.velocity_limit_sim,
+                                                       stiffness=base.stiffness, damping=base.damping, armature=base.armature, play_rad=math.radians(play))
 env = gym.make(a.task, cfg=ec, render_mode="rgb_array")
 u = env.unwrapped
 robot = u.scene["robot"]
@@ -317,7 +323,7 @@ with torch.inference_mode():
                 snap("t2s_side", (0.0, -1.6, 0.45)); snap("t2s_iso", (1.1, -1.1, 0.7))
         alive = fell < 0
         n_fall = int((~alive).sum())
-        lines = [f"[hold] pose_json {a.pose_json} kp {a.kp} kd {a.kd} | 편향 무릎 {a.knee_bias:+.1f} 힙 {a.hip_bias:+.1f} 발목 {a.ankle_bias:+.1f} | 영점오프셋 '{a.zero_offset}' | 지면 k {a.ground_k:g}/d {a.ground_d:g} | 관절마찰 {a.joint_friction:g} 감쇠 {a.joint_damping:g} | com_x {a.com_x:+.3f} m | 발목 kp×{a.ankle_kp_scale:g} 마찰 {a.ankle_friction:g} 유격 {a.ankle_play_deg:g}° 무릎 kp×{a.knee_kp_scale:g} 유격 {a.knee_play_deg:g}° | push '{a.push_seq}' | drop {a.drop_mm:g} mm 피치잡음 ±{a.pitch_jitter_deg:g}° | env {N} × {a.seconds:g} s",
+        lines = [f"[hold] pose_json {a.pose_json} kp {a.kp} kd {a.kd} | 편향 무릎 {a.knee_bias:+.1f} 힙 {a.hip_bias:+.1f} 발목 {a.ankle_bias:+.1f} | 영점오프셋 '{a.zero_offset}' | 지면 k {a.ground_k:g}/d {a.ground_d:g} | 관절마찰 {a.joint_friction:g} 감쇠 {a.joint_damping:g} | com_x {a.com_x:+.3f} m | 발목 kp×{a.ankle_kp_scale:g} 마찰 {a.ankle_friction:g} 유격 {a.ankle_play_deg:g}° 쿨롱 {a.ankle_coulomb:g}Nm 무릎 kp×{a.knee_kp_scale:g} 유격 {a.knee_play_deg:g}° | push '{a.push_seq}' | drop {a.drop_mm:g} mm 피치잡음 ±{a.pitch_jitter_deg:g}° | env {N} × {a.seconds:g} s",
                  "명령(deg): " + " ".join(f"{n.replace('_joint','')}{pose_cmd.get(n,0):+.1f}" for n in jn if abs(pose_cmd.get(n, 0)) > 0.05),
                  f"스폰: 몸통 pitch 설계 {math.degrees(phi_flat):+.2f}° 실측 {float(pitch_hist[0][1].mean()):+.2f}° (t=0.1 s) | 발 기울기(t=0) {float(fp.mean()):+.2f}° | 발 원점 높이 {SOLE_H:.4f} m",
                  f"낙상: {n_fall}/{N} ({100*n_fall/N:.1f} %)" + (f"  낙상 시각 중앙 {float(fell[~alive].median()):.2f} s, 최소 {float(fell[~alive].min()):.2f}, 최대 {float(fell[~alive].max()):.2f} s" if n_fall else ""),

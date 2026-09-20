@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
-DEFAULT_URDF = "/home/ryu/humanoid_leg_test1/rl_walking/assets/biped12_base.urdf"
+DEFAULT_URDF = "/home/ryu/humanoid_leg_test1/rl_walking/assets/biped12_final3.urdf"
 
 
 def vec(s, default="0 0 0"):

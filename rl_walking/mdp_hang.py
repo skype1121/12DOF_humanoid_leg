@@ -784,3 +784,242 @@ def resample_default_pose_bias(env, env_ids, hip_f_rad=(-0.21, 0.21), knee_rad=(
     lo, hi = asset.data.soft_joint_pos_limits[ids, :, 0], asset.data.soft_joint_pos_limits[ids, :, 1]
     q = torch.clamp(q, lo, hi)
     asset.write_joint_state_to_sim(q, torch.zeros_like(q), env_ids=ids)
+
+
+# ─────────────── 0920 엔코더(로터측) 관측 — 유격 안 이동은 실물 엔코더에 보이지 않는다 ───────────────
+# 실측(0919): 발목앞뒤 전동부 ~8° 유격·마찰 대역. 하중이 바뀌면 출력(링크)은 최대 8° 움직이지만 로터 엔코더는 1.5° 만 움직인다.
+# 시뮬은 발목을 DeadzoneImplicit(유격 반폭 play_rad, rl_walking/actuators_play.py)로 모델링하는데, 기본 관측 joint_pos_rel /
+# joint_vel_rel 은 **물리 관절각(출력측)** 을 준다 → 실물 엔코더(모터측) 계약과 다르다. 아래 함수는 로터각을 재구성한다:
+#     θ_enc = θ_j + clamp(θ_ref − θ_j, −play, +play)
+#   유격 안(|θ_ref−θ_j| ≤ play): 강성 0 이라 로터는 목표에 그대로 앉아 있음 → θ_enc = θ_ref (링크가 어디 있든 엔코더 불변).
+#   유격 밖: 로터가 링크를 밀고 있어 θ_enc = θ_j ± play (PD 는 로터–목표 오차로 작동하므로 로터 = 링크 + 경계).
+#   θ_ref = 액션 항의 **최종 송출 목표**(SlewJointPositionAction.processed_actions — 지연·슬루·LPF·백래시가 모두 적용된 뒤 값;
+#   Articulation.data.joint_pos_target 과 같고, DeadzoneImplicit.compute 는 새 텐서를 만들어 이 값을 오염시키지 않는다 — 0920 감사).
+#   유격 0 인 관절은 θ_enc = θ_j 라 기존 joint_pos_rel 과 동일(회귀 안전).
+# 리셋 직후(episode_length_buf == 0)에는 전 에피소드의 목표가 남아 있으므로 θ_ref := θ_j 로 두어 θ_enc = θ_j (엔코더 = 링크에서 출발).
+
+
+def _enc_asset(env, asset_cfg):
+    """(asset, joint_ids) — asset_cfg None 이면 'robot'·전 관절. Isaac 없는 더미 env 도 통과."""
+    name = getattr(asset_cfg, "name", None) or "robot"
+    jid = getattr(asset_cfg, "joint_ids", None)
+    if jid is None:
+        jid = slice(None)
+    return env.scene[name], jid
+
+
+def _enc_play(env, asset, play_rad=None) -> torch.Tensor:
+    """유격 반폭 텐서 (num_envs, num_joints) [rad].
+    (a) play_rad 인자: float 또는 {관절정규식(fullmatch): rad}. 어느 정규식도 안 맞으면 ValueError(설정 오타 방지, Isaac 규약과 같음).
+    (b) None: 로봇 액추에이터 중 `_play` 텐서를 가진 것(DeadzoneImplicit/DeadzonePD/DeadzoneCoulombImplicit)에서 env·관절별 값을
+        joint_indices 로 모아 온다(리셋마다 재샘플되는 DR 값이 그대로 반영). 유격 액추에이터가 없으면 전부 0."""
+    q = asset.data.joint_pos
+    N, J = q.shape
+    if play_rad is not None:
+        import re as _re
+        cache = getattr(env, "_enc_play_cache", None)
+        key = (id(asset), repr(play_rad), J)
+        if cache is not None and cache[0] == key and cache[1].device == q.device:
+            return cache[1]
+        names = list(getattr(asset, "joint_names", None) or asset.data.joint_names)
+        vec = torch.zeros(J, device=q.device, dtype=q.dtype)
+        if isinstance(play_rad, dict):
+            for pat, val in play_rad.items():
+                hit = [i for i, n in enumerate(names) if _re.fullmatch(pat, n)]
+                if not hit:
+                    raise ValueError(f"encoder obs: play_rad 정규식 '{pat}' 이 어느 관절에도 안 맞음: {names}")
+                vec[hit] = float(val)
+        else:
+            vec[:] = float(play_rad)
+        p = vec.abs().unsqueeze(0).expand(N, J)
+        env._enc_play_cache = (key, p)
+        return p
+    p = torch.zeros(N, J, device=q.device, dtype=q.dtype)
+    acts = getattr(asset, "actuators", None) or {}
+    for act in acts.values():
+        pl = getattr(act, "_play", None)
+        if not isinstance(pl, torch.Tensor):
+            continue
+        idx = getattr(act, "joint_indices", slice(None))
+        p[:, idx] = pl.to(dtype=p.dtype, device=p.device).abs()
+    return p
+
+
+def _enc_target(env, asset, action_term="joint_pos") -> torch.Tensor:
+    """θ_ref (num_envs, num_joints): 액션 항의 최종 송출 목표(processed_actions)를 전 관절 공간에 놓는다(항 밖 관절은 θ_j).
+    항이 없으면 sim 목표(asset.data.joint_pos_target), 그것도 없으면 θ_j(→ 유격 효과 0)."""
+    q = asset.data.joint_pos
+    ref = q.clone()
+    am = getattr(env, "action_manager", None)
+    term = None
+    if am is not None and action_term:
+        try:
+            term = am.get_term(action_term)
+        except (KeyError, ValueError, AttributeError):
+            term = None
+    if term is not None:
+        tgt = getattr(term, "processed_actions", None)
+        if isinstance(tgt, torch.Tensor) and tgt.shape[0] == q.shape[0]:
+            jid = getattr(term, "_joint_ids", None)
+            if jid is None:
+                jid = slice(None)
+            ref[:, jid] = tgt.to(dtype=ref.dtype, device=ref.device)
+            return ref
+    tgt = getattr(asset.data, "joint_pos_target", None)
+    if isinstance(tgt, torch.Tensor) and tgt.shape == q.shape:
+        return tgt.clone()
+    return ref
+
+
+def encoder_joint_pos(env, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
+    """로터(엔코더) 절대각 θ_enc (num_envs, |joint_ids|) [rad] — 진단·다른 항의 재료. 정책 관측은 encoder_joint_pos_rel 을 쓴다."""
+    asset, jid = _enc_asset(env, asset_cfg)
+    q = asset.data.joint_pos
+    ref = _enc_target(env, asset, action_term)
+    elb = getattr(env, "episode_length_buf", None)
+    if isinstance(elb, torch.Tensor) and elb.shape[0] == q.shape[0]:
+        fresh = (elb == 0).view(-1, 1)
+        if bool(fresh.any()):
+            ref = torch.where(fresh, q, ref)
+    play = _enc_play(env, asset, play_rad)
+    enc = q + torch.clamp(ref - q, -play, play)
+    return enc[:, jid]
+
+
+def encoder_joint_pos_rel(env, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
+    """**엔코더(로터측) 관절각 − 기본자세** (num_envs, |joint_ids|). joint_pos_rel 의 실물 계약판.
+
+    이 관측을 쓰는 env 는 **실물 엔코더 계약(로터측)과 일치**한다: 물리 관절각(출력측)과 엔코더각의 차이 = **유격 안 이동**
+    (θ_enc − θ_j = clamp(θ_ref − θ_j, ±play)). 실물에서 하중으로 링크가 유격 안을 8° 움직여도 엔코더는 안 움직이는 것과 같은 식으로,
+    정책은 유격 안 이동을 관절각으로는 볼 수 없고 IMU·접촉·(밖으로 밀렸을 때의) 경계값으로만 추정해야 한다.
+    - play: play_rad 인자(dict 정규식→rad / float) 또는 로봇 액추에이터(Deadzone*Actuator)의 `_play` 에서 env 별 자동 획득(_enc_play).
+    - θ_ref: action_term(기본 "joint_pos") 의 processed_actions = 지연·슬루·LPF·백래시가 모두 적용된 실제 송출 목표(_enc_target).
+    - 유격 0 인 관절·리셋 직후·유격 액추에이터가 없는 env 에서는 joint_pos_rel 과 동일.
+    - default_joint_pos 는 asset.data 의 현재값(resample_default_pose_bias 가 바꾼 env 별 기본자세 포함)."""
+    asset, jid = _enc_asset(env, asset_cfg)
+    enc = encoder_joint_pos(env, asset_cfg, action_term, play_rad)
+    return enc - asset.data.default_joint_pos[:, jid]
+
+
+def encoder_link_gap(env, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
+    """θ_enc − θ_j (num_envs, |joint_ids|): 정책이 못 보는 유격 안 이동. **크리틱 특권 관측·진단·기록용** (actor 에 넣지 않는다)."""
+    asset, jid = _enc_asset(env, asset_cfg)
+    enc = encoder_joint_pos(env, asset_cfg, action_term, play_rad)
+    return enc - asset.data.joint_pos[:, jid]
+
+
+def encoder_joint_vel(env, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
+    """**엔코더각 θ_enc 의 유한차분 속도** (num_envs, |joint_ids|) [rad/s], dt = env.step_dt. joint_vel_rel 의 실물 계약판
+    (실물 브리지 qvel 도 로터 엔코더 관측의 유한차분). 물리 관절속도(출력측)와 달리 유격 안 이동은 속도에도 나타나지 않는다.
+    - 버퍼 env._enc_prev(전 관절 θ_enc)·env._enc_step(마지막 갱신 스텝)·env._enc_vel(마지막 값). 같은 스텝(common_step_counter)
+      안의 재호출(예: encoder_joint_vel_ema 가 같은 스텝에 다시 부름, 크리틱 그룹)은 버퍼를 다시 밀지 않고 같은 값을 준다.
+    - 리셋 직후(episode_length_buf == 0)에는 0 이고 버퍼를 현재 θ_enc 로 다시 시작한다(전 에피소드와의 차분 금지).
+    - default_joint_vel 이 있으면 뺀다(joint_vel_rel 규약, 이 로봇은 0)."""
+    asset, jid = _enc_asset(env, asset_cfg)
+    enc = encoder_joint_pos(env, asset_cfg, action_term, play_rad)   # (N, |jid|)
+    full = enc
+    step = int(getattr(env, "common_step_counter", 0))
+    prev = getattr(env, "_enc_prev", None)
+    if prev is None or prev.shape != full.shape or prev.device != full.device:
+        env._enc_prev = full.clone()
+        env._enc_step = step
+        env._enc_vel = torch.zeros_like(full)
+    elif getattr(env, "_enc_step", None) != step:
+        dt = float(getattr(env, "step_dt", 0.02))
+        env._enc_vel = (full - prev) / dt
+        env._enc_prev = full.clone()
+        env._enc_step = step
+    vel = env._enc_vel.clone()
+    elb = getattr(env, "episode_length_buf", None)
+    if isinstance(elb, torch.Tensor) and elb.shape[0] == full.shape[0]:
+        fresh = elb == 0
+        if bool(fresh.any()):
+            vel[fresh] = 0.0
+            env._enc_prev[fresh] = full[fresh]
+            env._enc_vel[fresh] = 0.0
+    dv = getattr(asset.data, "default_joint_vel", None)
+    if isinstance(dv, torch.Tensor) and dv.shape[0] == vel.shape[0]:
+        vel = vel - dv[:, jid]
+    return vel
+
+
+def encoder_joint_vel_ema(env, alpha: float = 0.25, noise: float = 1.5, asset_cfg=None,
+                          action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
+    """노이즈 낀 **엔코더 속도**의 EMA — joint_vel_ema(S8a) 와 같은 규약(alpha·noise 는 함수 안에서, cfg noise=None; 버퍼 _ema_state 로
+    episode_length_buf ≤ 1 에서 현재값 재시작). 버퍼 키 '_s8_enc_jvel_ema' (기존 '_s8_jvel_ema' 와 독립)."""
+    x = encoder_joint_vel(env, asset_cfg, action_term, play_rad)
+    if noise > 0.0:
+        x = x + (torch.rand_like(x) * 2.0 - 1.0) * noise
+    return _ema_state(env, "_s8_enc_jvel_ema", x, alpha).clone()
+
+
+def _selftest_encoder():
+    """torch 만으로 θ_enc 식 검증 (pytest: tests/test_encoder_obs.py 가 더미 env 로 전 경로를 덮는다)."""
+    q = torch.tensor([[0.10, -0.20]]); ref = torch.tensor([[0.13, -0.40]]); play = torch.tensor([[0.07, 0.07]])
+    enc = q + torch.clamp(ref - q, -play, play)
+    assert torch.allclose(enc, torch.tensor([[0.13, -0.27]]))     # 안: = ref / 밖: = q − play
+    assert torch.allclose(q + torch.clamp(ref - q, -0.0, 0.0), q)  # 유격 0: = q
+    print("[selftest] encoder obs: 유격 안 θ_ref·밖 θ_j±play·유격 0 항등 — PASS")
+
+
+# ─────────────────────── 0920 엔코더측 관측 (유격 관절: 실물 로터 엔코더는 유격 안 이동을 못 봄) ───────────────────────
+def _play_by_joint(env, asset):
+    """(N, J) 유격 반폭 [rad]. DeadzoneImplicitActuator 계열의 _play 텐서를 관절 인덱스에 배치, 그 외 0."""
+    key = "_enc_play_cache"
+    N = asset.data.joint_pos.shape[0]
+    play = torch.zeros_like(asset.data.joint_pos)
+    for act in asset.actuators.values():
+        pl = getattr(act, "_play", None)
+        if pl is None:
+            continue
+        idx = act.joint_indices
+        if isinstance(idx, slice):
+            play[:, idx] = pl
+        else:
+            play[:, torch.as_tensor(idx, device=play.device)] = pl
+    return play
+
+
+def _encoder_pos(env, asset, action_term="joint_pos"):
+    """θ_enc = θ_j + clamp(θ_ref − θ_j, −play, +play): 유격 안에서는 모터가 목표에 붙어 있고(θ_enc≈θ_ref), 밖에서는 유격만큼 어긋난 채 링크를 민다."""
+    q = asset.data.joint_pos
+    try:
+        term = env.action_manager.get_term(action_term)
+        ref = term.processed_actions
+    except Exception:
+        ref = q
+    play = _play_by_joint(env, asset)
+    return q + torch.clamp(ref - q, -play, play)
+
+
+def encoder_joint_pos_rel(env, asset_cfg=None, action_term: str = "joint_pos") -> torch.Tensor:
+    """엔코더각 − 기본자세 (12). 유격 0 이면 mdp.joint_pos_rel 과 동일. 실물 계약: 로터측 엔코더."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    return _encoder_pos(env, asset, action_term) - asset.data.default_joint_pos
+
+
+def _encoder_vel(env, asset, action_term):
+    enc = _encoder_pos(env, asset, action_term)
+    prev = getattr(env, "_enc_prev", None)
+    if prev is None or prev.shape != enc.shape:
+        prev = enc.clone(); env._enc_prev = prev
+    fresh = env.episode_length_buf <= 1
+    prev[fresh] = enc[fresh]
+    vel = (enc - prev) / float(env.step_dt)
+    env._enc_prev = enc.clone()
+    return vel
+
+
+def encoder_joint_vel(env, asset_cfg=None, action_term: str = "joint_pos") -> torch.Tensor:
+    """엔코더각 유한차분 속도 (12). 유격 안 링크 이동은 0 으로 보인다(실물과 동일)."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    return _encoder_vel(env, asset, action_term)
+
+
+def encoder_joint_vel_ema(env, alpha: float = 0.25, noise: float = 1.5, asset_cfg=None, action_term: str = "joint_pos") -> torch.Tensor:
+    """엔코더 속도의 EMA (12) — joint_vel_ema 와 같은 규약(노이즈·alpha·리셋)."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    x = _encoder_vel(env, asset, action_term)
+    if noise > 0.0:
+        x = x + (torch.rand_like(x) * 2.0 - 1.0) * noise
+    return _ema_state(env, "_s8_enc_jvel_ema", x, alpha).clone()

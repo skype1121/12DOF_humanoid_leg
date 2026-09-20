@@ -1091,3 +1091,32 @@ class Biped12HangStandG3EnvCfg(Biped12HangStandG2EnvCfg):
 @configclass
 class Biped12HangStandG3HoldEnvCfg(Biped12HangStandG3EnvCfg):
     """G3 대조군(평가용)."""
+
+
+@configclass
+class Biped12HangStandG4EnvCfg(Biped12HangStandG3EnvCfg):
+    """G4 (0920 낮, 탐색용): G3 플랜트 + **엔코더측 관측**(유격 관절의 유격 안 이동을 정책이 못 봄 = 실물 로터 엔코더 계약) + 자세 편차 벌점 ×3 + 지지 힘 더 짧게(0.3~0.6 s 유지, 0.5~1.5 s 방출).
+    근거: G2/G3 정책이 힙 18~21°·발목 30°(한계)로 v5 에서 이탈해 서고, 명목 낙상 대부분이 지지 힘 잔존 구간에서 발생(MORNING_0920 §4)."""
+
+    hold_range = (0.3, 0.6)
+    release_range = (0.5, 1.5)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.hang_support_reset.params.update({"hold_range": (0.3, 0.6), "release_range": (0.5, 1.5)})
+        P = self.observations.policy
+        P.joint_pos.func = mdp_hang.encoder_joint_pos_rel
+        P.joint_pos.params = {}
+        if getattr(P, "joint_vel", None) is not None:
+            P.joint_vel.func = mdp_hang.encoder_joint_vel
+            P.joint_vel.params = {}
+        if getattr(P, "joint_vel_ema", None) is not None:
+            _prm = dict(P.joint_vel_ema.params or {})
+            P.joint_vel_ema.func = mdp_hang.encoder_joint_vel_ema
+            P.joint_vel_ema.params = {k: v for k, v in _prm.items() if k in ("alpha", "noise")}
+        self.rewards.leg_pose_deviation.weight = -1.5
+
+
+@configclass
+class Biped12HangStandG4HoldEnvCfg(Biped12HangStandG4EnvCfg):
+    """G4 대조군(평가용)."""

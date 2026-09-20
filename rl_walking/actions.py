@@ -19,6 +19,9 @@ from isaaclab.managers.action_manager import ActionTerm
 from isaaclab.utils import configclass
 
 
+from rl_walking.onset import onset_alpha  # noqa: E402
+
+
 class SlewJointPositionAction(JointPositionAction):
     """JointPositionAction + 스텝당 목표각 변화량 클램프 (실물 슬루 정합).
 
@@ -63,6 +66,14 @@ class SlewJointPositionAction(JointPositionAction):
         if self._use_bl:
             self._bl = torch.empty(self.num_envs, 1, device=self.device).uniform_(self._bl_lo, self._bl_hi)
             self._bl_out = torch.zeros(self.num_envs, self.action_dim, device=self.device)
+        self._oh_lo, self._oh_hi = (float(v) for v in cfg.onset_hold_range)
+        self._ob_lo, self._ob_hi = (float(v) for v in cfg.onset_blend_range)
+        self._use_onset = (self._oh_hi > 0.0) or (self._ob_hi > 0.0)
+        if self._use_onset:
+            self._on_hold = torch.empty(self.num_envs, device=self.device).uniform_(self._oh_lo, self._oh_hi)
+            self._on_blend = torch.empty(self.num_envs, device=self.device).uniform_(self._ob_lo, self._ob_hi)
+            self._on_t = torch.zeros(self.num_envs, device=self.device)
+        self._clamp_soft = bool(cfg.clamp_to_soft_limits)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         super().reset(env_ids)
@@ -75,6 +86,8 @@ class SlewJointPositionAction(JointPositionAction):
                 self._beta.uniform_(self._lpf_lo, self._lpf_hi)
             if self._use_bl:
                 self._bl.uniform_(self._bl_lo, self._bl_hi)
+            if self._use_onset:
+                self._on_hold.uniform_(self._oh_lo, self._oh_hi); self._on_blend.uniform_(self._ob_lo, self._ob_hi); self._on_t[:] = 0.0
         else:
             self._needs_init[env_ids] = True
             ids = env_ids if isinstance(env_ids, torch.Tensor) else torch.as_tensor(
@@ -91,6 +104,10 @@ class SlewJointPositionAction(JointPositionAction):
             if self._use_bl:
                 self._bl[ids] = torch.empty(len(ids), 1, device=self.device).uniform_(
                     self._bl_lo, self._bl_hi)
+            if self._use_onset:
+                self._on_hold[ids] = torch.empty(len(ids), device=self.device).uniform_(self._oh_lo, self._oh_hi)
+                self._on_blend[ids] = torch.empty(len(ids), device=self.device).uniform_(self._ob_lo, self._ob_hi)
+                self._on_t[ids] = 0.0
 
     def process_actions(self, actions: torch.Tensor):
         # scale/offset/clip 적용 (부모)
@@ -128,6 +145,12 @@ class SlewJointPositionAction(JointPositionAction):
             b = self._beta.view(-1, 1)
             self._lpf_state = b * self._processed_actions + (1.0 - b) * self._lpf_state
             self._processed_actions = self._lpf_state.clone()
+        # 0921 온셋 인계: 홀드(목표 = 기본자세) → 스무스스텝 블렌딩 → 정책 (브리지 순서 슬루→LPF→블렌딩 과 동일 위치)
+        if self._use_onset:
+            alpha = onset_alpha(self._on_t, self._on_hold, self._on_blend).unsqueeze(1)
+            hold_tgt = self._asset.data.default_joint_pos[:, self._joint_ids]
+            self._processed_actions = hold_tgt * (1.0 - alpha) + self._processed_actions * alpha
+            self._on_t += self._env.step_dt
         # 백래시 히스테리시스: 출력은 명령 주위 ±b 데드밴드 안에서는 움직이지 않는다
         if self._use_bl:
             cmd = self._processed_actions
@@ -135,6 +158,13 @@ class SlewJointPositionAction(JointPositionAction):
             self._bl_out = torch.where(over > self._bl, cmd - self._bl,
                            torch.where(over < -self._bl, cmd + self._bl, self._bl_out))
             self._processed_actions = self._bl_out.clone()
+        if self._clamp_soft:
+            mask = getattr(self._env, "_soft_clamp_mask", None)     # set_joint_limits_from_config 가 만든 관절 마스크 (없으면 클램프 없음)
+            if mask is not None:
+                lim = self._asset.data.soft_joint_pos_limits[:, self._joint_ids, :]
+                clamped = torch.maximum(torch.minimum(self._processed_actions, lim[..., 1]), lim[..., 0])
+                m = mask[self._joint_ids].unsqueeze(0)
+                self._processed_actions = torch.where(m, clamped, self._processed_actions)
 
 
 @configclass
@@ -155,3 +185,9 @@ class SlewJointPositionActionCfg(JointPositionActionCfg):
     # 실물: 로터 엔코더는 감속기 뒤 백래시·벨트·프린트 변형을 못 본다(엔코더 사각지대,
     # 0802 실측 기울기 5.7° 에 관절오차 0.7°). 명령이 방향을 바꿀 때 |Δ|<b 동안 출력이 안 움직인다.
     backlash_rad_range: tuple[float, float] = (0.0, 0.0)
+    # 0921 G7 온셋 인계(지면 절차 학습 안에): 리셋 뒤 onset_hold 동안 목표 = 기본자세(홀드), 이어 onset_blend 동안 스무스스텝으로
+    # 홀드→정책 목표 크로스페이드(브리지 blend_alpha 와 같은 식). (0,0)=비활성(종전 동일). 정책은 인계 창을 학습 분포 안에서 본다.
+    onset_hold_range: tuple[float, float] = (0.0, 0.0)
+    onset_blend_range: tuple[float, float] = (0.0, 0.0)
+    # 소프트 한계 명령 클램프(실물 stage8 경계클램프 정합): True 면 최종 목표를 asset.data.soft_joint_pos_limits 안으로 자른다.
+    clamp_to_soft_limits: bool = False

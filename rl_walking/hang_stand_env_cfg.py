@@ -1172,3 +1172,51 @@ class Biped12HangStandG6EnvCfg(Biped12HangStandG5EnvCfg):
 @configclass
 class Biped12HangStandG6HoldEnvCfg(Biped12HangStandG6EnvCfg):
     """G6 대조군(평가용)."""
+
+
+@configclass
+class Biped12HangStandG7EnvCfg(Biped12HangStandG6EnvCfg):
+    """G7 (0921, 승윤님 지시 0920 밤): **지속 외력·정책 실행 중 느린 균형 상실·앞뒤 회복 스텝** 학습 — G6 플랜트·DR 그대로.
+    (1) 발목 한계 = 배포 config(config/joint_limits_12dof.json: soft 왼 −22~+39 / 오른 −39~+18.5, hard 40·45) — USD 구값 ±30 덮어씀,
+        정책 명령은 soft 로 클램프(stage8 경계클램프 정합) [측정: 배포 config 가 검증 범위]
+    (2) 외란 스케줄 [가정]: 에피소드당 1~3회, 지속 램프(3~20 N, 1~4 s 상승·1~3 s 유지) 60 % / 순간 충격(5~30 N, 0.2~0.4 s) 40 %,
+        앞뒤 70 % · 좌우 30 %(×0.6). 학습 푸시(0.25 m/s)는 유지.
+    (3) 온셋 인계: 홀드 0.5~1.5 s → 스무스스텝 블렌딩 1.0~2.0 s (지면 절차 = stage8 홀드 → robotctl handoff), env LPF β 0.2~0.4(브리지 0.27).
+    (4) 자세·발접촉·정숙 계열 항은 외란 창(외란 중 + 해제 뒤 3 s) **밖**에서만 → 필요한 스텝을 벌점으로 막지 않음.
+        action-rate 는 정지 구간 ×1.5(채터 억제), 창 안 ×0.3.
+    (5) 회복 보너스: 외란 해제 뒤 6 s 안 0.5 s 연속 '조용히 서기'(양발·|ω|<0.15·|v|<0.05·q̇<0.3) 1회 = 성공 정의(단순 생존 아님).
+    평가는 eval_ground_recovery(방향별 독립 실행, 같은 정착 상태). 웜스타트 G6 model_4500."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev = self.events; rw = self.rewards
+        ev.joint_limits_config = EventTerm(func=mdp_hang.set_joint_limits_from_config, mode="startup",
+                                           params={"config_path": "/home/ryu/humanoid_leg_test1/config/joint_limits_12dof.json"})
+        ev.disturbance = EventTerm(func=mdp_hang.disturbance_reset, mode="reset",
+                                   params={"n_range": (1, 3), "t0_range": (2.0, 10.0), "gap_range": (3.0, 7.0), "ramp_prob": 0.6,
+                                           "F_ramp_range": (3.0, 20.0), "rise_range": (1.0, 4.0), "hold_range": (1.0, 3.0),
+                                           "F_imp_range": (5.0, 30.0), "dur_imp_range": (0.2, 0.4), "lateral_prob": 0.3, "lateral_scale": 0.6,
+                                           "p_active": 0.9})
+        a = self.actions.joint_pos
+        a.onset_hold_range = (0.0, 0.3); a.onset_blend_range = (1.0, 1.5); a.lpf_beta_range = (0.2, 0.4); a.clamp_to_soft_limits = True   # 홀드 거의 0: 시뮬 DR 홀드는 2~3 s 안에 넘어지는 인공물(RECOVERY_EVAL §4) — 홀드 구간을 두면 그 인공물을 학습에 굽는다(스모크: 에피소드 2.4 s). 블렌딩(홀드→정책 크로스페이드)은 유지
+        # 외란 창 밖에서만 적용할 항 (스텝 허용)
+        for name in ("feet_contact_gated", "stance_shape", "torso_pitch_band", "pose_symmetry", "leg_pose_deviation",
+                     "feet_slide", "foot_yaw_slip", "feet_gap", "march_anchor"):
+            term = getattr(rw, name, None)
+            if term is None:
+                continue
+            setattr(rw, name, RewTerm(func=mdp_hang.rest_gated, weight=term.weight,
+                                      params={"func": term.func, "params": dict(term.params or {}), "recover_s": 3.0}))
+        ar = rw.action_rate_l2
+        rw.action_rate_l2 = RewTerm(func=mdp_hang.rest_gated, weight=ar.weight * 1.5,
+                                    params={"func": ar.func, "params": dict(ar.params or {}), "recover_s": 3.0})
+        rw.action_rate_window = RewTerm(func=mdp_hang.window_gated, weight=ar.weight * 0.3,
+                                        params={"func": ar.func, "params": dict(ar.params or {}), "recover_s": 3.0})
+        rw.recovery_bonus = RewTerm(func=mdp_hang.recovery_bonus, weight=150.0,     # ×dt(0.02) → 회복 1회 = +3.0
+                                    params={"recover_s": 6.0, "quiet_s": 0.5})
+        self.episode_length_s = 20.0
+
+
+@configclass
+class Biped12HangStandG7HoldEnvCfg(Biped12HangStandG7EnvCfg):
+    """G7 대조군(평가용)."""

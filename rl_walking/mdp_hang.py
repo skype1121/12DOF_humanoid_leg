@@ -38,6 +38,9 @@ def _feet_cfg():
 G = 9.81
 
 
+_DST_K = 3   # 에피소드당 외란 슬롯 수
+
+
 def _state(env):
     """env 에 붙는 per-env 스케줄/상태 텐서 (resample_calib_bias 와 같은 패턴)."""
     st = getattr(env, "_hang", None)
@@ -59,7 +62,11 @@ def _state(env):
               "cbl_T": z(), "cbl_dist": z(),
               "avx": z(), "avy": z(),   # 0912 앵커 드리프트 속도 [m/s] (시간 가변 당김 재현용)
               "ramp_rate": z(), "ramp_cap": z(), "ramp_start": z(), "yaw_c": z(),  # 0914 공중 응답 기준 시험용 요 감쇠 [Nm·s/rad] (기본 0 = 종전 동일)   # 0912 준정적 롤 토크 램프 [Nm/s, Nm, s] (실물 준정적 이탈 재현용)
-              "tp_d": z(), "tp_kp": z(), "tp_kd": z()}   # 0913 앞뒤 2점 현수: 후크 간격 d [m](0=끔), 피치 구속 강성/감쇠 — 토크 cap = T·d/2 (줄은 당기기만)
+              "tp_d": z(), "tp_kp": z(), "tp_kd": z(),
+              # 0921 G7 외란 스케줄(에피소드당 최대 K 회): kind 0=없음 1=지속 램프 2=순간 충격; 방향은 월드 xy 단위벡터
+              "dst_kind": torch.zeros(N, _DST_K, device=dev), "dst_t0": torch.zeros(N, _DST_K, device=dev), "dst_rise": torch.ones(N, _DST_K, device=dev),
+              "dst_hold": torch.zeros(N, _DST_K, device=dev), "dst_F": torch.zeros(N, _DST_K, device=dev), "dst_dir": torch.zeros(N, _DST_K, 2, device=dev),
+              "dst_F_now": z(), "dst_last_end": torch.full((N,), -1.0, device=dev), "dst_pending": torch.zeros(N, device=dev), "dst_quiet_run": z(), "dst_bonus": z()}   # 0913 앞뒤 2점 현수: 후크 간격 d [m](0=끔), 피치 구속 강성/감쇠 — 토크 cap = T·d/2 (줄은 당기기만)
         env._hang = st
     return st
 
@@ -169,6 +176,175 @@ def _apply(env, st, ids, asset_cfg):
     asset.permanent_wrench_composer.add_forces_and_torques(
         forces=None, torques=tau.unsqueeze(1), positions=None,
         body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
+    # 0921 G7: 외란(지속 램프·순간 충격) — 월드 수평 힘을 base 로컬로 변환해 더한다(is_global 미작동 확인 0920)
+    Fd = _dist_force_w(st, ids)                                     # (n,2) 월드 xy [N]
+    st["dst_F_now"][ids] = Fd.norm(dim=-1)
+    if bool((st["dst_F_now"][ids] > 0.0).any()):
+        Fd3 = torch.cat([Fd, torch.zeros_like(Fd[:, :1])], dim=-1)
+        Fd_b = _quat_inv(asset.data.root_quat_w[ids], Fd3)
+        asset.permanent_wrench_composer.add_forces_and_torques(
+            forces=Fd_b.unsqueeze(1), torques=None, positions=None,
+            body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
+
+
+def _dist_profile(t, kind, t0, rise, hold):
+    """외란 크기 배율 0~1 (텐서, broadcast). kind1 램프: t0 부터 rise 동안 0→1, hold 동안 1, 그 뒤 0. kind2 충격: t0 부터 hold 동안 1."""
+    dt = t - t0
+    ramp = (dt / rise.clamp(min=1e-3)).clamp(0.0, 1.0)
+    in_ramp = (kind == 1) & (dt >= 0.0) & (dt < rise + hold)
+    in_imp = (kind == 2) & (dt >= 0.0) & (dt < hold)
+    return torch.where(in_ramp, ramp, torch.zeros_like(ramp)) + in_imp.to(ramp.dtype)
+
+
+def _dist_force_w(st, ids):
+    """(n,2) 월드 xy 힘 = Σ_k F_k · profile_k(t) · dir_k."""
+    t = st["t"][ids].unsqueeze(1)
+    prof = _dist_profile(t, st["dst_kind"][ids], st["dst_t0"][ids], st["dst_rise"][ids], st["dst_hold"][ids])   # (n,K)
+    return ((st["dst_F"][ids] * prof).unsqueeze(-1) * st["dst_dir"][ids]).sum(1)
+
+
+def _dist_end_time(st):
+    """(N,K) 각 외란의 종료 시각."""
+    return st["dst_t0"] + torch.where(st["dst_kind"] == 1, st["dst_rise"] + st["dst_hold"], st["dst_hold"])
+
+
+def disturbance_reset(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), gap_range=(3.0, 7.0), ramp_prob=0.6,
+                      F_ramp_range=(3.0, 20.0), rise_range=(1.0, 4.0), hold_range=(1.0, 3.0),
+                      F_imp_range=(5.0, 30.0), dur_imp_range=(0.2, 0.4), lateral_prob=0.3, lateral_scale=0.6,
+                      p_active=1.0, asset_cfg=None):
+    """mode="reset": 에피소드마다 외란 스케줄을 뽑는다 (승윤님 0920: 지속 외력·느린 균형 상실·앞뒤 회복 스텝).
+    방향은 스폰 시점 몸통 앞축(월드) 기준 앞/뒤(확률 1−lateral_prob) 또는 좌/우(힘 ×lateral_scale). 값은 전부 [가정]."""
+    asset_cfg = asset_cfg or _base_cfg()
+    st = _state(env)
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    n = len(ids); dev = env.device; K = _DST_K
+    def U(lo, hi, shape=(n, K)):
+        return torch.empty(*shape, device=dev).uniform_(float(lo), float(hi))
+    cnt = torch.randint(int(n_range[0]), int(n_range[1]) + 1, (n,), device=dev)
+    active = (torch.rand(n, device=dev) < float(p_active))
+    slot = torch.arange(K, device=dev).unsqueeze(0)
+    on = (slot < cnt.unsqueeze(1)) & active.unsqueeze(1)
+    is_ramp = torch.rand(n, K, device=dev) < float(ramp_prob)
+    kind = torch.where(on, torch.where(is_ramp, torch.ones_like(slot, dtype=torch.float32).expand(n, K), 2.0 * torch.ones(n, K, device=dev)), torch.zeros(n, K, device=dev))
+    rise = U(*rise_range); hold = torch.where(is_ramp, U(*hold_range), U(*dur_imp_range))
+    F = torch.where(is_ramp, U(*F_ramp_range), U(*F_imp_range))
+    # 시각: 첫 외란 t0, 다음은 이전 종료 + gap
+    dur = torch.where(is_ramp, rise + hold, hold)
+    t0 = torch.zeros(n, K, device=dev); t0[:, 0] = U(*t0_range, (n,))
+    for k in range(1, K):
+        t0[:, k] = t0[:, k - 1] + dur[:, k - 1] + U(*gap_range, (n,))
+    # 방향: 몸통 +x(앞) 월드 수평
+    asset = env.scene[asset_cfg.name]
+    q = asset.data.root_quat_w[ids]
+    ex = torch.zeros(n, 3, device=dev); ex[:, 0] = 1.0
+    fw = _quat_apply(q, ex)[:, :2]; fw = fw / fw.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+    lf = torch.stack([-fw[:, 1], fw[:, 0]], dim=-1)
+    lat = torch.rand(n, K, device=dev) < float(lateral_prob)
+    sgn = torch.where(torch.rand(n, K, device=dev) < 0.5, -1.0, 1.0)
+    d = torch.where(lat.unsqueeze(-1), lf.unsqueeze(1).expand(n, K, 2), fw.unsqueeze(1).expand(n, K, 2)) * sgn.unsqueeze(-1)
+    F = torch.where(lat, F * float(lateral_scale), F)
+    st["dst_kind"][ids] = kind; st["dst_t0"][ids] = t0; st["dst_rise"][ids] = rise; st["dst_hold"][ids] = hold
+    st["dst_F"][ids] = F; st["dst_dir"][ids] = d
+    st["dst_F_now"][ids] = 0.0; st["dst_last_end"][ids] = -1.0; st["dst_pending"][ids] = 0.0; st["dst_quiet_run"][ids] = 0.0; st["dst_bonus"][ids] = 0.0
+
+
+def _quat_apply(q, v):
+    """(n,4) wxyz × (n,3) → (n,3) (Isaac 없이도 돌도록 자체 구현)."""
+    w, x, y, z = q[:, 0:1], q[:, 1:2], q[:, 2:3], q[:, 3:4]
+    t = 2.0 * torch.cross(torch.cat([x, y, z], 1), v, dim=-1)
+    return v + w * t + torch.cross(torch.cat([x, y, z], 1), t, dim=-1)
+
+
+def dist_force_now(env) -> torch.Tensor:
+    """(N,) 지금 걸린 외란 힘 크기 [N] (보상·평가용, 관측 아님)."""
+    return _state(env)["dst_F_now"]
+
+
+def dist_window_mask(env, recover_s: float = 3.0) -> torch.Tensor:
+    """외란이 걸려 있거나 해제 뒤 recover_s 안이면 True — 자세·발접촉·정숙 항의 게이트(그 창에서는 스텝 허용)."""
+    st = _state(env)
+    t = st["t"].unsqueeze(1)
+    ends = _dist_end_time(st)
+    on = st["dst_kind"] > 0
+    started = on & (t >= st["dst_t0"])
+    recent = (started & (t < ends + float(recover_s))).any(1)
+    return recent
+
+
+def _resolve_nested(env, params):
+    """래핑된 항의 params 안 SceneEntityCfg 는 매니저가 못 푼다(최상위만 resolve) → 여기서 한 번 resolve."""
+    if params is None:
+        return {}
+    if not params.get("_resolved", False):
+        for k, v in list(params.items()):
+            if SceneEntityCfg is not None and isinstance(v, SceneEntityCfg):
+                v.resolve(env.scene)
+        params["_resolved"] = True
+    return {k: v for k, v in params.items() if k != "_resolved"}
+
+
+def rest_gated(env, func, recover_s: float = 3.0, params: dict | None = None) -> torch.Tensor:
+    """기존 보상 항 func 를 '외란 창 밖(정지 구간)' 에서만 적용. 스텝이 필요한 창에서는 자세·발 들기 벌점이 0."""
+    val = func(env, **_resolve_nested(env, params))
+    return val * (~dist_window_mask(env, recover_s)).to(val.dtype)
+
+
+def window_gated(env, func, recover_s: float = 3.0, params: dict | None = None) -> torch.Tensor:
+    """func 를 외란 창 안에서만 적용(예: 창 안에서 약한 action-rate)."""
+    val = func(env, **_resolve_nested(env, params))
+    return val * dist_window_mask(env, recover_s).to(val.dtype)
+
+
+def recovery_bonus(env, recover_s: float = 6.0, quiet_s: float = 0.5, s_ang: float = 0.15, s_lin: float = 0.05, s_jvel: float = 0.3,
+                   sensor_cfg=None, threshold: float = 5.0, asset_cfg=None) -> torch.Tensor:
+    """외란 해제 뒤 recover_s 안에 quiet_s 연속으로 '조용히 서기'(양발 접촉·|ω|<s_ang·|v|<s_lin·관절속도RMS<s_jvel)에 도달하면
+    1 회성 보너스 1.0 (승윤님 0920: 성공 = 단순 생존이 아니라 외란 해제 후 다시 조용히 서는 것). 매 스텝 0/1."""
+    st = _state(env)
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    sensor_cfg = sensor_cfg or _feet_cfg()
+    f = env.scene.sensors[sensor_cfg.name].data.net_forces_w[:, sensor_cfg.body_ids, :]
+    both = (torch.norm(f, dim=-1) > threshold).all(dim=1)
+    w = asset.data.root_ang_vel_b[:, :2].norm(dim=1); v = asset.data.root_lin_vel_b[:, :2].norm(dim=1)
+    qd = asset.data.joint_vel.pow(2).mean(1).sqrt()
+    quiet = both & (w < s_ang) & (v < s_lin) & (qd < s_jvel)
+    t = st["t"]
+    # 외란 종료 감지: 어느 슬롯이든 end 가 지금 스텝 안에 들어오면 pending 시작
+    ends = _dist_end_time(st); on = st["dst_kind"] > 0
+    just_ended = (on & (ends > t.unsqueeze(1) - env.step_dt) & (ends <= t.unsqueeze(1))).any(1)
+    st["dst_pending"] = torch.where(just_ended, torch.ones_like(t), st["dst_pending"])
+    st["dst_last_end"] = torch.where(just_ended, t, st["dst_last_end"])
+    active = (st["dst_F_now"] > 0.0)
+    st["dst_quiet_run"] = torch.where(quiet & ~active, st["dst_quiet_run"] + env.step_dt, torch.zeros_like(t))
+    pend = st["dst_pending"] > 0.5
+    hit = pend & (st["dst_quiet_run"] >= quiet_s) & ((t - st["dst_last_end"]) <= recover_s)
+    expired = pend & ((t - st["dst_last_end"]) > recover_s)
+    st["dst_pending"] = torch.where(hit | expired, torch.zeros_like(t), st["dst_pending"])
+    st["dst_bonus"] = hit.to(torch.float32)
+    return st["dst_bonus"]
+
+
+def set_joint_limits_from_config(env, env_ids, config_path: str, asset_cfg=None, physics: str = "hard", soft: str = "soft", joints: str = ".*_ankle_f_joint"):
+    """mode="startup": 배포 config(config/joint_limits_12dof.json, limits_deg[joint] = soft_min/soft_max/hard_min/hard_max)에서
+    관절 한계를 읽어 물리 한계(기본 hard)와 soft 한계(벌점·명령 클램프 기준, 기본 soft)를 시뮬에 쓴다 — 승윤님 0920 '발목 한계는
+    실제 검증 범위와 먼저 맞춰줘'. USD 에 구운 구값(발목앞뒤 ±30°)을 덮어쓴다. 명시된 관절만 바꾼다."""
+    import json
+    asset_cfg = asset_cfg or _base_cfg()
+    asset = env.scene[asset_cfg.name]
+    d = json.load(open(config_path, encoding="utf-8")); lim = d.get("limits_deg", d)
+    import re as _re
+    names = list(asset.joint_names)
+    ids = [k for k, n in enumerate(names) if n in lim and _re.fullmatch(joints, n)]
+    if not ids:
+        return
+    N = asset.data.joint_pos_limits.shape[0]
+    hard = torch.stack([torch.tensor([math.radians(lim[names[k]][f"{physics}_min"]), math.radians(lim[names[k]][f"{physics}_max"])]) for k in ids]).to(env.device)
+    softl = torch.stack([torch.tensor([math.radians(lim[names[k]][f"{soft}_min"]), math.radians(lim[names[k]][f"{soft}_max"])]) for k in ids]).to(env.device)
+    asset.write_joint_position_limit_to_sim(hard.unsqueeze(0).expand(N, -1, -1).clone(), joint_ids=ids, warn_limit_violation=False)
+    asset.data.soft_joint_pos_limits[:, ids, :] = softl.unsqueeze(0)
+    env._joint_limits_from_config = {names[k]: (float(lim[names[k]][f"{soft}_min"]), float(lim[names[k]][f"{soft}_max"]), float(lim[names[k]][f"{physics}_min"]), float(lim[names[k]][f"{physics}_max"])) for k in ids}
+    mask = torch.zeros(len(names), dtype=torch.bool, device=env.device); mask[ids] = True
+    env._soft_clamp_mask = mask      # 액션 항 clamp_to_soft_limits 는 이 관절들만 자른다(그 외 관절은 USD soft(0.9×) 로 자르면 기본자세를 깨뜨릴 수 있음)
+    print("[limits] config →", {n: v for n, v in env._joint_limits_from_config.items()})
 
 
 def _support_gone_mask(st):

@@ -82,6 +82,13 @@ env_cfg.seed = agent_cfg.seed
 if args_cli.seed is not None:
     env_cfg.seed = int(args_cli.seed); agent_cfg.seed = int(args_cli.seed)
 env_cfg.events.push_robot = None                     # 외란은 이 스크립트가 동일하게 건다
+if getattr(env_cfg.events, "disturbance", None) is not None:      # G7: env 자체 외란 스케줄 끔(평가 외란은 --dist 로만)
+    env_cfg.events.disturbance = None
+for _k in ("onset_hold_range", "onset_blend_range"):              # G7: env 온셋 인계 끔(이 스크립트의 홀드→체인 인계가 절차)
+    if hasattr(env_cfg.actions.joint_pos, _k):
+        setattr(env_cfg.actions.joint_pos, _k, (0.0, 0.0))
+if hasattr(env_cfg.actions.joint_pos, "lpf_beta_range") and not args_cli.no_chain:
+    env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)         # 필터는 배포 체인 1개만
 _hp = env_cfg.events.hang_support_reset.params
 assert float(_hp["r0_range"][1]) <= 1e-6, f"지면 절차 평가는 지지 0 태스크에서만 (r0_range={_hp['r0_range']})"
 if args_cli.nominal:

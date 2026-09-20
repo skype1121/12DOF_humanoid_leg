@@ -46,6 +46,7 @@ p.add_argument("--knee_kp_scale", type=float, default=1.0, help="무릎 관절�
 p.add_argument("--ankle_play_deg", type=float, default=0.0, help="발목앞뒤 관절 기계 유격 반폭 [deg] — DeadzoneImplicit(유격 안 강성 0, kd 유지). 0919 실측 발목 대역 ~8° → 반폭 4")
 p.add_argument("--knee_play_deg", type=float, default=0.0, help="무릎 관절 기계 유격 반폭 [deg]")
 p.add_argument("--ankle_coulomb", type=float, default=0.0, help="발목앞뒤 유격 안 쿨롱 마찰 토크 [Nm] (DeadzoneCoulombImplicit; --ankle_play_deg 와 함께)")
+p.add_argument("--ankle_coulomb_v0", type=float, default=0.05, help="쿨롱 tanh 속도 스케일 [rad/s] (기본 0.05; 작을수록 정지마찰에 가까움 — tanh 모델은 v=0 에서 마찰 0 이라 정적 하중을 못 버티고 크리프한다)")
 p.add_argument("--push_seq", type=str, default="", help="밀기 에뮬레이션 'b:2.0:80:0.3,f:5.0:80:0.3' = (방향 b/f, 시작 s, 힘 N, 지속 s) base 링크에 수평력")
 p.add_argument("--drop_mm", type=float, default=5.0)
 p.add_argument("--pitch_jitter_deg", type=float, default=1.0)
@@ -165,7 +166,7 @@ if a.ankle_play_deg > 0 or a.knee_play_deg > 0:
         if play > 0:
             if nm == "ankle_f_play" and a.ankle_coulomb > 0:
                 acts[nm] = DeadzoneCoulombImplicitActuatorCfg(joint_names_expr=[sub], effort_limit_sim=base.effort_limit_sim, velocity_limit_sim=base.velocity_limit_sim,
-                                                              stiffness=base.stiffness, damping=base.damping, armature=base.armature, play_rad=math.radians(play), coulomb_nm=a.ankle_coulomb)
+                                                              stiffness=base.stiffness, damping=base.damping, armature=base.armature, play_rad=math.radians(play), coulomb_nm=a.ankle_coulomb, coulomb_v0=a.ankle_coulomb_v0)
             else:
                 acts[nm] = DeadzoneImplicitActuatorCfg(joint_names_expr=[sub], effort_limit_sim=base.effort_limit_sim, velocity_limit_sim=base.velocity_limit_sim,
                                                        stiffness=base.stiffness, damping=base.damping, armature=base.armature, play_rad=math.radians(play))
@@ -296,14 +297,20 @@ with torch.inference_mode():
         for tok in [t for t in a.push_seq.split(",") if t.strip()]:
             d, t0, fN, dur = tok.split(":"); pushes.append((d.strip(), float(t0), float(fN), float(dur)))
         base_id = bn.index("base") if "base" in bn else 0
-        fwd_axis_w = torch.tensor([0.0, -1.0, 0.0], device=dev)     # 학습 월드 전방 = −Y
+        # 0920 정정: 종전 '월드 −Y' 를 로컬 프레임 호출(set_external_force_and_torque 기본)에 넘겨 실제로는 몸통 −y(횡) 방향으로 밀었다.
+        # 이제 몸통 +x(앞, projected_gravity x>0 = 앞 기울임 규약) 를 매 스텝 월드로 변환해 is_global=True 로 건다.
+        _ex_b = torch.tensor([1.0, 0.0, 0.0], device=dev)
         for i in range(steps):
             tnow = i * dt_ctrl; fvec = torch.zeros(N, 1, 3, device=dev)
+            if pushes:
+                fwd_w = mu.quat_apply(robot.data.root_quat_w, _ex_b.unsqueeze(0).expand(N, 3)); fwd_w[:, 2] = 0.0
+                fwd_w = fwd_w / fwd_w.norm(dim=-1, keepdim=True).clamp(min=1e-6)
             for d, t0, fN, dur in pushes:
                 if t0 <= tnow < t0 + dur:
-                    fvec[:, 0, :] += (fwd_axis_w if d == "f" else -fwd_axis_w) * fN
+                    fvec[:, 0, :] += (fwd_w if d == "f" else -fwd_w) * fN
             if pushes:
-                robot.set_external_force_and_torque(fvec, torch.zeros_like(fvec), body_ids=[base_id])
+                fvec_b = mu.quat_apply_inverse(robot.data.root_quat_w, fvec[:, 0, :]).unsqueeze(1)   # 0920: is_global 미작동 확인 → 직접 로컬 변환
+                robot.set_external_force_and_torque(fvec_b, torch.zeros_like(fvec_b), body_ids=[base_id])
             env.step(act)
             pt, rl = pitch_roll_deg()
             h = robot.data.root_pos_w[:, 2] - u.scene.env_origins[:, 2]

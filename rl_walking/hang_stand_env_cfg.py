@@ -1121,3 +1121,21 @@ class Biped12HangStandG4EnvCfg(Biped12HangStandG3EnvCfg):
 @configclass
 class Biped12HangStandG4HoldEnvCfg(Biped12HangStandG4EnvCfg):
     """G4 대조군(평가용)."""
+
+
+@configclass
+class Biped12HangStandG5EnvCfg(Biped12HangStandG4EnvCfg):
+    """G5 (0920 낮, 탐색용): G4 와 같되 **지지 0 만**(무개입 자립 상태에서 정책 시작 = 승윤님 확정 절차) — 커리큘럼 없는 대조군. 스크래치."""
+
+    r0_range = (0.0, 0.0)
+    hold_range = (0.1, 0.1)
+    release_range = (0.1, 0.2)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.hang_support_reset.params.update({"r0_range": (0.0, 0.0), "hold_range": (0.1, 0.1), "release_range": (0.1, 0.2)})
+
+
+@configclass
+class Biped12HangStandG5HoldEnvCfg(Biped12HangStandG5EnvCfg):
+    """G5 대조군(평가용)."""

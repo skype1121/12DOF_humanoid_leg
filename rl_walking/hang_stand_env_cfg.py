@@ -1139,3 +1139,36 @@ class Biped12HangStandG5EnvCfg(Biped12HangStandG4EnvCfg):
 @configclass
 class Biped12HangStandG5HoldEnvCfg(Biped12HangStandG5EnvCfg):
     """G5 대조군(평가용)."""
+
+
+@configclass
+class Biped12HangStandG6EnvCfg(Biped12HangStandG5EnvCfg):
+    """G6 (0920 오후, 탐색용): G5(지지 0·엔코더 관측·유격 발목) + **실측 대역으로 좁힌 DR** + 홀드 사전(러너 init_noise_std 0.25).
+    승윤님 지적(0920): 정답 동작(홀드)을 아는데 6000회 실패면 정합을 강제로 올리자. 상속된 광대역 DR 이 측정과 충돌하던 항목:
+    actuator kp 0.3~1.1(실측 정적 kp150 부합) → 0.85~1.1 · base_com x −8~0 cm(뒤 CoM 가정) → ±2 cm · add_mass 0~2 kg → 0~0.5 ·
+    effort_scale 0.6~1.0 → 제거 · calib_bias 관절 ±3°/발목 ±4°(관측·명령측 영점) → ±1° (물리 편향은 default_pose_bias 가 담당) ·
+    reset_robot_joints ±5.7° → ±1.1° · 스폰 롤 ±4° → ±2°. 푸시(0.25 m/s)·마찰·지연 3~8틱은 유지(실물에 있는 불확실성)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev = self.events
+        ev.actuator_gains.params["stiffness_distribution_params"] = (0.85, 1.1)
+        ev.actuator_gains.params["damping_distribution_params"] = (0.8, 1.2)
+        if getattr(ev, "base_com", None) is not None:
+            ev.base_com.params["com_range"] = {"x": (-0.02, 0.02), "y": (-0.01, 0.01), "z": (0.0, 0.05)}
+        if getattr(ev, "add_base_mass", None) is not None:
+            ev.add_base_mass.params["mass_distribution_params"] = (0.0, 0.5)
+        if getattr(ev, "effort_scale", None) is not None:
+            ev.effort_scale = None
+        if getattr(ev, "calib_bias", None) is not None:
+            for k in ("joint_bias_rad", "ankle_bias_rad", "knee_bias_rad"):
+                if k in ev.calib_bias.params and ev.calib_bias.params[k] is not None:
+                    ev.calib_bias.params[k] = (-0.0175, 0.0175)
+        if getattr(ev, "reset_robot_joints", None):
+            ev.reset_robot_joints.params["position_range"] = (-0.02, 0.02)
+        ev.reset_base.params["pose_range"]["roll"] = (-0.035, 0.035)
+
+
+@configclass
+class Biped12HangStandG6HoldEnvCfg(Biped12HangStandG6EnvCfg):
+    """G6 대조군(평가용)."""

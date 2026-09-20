@@ -75,3 +75,14 @@ class Biped12Stage4PPORunnerCfg(Biped12FlatPPORunnerCfg):
             data_augmentation_func="rl_walking.symmetry:mirror_biped12",
         ),
     )
+
+
+@configclass
+class Biped12Stage4PPOHoldPriorRunnerCfg(Biped12Stage4PPORunnerCfg):
+    """0920 G6: '정답 동작 = 홀드(액션 0)' 에서 출발 — 초기 행동 노이즈 std 1.0 → 0.25 (액션 스케일 0.25 rad × 1.0 = ±14° 무작위 명령이
+    kp150 에서 첫 스텝부터 서기를 무너뜨림). 나머지 PPO·대칭 손실 동일."""
+
+    def __post_init__(self):
+        if hasattr(super(), "__post_init__"):
+            super().__post_init__()
+        self.policy.init_noise_std = 0.25

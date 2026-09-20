@@ -532,3 +532,15 @@ for _stage in ("S1", "S2", "S3", "S1r", "S2r", "S3r", "S4m", "S5s", "S5k", "S5u"
             "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPORunnerCfg",
         },
     )
+
+# 0920 G6: 홀드 사전 러너(init_noise_std 0.25) + 실측 대역 DR
+for _stage in ("G6", "G6Hold"):
+    gym.register(
+        id=f"Biped12-HangStand-{_stage}-v0",
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"rl_walking.hang_stand_env_cfg:Biped12HangStand{_stage}EnvCfg",
+            "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPOHoldPriorRunnerCfg",
+        },
+    )

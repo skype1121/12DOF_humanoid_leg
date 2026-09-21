@@ -177,7 +177,7 @@ _DEF = robot.data.default_joint_pos.clone()      # 홀드 명령각(env 기본�
 _ASCALE = 0.25
 _term = uenv.action_manager.get_term("joint_pos")
 _orig_process = _term.process_actions
-_chain = None; _chain_on = [False]; _LAST_CMD = [None]
+_chain = None; _chain_on = [False]; _LAST_CMD = [None]; _LAST_RAW = [None]
 use_chain = (policy is not None) and (not args_cli.no_chain)
 chain_desc = "없음(홀드)" if policy is None else ("없음(env 원생 액션)" if args_cli.no_chain else "")
 if use_chain:
@@ -192,6 +192,7 @@ if use_chain:
                   f"{args_cli.blend_s if args_cli.blend_s is not None else BLEND_S}s (출발 = 홀드 명령각)")
 
     def _hooked(a):
+        _LAST_RAW[0] = _DEF + _ASCALE * a          # 정책이 '요청' 한 관절 목표(체인·클램프 통과 전)
         if not _chain_on[0]:
             _orig_process(a); _LAST_CMD[0] = _term.processed_actions.clone(); return
         out = _chain.step(a)
@@ -201,6 +202,7 @@ if use_chain:
     _term.process_actions = _hooked
 else:
     def _hooked2(a):
+        _LAST_RAW[0] = _DEF + _ASCALE * a
         _orig_process(a); _LAST_CMD[0] = _term.processed_actions.clone()
     _term.process_actions = _hooked2
 
@@ -265,6 +267,16 @@ d_fell = torch.zeros(N, D, dtype=torch.bool, device=dev); d_lift = torch.zeros(N
 d_trec = torch.full((N, D), float("nan"), device=dev); d_pmax = torch.zeros(N, D, device=dev); d_alive0 = torch.zeros(N, D, dtype=torch.bool, device=dev)
 d_quiet_run = torch.zeros(N, D, device=dev)
 # 정지 구간(외란 없음, 블렌딩+2 s 뒤) 지표
+# 0921 스텝 지표 분해(승윤님): 이륙 · 이동 · 재접촉 · 하중 지지 · 회복 성공을 따로, 실패한 시도도 남긴다
+st_air = torch.zeros(N, 2, dtype=torch.bool, device=dev)       # 발별 공중 여부
+st_t0 = torch.zeros(N, 2, device=dev); st_f0 = torch.zeros(N, 2, device=dev)
+st_alive0 = torch.zeros(N, 2, dtype=torch.bool, device=dev)
+st_land_t = torch.full((N, 2), -1.0, device=dev)               # 재접촉 시각(하중 관측용)
+st_load_sum = torch.zeros(N, 2, device=dev); st_load_n = torch.zeros(N, 2, device=dev)
+n_takeoff = torch.zeros(N, device=dev); n_surv_takeoff = torch.zeros(N, device=dev)
+n_land = torch.zeros(N, device=dev); n_load = torch.zeros(N, device=dev)
+sw_travel = torch.zeros(N, device=dev); sw_n = torch.zeros(N, device=dev)
+BW = 17.62 * 9.81
 q_n = torch.zeros(N, device=dev); q_lift = torch.zeros(N, device=dev); q_ar2 = torch.zeros(N, device=dev); q_rev = torch.zeros(N, device=dev)
 q_w = torch.zeros(N, device=dev); q_qd2 = torch.zeros(N, device=dev); q_p2 = torch.zeros(N, device=dev); q_pm = torch.zeros(N, device=dev)
 # 인계 뒤 전체: 한계 근접·포화
@@ -357,6 +369,26 @@ for i in range(STEPS):
     lift = (a_ & ever_both & prev_both & ~both).float()
     lift_total += lift
     quiet = a_ & both & (w_xy < QUIET_W) & (v_xy < QUIET_V) & (qd_rms < QUIET_QD)
+    if i >= STEPS_PRE:      # ── 스텝 단계 집계 ──
+        _fw = _dir_vec("f"); _fp = robot.data.body_pos_w[:, _FT, :2] - robot.data.root_pos_w[:, None, :2]
+        _ffwd = (_fp * _fw[:, None, :2]).sum(-1)               # (N,2) 발-골반 앞축 거리
+        for c in (0, 1):
+            off = a_ & ever_both & ~st_air[:, c] & ~contact[:, c]
+            st_air[off, c] = True; st_t0[off, c] = t_rel; st_f0[off, c] = _ffwd[off, c]; st_alive0[off, c] = True
+            n_takeoff += off.float()
+            on = a_ & st_air[:, c] & contact[:, c]
+            st_air[on, c] = False; st_land_t[on, c] = t_rel; st_load_sum[on, c] = 0.0; st_load_n[on, c] = 0.0
+            n_land += on.float()
+            sw_travel[on] += (_ffwd[on, c] - st_f0[on, c]); sw_n += on.float()
+            # 생존 이륙: 이륙 후 0.3 s 이상 살아 있음(낙상 부수 접촉상실과 구분)
+            surv = a_ & st_alive0[:, c] & ((t_rel - st_t0[:, c]) >= 0.3)
+            n_surv_takeoff += surv.float(); st_alive0[surv, c] = False
+            # 재접촉 후 0.3 s 하중 적분
+            win = a_ & (st_land_t[:, c] >= 0) & ((t_rel - st_land_t[:, c]) <= 0.3)
+            st_load_sum[win, c] += f[win, c]; st_load_n[win, c] += 1.0
+            done = a_ & (st_land_t[:, c] >= 0) & ((t_rel - st_land_t[:, c]) > 0.3) & (st_load_n[:, c] > 0)
+            ok = done & ((st_load_sum[:, c] / st_load_n[:, c].clamp(min=1)) >= 0.3 * BW)
+            n_load += ok.float(); st_land_t[done, c] = -1.0
     if i < STEPS_PRE:
         if i == STEPS_PRE - 1 and len(_bi) == 8:            # 링크 기울기(수직 기준, + = 아래쪽 끝이 앞): 실물 폰 수평계(허벅지/정강이/발등)와 같은 정의
             _fw = _dir_vec("f"); _pw = robot.data.body_pos_w
@@ -424,6 +456,8 @@ for i in range(STEPS):
             _ft["v_fwd"] = round(float((robot.data.root_lin_vel_w[k, :2] * _fwd_k[:2]).sum()), 4)
             _ft["base_z"] = round(float(robot.data.root_pos_w[k, 2] - uenv.scene.env_origins[k, 2]), 4)
             _ft["tau"] = [round(float(v), 2) for v in robot.data.applied_torque[k]]
+            if _LAST_RAW[0] is not None:
+                _ft["raw_deg"] = [round(math.degrees(float(_LAST_RAW[0][k, j])), 2) for j in range(J)]
             _ft["eff"] = [round(float(v), 1) for v in _eff[k]]
             fh.write(json.dumps({"t": round(i / 50.0, 3), "t_rel": round(t_rel, 3), "phase": "hold" if i < STEPS_PRE else ("policy" if policy is not None else "hold_cont"), "force_N": f_now, **_ft,
                                  "force_w": [round(float(v), 2) for v in fvec[k, 0]], "fwd_w": [round(float(v), 3) for v in _fwd_k[:2]], "root_xy": [round(float(v), 4) for v in robot.data.root_pos_w[k, :2]],
@@ -502,6 +536,10 @@ for k, d in enumerate(dists):
     exp = {"b": "골반 −앞·피치 −(뒤로 기움)", "f": "골반 +앞·피치 +", "l": "롤 +(왼)", "r": "롤 −"}[d.dir]
     ok = {"b": (dx.mean() < 0) and (dp.mean() < 0), "f": (dx.mean() > 0) and (dp.mean() > 0), "l": drl.mean() > 0, "r": drl.mean() < 0}[d.dir]
     P(f"[방향 검증] 외란 {k+1} [{d.label()}] 힘 창 동안(env 평균): 골반 앞축 이동 {100*float(dx.mean()):+.1f} cm · Δ피치 {float(dp.mean()):+.2f}° · Δ롤 {float(drl.mean()):+.2f}° — 기대 {exp} → {'일치' if ok else '불일치!'}")
+_tk = int(n_takeoff.sum()); _sv = int(n_surv_takeoff.sum()); _ld = int(n_land.sum()); _lo = int(n_load.sum())
+P(f"[스텝 단계 분해] 이륙 {_tk}회 → 생존 이륙(0.3 s 이상 생존) {_sv} → 재접촉 {_ld} → 하중 지지(0.3 s 평균 ≥30 % 체중) {_lo}"
+  + (f" · 재접촉한 발의 앞축 이동 평균 {100*float(sw_travel.sum()/sw_n.sum().clamp(min=1)):+.1f} cm" if float(sw_n.sum()) > 0 else "")
+  + f" · 실패한 시도(이륙했으나 재접촉 못 함) {_tk - _ld}")
 P("시간축 (인계 기준 s | 생존 env 평균 피치 | 생존 비율 | 외란 힘 N | 양발접촉 비율):")
 for t, p_, al, fN, bc in pitch_tl:
     P(f"   {t:6.1f}  {p_:+6.2f}  {al:5.2f}  {fN:5.0f}  {bc:5.2f}")

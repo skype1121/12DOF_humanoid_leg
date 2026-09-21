@@ -535,7 +535,8 @@ for _stage in ("S1", "S2", "S3", "S1r", "S2r", "S3r", "S4m", "S5s", "S5k", "S5u"
 
 # 0920 G6: 홀드 사전 러너(init_noise_std 0.25) + 실측 대역 DR
 for _stage in ("G6", "G6Hold", "G7", "G7Hold",    # 0921 G7: 지속 외력·회복 스텝(같은 홀드 사전 러너)
-                "G8", "G8a", "G8b", "G8c", "G8d", "G8Hold"):   # 0921 G8: 회복 보너스·상태 게이트 수정 + 분리 실험
+                "G8", "G8a", "G8b", "G8c", "G8d", "G8Hold",   # 0921 G8: 회복 보너스·상태 게이트 수정 + 분리 실험
+                "G9", "G9Hold"):                              # 0921 G9: 무릎 밴드 보상 게이트 단일 변경
     gym.register(
         id=f"Biped12-HangStand-{_stage}-v0",
         entry_point="isaaclab.envs:ManagerBasedRLEnv",

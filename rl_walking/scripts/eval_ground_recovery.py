@@ -45,6 +45,7 @@ parser.add_argument("--dist", type=str, default="", help="외란 목록 ';' 구�
 parser.add_argument("--recover_s", type=float, default=6.0, help="외란 종료 뒤 회복 판정 창 [s]")
 parser.add_argument("--tilt_pitch_deg", type=float, default=0.0, help="스폰 몸통 피치 [deg, +앞] (기울어진 초기조건)")
 parser.add_argument("--tilt_roll_deg", type=float, default=0.0)
+parser.add_argument("--cmd_deadband_deg", type=float, default=0.0, help="배포 체인 출력 뒤 명령 데드밴드 [deg]: 직전 명령 대비 변화가 이보다 작으면 명령을 바꾸지 않는다(정숙용 배포측 레버, 학습 변경 없음)")
 parser.add_argument("--freeze_after", type=float, default=None, help="인계 기준 이 시각[s] 이후 **정책 출력 전체를 고정**(마지막 액션 유지) — 흔들림이 명령에서 오는지 플랜트에서 오는지 가르는 대조군")
 parser.add_argument("--dump_envs", type=int, default=0)
 parser.add_argument("--out_tag", type=str, default="rec")
@@ -177,7 +178,7 @@ _DEF = robot.data.default_joint_pos.clone()      # 홀드 명령각(env 기본�
 _ASCALE = 0.25
 _term = uenv.action_manager.get_term("joint_pos")
 _orig_process = _term.process_actions
-_chain = None; _chain_on = [False]; _LAST_CMD = [None]; _LAST_RAW = [None]
+_chain = None; _chain_on = [False]; _LAST_CMD = [None]; _LAST_RAW = [None]; _DB_PREV = [None]
 use_chain = (policy is not None) and (not args_cli.no_chain)
 chain_desc = "없음(홀드)" if policy is None else ("없음(env 원생 액션)" if args_cli.no_chain else "")
 if use_chain:
@@ -196,6 +197,13 @@ if use_chain:
         if not _chain_on[0]:
             _orig_process(a); _LAST_CMD[0] = _term.processed_actions.clone(); return
         out = _chain.step(a)
+        if args_cli.cmd_deadband_deg > 0.0:
+            _db = math.radians(args_cli.cmd_deadband_deg)
+            if _DB_PREV[0] is None:
+                _DB_PREV[0] = out.clone()
+            else:
+                _DB_PREV[0] = torch.where((out - _DB_PREV[0]).abs() >= _db, out, _DB_PREV[0])
+            out = _DB_PREV[0]
         _LAST_CMD[0] = out.clone()
         _orig_process((out - _DEF) / _ASCALE)
         _term._raw_actions[:] = a          # 정책 '이전 액션' 관측은 원생 출력(브리지와 동일)

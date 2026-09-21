@@ -1310,3 +1310,26 @@ class Biped12HangStandG8dEnvCfg(Biped12HangStandG8EnvCfg):
 @configclass
 class Biped12HangStandG8HoldEnvCfg(Biped12HangStandG8EnvCfg):
     """G8 대조군(평가용)."""
+
+
+@configclass
+class Biped12HangStandG9EnvCfg(Biped12HangStandG8EnvCfg):
+    """G9 (0921 밤, 분리 실험): **G8 에서 `knee_stance_flexion` 만 회복 게이트에 추가**. 그 외 전부 G8 과 동일.
+
+    근거(§10.3): G8 에서 게이트되지 않는 보상 중 `knee_stance_flexion` 이 +1.27 로 전체 최대 양의 항이며 무릎을
+    34~60° 크라우치 밴드에 묶는다. 앞 스텝은 스윙 무릎을 밴드 밖으로 굽혀야 해 충돌하고, 뒤 스텝은 크라우치를
+    유지한 채 발을 끌 수 있어 충돌이 적다(§10.1: 뒤쪽 보폭 −14 cm 를 밴드 안에서 달성).
+    → 균형을 잃은 동안에만 밴드 강제를 푼다. 정지 구간에서는 그대로 유지(크라우치 자세 계약 불변).
+    골반 종료 완화·스텝 단계 보상 추가는 이번에 넣지 않는다(승윤님 보류 지시)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = getattr(self.rewards, "knee_stance_flexion", None)
+        assert t is not None and t.func is not mdp_hang.state_gated, "G8 에서 이미 게이트된 항이면 단일 변경이 아니다"
+        self.rewards.knee_stance_flexion = RewTerm(func=mdp_hang.state_gated, weight=t.weight,
+                                                   params={"func": t.func, "params": dict(t.params or {})})
+
+
+@configclass
+class Biped12HangStandG9HoldEnvCfg(Biped12HangStandG9EnvCfg):
+    """G9 대조군(평가용)."""

@@ -242,6 +242,14 @@ CHECKPOINTS = {
     # stand_crouch_v1c (0918 새벽): v1b 에서 +12000it 계속 학습(같은 S9c).
     "stand_crouch_v1c": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-18_02-52-27_s9c3/exported"),
+    # stand_crouch_v5 (0921 밤, G9 = G8 + knee_stance_flexion 회복게이트 단일 변경, models/stand_crouch_v5):
+    #   **기본자세가 실물 v5 스탠바이(힙 ±30.26·무릎 ∓38.50·발목 ±28.00)와 일치하는 첫 등록 정책.**
+    #   기존 stand_crouch_v1* 는 _CROUCH_V1_POSE(힙 15.00)라 인수 순간 '힙을 15° 펴라' 가 되어 0918 실물 stand 낙상을 만들었다.
+    #   판정(reports/gen_g6/RECOVERY_EVAL_0920.md §12, 3 seed 384 시행 명목): 앞20N 22/384 · 느린앞 140/384 · 뒤20N 229/384 ·
+    #   느린뒤 106/384 (G6-4500 대비 +5.7/+9.9/+17.4/+26.0 %p), 무외란 인계 뒤 생존 128/128, 목 루프(v5) PASS 램프 6틱·28.9°.
+    #   약점: 무외란 정지 도달 0/128(평상시 잔움직임), 앞쪽 스텝 미생성(버티기 회복).
+    "stand_crouch_v5": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-09-21_20-30-32_g9/exported"),
     # stand_crouch_v2 (0918 저녁, S9d, models/stand_crouch_v2) — **등록 보류**: 기본자세 = 실물 v4 명령 + 무릎 직렬 처짐 편향 DR.
     # 시뮬 명목 94.5 % 이나 목 센서 500틱(IMU 무반응) 시험에서 기본자세 출발도 슬루 최대로 발산(틱 34 비유한) → 공중·줄 고정
     # 몸통에서 관절 폭주 위험. 정책 500틱 selftest 는 등록된 stand_* 전부를 순회하므로 등록 자체가 prep 게이트를 막는다.
@@ -258,11 +266,17 @@ _CROUCH_V1_POSE = {
     "left_ankle_r_joint": 0.0, "right_ankle_r_joint": 0.0,
 }
 #: 0918 저녁 v4 (rl_walking.hang_stand_env_cfg.CROUCH_V4_DEFAULT_RAD 와 동일; stand_crouch_v2 재등록 시 CKPT_DEFAULT_POSE 에 연결)
+#: 실물 v5 스탠바이 자세(jetson/calib_data/level_pose_0918.json 의 trims)와 동일 — G 계열(S9c 이후) 학습 기본자세.
+#: 인수 블렌딩이 홀드 명령에서 정책 목표로 넘어가므로 이 값이 실물 자세와 다르면 인수 순간 자세 이동 명령이 된다(0918 낙상).
+_CROUCH_V5_POSE = dict(_CROUCH_V1_POSE, left_hip_f_joint=0.5282, right_hip_f_joint=-0.5282,
+                       left_knee_joint=-0.6720, right_knee_joint=0.6720,
+                       left_ankle_f_joint=0.4887, right_ankle_f_joint=-0.4887)
 _CROUCH_V4_POSE = dict(_CROUCH_V1_POSE, left_hip_f_joint=0.4538, right_hip_f_joint=-0.4538)   # 힙 ±26°
 CKPT_DEFAULT_POSE = {
     "stand_crouch_v1": [float(_CROUCH_V1_POSE[j]) for j in JOINT_ORDER],   # 러너가 np.float32 로 변환
     "stand_crouch_v1b": [float(_CROUCH_V1_POSE[j]) for j in JOINT_ORDER],
     "stand_crouch_v1c": [float(_CROUCH_V1_POSE[j]) for j in JOINT_ORDER],
+    "stand_crouch_v5": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
 }
 
 
@@ -274,7 +288,7 @@ def ckpt_default_pose(checkpoint):
 #: 위상 어긋난 관측 → 보행 파괴). 미등록 = 1.4 (기존 가족 전체의 계약).
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
-CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
+CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
                    "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1, "stand_hang_v1": 1.1, "stand_hang_v2": 1.1, "stand_hang_v3": 1.1, "stand_hang_v4": 1.1, "stand_hang_v5": 1.1, "stand_hang_v5p": 1.1, "stand_hang_v6": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 #: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).

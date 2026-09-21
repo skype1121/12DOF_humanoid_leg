@@ -1,0 +1,16 @@
+{
+  "name": "stand_crouch_v5",
+  "run": "2026-09-21_20-30-32_g9",
+  "checkpoint": "model_5700.pt",
+  "checkpoint_md5": "b87a88dcd5252b9b6f6de410028938f1",
+  "task": "Biped12-HangStand-G9-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "G6 2026-09-20_15-06-59_g6/model_4500 (4000 it)",
+  "default_pose": "CROUCH_V5 = 실물 v5 스탠바이(힙 ±30.26 · 무릎 ∓38.50 · 발목 ±28.00) — 브리지 기존 등록분(_CROUCH_V1_POSE 힙 15)과 달리 실물과 일치",
+  "summary": "G9 = G8 + knee_stance_flexion 회복게이트 단일 변경. 3 seed 384 시행 명목: 앞20N 22/384·느린앞 140/384·뒤20N 229/384·느린뒤 106/384 (G6 대비 +5.7/+9.9/+17.4/+26.0 %p). 무외란 생존 128/128, 목루프 v5 PASS(램프 6틱). 약점: 무외란 정지 도달 0/128. 판정 reports/gen_g6/RECOVERY_EVAL_0920.md §12",
+  "legacy": false,
+  "files": {
+    "policy.pt": "8ce14bf17c033850550cf7a5e0199809",
+    "policy.onnx": "aefc0477256bbcacf952bf877191f9df"
+  }
+}

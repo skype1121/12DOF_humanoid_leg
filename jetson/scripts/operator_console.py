@@ -757,7 +757,24 @@ def poll_processes():
         # Hold the runner lock only during the short ownership comparison.
         with RUN.lock:
             owned = {p.p.pid for p in RUN.procs.values()}
-        external = [int(v) for v in result.stdout.split() if v.isdigit() and int(v) not in owned | {os.getpid()}]
+        cand = [int(v) for v in result.stdout.split() if v.isdigit() and int(v) not in owned | {os.getpid()}]
+        # 0921: **읽기 전용 호출만** 외부 제어에서 뺀다. 그 외는 전부 남긴다(fail closed).
+        #   사고: robotctl motors 가 Ctrl+Z/터미널 종료로 멈추면 자식 zero_anchor.py --preview(읽기 전용)가 T 상태로 남고,
+        #   콘솔이 이를 외부 제어로 세어 강제 초기화(force_reset)가 영구히 막혔다(토크는 이미 없는 상태였다).
+        #   --preview/--json 은 zero_anchor 가 자체적으로 쓰기를 차단하는 모드라 CAN 송신이 없다.
+        #   ※ 정지(T) 상태는 제외하지 않는다 — 멈춘 stage8 은 모터가 마지막 명령(토크)을 물고 있을 수 있다.
+        #   ※ /proc 을 못 읽으면 남긴다(확인 못 한 것을 안전하다고 보지 않는다).
+        external = []
+        for pid in cand:
+            try:
+                with open(f"/proc/{pid}/cmdline", "rb") as fh:
+                    cmd = fh.read().decode("utf-8", "replace").replace("\0", " ")
+            except OSError:
+                external.append(pid)          # 확인 불가 → 보수적으로 제어 프로세스로 간주
+                continue
+            if "zero_anchor.py" in cmd and ("--preview" in cmd or "--json" in cmd) and "--write" not in cmd:
+                continue                      # 읽기 전용 미리보기 — 송신 없음
+            external.append(pid)
         health = {"ts": now(), "external": external, "error": None}
     except (OSError, subprocess.SubprocessError) as exc:
         health = {"ts": now(), "external": [], "error": str(exc)}

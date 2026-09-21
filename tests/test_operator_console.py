@@ -508,3 +508,28 @@ class ConsoleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_poll_processes_excludes_readonly_preview_only():
+    """0921 사고: 정지한 robotctl motors 의 자식 zero_anchor --preview(읽기 전용)가 '외부 제어' 로 잡혀
+    강제 초기화가 영구히 막혔다. 읽기 전용 미리보기만 제외하고, 정지(T) 제어 프로세스와 확인 불가 PID 는 남긴다."""
+    import io
+    from unittest.mock import Mock, patch
+
+    fake = {111: "/usr/bin/python3 /x/zero_anchor.py --preview --json",   # 읽기 전용 → 제외
+            222: "/usr/bin/python3 /x/stage8_12axis_mit_control_node.py",  # 정지여도 남김(토크 물고 있을 수 있음)
+            333: "/usr/bin/python3 /x/zero_anchor.py --write"}             # 쓰기 → 남김
+    real_open = open
+
+    def fake_open(path, mode="rb", *a, **kw):
+        if isinstance(path, str) and path.startswith("/proc/"):
+            pid = int(path.split("/")[2])
+            if pid not in fake:
+                raise OSError("no such pid")
+            return io.BytesIO(fake[pid].replace(" ", "\0").encode())
+        return real_open(path, mode, *a, **kw)
+
+    with patch.object(c.subprocess, "run", return_value=Mock(returncode=0, stdout="111 222 333 999\n")), \
+         patch("builtins.open", fake_open):
+        c.poll_processes()
+    assert sorted(c.PROCESS_HEALTH["external"]) == [222, 333, 999], c.PROCESS_HEALTH["external"]

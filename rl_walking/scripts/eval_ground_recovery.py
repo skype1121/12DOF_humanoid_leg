@@ -45,6 +45,7 @@ parser.add_argument("--dist", type=str, default="", help="외란 목록 ';' 구�
 parser.add_argument("--recover_s", type=float, default=6.0, help="외란 종료 뒤 회복 판정 창 [s]")
 parser.add_argument("--tilt_pitch_deg", type=float, default=0.0, help="스폰 몸통 피치 [deg, +앞] (기울어진 초기조건)")
 parser.add_argument("--tilt_roll_deg", type=float, default=0.0)
+parser.add_argument("--freeze_after", type=float, default=None, help="인계 기준 이 시각[s] 이후 **정책 출력 전체를 고정**(마지막 액션 유지) — 흔들림이 명령에서 오는지 플랜트에서 오는지 가르는 대조군")
 parser.add_argument("--dump_envs", type=int, default=0)
 parser.add_argument("--out_tag", type=str, default="rec")
 parser.add_argument("--video", action="store_true", help="측면 카메라 프레임(10 Hz)·mp4 저장 + 힘 화살표 주석 (env --video_env)")
@@ -240,6 +241,8 @@ _fl = next(i for i, n in enumerate(_cbn) if n.startswith("left_ankle_r")); _fr =
 jn = list(robot.data.joint_names); J = len(jn)
 _eff = robot.data.joint_effort_limits
 _lim = robot.data.soft_joint_pos_limits            # (N,J,2)
+_rb = list(robot.data.body_names)
+_FT = [_rb.index("left_ankle_r_joint"), _rb.index("right_ankle_r_joint")]   # 발 링크(스텝 계측용)
 _ank = [k for k, n in enumerate(jn) if "ankle_f" in n]
 STEPS_PRE = int(round(T_pre * 50)); STEPS = STEPS_PRE + int(round(T_after * 50))
 _blend_ticks = int(round((args_cli.blend_s if args_cli.blend_s is not None else 1.5) * 50)) if use_chain else 0
@@ -308,7 +311,7 @@ if args_cli.video:
             dr.line((cx, cy + 40, cx + rx, cy + 40), fill=(255, 60, 60), width=6); dr.text((cx + rx * 1.15 - 30, cy + 32), "PUSH", fill=(255, 60, 60))
         im.save(os.path.join(_vdir, f"f{_VID['n']:05d}.png")); _VID["n"] += 1
 _bi = {k: _bn.index(k) for k in ("left_hip_f_joint", "left_knee_joint", "left_ankle_f_joint", "left_ankle_r_joint", "right_hip_f_joint", "right_knee_joint", "right_ankle_f_joint", "right_ankle_r_joint") if k in _bn}
-prev_a = None; prev_cmd = None; prev_dcmd = None
+prev_a = None; prev_cmd = None; prev_dcmd = None; _FROZEN = [None]
 pitch_tl = []; force_tl = []
 _DUMP = []
 if args_cli.dump_envs > 0:
@@ -335,6 +338,10 @@ for i in range(STEPS):
         robot.set_external_force_and_torque(fvec_b, torch.zeros_like(fvec_b), body_ids=[_base_id])
     with torch.inference_mode():
         a = torch.zeros(N, J, device=dev) if (policy is None or i < STEPS_PRE) else policy(obs)
+        if args_cli.freeze_after is not None and policy is not None and t_rel >= args_cli.freeze_after:
+            if _FROZEN[0] is None:
+                _FROZEN[0] = a.clone(); print(f"[freeze] t_rel={t_rel:.2f}s 정책 출력 고정", flush=True)
+            a = _FROZEN[0]
         obs, _, dones, _ = env.step(a)
     term = uenv.termination_manager.terminated
     pitch, roll = _rp()
@@ -404,7 +411,21 @@ for i in range(STEPS):
     for k, fh in enumerate(_DUMP):
         if bool(alive[k]):
             _fwd_k = _dir_vec("f")[k]
-            fh.write(json.dumps({"t": round(i / 50.0, 3), "t_rel": round(t_rel, 3), "phase": "hold" if i < STEPS_PRE else ("policy" if policy is not None else "hold_cont"), "force_N": f_now,
+            # 스텝 계측: 발-골반 상대 위치를 몸통 앞축/좌축에 투영 [m], 발별 수직 접촉력 [N], 골반 전진 속도
+            _rp_k = robot.data.root_pos_w[k]
+            _lf_k = torch.tensor([-float(_fwd_k[1]), float(_fwd_k[0])], device=dev)
+            _ft = {}
+            for _nm, _fbi in (("L", _FT[0]), ("R", _FT[1])):      # 0921: 변수명 _bi 는 상단 링크 기울기용 dict 와 충돌 → _fbi
+                _rel = robot.data.body_pos_w[k, _fbi, :2] - _rp_k[:2]
+                _ft[f"foot_fwd_{_nm}"] = round(float((_rel * _fwd_k[:2]).sum()), 4)
+                _ft[f"foot_lat_{_nm}"] = round(float((_rel * _lf_k).sum()), 4)
+            _fz = _cs.data.net_forces_w[k, [_fl, _fr], 2]
+            _ft["fz_L"] = round(float(_fz[0]), 1); _ft["fz_R"] = round(float(_fz[1]), 1)
+            _ft["v_fwd"] = round(float((robot.data.root_lin_vel_w[k, :2] * _fwd_k[:2]).sum()), 4)
+            _ft["base_z"] = round(float(robot.data.root_pos_w[k, 2] - uenv.scene.env_origins[k, 2]), 4)
+            _ft["tau"] = [round(float(v), 2) for v in robot.data.applied_torque[k]]
+            _ft["eff"] = [round(float(v), 1) for v in _eff[k]]
+            fh.write(json.dumps({"t": round(i / 50.0, 3), "t_rel": round(t_rel, 3), "phase": "hold" if i < STEPS_PRE else ("policy" if policy is not None else "hold_cont"), "force_N": f_now, **_ft,
                                  "force_w": [round(float(v), 2) for v in fvec[k, 0]], "fwd_w": [round(float(v), 3) for v in _fwd_k[:2]], "root_xy": [round(float(v), 4) for v in robot.data.root_pos_w[k, :2]],
                                  "pitch": round(float(pitch[k]), 3), "roll": round(float(roll[k]), 3),
                                  "cmd_deg": [round(math.degrees(float(cmd[k, j])), 2) for j in range(J)],

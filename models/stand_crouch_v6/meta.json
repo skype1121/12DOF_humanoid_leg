@@ -1,0 +1,16 @@
+{
+  "name": "stand_crouch_v6",
+  "run": "2026-09-22_13-32-53_g10",
+  "checkpoint": "model_6600.pt",
+  "checkpoint_md5": "1fc6955642c868137f47ebef9c560368",
+  "task": "Biped12-HangStand-G10-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "G9 2026-09-21_20-30-32_g9/model_5700 (stand_crouch_v5)",
+  "default_pose": "CROUCH_V5 = 실물 v5 스탠바이(힙 ±30.26·무릎 ∓38.50·발목 ±28.00)",
+  "summary": "G10 = G9 + 명령 기준 관절 한계 벌점(action_limit_excess −5.0). 0922 실물 2회 낙상 기전(발목 명령 56.7° > 소프트 한계 39° windup) 대응. 학습 중 cmd_limit_excess −0.125→−0.072 로 절반 감소. **독립 평가 없이 배포**(승윤님 지시, 2시 점검) — 시뮬 판정 미실시.",
+  "legacy": false,
+  "files": {
+    "policy.pt": "238a62a02771aa22decaa365861e2a48",
+    "policy.onnx": "43c4c3c76e0c5e613dadf7a27e30f21b"
+  }
+}

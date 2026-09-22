@@ -436,6 +436,26 @@ def recovery_bonus(env, recover_s: float = 6.0, quiet_s: float = 0.5, s_ang: flo
     return st["dst_bonus"]
 
 
+def action_limit_excess(env, action_term: str = "joint_pos", asset_cfg=None) -> torch.Tensor:
+    """정책이 **요청한** 관절 목표가 소프트 한계를 넘은 양의 합 [rad] (N,).
+
+    0922 실물 2회차: 발목 명령이 56.7° 까지 갔다(소프트 한계 39°). stage8 이 잘라 줘서 관절은 38° 에 박혔고,
+    정책은 한계 밖을 계속 요청하며 감겼다(windup) → 접지 상실 → 낙상.
+    기존 `dof_pos_limits` 벌점은 **실측 관절각** 기준이라 명령이 한계를 넘어도 0 이다 — 그래서 학습이 이를 막지 못했다.
+    이 항은 클램프 **전** 요청값을 본다(target = offset + scale × raw_action)."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    term = env.action_manager.get_term(action_term)
+    raw = term.raw_actions
+    off = getattr(term, "_offset", None)
+    scale = getattr(term, "_scale", None)
+    if off is None or scale is None:
+        return torch.zeros(raw.shape[0], device=raw.device)
+    tgt = off + scale * raw
+    lim = asset.data.soft_joint_pos_limits[:, term._joint_ids, :] if hasattr(term, "_joint_ids") else asset.data.soft_joint_pos_limits
+    over = (tgt - lim[..., 1]).clamp(min=0.0) + (lim[..., 0] - tgt).clamp(min=0.0)
+    return over.sum(dim=1)
+
+
 def set_joint_limits_from_config(env, env_ids, config_path: str, asset_cfg=None, physics: str = "hard", soft: str = "soft", joints: str = ".*_ankle_f_joint"):
     """mode="startup": 배포 config(config/joint_limits_12dof.json, limits_deg[joint] = soft_min/soft_max/hard_min/hard_max)에서
     관절 한계를 읽어 물리 한계(기본 hard)와 soft 한계(벌점·명령 클램프 기준, 기본 soft)를 시뮬에 쓴다 — 승윤님 0920 '발목 한계는

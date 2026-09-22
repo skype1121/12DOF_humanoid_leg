@@ -41,6 +41,9 @@ parser.add_argument("--lpf_beta", type=float, default=None)
 parser.add_argument("--blend_s", type=float, default=None)
 parser.add_argument("--blend_offset_deg", type=str, default="", help="인계 **출발 자세**를 정책 기본자세에서 이만큼 띄운다 'hip:2.4,knee:0.9,ankle:3.9' (좌우 거울). 0922 실물 1회차: 홀드 명령이 정책 기본보다 발목 +3.87°·힙 +2.40/−2.81°·무릎 +0.89/−1.72° 높았고, 블렌딩이 그만큼 자세를 내리며 몸이 앞으로 기울었다")
 parser.add_argument("--slew_deg", type=float, default=None)
+parser.add_argument("--ankle_play_deg", type=float, default=None, help="발목앞뒤 유격 반폭 고정 [deg] (0919 실측 대역 ~8° → 반폭 4). 실물 발산 재현 스윕용")
+parser.add_argument("--ankle_coulomb", type=float, default=None, help="발목앞뒤 쿨롱 마찰 [Nm] 고정")
+parser.add_argument("--ankle_kp_scale", type=float, default=None, help="발목앞뒤 kp 배율 (명령→몸 응답 이득 저하 재현)")
 parser.add_argument("--delay_steps", type=str, default=None, help="액션 지연 lo,hi [틱] (기본: 명목 4,4 / DR 학습 대역)")
 parser.add_argument("--dist", type=str, default="", help="외란 목록 ';' 구분, 시각은 인계 기준 [s]")
 parser.add_argument("--recover_s", type=float, default=6.0, help="외란 종료 뒤 회복 판정 창 [s]")
@@ -103,7 +106,11 @@ if args_cli.nominal:
         ev.reset_robot_joints.params["position_range"] = (0.0, 0.0)
     ev.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
     ev.actuator_gains.params["damping_distribution_params"] = (1.0, 1.0)
-    env_cfg.actions.joint_pos.min_delay_steps = 4; env_cfg.actions.joint_pos.max_delay_steps = 4
+    # 0922 정정: 명목 지연을 4틱으로 고정해 온 것은 **실물보다 낙관적**이었다.
+    #   실측 루프지연(0911 realdata_model_id §5): 중앙 6.3틱 · IQR 5.7~7.0 · p95 8.9.
+    #   지연 스윕에서 발목 명령 최대가 4틱 34.4° → 9틱 51.6° 로 단조 증가하고, 실물 2회차 56.7° 는 9~11틱 구간이다.
+    #   → 명목 = 실측 중앙 6틱. 강건성 판정은 --delay_steps 9,9(p95)로 따로 본다.
+    env_cfg.actions.joint_pos.min_delay_steps = 6; env_cfg.actions.joint_pos.max_delay_steps = 6
     if hasattr(env_cfg.actions.joint_pos, "lpf_beta_range"): env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)
     if hasattr(env_cfg.actions.joint_pos, "backlash_rad_range"): env_cfg.actions.joint_pos.backlash_rad_range = (0.0, 0.0)
     if getattr(ev, "base_com", None):
@@ -144,6 +151,26 @@ if args_cli.nominal:
                 _a.coulomb_nm = ({k: v * _cc for k, v in _a.coulomb_nm.items()} if isinstance(_a.coulomb_nm, dict) else float(_a.coulomb_nm) * _cc)
         else:
             _a.play_rad_range = None; _a.play_rad = 0.0
+# 0922 실물 재현 스윕: 발목 유격·쿨롱·kp (명목 고정값으로 덮어씀)
+if args_cli.ankle_play_deg is not None or args_cli.ankle_coulomb is not None:
+    from rl_walking.actuators_play import DeadzoneCoulombImplicitActuatorCfg as _DZC2
+    for _k, _a in list(env_cfg.scene.robot.actuators.items()):
+        if not isinstance(_a, _DZC2):
+            continue
+        _a.play_rad_range = None; _a.coulomb_range = None
+        if args_cli.ankle_play_deg is not None:
+            _a.play_rad = math.radians(float(args_cli.ankle_play_deg))
+        if args_cli.ankle_coulomb is not None:
+            _a.coulomb_nm = float(args_cli.ankle_coulomb)
+        print(f"[plant] {_k}: 유격 {_a.play_rad} rad · 쿨롱 {_a.coulomb_nm} Nm (고정)")
+if args_cli.ankle_kp_scale is not None:
+    for _k, _a in list(env_cfg.scene.robot.actuators.items()):
+        _ex = _a.joint_names_expr if isinstance(_a.joint_names_expr, (list, tuple)) else [_a.joint_names_expr]
+        if any("ankle_f" in e for e in _ex):
+            _st = _a.stiffness
+            _a.stiffness = ({k2: v2 * args_cli.ankle_kp_scale for k2, v2 in _st.items()} if isinstance(_st, dict)
+                            else float(_st) * args_cli.ankle_kp_scale)
+            print(f"[plant] {_k}: 발목 kp ×{args_cli.ankle_kp_scale} → {_a.stiffness}")
 if args_cli.com_fix is not None and getattr(env_cfg.events, "base_com", None):
     env_cfg.events.base_com.params["com_range"]["x"] = (float(args_cli.com_fix), float(args_cli.com_fix))
 if args_cli.delay_steps:
@@ -296,6 +323,8 @@ n_takeoff = torch.zeros(N, device=dev); n_surv_takeoff = torch.zeros(N, device=d
 n_land = torch.zeros(N, device=dev); n_load = torch.zeros(N, device=dev)
 sw_travel = torch.zeros(N, device=dev); sw_n = torch.zeros(N, device=dev)
 BW = 17.62 * 9.81
+ank_err_sum = torch.zeros(N, device=dev); ank_err_max = torch.zeros(N, device=dev)
+ank_cmd_max = torch.zeros(N, device=dev); ank_over = torch.zeros(N, device=dev); ank_n = torch.zeros(N, device=dev)
 q_n = torch.zeros(N, device=dev); q_lift = torch.zeros(N, device=dev); q_ar2 = torch.zeros(N, device=dev); q_rev = torch.zeros(N, device=dev)
 q_w = torch.zeros(N, device=dev); q_qd2 = torch.zeros(N, device=dev); q_p2 = torch.zeros(N, device=dev); q_pm = torch.zeros(N, device=dev)
 # 인계 뒤 전체: 한계 근접·포화
@@ -389,6 +418,13 @@ for i in range(STEPS):
     lift = (a_ & ever_both & prev_both & ~both).float()
     lift_total += lift
     quiet = a_ & both & (w_xy < QUIET_W) & (v_xy < QUIET_V) & (qd_rms < QUIET_QD)
+    if i >= STEPS_PRE:      # ── 발목 명령 통계(실물 대조) ──
+        _ac = torch.rad2deg(cmd[:, _ank]).abs().max(1).values
+        _ae2 = (torch.rad2deg(cmd[:, _ank] - robot.data.joint_pos[:, _ank])).abs().max(1).values
+        ank_err_sum[a_] += _ae2[a_]; ank_err_max = torch.maximum(ank_err_max, _ae2 * a_.float())
+        ank_cmd_max = torch.maximum(ank_cmd_max, _ac * a_.float())
+        _lim_hi = torch.rad2deg(_lim[:, _ank, 1]).abs().min(1).values
+        ank_over[a_] += (_ac[a_] > _lim_hi[a_]).float(); ank_n[a_] += 1.0
     if i >= STEPS_PRE:      # ── 스텝 단계 집계 ──
         _fw = _dir_vec("f"); _fp = robot.data.body_pos_w[:, _FT, :2] - robot.data.root_pos_w[:, None, :2]
         _ffwd = (_fp * _fw[:, None, :2]).sum(-1)               # (N,2) 발-골반 앞축 거리
@@ -556,6 +592,11 @@ for k, d in enumerate(dists):
     exp = {"b": "골반 −앞·피치 −(뒤로 기움)", "f": "골반 +앞·피치 +", "l": "롤 +(왼)", "r": "롤 −"}[d.dir]
     ok = {"b": (dx.mean() < 0) and (dp.mean() < 0), "f": (dx.mean() > 0) and (dp.mean() > 0), "l": drl.mean() > 0, "r": drl.mean() < 0}[d.dir]
     P(f"[방향 검증] 외란 {k+1} [{d.label()}] 힘 창 동안(env 평균): 골반 앞축 이동 {100*float(dx.mean()):+.1f} cm · Δ피치 {float(dp.mean()):+.2f}° · Δ롤 {float(drl.mean()):+.2f}° — 기대 {exp} → {'일치' if ok else '불일치!'}")
+if float(ank_n.sum()) > 0:
+    _ae = (ank_err_sum / ank_n).mean(); _amax = float(ank_cmd_max.max()); _emax = float(ank_err_max.max())
+    P(f"[발목 명령] |명령−실측| 평균 {float(_ae):.1f}° · env 최대 {_emax:.1f}° · |명령| 최대 {_amax:.1f}° · "
+      f"소프트 한계 초과 틱 {100*float(ank_over.sum()/ank_n.sum()):.1f} %   "
+      f"(0922 실물 2회차: 평균 7.3 · 최대 28.3 · 명령 최대 56.7 · 한계 클램프 43회)")
 _tk = int(n_takeoff.sum()); _sv = int(n_surv_takeoff.sum()); _ld = int(n_land.sum()); _lo = int(n_load.sum())
 P(f"[스텝 단계 분해] 이륙 {_tk}회 → 생존 이륙(0.3 s 이상 생존) {_sv} → 재접촉 {_ld} → 하중 지지(0.3 s 평균 ≥30 % 체중) {_lo}"
   + (f" · 재접촉한 발의 앞축 이동 평균 {100*float(sw_travel.sum()/sw_n.sum().clamp(min=1)):+.1f} cm" if float(sw_n.sum()) > 0 else "")

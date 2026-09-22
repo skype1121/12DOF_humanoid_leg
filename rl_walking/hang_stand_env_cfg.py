@@ -1333,3 +1333,21 @@ class Biped12HangStandG9EnvCfg(Biped12HangStandG8EnvCfg):
 @configclass
 class Biped12HangStandG9HoldEnvCfg(Biped12HangStandG9EnvCfg):
     """G9 대조군(평가용)."""
+
+
+@configclass
+class Biped12HangStandG10EnvCfg(Biped12HangStandG9EnvCfg):
+    """G10 (0922): **G9 + 명령 기준 관절 한계 벌점** 단일 변경. 그 외 전부 G9 와 동일.
+
+    근거(reports/real_0922): 실물 2회차에서 발목 **명령**이 56.7° (소프트 한계 39°)까지 갔다. stage8 클램프가 잘라
+    관절은 38° 에 박히고 정책은 한계 밖을 계속 요청하며 감겼다 → 접지 상실 → 낙상. 시뮬 지연 스윕에서 같은 서명이
+    지연 9~11틱(실측 p95 8.9)에서 재현된다. 기존 `dof_pos_limits` 는 실측 관절각 기준이라 이 요청을 벌하지 못한다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.cmd_limit_excess = RewTerm(func=mdp_hang.action_limit_excess, weight=-5.0)
+
+
+@configclass
+class Biped12HangStandG10HoldEnvCfg(Biped12HangStandG10EnvCfg):
+    """G10 대조군(평가용)."""

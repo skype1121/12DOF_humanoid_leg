@@ -1,0 +1,28 @@
+12:03:23 [FrameMap] 하드웨어맵: /home/mama/humanoid_repo/config/robot_12dof_hardware_map.json
+12:03:23 [FrameMap] IMU 장착 편향 보정 lat +1.30° fwd -0.60° (정책 중력벡터에만 적용)
+12:03:23 [PASS] 하드웨어맵: 12/12 검증 통과 (/home/mama/humanoid_repo/config/robot_12dof_hardware_map.json) — direction(JOINT_ORDER순)=[1, 1, -1, -1, 1, 1, -1, -1, 1, 1, 1, -1], |SZ|max=42.50°
+12:03:23 [PASS] 온셋 블렌딩: 스무스스텝 롤백경로 정상 + 기본경로 α≡1 (BLEND_S=1.5s, 인수 슬루는 stage8 4°/틱)
+12:03:23 [PASS] stand LPF: EMA beta=0.27: 5Hz 이득 0.45<0.5 / 0.5Hz 0.98>0.9 / 무점프 초기화·수렴 OK
+12:03:23 [FrameMap] 하드웨어맵: /home/mama/humanoid_repo/config/robot_12dof_hardware_map.json
+12:03:23 [FrameMap] IMU 장착 편향 보정 lat +1.30° fwd -0.60° (정책 중력벡터에만 적용)
+12:03:23 [PASS] 왕복 항등: 관절→모터→관절 항등 12관절×7각 OK (최대 오차 1.1e-16 rad)
+12:03:23 [FrameMap] 하드웨어맵: /home/mama/humanoid_repo/config/robot_12dof_hardware_map.json
+12:03:23 [FrameMap] IMU 장착 편향 보정 lat +1.30° fwd -0.60° (정책 중력벡터에만 적용)
+12:03:23 [PASS] 수치 앵커: 12/12 산출물 일치[v2(영점 상대)] + 4대 앵커(무릎±6.00/발목F±1.40) 일치 (±0.01°)
+12:03:23 [FrameMap] 하드웨어맵: /home/mama/humanoid_repo/config/robot_12dof_hardware_map.json
+12:03:23 [FrameMap] IMU 장착 편향 보정 lat +1.30° fwd -0.60° (정책 중력벡터에만 적용)
+12:03:23 [PASS] 게인 정책: 전 관절 kp150/kd5 일치
+12:03:23 [PASS] 프레임 게이트: 판정 케이스 7/7 통과
+12:03:23 [PASS] 중력 게이트: 정합 통과 · (−1,0,0) 거부 · 스테일/미수신 거부 · 15° 통과/20° 거부
+12:03:23 [PASS] IMU 장착 편향: 편향 +1.30/-0.60° 보정 → (0,0,−1) 오차 <1e-4 · +10° 기울기 → 10.00° · 한계 5.0° · 범위/타입 4종 거부 · 73° 초과 기울기 보정 생략
+12:03:23 [FrameMap] 하드웨어맵: /home/mama/humanoid_repo/config/robot_12dof_hardware_map.json
+12:03:23 [FrameMap] IMU 장착 편향 보정 lat +1.30° fwd -0.60° (정책 중력벡터에만 적용)
+12:03:23 [PASS] 롤 보정기: 키 없음 OFF(현재 맵 키 없음) · +3° 5s → +2.981° (오차 0.64%) · 변화 관절 [10, 11](ankle_r) · hip_a lr[1,−1] 열 2·3(한계 3°) · F3 접지확인 전 OFF·후 ON · 1틱 누락 불변 · 10Hz 채터 Δmax 0.100°/틱 ≤ 0.25 · 8s 해제 감쇠 +4.60°→+0.002° · 롤 40°→필터 15.0°(클램프 15°) · 클램프 ±1.0° · sign−1 -3.00° · 봉투 밖 17종 거부
+12:03:23 [PASS] 인계 워밍업: 미신선+창내 prime · 신선 완료 · 창초과 timeout · 워밍업후 정상게이트 위임
+12:03:23 [PASS] 롤/피치 기록: 직립 (0,0) · y축 10° → 피치 +10.0° 롤 -0.0° · 불량 입력 None
+12:03:23 [PASS] 발진 가드: 주기2채터 0.18s / 8Hz±3° 0.50s 트리거 / 보행·노이즈 미트리거 / 과속 즉시 — 5케이스 통과
+12:03:23 [PASS] 행잉 가드: hang_arm 없음=종전 동일(1.0s 동결) · 행잉 ARM 10s 무접촉 허용 · 접지 0.3s 확인 · 재들림 → 공중 허용 복귀(≤5회, 초과 동결) · 재들림 창 상한 재적용 · 채터/한발 고착0·1 불변 · hang_arm 아님/FREE_STAND 재들림 동결 · 상한 120s 동결 — 12케이스 통과
+12:03:23 [PASS] 학습 계약: DEFAULT_POSE 12관절·스케일 0.25·슬루 4°/틱·50Hz·default_offset 일치: stand_v18b(지연 3~6틱), stand_crouch_v5(지연 3~8틱)
+12:03:28 [PASS] 정책 500틱: 500틱 유한·슬루 준수 ×15: stand_v7 0.61ms [슬루 최대 4.00°/틱, 소프트리밋 초과 +9.4°(관절 7, Stage8 클램프 영역)]; stand_v8 0.59ms [슬루 최대 4.00°/틱, 소프트리밋 내]; stand_v9 0.61ms [슬루 최대 4.00°/틱, 소프트리밋 초과 +4.4°(관절 7, Stage8 클램프 영역)]; stand_v15 0.61ms [슬루 최대 4.00°/틱, 소프트리밋 초과 +13.8°(관절 2, Stage8 클램프 영역)]; stand_v16 0.63ms [슬루 최대 4.00°/틱, 소프트리밋 초과 +10.1°(관절 3, Stage8 클램프 영역)]; stand_v17 0.70ms [슬루 최대 4.00°/틱, 소프트리밋 
+12:03:28 selftest: ALL PASS
+[종료] 반환코드 0

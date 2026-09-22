@@ -1,0 +1,9 @@
+12:05:47 [FrameMap] 하드웨어맵: /home/mama/humanoid_repo/config/robot_12dof_hardware_map.json
+12:05:47 [FrameMap] IMU 장착 편향 보정 lat +1.30° fwd -0.60° (정책 중력벡터에만 적용)
+12:05:48 [INFO] [1790046348.166289309] [humanoid_rl_bridge]: 블랙박스 기록: /home/mama/logs/rl_bridge_20260922_120548.jsonl
+12:05:48 [INFO] [1790046348.175918850] [humanoid_rl_bridge]: RL 브리지 기동 — LIVE, checkpoint=stand_crouch_v5
+12:06:31 [INFO] [1790046391.370441165] [humanoid_rl_bridge]: 중력 정합 OK (|g−(0,0,−1)|=0.03)
+12:06:31 [INFO] [1790046391.371686863] [humanoid_rl_bridge]: RL stand 시작 ckpt=stand_crouch_v5 cmd=(0.0, 0.0, 0.0) (인계 워밍업 최대 4s)
+12:06:31 [INFO] [1790046391.376047301] [humanoid_rl_bridge]: 인계 워밍업 완료 — 관절 피드백 신선, 정책 구동 시작
+12:06:35 [WARN] [1790046395.396310321] [humanoid_rl_bridge]: STOP_ALL (lift_guard: 양발 무접촉 1.0s 지속)
+12:06:35 [ERROR] [1790046395.397325452] [humanoid_rl_bridge]: 리프트 가드 — lift_guard: 양발 무접촉 1.0s 지속. 동결 홀드. 줄·발 확인!

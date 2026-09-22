@@ -39,6 +39,7 @@ parser.add_argument("--after_s", type=float, default=20.0, help="인계 뒤 관�
 parser.add_argument("--no_chain", action="store_true", help="배포 체인 없이 env 원생 액션(학습 조건 대조)")
 parser.add_argument("--lpf_beta", type=float, default=None)
 parser.add_argument("--blend_s", type=float, default=None)
+parser.add_argument("--blend_offset_deg", type=str, default="", help="인계 **출발 자세**를 정책 기본자세에서 이만큼 띄운다 'hip:2.4,knee:0.9,ankle:3.9' (좌우 거울). 0922 실물 1회차: 홀드 명령이 정책 기본보다 발목 +3.87°·힙 +2.40/−2.81°·무릎 +0.89/−1.72° 높았고, 블렌딩이 그만큼 자세를 내리며 몸이 앞으로 기울었다")
 parser.add_argument("--slew_deg", type=float, default=None)
 parser.add_argument("--delay_steps", type=str, default=None, help="액션 지연 lo,hi [틱] (기본: 명목 4,4 / DR 학습 대역)")
 parser.add_argument("--dist", type=str, default="", help="외란 목록 ';' 구분, 시각은 인계 기준 [s]")
@@ -174,7 +175,17 @@ if not args_cli.hold:
     policy = runner.get_inference_policy(device=dev)
 
 obs = env.get_observations()
-_DEF = robot.data.default_joint_pos.clone()      # 홀드 명령각(env 기본자세, 편향 DR 반영) — 인계 출발점
+_DEF = robot.data.default_joint_pos.clone()      # 정책 기본자세(= 액션 오프셋) — 시뮬 홀드 명령각
+_BOFF = torch.zeros_like(_DEF)                  # 인계 출발 자세 오프셋(실물 홀드 명령과 정책 기본의 차이 재현)
+if args_cli.blend_offset_deg:
+    _jn_all = list(robot.data.joint_names)
+    for _tok in args_cli.blend_offset_deg.split(","):
+        _k, _v = _tok.split(":"); _r = math.radians(float(_v))
+        for _ci, _nm in enumerate(_jn_all):
+            _sgn = 1.0 if _nm.startswith("left") else -1.0
+            if (_k == "hip" and "hip_f" in _nm) or (_k == "knee" and "knee" in _nm) or (_k == "ankle" and "ankle_f" in _nm):
+                _BOFF[:, _ci] = _r * _sgn
+    print(f"[blend] 인계 출발 자세 오프셋 {args_cli.blend_offset_deg} (좌우 거울) 적용")
 _ASCALE = 0.25
 _term = uenv.action_manager.get_term("joint_pos")
 _orig_process = _term.process_actions
@@ -343,7 +354,8 @@ QUIET_W, QUIET_V, QUIET_QD, QUIET_TICKS = 0.15, 0.05, 0.30, 25
 for i in range(STEPS):
     t_rel = (i - STEPS_PRE) / 50.0                          # 인계 기준 시각
     if i == STEPS_PRE and use_chain:                        # 인계: 체인을 홀드 명령각에서 시작
-        _chain = DeployChain(_DEF, _DEF.clone(), qpos0=_DEF.clone(), stand=True, **_kw)
+        _land = _DEF + _BOFF          # 인계 출발 자세(= 실물 홀드 명령). 기본은 정책 기본자세와 동일.
+        _chain = DeployChain(_DEF, _land, qpos0=_land.clone(), stand=True, **_kw)
         _chain_on[0] = True
     # 외란 힘 (모든 env 동일)
     fvec = torch.zeros(N, 1, 3, device=dev); f_now = 0.0

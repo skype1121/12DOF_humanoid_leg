@@ -325,6 +325,7 @@ sw_travel = torch.zeros(N, device=dev); sw_n = torch.zeros(N, device=dev)
 BW = 17.62 * 9.81
 ank_err_sum = torch.zeros(N, device=dev); ank_err_max = torch.zeros(N, device=dev)
 ank_cmd_max = torch.zeros(N, device=dev); ank_over = torch.zeros(N, device=dev); ank_n = torch.zeros(N, device=dev)
+ank_over_deg = torch.zeros(N, device=dev)   # 관절별 부호 있는 소프트 한계 초과량 최대 [deg]
 q_n = torch.zeros(N, device=dev); q_lift = torch.zeros(N, device=dev); q_ar2 = torch.zeros(N, device=dev); q_rev = torch.zeros(N, device=dev)
 q_w = torch.zeros(N, device=dev); q_qd2 = torch.zeros(N, device=dev); q_p2 = torch.zeros(N, device=dev); q_pm = torch.zeros(N, device=dev)
 # 인계 뒤 전체: 한계 근접·포화
@@ -423,8 +424,15 @@ for i in range(STEPS):
         _ae2 = (torch.rad2deg(cmd[:, _ank] - robot.data.joint_pos[:, _ank])).abs().max(1).values
         ank_err_sum[a_] += _ae2[a_]; ank_err_max = torch.maximum(ank_err_max, _ae2 * a_.float())
         ank_cmd_max = torch.maximum(ank_cmd_max, _ac * a_.float())
-        _lim_hi = torch.rad2deg(_lim[:, _ank, 1]).abs().min(1).values
-        ank_over[a_] += (_ac[a_] > _lim_hi[a_]).float(); ank_n[a_] += 1.0
+        # 0922 버그 수정: |명령| 을 두 발목 soft_max 의 절대값 최소(=오른발 +18.5°)와 비교하고 있었다.
+        # 오른 발목 가동범위는 [-39.0, +18.5] 이고 실제 명령은 -28° 라 해당 경계는 soft_min 이다.
+        # 그 결과 정상 기본자세(±28°)가 매 틱 '한계 초과'로 집계됐다(gs_v6 에서 92.2 %).
+        # → 관절별 부호 있는 초과량으로 판정한다(학습 보상 action_limit_excess 와 같은 규약).
+        _cmd_ank = torch.rad2deg(cmd[:, _ank])
+        _lo_ank = torch.rad2deg(_lim[:, _ank, 0]); _hi_ank = torch.rad2deg(_lim[:, _ank, 1])
+        _ov = ((_cmd_ank - _hi_ank).clamp(min=0.0) + (_lo_ank - _cmd_ank).clamp(min=0.0)).max(1).values
+        ank_over[a_] += (_ov[a_] > 0.0).float(); ank_over_deg = torch.maximum(ank_over_deg, _ov * a_.float())
+        ank_n[a_] += 1.0
     if i >= STEPS_PRE:      # ── 스텝 단계 집계 ──
         _fw = _dir_vec("f"); _fp = robot.data.body_pos_w[:, _FT, :2] - robot.data.root_pos_w[:, None, :2]
         _ffwd = (_fp * _fw[:, None, :2]).sum(-1)               # (N,2) 발-골반 앞축 거리
@@ -595,7 +603,7 @@ for k, d in enumerate(dists):
 if float(ank_n.sum()) > 0:
     _ae = (ank_err_sum / ank_n).mean(); _amax = float(ank_cmd_max.max()); _emax = float(ank_err_max.max())
     P(f"[발목 명령] |명령−실측| 평균 {float(_ae):.1f}° · env 최대 {_emax:.1f}° · |명령| 최대 {_amax:.1f}° · "
-      f"소프트 한계 초과 틱 {100*float(ank_over.sum()/ank_n.sum()):.1f} %   "
+      f"소프트 한계 초과 틱 {100*float(ank_over.sum()/ank_n.sum()):.1f} % · 초과량 최대 {float(ank_over_deg.max()):.1f}°   "
       f"(0922 실물 2회차: 평균 7.3 · 최대 28.3 · 명령 최대 56.7 · 한계 클램프 43회)")
 _tk = int(n_takeoff.sum()); _sv = int(n_surv_takeoff.sum()); _ld = int(n_land.sum()); _lo = int(n_load.sum())
 P(f"[스텝 단계 분해] 이륙 {_tk}회 → 생존 이륙(0.3 s 이상 생존) {_sv} → 재접촉 {_ld} → 하중 지지(0.3 s 평균 ≥30 % 체중) {_lo}"

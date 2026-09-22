@@ -533,3 +533,34 @@ def test_poll_processes_excludes_readonly_preview_only():
          patch("builtins.open", fake_open):
         c.poll_processes()
     assert sorted(c.PROCESS_HEALTH["external"]) == [222, 333, 999], c.PROCESS_HEALTH["external"]
+
+
+def test_release_no_bus_completes_step_with_reason():
+    """0922: 모터 전원이 꺼지면 ACK 가 없어 release_all 송신이 전부 실패한다.
+    종전엔 이를 '실패' 로 처리해 토크 해제 단계가 영구히 막혔다(0918·0921). 이제 NO_BUS 는 사유를 남기고 단계를 넘긴다.
+    반대로 일부만 응답하는 PARTIAL 은 그대로 실패여야 한다(허브 반접촉 등 진짜 이상)."""
+    from jetson.scripts import console_state as cs
+
+    def run(verdict, rc):
+        t = cs.TrialState("stand_crouch_v5")
+        t.begin("release", 100.0)
+        t.pending["launched"] = True
+        view = {"procs": {"release": {"alive": False, "rc": rc, "release_verdict": verdict,
+                                      "release_ok": verdict == "OK", "release_error": None}},
+                "stage8": {}, "bridge": {}, "fresh": {}, "received": {}, "server_time": 101.0}
+        t.update(view)
+        return t
+
+    t = run("NO_BUS", 4)
+    assert "release" in t.completed, "NO_BUS 는 단계를 넘겨야 한다(막다른 길 금지)"
+    assert t.last_result["ok"] is True and "버스 무응답" in t.last_result["message"]
+    assert t.release_no_bus is True
+    assert "전원 차단" in t.snapshot()["owner"], t.snapshot()["owner"]
+
+    t = run("PARTIAL", 5)
+    assert "release" not in t.completed, "일부 응답은 실패로 남아야 한다"
+    assert t.last_result["ok"] is False
+
+    t = run("OK", 0)
+    assert "release" in t.completed and t.last_result["ok"] is True
+    assert not getattr(t, "release_no_bus", False)

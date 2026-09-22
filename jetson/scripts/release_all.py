@@ -220,10 +220,26 @@ def main():
                 tx(m, EXIT)
             except Exception:
                 fail += 1
-        if fail:
-            print(f"[release_all] 완료 — 송신실패 {fail}건 (버스 상태 확인!)")
-        else:
+        # 0922: 결과를 기계 판독 가능한 판정으로 구분한다. 종전엔 '송신실패 N건' 한 줄뿐이라
+        #   **모터 전원이 꺼진 경우**(응답 0/12 → ACK 없음 → 송신 전부 실패)와 **일부 모터 이상**을 구분할 수 없었고,
+        #   콘솔이 둘 다 실패로 처리해 토크 해제 단계가 영구히 막혔다(0918·0921 두 번 발생).
+        #   버스에 응답 노드가 0 이면 CAN 으로 토크를 **걸 수도 해제할 수도** 없다 — 별도 판정으로 알린다.
+        n_seen = len(pos)
+        if fail == 0:
             print("[release_all] 12모터 소프트 릴리즈+MIT 해제 완료 — 무토크")
+            print("RELEASE_VERDICT=OK seen=%d fail=0" % n_seen)
+            verdict_code = 0
+        elif n_seen == 0:
+            print(f"[release_all] 버스 무응답 — 응답 0/{len(IDS)}, 송신실패 {fail}건. "
+                  f"CAN 으로는 토크를 걸 수도 해제할 수도 없습니다(모터 전원 차단 추정). "
+                  f"전원 차단을 현장에서 확인하세요.")
+            print("RELEASE_VERDICT=NO_BUS seen=0 fail=%d" % fail)
+            verdict_code = 4
+        else:
+            print(f"[release_all] 완료 — 응답 {n_seen}/{len(IDS)}, 송신실패 {fail}건 (버스 상태 확인!)")
+            print("RELEASE_VERDICT=PARTIAL seen=%d fail=%d" % (n_seen, fail))
+            verdict_code = 5
+        globals()["VERDICT_CODE"] = verdict_code
         try:
             bus.shutdown()
         except Exception:
@@ -231,4 +247,5 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    _rc = main()
+    raise SystemExit(globals().get("VERDICT_CODE", 0) or _rc)

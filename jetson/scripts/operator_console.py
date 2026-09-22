@@ -303,6 +303,7 @@ class Proc:
         self.blackbox_path = None
         self.release_ok = False
         self.release_error = None
+        self.release_verdict = None
         self.logf = SESSION.open_proc_log(key)
         self.p = subprocess.Popen(
             argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
@@ -337,9 +338,16 @@ class Proc:
                 if self.key == "bridge" and "STOP_ALL (" in s:
                     self.fault = s[s.index("STOP_ALL ("):]
                 if self.key == "release":
-                    if "12모터 소프트 릴리즈+MIT 해제 완료" in s:
+                    # 0922: 기계 판독 판정 우선. (구) 문자열 매칭은 하위호환으로 남긴다.
+                    #   '읽기 실패' 는 오류로 보지 않는다 — 한 모터가 안 읽혀도 release_all 이 즉시 제로게인으로 처리한다.
+                    if s.startswith("RELEASE_VERDICT="):   # noqa: SIM102
+                        v = s.split("=", 1)[1].split()[0]
+                        self.release_verdict = v
+                        self.release_ok = (v == "OK")
+                        self.release_error = None if v in ("OK", "NO_BUS") else s
+                    elif "12모터 소프트 릴리즈+MIT 해제 완료" in s:
                         self.release_ok = True
-                    if "송신실패" in s or "읽기 실패" in s:
+                    elif "송신실패" in s and not getattr(self, "release_verdict", None):
                         self.release_error = s
                 if self.logf:                       # 링버퍼는 300줄에서 잘린다 —
                     try:                            # 판정 근거는 파일에 남겨야 한다
@@ -384,7 +392,8 @@ class Proc:
                 "loaded_checkpoint": self.loaded_checkpoint, "all_pass": self.all_pass,
                 "warmup": getattr(self, "warmup", None),   # 테스트는 __init__ 없이 Proc 를 만들 수 있음
                 "fault": self.fault, "started": self.started, "blackbox_path": self.blackbox_path,
-                "release_ok": self.release_ok, "release_error": self.release_error}
+                "release_ok": self.release_ok, "release_error": self.release_error,
+                "release_verdict": getattr(self, "release_verdict", None)}   # 테스트는 __init__ 없이 Proc 를 만든다
 
 
 class Runner:

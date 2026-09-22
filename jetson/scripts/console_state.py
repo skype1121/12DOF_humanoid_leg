@@ -62,6 +62,8 @@ RC_HINTS = {
         1: ("셀프테스트 FAIL 항목 있음", "로그의 [FAIL] 줄 확인(정책 등록·계약·경로)"),
     },
     "release": {
+        4: ("버스 무응답 — 응답 0/12(모터 전원 차단 추정)", "CAN 으로 토크를 걸 수도 해제할 수도 없는 상태입니다. 전원 차단을 현장에서 확인하면 단계는 자동으로 넘어갑니다"),
+        5: ("일부 모터만 응답/송신 실패", "허브 커넥터·분기 배선을 확인하고 robotctl motors 로 응답 수를 다시 보세요"),
         1: ("토크 해제 송신/피드백 오류", "모터 전원 OFF·이미 무토크면 robotctl reset, 아니면 전원 확인 뒤 재시도"),
     },
     "bridge": {
@@ -98,6 +100,7 @@ class TrialState:
         self.fault = None
         self.last_result = None
         self.support = False
+        self.release_no_bus = False
         self.stop_request_at = None
         self.stop_request_seq = -1
         self.stop_delivery = None
@@ -464,13 +467,22 @@ class TrialState:
             if action == "selftest":
                 ok = ok and proc.get("all_pass", False)
             if action == "release":
-                if not proc.get("alive") and proc.get("release_error"):
-                    return self.finish(False, "릴리즈 과정의 피드백·송신 오류 — 실제 토크 상태 확인 필요")
+                # 0922: 버스 무응답(응답 0/12)은 '실패' 가 아니라 **CAN 으로 해제할 수 없는 상태**다.
+                #   모터 전원이 꺼지면 ACK 가 없어 송신이 전부 실패하므로, 종전 로직은 토크 해제 단계를 영구히 막았고
+                #   운영자가 robotctl reset(강제 초기화)을 따로 찾아야 했다(0918·0921 두 번 발생).
+                #   CAN 으로 토크를 걸 수도 없는 상태이므로 단계는 넘기되, 사유를 남기고 실토크 현장 확인을 요구한다.
+                verdict = proc.get("release_verdict")
+                if not proc.get("alive") and verdict == "NO_BUS":
+                    self.release_no_bus = True
+                    return self.finish(True, "버스 무응답(응답 0/12) — CAN 으로 토크를 걸 수도 해제할 수도 없음. "
+                                             "모터 전원 차단을 현장에서 확인하세요")
+                if not proc.get("alive") and (proc.get("release_error") or verdict == "PARTIAL"):
+                    return self.finish(False, "일부 모터만 응답/송신 실패 — 실제 토크 상태 확인 필요")
                 ok = ok and proc.get("release_ok", False)
         if ok:
             message = "해제 명령 전송 완료 보고 · 실제 토크 상태는 현장 확인 필요" if action == "release" else "실제 응답 확인 완료"
             return self.finish(True, message)
-        if proc and not proc.get("alive") and proc.get("rc") not in (None, 0, 3):
+        if proc and not proc.get("alive") and proc.get("rc") not in (None, 0, 3) and not (action == "release" and proc.get("rc") == 4):
             return self.finish(False, explain_rc(action, proc["rc"]))
         # 0911 호환검수 R2: stand 는 브리지 인계 워밍업(최대 4 s)+블렌딩 안에 응답하므로 30 s 는 브리지발 정지를 26 s 동안 가린다
         timeout = 300 if action in ("boot_pose", "selftest", "analyze", "zero_multiple", "zero_recapture", "zero_preview", "zero_kin") else (8 if action == "stand" else 30)
@@ -482,7 +494,9 @@ class TrialState:
         fresh = self.view.get("fresh", {})
         owners = self.active_processes()
         if "release" in self.completed:
-            phase, owner = "회수 명령 완료", "토크 해제 전송 완료 보고 · 실토크 미검증"
+            phase = "회수 명령 완료"
+            owner = ("버스 무응답으로 해제 송신 불가(전원 차단 추정) · 실토크 현장 확인 필요"
+                     if getattr(self, "release_no_bus", False) else "토크 해제 전송 완료 보고 · 실토크 미검증")
         elif self.fault:
             phase, owner = "정지·상태 확인 필요", "실제 상태 확인 필요"
         elif self.measurement["state"] == "interrupted":

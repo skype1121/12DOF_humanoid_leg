@@ -1278,8 +1278,9 @@ LIFT_STOP_S = 1.0   # 0910 승윤님 지시: 0.6→1.0s (A1 3회에서 두 발 �
 HANG_MAX_S = 120.0            # 접지 없이 정책이 공중에 살아 있을 수 있는 최대 시간
 HANG_MAX_RELIFTS = 5          # 0913: 접지 뒤 재들림 → 공중 허용 복귀 허용 횟수(초과 시 종전 lift_guard 동결)
 CONTACT_CONFIRM_S = 0.3       # 양발 접촉이 이만큼 지속돼야 '접지 획득'
-HANG_BODY_WEIGHT_N = 172.9    # 정보용(FREE_STAND 표시): 0904 저울 17.62kg — 콘솔 BODY_WEIGHT_N 과 같은 값
-FREE_STAND_LOAD_FRAC = 0.8
+#: 0922: 체중 상수·발력 비율 제거. 감압 패드는 접지 여부만 판단한다.
+FREE_STAND_CONFIRM_S = 3.0    # 양발 접지가 이만큼 연속되면 FREE_STAND (그 뒤 재들림은 동결)
+
 
 
 class HangGuard:
@@ -1292,7 +1293,7 @@ class HangGuard:
     FREE_STAND = "FREE_STAND"
 
     def __init__(self, hang_mode=False, t0=None, lift_stop_s=LIFT_STOP_S, hang_max_s=HANG_MAX_S,
-                 confirm_s=CONTACT_CONFIRM_S, body_weight_n=HANG_BODY_WEIGHT_N, free_frac=FREE_STAND_LOAD_FRAC,
+                 confirm_s=CONTACT_CONFIRM_S, free_confirm_s=FREE_STAND_CONFIRM_S,
                  max_relifts=HANG_MAX_RELIFTS):
         self.hang_mode = bool(hang_mode)
         self.max_relifts = int(max_relifts)
@@ -1302,8 +1303,8 @@ class HangGuard:
         self.lift_stop_s = float(lift_stop_s)
         self.hang_max_s = float(hang_max_s)
         self.confirm_s = float(confirm_s)
-        self.body_weight_n = float(body_weight_n)
-        self.free_frac = float(free_frac)
+        self.free_confirm_s = float(free_confirm_s)
+        self.free_t0 = None
         self.nocontact_t0 = None
         self.contact_t0 = None
         self._transitions = []
@@ -1316,7 +1317,7 @@ class HangGuard:
         out, self._transitions = self._transitions, []
         return out
 
-    def update(self, now, contact2, foot_total_n=None):
+    def update(self, now, contact2, foot_total_n=None):   # foot_total_n: 0922 폐지(접지 판단만 사용) — 호출부 호환용으로만 남김
         """매 틱. 반환 None = 정상, 문자열 = 즉시 동결 사유 (호출자가 STOP_ALL)."""
         both = contact2[0] > 0.0 and contact2[1] > 0.0
         none = contact2[0] == 0.0 and contact2[1] == 0.0
@@ -1350,9 +1351,17 @@ class HangGuard:
                 return f"lift_guard: 양발 무접촉 {self.lift_stop_s}s 지속"
         else:
             self.nocontact_t0 = None
-        if (self.state == self.CONTACT_ACQUIRED and foot_total_n is not None
-                and foot_total_n >= self.free_frac * self.body_weight_n):
-            self._go(self.FREE_STAND, now)
+        # 0922 승윤님: 감압 패드는 **접지 여부 판단용**이다. 종전엔 '발력 ≥ 0.8×체중' 으로 FREE_STAND 를 판정했는데,
+        #   그것은 미보정 카운트를 하중으로 읽은 것이다. → **양발 접지가 free_confirm_s 연속** 유지되면 FREE_STAND.
+        #   (FREE_STAND 의 효과는 '그 뒤의 재들림은 동결' 뿐이므로 접지 기준으로도 목적이 유지된다.)
+        if self.state == self.CONTACT_ACQUIRED:
+            if both:
+                if self.free_t0 is None:
+                    self.free_t0 = now
+                elif now - self.free_t0 >= self.free_confirm_s:
+                    self._go(self.FREE_STAND, now)
+            else:
+                self.free_t0 = None
         return None
 
 
@@ -1712,13 +1721,13 @@ def _selftest_hang_guard():
     assert why and why.startswith("lift_guard") and g2.relifts == 0, why
     # FREE_STAND 뒤 재들림 = 동결 (잡힌 상태에서 정책 발버둥 방지)
     g3 = HangGuard(hang_mode=True, t0=0.0)
-    run(g3, [(0.4, B, 50.0), (0.1, B, 0.85 * HANG_BODY_WEIGHT_N)])
+    run(g3, [(0.4, B, None), (3.2, B, None)])          # 0922: 양발 접지 3 s 지속 → FREE_STAND (발력 기준 제거)
     assert g3.state == HangGuard.FREE_STAND
     why, _ = run(g3, [(LIFT_STOP_S + 0.1, NONE, 0.0)])
     assert why and why.startswith("lift_guard") and g3.state == HangGuard.FREE_STAND, why
-    # FREE_STAND 표시: 발력 ≥ 0.8·체중
+    # FREE_STAND 표시: 양발 접지 3 s 지속 (0922: 발력 기준 폐지 — 감압은 접지 판단용)
     g = HangGuard(hang_mode=True, t0=0.0)
-    run(g, [(0.4, B, 50.0), (0.1, B, 0.85 * HANG_BODY_WEIGHT_N)])
+    run(g, [(0.4, B, None), (3.2, B, None)])
     assert g.state == HangGuard.FREE_STAND
     # 상한: 접지 없이 HANG_MAX_S 초과 → 동결
     g = HangGuard(hang_mode=True, t0=0.0, hang_max_s=5.0)
@@ -2014,11 +2023,15 @@ def main():
         def _on_foot(self, msg):
             try:
                 d = json.loads(msg.data)
-                self.foot = (float(d["left_n"]), float(d["right_n"]))
+                # 0922 승윤님: 감압 패드는 접지 여부 판단용. left_n/right_n(미보정 카운트×상수)은 **하중이 아니다**.
+                #   블랙박스 진단용으로만 싣고, 판정에는 쓰지 않는다(5 N 폴백도 폐지 — 아래 접지 비트 필수).
+                self.foot = (float(d.get("left_n") or 0.0), float(d.get("right_n") or 0.0))
                 self.foot_raw_sum = [d.get("left_raw_sum"), d.get("right_raw_sum")]
                 # 0910: 어댑터가 패드 단위 접지(4개 중 하나라도)를 주면 그것을 우선 — 없으면 합산 5N 규칙(구판 어댑터 호환)
                 self.foot_contact = ((bool(d["left_contact"]), bool(d["right_contact"]))
                                      if "left_contact" in d and "right_contact" in d else None)
+                if self.foot_contact is None:
+                    return          # 0922: 접지 비트 없는 구판 메시지는 버린다(힘 임계로 접지를 추정하지 않는다)
                 self.foot_ts = float(d.get("timestamp", time.time()))
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 pass

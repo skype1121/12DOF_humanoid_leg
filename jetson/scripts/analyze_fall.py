@@ -11,7 +11,7 @@
     python3 jetson/scripts/analyze_fall.py <v7.jsonl> --compare <v6b.jsonl>
 
 판정 지표는 원격 오판 사고(IMU 스냅샷 1장으로 '섰다' 오판) 이후 확립된
-**발력 총합 %**를 1순위로, 기울임 시계열을 2순위로 쓴다.
+**양발 접지 유지**를 1순위로, 기울임 시계열을 2순위로 쓴다(0922: 발력 % 판정 폐지 — 감압은 접지 판단용).
 """
 import argparse
 import json
@@ -48,7 +48,7 @@ LAG_MIN_STD_DEG = 0.3     # 목표 신호 표준편차가 이보다 작은 관�
 LAG_MIN_R2 = 0.5          # 적합도 미달 관절은 중앙값 집계에서 제외
 LAG_TRAIN_BAND = (3, 8)   # 현행 학습 대역 상한(v19); v15~v18 은 3~6
 LOAD_STANDING = 85.0       # 이 % 이상이면 하중을 정책이 받고 있다고 본다
-LOAD_LOST = 50.0           # 이 % 아래로 떨어지면 줄/사람에게 넘어간 것
+# 0922: LOAD_LOST(발력 %) 폐지 — 감압 패드는 접지 여부 판단용. 자립 종료는 '양발 접지 상실' 로 판정한다.
 LEAN_FALL_DELTA = 15.0     # 시작 자세 대비 이만큼 더 기울면 자립 종료
 EARLY_WINDOW_S = 3.0       # "1초부터 단조 누적" 을 잡아내는 초기 창
 MIN_GRADE_S = 1.5          # 이보다 짧은 구간은 등급을 매기지 않는다
@@ -341,9 +341,10 @@ def analyze(path, foot_scale=None):
         rel = t["timestamp"] - t0
         fwd, lat, tilt = grav_to_angles(t["quat_wxyz"])
         fn = t.get("foot_n") or [0.0, 0.0]
-        load_pct = 100.0 * scale * (float(fn[0]) + float(fn[1])) / BODY_WEIGHT_N
+        both_c = bool(t.get("contact") and all(t.get("contact")))
         rows.append({"t": rel, "fwd": fwd, "lat": lat, "tilt": tilt,
-                     "load": load_pct, "contact": t.get("contact"),
+                     "load": 100.0 if both_c else 0.0,   # 0922: 접지 0/1 (하중 아님, 표시·추세용)
+                     "contact": t.get("contact"),
                      "alpha": t.get("blend_alpha", 1.0),
                      "tau": t.get("tau_est_nm"),
                      "status_age": t.get("status_age_s"),    # stage8 status 신선도 (0906 감사 C4)
@@ -389,18 +390,20 @@ def analyze(path, foot_scale=None):
 
     standing_s = dur
     stand_reason = "끝까지 유지"
-    t_load = terminal_fall(lambda r: r["load"] < LOAD_LOST, 0.30)
+    # 0922 승윤님: 감압 패드는 **접지 여부 판단용**이다. 종전엔 '발력 < 50 %' 를 자립 종료의 1순위 기준으로 썼는데,
+    #   그것은 미보정 패드 카운트를 하중으로 읽은 것이다(CLAUDE.md 6절 금지 항목). → **양발 접지 상실**로 바꾼다.
+    t_load = terminal_fall(lambda r: not (r.get("contact") and all(r["contact"])), 0.30)
     t_lean = terminal_fall(
         lambda r: abs(r["fwd"] - fwd0) > LEAN_FALL_DELTA, 0.20)
     if t_load is not None and (t_lean is None or t_load <= t_lean):
-        standing_s, stand_reason = t_load, f"발력 {LOAD_LOST:.0f}% 미만 (미회복)"
+        standing_s, stand_reason = t_load, "양발 접지 상실 (미회복)"
     elif t_lean is not None:
         standing_s, stand_reason = (
             t_lean, f"시작 대비 {LEAN_FALL_DELTA:.0f}° 초과 기울임 (미회복)")
 
     # 회복한 딥은 낙상이 아니지만 그 자체로 진단 가치가 있다 (인수 전이 손실).
     dips = [r for r in settled
-            if r["load"] < LOAD_LOST and r["t"] < standing_s]
+            if r["load"] < 50.0 and r["t"] < standing_s]
 
     early = [r for r in rows if r["t"] <= EARLY_WINDOW_S]
     slope, _, r2 = linfit([r["t"] for r in early], [r["fwd"] for r in early])
@@ -504,7 +507,7 @@ def _grade(a):
                 "march 사다리(5초) 진입 가능합니다.")
     if stand >= 4.0 or (not pushing and stand >= 2.5):
         return ("B", "개선 확인 — 단조 밀기는 사라졌으나 자립이 짧습니다",
-                "발진/횡동요/발력 손실 중 무엇이 끝냈는지 이벤트·발력을 보세요.")
+                "발진/횡동요/접지 상실 중 무엇이 끝냈는지 이벤트·발력을 보세요.")
     return ("C", "판정 애매 — 자립이 짧은데 전방 단조 패턴은 뚜렷하지 않습니다",
             "블렌딩 구간·가드 트립·착지 기하(초기 기울임)를 먼저 의심하세요.")
 
@@ -520,8 +523,8 @@ def report(a):
     print(f"■ 실효 자립 시간: {a['standing_s']:.1f}s  ({a['stand_reason']})"
           + (f"   ※ 낙상 시점 정책권한 alpha={a['alpha_at_fall']:.2f} "
              f"— 블렌딩 중 무너짐" if a["alpha_at_fall"] < 0.99 else ""))
-    print(f"■ 발력 총합: 평균 {a['load_mean']:.0f}% / 최소 {a['load_min']:.0f}%"
-          f" / 최대 {a['load_max']:.0f}%  (체중 {BODY_WEIGHT_N:.0f}N 기준"
+    print(f"■ 양발 접지 유지율: 평균 {a['load_mean']:.0f}% / 최소 {a['load_min']:.0f}%"
+          f" / 최대 {a['load_max']:.0f}%  (0922: 접지 0/1 평균 — 하중 아님"
           + (f", 구 어댑터 스케일 ×{a['foot_scale']:.3f} 보정" if abs(a["foot_scale"] - 1.0) > 1e-9 else "")
           + ")")
     print("   (자립 구간 기준 — 낙상 후 구간 제외)")
@@ -531,7 +534,7 @@ def report(a):
               + ("  ← 정책이 권한을 쥐면서 무너졌습니다"
                  if a["depart_alpha"] < 0.99 else ""))
     if a["dip_t"] is not None:
-        print(f"   ※ 회복된 발력 딥: {a['dip_t']:.1f}s에 최저 {a['dip_min']:.0f}% "
+        print(f"   ※ 회복된 접지 상실: {a['dip_t']:.1f}s에 최저 {a['dip_min']:.0f}% "
               f"({a['dip_n']}틱) — 낙상은 아니나 인수 전이 손실 신호")
     if a["load_mean"] >= LOAD_STANDING:
         print("   → 정책이 하중을 받고 있었습니다 (줄에 매달린 상태 아님).")
@@ -558,7 +561,7 @@ def report(a):
     print()
     print("  전방기울임 시계열 (좌=투입 직후, 우=종료)")
     print(f"  {sparkline([r['fwd'] for r in a['rows']])}")
-    print(f"  {sparkline([r['load'] for r in a['rows']])}  ← 발력 총합")
+    print(f"  {sparkline([r['load'] for r in a['rows']])}  ← 양발 접지(0/1)")
     print()
     if a["events"]:
         print("■ 이벤트")
@@ -619,7 +622,7 @@ def report(a):
         else:
             print("   → 유효 관절 없음 (정지 상태이거나 적합도 미달)")
     print()
-    print("■ 정의 주의(감사 C5·C6): 실물 낙상 = 발력<50% 또는 시작 대비 +15° 기울임 / 시뮬 낙상 = 절대 40°·베이스 접촉 —")
+    print("■ 정의 주의(감사 C5·C6, 0922 개정): 실물 낙상 = **양발 접지 상실** 또는 시작 대비 +15° 기울임 / 시뮬 낙상 = 절대 40°·베이스 접촉 —")
     print("   낙상률·초기 3s 추세·E_smth 는 정의가 달라 시뮬 수치와 직접 비교하지 않는다(방향·순서·토크 축만 대조).")
     grade, headline, action = verdict(a)
     print(f"■ 판정 [{grade}급] {headline}")
@@ -638,7 +641,7 @@ def compare(a, b):
         ("초기 추세", f"{a['slope']:+.2f}°/s", f"{b['slope']:+.2f}°/s"),
         ("단조증가", f"{a['mono']*100:.0f}%", f"{b['mono']*100:.0f}%"),
         ("종료 기울임", f"{a['fwd_end']:+.1f}°", f"{b['fwd_end']:+.1f}°"),
-        ("발력 평균", f"{a['load_mean']:.0f}%", f"{b['load_mean']:.0f}%"),
+        ("양발 접지율", f"{a['load_mean']:.0f}%", f"{b['load_mean']:.0f}%"),
     ]
     for label, x, y in rows:
         print(f"  {label:<10} {x:>16}   |  {y:>16}")
@@ -669,7 +672,7 @@ def main():
         compare(a, analyze(args.compare, args.foot_scale))
     if args.csv:
         with open(args.csv, "w") as f:
-            f.write("t_s,fwd_deg,lat_deg,tilt_deg,load_pct,blend_alpha\n")
+            f.write("t_s,fwd_deg,lat_deg,tilt_deg,both_contact,blend_alpha\n")
             for r in a["rows"]:
                 f.write(f"{r['t']:.3f},{r['fwd']:.3f},{r['lat']:.3f},"
                         f"{r['tilt']:.3f},{r['load']:.2f},{r['alpha']:.3f}\n")

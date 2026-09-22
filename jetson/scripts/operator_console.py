@@ -55,7 +55,7 @@ FOOT_TOPIC = "/humanoid/foot_force"
 BRIDGE_CMD_TOPIC = "/humanoid/rl_bridge_command"
 BRIDGE_DEBUG_TOPIC = "/humanoid/rl_bridge_debug"
 
-BODY_WEIGHT_N = 172.9        # 구 로그 필드 호환용. 화면·진행·성공 판정에 사용하지 않는다.
+# 0922: BODY_WEIGHT_N 제거 — 감압 패드는 접지 판단용이며, 카운트를 체중으로 나눈 '발력 %' 는 만들지 않는다.
 BRIDGE_JOINT_FRESH_SEC = 0.2  # rl_bridge_node.SENSOR_STALE_SEC 와 동일 — '12/12 신선' 판정 기준 (0911 R3)
 
 #: 정책 드롭다운 — 첫 항목이 기본값(7차 데뷔 후보). 브리지 CHECKPOINTS 의 부분집합이어야 한다(selftest ⑧).
@@ -197,8 +197,7 @@ class SessionLog:
                 self.last_active = now()
             self._write({
                 "kind": "s",
-                "pct": view["foot"]["pct"],
-                "fn": [view["foot"]["left_n"], view["foot"]["right_n"]],
+
                 "fwd": imu.get("fwd"), "lat": imu.get("lat"),
                 "tilt": imu.get("tilt"), "gyro": imu.get("gyro"),
                 "quat": imu.get("quat"),
@@ -572,9 +571,6 @@ class Telemetry:
                "server_time": n}
 
         foot = d.get("foot") or {}
-        ln, rn = foot.get("left_n", 0.0), foot.get("right_n", 0.0)
-        if not finite(ln) or not finite(rn):
-            ln, rn = 0.0, 0.0
         source_ts = foot.get("timestamp")
         if finite(source_ts) and not -0.5 <= n - source_ts < STALE_SEC:
             fresh["foot"] = False
@@ -600,9 +596,9 @@ class Telemetry:
         if not isinstance(dead_note, str) or not dead_note.strip():
             dead_note = None
         out["foot"] = {
-            "left_n": round(ln, 1), "right_n": round(rn, 1),
-            "total_n": round(ln + rn, 1),
-            "pct": round(100.0 * (ln + rn) / BODY_WEIGHT_N, 1),
+            # 0922 승윤님: 감압 패드는 **접지 여부 판단용**이다. 미보정 카운트를 힘(N)·체중 비율로 바꿔 보여주면
+            #   그 값이 하중처럼 읽히고 판단에 섞인다(0922 1회차 분석에서 실제로 그렇게 오용했다).
+            #   → left_n/right_n/total_n/pct 를 상태에서 뺀다. 접지 비트와 채널 카운트(고장 패드 진단용)만 남긴다.
             "contact": contacts if contact_valid and fresh["foot"] else None,
             "raw_sum": [foot.get("left_raw_sum"), foot.get("right_raw_sum")],
             "pads_on": [foot.get("left_pads_on"), foot.get("right_pads_on")],

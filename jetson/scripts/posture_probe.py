@@ -7,7 +7,7 @@ CoM 역산값은 +417mm 로 물리적으로 불가능 — payload/CoM 가설은 
 남은 것은 랜덤화가 표현하지 못하는 **계통 오차**(영점·기구학·부호 등 상수
 편향)이고, 그것을 가르는 가장 값싼 측정이 이것이다:
 
-  실물이 **전 관절 0°**(곧은 다리)에서는 발력 96%로 몇 분씩 혼자 선다.
+  실물이 **전 관절 0°**(곧은 다리)에서는 몇 분씩 혼자 선다.
   정책은 시뮬에서 **무릎 ∓10.8°·발목굽힘 +12.6/−2.0°·힙 −6.1/−4.8°**
   자세로 선다(DR 128/128 무낙상).
   → 그 자세를 실물에 **정책 없이** 넣어보면 답이 갈린다.
@@ -25,7 +25,7 @@ CoM 역산값은 +417mm 로 물리적으로 불가능 — payload/CoM 가설은 
     python3 posture_probe.py --selftest
 
 안전:
-- **자동 중단**: 전방/좌우 기울임이 한계를 넘거나, 발력이 한계 아래로
+- **자동 중단**: 전방/좌우 기울임이 한계를 넘거나, 양발 접지를 잃으면
   떨어지거나, 센서가 끊기면 즉시 램프를 멈추고 그 자리에서 홀드한다.
   (되돌리지 않는다 — 급히 되돌리는 동작 자체가 위험하다. 사람이 판단한다.)
 - 매 틱 슬루 제한. 기본 0.5°/틱(20Hz) = 10°/s 로 hang_stand 보다 느리다.
@@ -81,9 +81,8 @@ RATE_HZ = 20.0
 SLEW_DEG = 0.5           #: 틱당 최대 변화 — 20Hz 에서 10°/s
 ABORT_FWD_DEG = 9.0      #: 발 지지면 앞여유 7.5° + 여유. 넘으면 회복 불가 영역
 ABORT_LAT_DEG = 9.0
-ABORT_LOAD_PCT = 55.0    #: 체중 대비. 이 아래면 줄/사람이 받기 시작한 것
 SENSOR_STALE_SEC = 0.6
-BODY_WEIGHT_N = 172.9   # 실물 17.62kg 저울 실측(0904) × 9.81 — 구 117.7(12kg 추정) 폐기
+# 0922: BODY_WEIGHT_N·ABORT_LOAD_PCT 폐지 — 감압 패드는 접지 여부 판단용(하중 아님)
 
 
 def build_targets(frames, pose_deg, baseline):
@@ -223,18 +222,18 @@ def main():
             fwd = math.degrees(math.atan2(gx, -gz))
             lat = math.degrees(math.atan2(gy, -gz))
         f = state["foot"] or {}
-        pct = 100.0 * (float(f.get("left_n", 0)) + float(f.get("right_n", 0))) \
-            / BODY_WEIGHT_N
+        # 0922 승윤님: 감압 패드는 접지 여부 판단용. 미보정 카운트를 체중 비율로 바꾸지 않는다.
+        both = bool(f.get("left_contact")) and bool(f.get("right_contact"))
         age = max(time.time() - state["t"]["imu"], time.time() - state["t"]["foot"])
-        return fwd, lat, pct, age
+        return fwd, lat, both, age
 
-    fwd0, lat0, pct0, _ = sense()
-    print(f"시작 자세: 전방 {fwd0:+.1f}°, 좌우 {lat0:+.1f}°, 발력 {pct0:.0f}%")
+    fwd0, lat0, both0, _ = sense()
+    print(f"시작 자세: 전방 {fwd0:+.1f}°, 좌우 {lat0:+.1f}°, 양발 접지 {both0}")
     print(f"목표 자세({a.pose}): " + ", ".join(
         f"{k.replace('_joint','')} {v:+.1f}" for k, v in sorted(pose.items())
         if abs(v) > 0.05) or "(전 관절 0)")
     print(f"슬루 {SLEW_DEG}°/틱 @{RATE_HZ:.0f}Hz — 중단: 전방|{ABORT_FWD_DEG}|° "
-          f"좌우|{ABORT_LAT_DEG}|° 발력<{ABORT_LOAD_PCT:.0f}%")
+          f"좌우|{ABORT_LAT_DEG}|° 또는 양발 접지 상실")
 
     # 현재 관절각(관절 프레임)에서 출발 — 급격한 첫 스텝 방지
     cur = {}
@@ -263,23 +262,23 @@ def main():
             pub.publish(String(data=json.dumps(
                 {"command": "SET_JOINT_TARGETS", "targets": tg})))
         spin(period)
-        fwd, lat, pct, age = sense()
+        fwd, lat, both, age = sense()
         if age > SENSOR_STALE_SEC:
             aborted = f"센서 끊김 {age:.1f}s"
         elif fwd is not None and abs(fwd) > ABORT_FWD_DEG:
             aborted = f"전방 기울임 {fwd:+.1f}° 초과"
         elif lat is not None and abs(lat) > ABORT_LAT_DEG:
             aborted = f"좌우 기울임 {lat:+.1f}° 초과"
-        elif pct < ABORT_LOAD_PCT:
-            aborted = f"발력 {pct:.0f}% 미만"
+        elif not both:
+            aborted = "양발 접지 상실"
         if i % 10 == 0 or aborted:
             prog = min(100, int(100 * i / n_ramp))
             print(f"  [{prog:3d}%] 전방 {fwd:+5.1f}° 좌우 {lat:+5.1f}° "
-                  f"발력 {pct:5.1f}%" + (f"   ← 중단: {aborted}" if aborted else ""))
+                  f"접지 {'양발' if both else '상실'}" + (f"   ← 중단: {aborted}" if aborted else ""))
         if aborted:
             break
 
-    fwd, lat, pct, _ = sense()
+    fwd, lat, both, _ = sense()
     print("-" * 62)
     if aborted:
         print(f"■ 중단: {aborted}")
@@ -288,7 +287,7 @@ def main():
         print("     계통 오차(영점·기구학) 확정입니다. 어느 관절에서 무너졌는지")
         print("     knee_only / ankle_only 로 분리해 보세요.")
     else:
-        print(f"■ 완주: 전방 {fwd:+.1f}° 좌우 {lat:+.1f}° 발력 {pct:.0f}%")
+        print(f"■ 완주: 전방 {fwd:+.1f}° 좌우 {lat:+.1f}° 양발 접지 {both}")
         print(f"  시작 대비 전방 {fwd - fwd0:+.1f}°.")
         print("  → 자세는 무죄입니다. 남은 용의자는 전이 속도·타이밍과 폐루프.")
     print(f"  판정 근거는 세션 타임라인에 기록돼 있습니다 (~/logs/sessions/).")

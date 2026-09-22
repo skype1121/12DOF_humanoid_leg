@@ -41,7 +41,7 @@ STATUS_TOPIC = "/humanoid/stage8_12axis_mit_status"
 IMU_TOPIC = "/humanoid/imu"
 FOOT_TOPIC = "/humanoid/foot_force"
 
-BODY_WEIGHT_N = 172.9          # 17.62 kg 저울 실측 (0904)
+# 0922: BODY_WEIGHT_N 폐지 — 발력 비율 분석 제거
 MASS_KG = 17.62
 G = 9.81
 NOMINAL_KP = 150.0             # 하드웨어맵 전 관절 공통 [Nm/rad]
@@ -95,14 +95,13 @@ def row_from_msgs(status, imu, foot, t):
             "p_des": prev.get("p_des_rad"),
             "kp": prev.get("kp"),
         }
-    ln = float((foot or {}).get("left_n") or 0.0)
-    rn = float((foot or {}).get("right_n") or 0.0)
+    # 0922 승윤님: 감압 패드는 접지 여부 판단용 — 하중(N)·체중 비율로 쓰지 않는다.
+    both = bool((foot or {}).get("left_contact")) and bool((foot or {}).get("right_contact"))
     q = (imu or {}).get("quat") or (imu or {}).get("quat_wxyz")
     return {
         "t": round(t, 3),
         "fwd": (lambda v: round(v, 2) if v is not None else None)(imu_pitch_deg(q)),
-        "fn": [round(ln, 1), round(rn, 1)],
-        "pct": round(100.0 * (ln + rn) / BODY_WEIGHT_N, 1),
+        "both_contact": both,
         "armed": bool((status or {}).get("armed")),
         "joints": joints,
     }
@@ -114,8 +113,15 @@ def analyze(rows, com_h_m=0.52, kp=NOMINAL_KP):
     usable = [r for r in rows if r.get("joints")]
     out["n_joint"] = len(usable)
     if usable:
-        pcts = [r["pct"] for r in usable]
-        out["pct"] = {"min": min(pcts), "max": max(pcts), "gain": max(pcts) - min(pcts)}
+        # 0922: '발력 %' 대신 **측정된 관절 토크 합**(무릎+발목, |τ|)을 하중 대용으로 쓴다.
+        #   감압 패드는 접지 여부만 판단한다(미보정 카운트를 체중 비율로 해석 금지).
+        def _tl(r):
+            js = r.get("joints") or {}
+            return round(sum(abs(v.get("tau") or 0.0) for n, v in js.items() if "knee" in n or "ankle_f" in n), 3)
+        for r in usable:
+            r["tau_load"] = _tl(r)
+        tls = [r["tau_load"] for r in usable]
+        out["tau_load"] = {"min": min(tls), "max": max(tls), "gain": round(max(tls) - min(tls), 3)}
         fwds = [r["fwd"] for r in usable if r["fwd"] is not None]
         out["fwd"] = ({"min": min(fwds), "max": max(fwds), "span": max(fwds) - min(fwds)}
                       if fwds else None)
@@ -138,7 +144,7 @@ def analyze(rows, com_h_m=0.52, kp=NOMINAL_KP):
             ys.append(float(j["tau"]))
             taus.append(abs(float(j["tau"])))
             errs.append(err)
-            loads.append(r["pct"])
+            loads.append(r["tau_load"])
         k, _, r2 = ols(xs, ys)
         # 하중이 늘 때 이 관절의 오차가 자라는가 = 처짐이 이 관절의 **모터측**에 있는가.
         # 어느 관절도 안 자라는데 몸통만 기울면 처짐은 모든 엔코더의 하류(구조)다.
@@ -146,7 +152,7 @@ def analyze(rows, com_h_m=0.52, kp=NOMINAL_KP):
         per[nm] = {"n": len(xs), "k_ctrl": k, "r2": r2,
                    "tau_max": (max(taus) if taus else None),
                    "err_max": (max(errs, key=abs) if errs else None),
-                   "err_per_pct": slope, "err_r2": r2l,
+                   "err_per_tau": slope, "err_r2": r2l,
                    "err_span_deg": (round(max(errs) - min(errs), 3)
                                     if len(errs) >= 2 else None)}
     out["joints"] = per
@@ -181,20 +187,20 @@ def analyze(rows, com_h_m=0.52, kp=NOMINAL_KP):
 def report(a):
     L = []
     L.append(f"표본 {a['n']}행 (관절 있는 행 {a['n_joint']})  CoM 높이 가정 {a['com_h_m']:.2f} m")
-    p = a.get("pct")
+    p = a.get("tau_load")
     if p:
-        L.append(f"발력 {p['min']:.1f}% → {p['max']:.1f}%  (하중 이전 {p['gain']:.1f}%p)")
+        L.append(f"관절 토크합 {p['min']:.2f} → {p['max']:.2f} Nm  (증가 {p['gain']:.2f}p)")
     f = a.get("fwd")
     if f:
         L.append(f"몸통 피치 {f['min']:+.2f}° ~ {f['max']:+.2f}°  (진폭 {f['span']:.2f}°)")
     L.append("")
-    L.append("관절별 — err_per_pct 가 크면 그 관절의 **모터측**이 휜다;")
+    L.append("관절별 — err_per_tau 가 크면 그 관절의 **모터측**이 휜다;")
     L.append("전 관절이 0 에 가까운데 몸통만 기울면 처짐은 엔코더 하류(구조·감속기)다.")
     L.append(f"{'관절':<22}{'n':>5}{'오차/하중%[°]':>14}{'R²':>6}{'|오차|max':>10}"
              f"{'오차폭':>8}{'|τ|max':>8}{'k_ctrl':>9}")
     for nm, j in a["joints"].items():
         f = lambda v, w, p=2: ("—".rjust(w) if v is None else f"{v:{w}.{p}f}")
-        L.append(f"{nm:<22}{j['n']:>5}{f(j['err_per_pct'],14,4)}{f(j['err_r2'],6)}"
+        L.append(f"{nm:<22}{j['n']:>5}{f(j['err_per_tau'],14,4)}{f(j['err_r2'],6)}"
                  f"{f(j['err_max'],10,3)}{f(j['err_span_deg'],8,3)}"
                  f"{f(j['tau_max'],8)}{f(j['k_ctrl'],9,1)}")
     kb = a["k_body"]
@@ -250,7 +256,7 @@ def capture(seconds, path, hz=20.0):
                 fh.write(json.dumps(r, ensure_ascii=False) + "\n")
                 fh.flush()
                 if int(el * hz) % int(hz * 2) == 0:
-                    print(f"  t={el:5.1f}s  발력 {r['pct']:5.1f}%  "
+                    print(f"  t={el:5.1f}s  접지 {'양발' if r.get('both_contact') else '상실'}  "
                           f"피치 {r['fwd'] if r['fwd'] is not None else float('nan'):+6.2f}°  "
                           f"관절 {len(r['joints'])}/12  armed={r['armed']}")
     except KeyboardInterrupt:
@@ -279,8 +285,8 @@ def selftest():
     r = row_from_msgs({"armed": True, "joints": {"left_ankle_f_joint": {
         "latest_actual_deg": 1.0, "commanded_relative_deg": 2.0, "baseline_deg": 0.5,
         "feedback_torque_est": 4.0, "feedback_stale": False}}},
-        {"quat": [1, 0, 0, 0]}, {"left_n": 80.0, "right_n": 92.9}, 1.234)
-    assert r["pct"] == 100.0, r["pct"]
+        {"quat": [1, 0, 0, 0]}, {"left_contact": True, "right_contact": True}, 1.234)
+    assert r["both_contact"] is True, r          # 0922: 감압은 접지 여부만 (발력 % 판정 폐지)
     assert r["joints"]["left_ankle_f_joint"]["tau"] == 4.0
     assert r["joints"]["left_ankle_f_joint"]["base"] == 0.5, "base 를 기록해야 오차 프레임이 맞는다"
     # 프레임 회귀 방지: base 를 빼먹으면 오차가 2−1=+1 로 나온다. 정답은 2−(1−0.5)=+1.5

@@ -22,7 +22,7 @@ stand_v8 은 영점 오차 3°에서 낙상 43.8%, 2°에서 6.3% 다. 절벽이
              남는 것은 영점 오차로 해석한다)
 
 정책은 쓰지 않는다. stage8 홀드만으로 천천히 움직이고, 각 지점에서 정지 후
-평균을 낸다. 기울임·발력 자동 중단은 posture_probe 와 동일.
+평균을 낸다. 기울임·접지 상실 자동 중단은 posture_probe 와 동일.
 
 사용:
     python3 zero_kinematic_check.py                 # ±3° 5점 스윕
@@ -45,8 +45,8 @@ SETTLE_S = 2.0            # 각 지점 도달 후 정지 대기
 SAMPLE_S = 2.0            # 그 뒤 평균낼 구간
 ABORT_FWD_DEG = 8.0
 ABORT_LAT_DEG = 8.0
-ABORT_LOAD_PCT = 60.0
-BODY_WEIGHT_N = 172.9     # 실물 17.62kg 저울(0904)×9.81 — 어댑터 npc 0.02650(0906) 과 같은 참값 축. 구 117.7 폐기
+
+# 0922: BODY_WEIGHT_N 폐지 — 감압 패드는 접지 여부 판단용
 #: 발목 굽힘은 좌우 거울 규약 — 순수 피치를 만들려면 부호를 반대로 준다
 ANKLE_F = {"left_ankle_f_joint": +1.0, "right_ankle_f_joint": -1.0}
 
@@ -131,7 +131,7 @@ def main():
     while time.time() < t_end and not (st["status"] and st["imu"] and st["foot"]):
         spin()
     if not (st["status"] and st["imu"] and st["foot"]):
-        print("✗ 상태·IMU·발력 미수신 — 스택/센서 확인")
+        print("✗ 상태·IMU·접지 미수신 — 스택/센서 확인")
         return 2
     if not st["status"].get("armed"):
         print("✗ stage8 이 ARMED 가 아닙니다")
@@ -157,10 +157,10 @@ def main():
             fwd = math.degrees(math.atan2(gx, -gz))
             lat = math.degrees(math.atan2(gy, -gz))
         f = st["foot"] or {}
-        pct = 100.0 * (float(f.get("left_n", 0)) + float(f.get("right_n", 0))) \
-            / BODY_WEIGHT_N
+        # 0922 승윤님: 감압 패드는 접지 여부 판단용 — 체중 비율로 쓰지 않는다.
+        both = bool(f.get("left_contact")) and bool(f.get("right_contact"))
         age = max(time.time() - st["t"]["imu"], time.time() - st["t"]["foot"])
-        return fwd, lat, pct, age
+        return fwd, lat, both, age
 
     # 현재 발목각(관절 프레임)에서 출발
     cur = {}
@@ -178,9 +178,9 @@ def main():
     print(f"발목 굽힘 스윕: {', '.join(f'{p:+.1f}°' for p in pts)}  "
           f"(램프 {SLEW_DEG*RATE_HZ:.0f}°/s, 지점당 정지 {SETTLE_S:.0f}s + 평균 {SAMPLE_S:.0f}s)")
     f0, l0, p0, _ = sense()
-    print(f"시작: 전방 {f0:+.2f}° 좌우 {l0:+.2f}° 발력 {p0:.0f}%")
-    if p0 < ABORT_LOAD_PCT:
-        print(f"✗ 발력 {p0:.0f}% — 로봇이 하중을 받고 서 있어야 측정이 성립합니다")
+    print(f"시작: 전방 {f0:+.2f}° 좌우 {l0:+.2f}° 양발 접지 {p0}")
+    if not p0:
+        print("✗ 양발 접지 아님 — 접지 상태를 확인하세요")
         return 2
 
     period = 1.0 / RATE_HZ
@@ -205,15 +205,15 @@ def main():
                 pub.publish(String(data=json.dumps(
                     {"command": "SET_JOINT_TARGETS", "targets": tg})))
             spin(period)
-            fwd, lat, pct, age = sense()
+            fwd, lat, both, age = sense()
             if age > 0.6:
                 aborted = f"센서 끊김 {age:.1f}s"
             elif abs(fwd) > ABORT_FWD_DEG:
                 aborted = f"전방 {fwd:+.1f}° 초과"
             elif abs(lat) > ABORT_LAT_DEG:
                 aborted = f"좌우 {lat:+.1f}° 초과"
-            elif pct < ABORT_LOAD_PCT:
-                aborted = f"발력 {pct:.0f}% 미만"
+            elif not both:
+                aborted = "양발 접지 상실"
             if done:
                 break
         if aborted:
@@ -226,15 +226,15 @@ def main():
         t_end = time.time() + SAMPLE_S
         while time.time() < t_end:
             spin(period)
-            fwd, lat, pct, _ = sense()
-            acc.append((fwd, lat, pct))
+            fwd, lat, both, _ = sense()
+            acc.append((fwd, lat, 1.0 if both else 0.0))
             n += 1
         mf = sum(a_[0] for a_ in acc) / max(1, n)
         ml = sum(a_[1] for a_ in acc) / max(1, n)
         mp = sum(a_[2] for a_ in acc) / max(1, n)
         results.append((target, mf, ml, mp))
         print(f"  발목 {target:+5.1f}°  →  몸통 전방 {mf:+6.2f}°  "
-              f"좌우 {ml:+6.2f}°  발력 {mp:5.1f}%")
+              f"좌우 {ml:+6.2f}°  양발접지비율 {mp:4.2f}")
 
     print("-" * 62)
     if aborted:

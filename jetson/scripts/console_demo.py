@@ -92,7 +92,7 @@ class Demo:
                 "external_controls": [], "process_check_ok": True,
                 "received": {k: stamp if v else 0 for k, v in fresh.items()}, "fresh": fresh,
                 "imu": {"fwd": 1.2, "lat": -0.4, "tilt": 1.3, "gyro": [0.01, 0.02, 0], "age": 0} if self.sensors else None,
-                "foot": {"left_n": 0, "right_n": 0, "pct": 0, "contact": list(self.contact) if self.sensors else None,
+                "foot": {"contact": list(self.contact) if self.sensors else None,
                          "pads_on": [int(x)*2 for x in self.contact], "raw_sum": [800, 900], "age": 0 if self.sensors else None,
                          # 0913 합성: 채널별 카운트·눌림·죽은 채널. 0912 실물 모양을 본떠
                          # 왼[2]는 bias 판정제외(0), 왼[3]은 dead 후보로 둔다 (하중 아님).

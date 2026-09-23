@@ -329,13 +329,15 @@ class FrameMap:
     """
 
     def __init__(self, path, dir_by_joint, sz_by_joint, motor_id_by_joint,
-                 gains_by_joint, roll_comp=None):
+                 gains_by_joint, roll_comp=None, pitch_comp=None, guard_mode="safe"):
         self.path = path
         self.dir_by_joint = dir_by_joint            # {관절: ±1}
         self.sz_by_joint = sz_by_joint              # {관절: 모터 프레임 deg}
         self.motor_id_by_joint = motor_id_by_joint  # {관절: 1..12}
         self.gains_by_joint = gains_by_joint        # {관절: (kp, kd)}
         self.roll_comp = roll_comp                  # 느린 기울기 롤 보정기 설정 dict 또는 None(=OFF)
+        self.pitch_comp = pitch_comp                # 앞뒤 균형 복원항 설정 dict 또는 None(=OFF)
+        self.guard_mode = guard_mode                # "safe"(기본) | "data"(발진·리프트 가드 기록만)
 
     def motor_deg_to_joint_rad(self, joint, motor_deg):
         """입력 변환: 모터 인코더 절대각 deg → URDF 관절각 rad."""
@@ -378,13 +380,16 @@ def load_frame_map():
             # 맵으로 브리지가 뜨는 경로 차단(드라이런은 A사본 PASS·실물은 B사본, 구맵 사건과 같은 구조).
             return (sig,
                     json.dumps(full.get("roll_comp"), sort_keys=True, ensure_ascii=False),
+                    json.dumps(full.get("pitch_comp"), sort_keys=True, ensure_ascii=False),
+                    json.dumps(full.get("guard_mode"), sort_keys=True, ensure_ascii=False),
                     json.dumps(full.get("imu_mount_bias_deg"), sort_keys=True, ensure_ascii=False))
         sigs = {p: _frame_sig(p) for p in existing}
         first = sigs[existing[0]]
         for p in existing[1:]:
             if sigs[p] != first:
                 raise ValueError(
-                    "하드웨어맵 사본 불일치 — direction/stand_zero_deg/roll_comp/imu_mount_bias_deg "
+                    "하드웨어맵 사본 불일치 — direction/stand_zero_deg/roll_comp/pitch_comp/"
+                    "guard_mode/imu_mount_bias_deg "
                     "중 하나가 서로 다름:\n  "
                     + "\n  ".join(existing)
                     + "\n  구맵 사본을 동기화한 뒤 재기동하세요 (기동 차단)")
@@ -411,6 +416,24 @@ def load_frame_map():
               f"lr={_rc_cfg['lr']} gate={_rc_cfg['gate']} debounce={_rc_cfg['debounce_s']:g}s "
               f"slew={_rc_cfg['slew_deg_per_tick']:g}°/틱 roll_clamp=±{_rc_cfg['roll_clamp_deg']:g}° "
               f"(타깃 가드 뒤·블렌딩 앞에서 가산; 시뮬 --roll_comp 와 같은 법칙)")
+    # 앞뒤 균형 복원항 (선택 키 pitch_comp, 기본 OFF). roll_comp 와 같은 법칙·같은 자리, 축만 pitch.
+    _pc_cfg = _validate_roll_comp(_full.get("pitch_comp"), name="pitch_comp")
+    if _pc_cfg:
+        if _pc_cfg["axis"] != "pitch":
+            raise ValueError(f"하드웨어맵 pitch_comp axis={_pc_cfg['axis']!r} 이상 (pitch 이어야 함)")
+        print(f"[FrameMap] pitch_comp 활성 — K={_pc_cfg['K']:g} tau={_pc_cfg['tau_s']:g}s "
+              f"limit=±{_pc_cfg['limit_deg']:g}° joints={_pc_cfg['joints']} sign={_pc_cfg['sign']:+.0f} "
+              f"lr={_pc_cfg['lr']} gate={_pc_cfg['gate']} debounce={_pc_cfg['debounce_s']:g}s "
+              f"slew={_pc_cfg['slew_deg_per_tick']:g}°/틱 clamp=±{_pc_cfg['roll_clamp_deg']:g}° "
+              f"(앞기울임 + 일 때 왼발목 +, 오른발목 − 로 기하선 위를 더 쓴다)")
+    # 가드 모드 — "safe"(기본, 종전) | "data"(발진·리프트 가드는 기록만, 과속 폭주는 그대로 정지)
+    _gm = _full.get("guard_mode", "safe")
+    if _gm not in ("safe", "data"):
+        raise ValueError(f"하드웨어맵 guard_mode={_gm!r} 이상 (safe | data)")
+    if _gm == "data":
+        print("[FrameMap] ** guard_mode=data ** — 발진 가드·타깃 발진 가드·리프트 가드는 기록만 하고 "
+              "정책을 멈추지 않는다. 과속(12 rad/s)·센서 스테일·중력 게이트는 그대로 정지한다. "
+              "운영자가 줄과 손으로 회수를 책임지는 데이터 수집 모드다.")
     dir_by, sz_by, mid_by, gains_by = {}, {}, {}, {}
     problems = []
     for name in JOINT_ORDER:
@@ -442,7 +465,8 @@ def load_frame_map():
     if sorted(mid_by.values()) != list(range(1, 13)):
         raise ValueError(
             f"하드웨어맵 motor_id 이상 (1..12 전단사 아님): {mid_by} ({path})")
-    return FrameMap(path, dir_by, sz_by, mid_by, gains_by, roll_comp=_rc_cfg)
+    return FrameMap(path, dir_by, sz_by, mid_by, gains_by, roll_comp=_rc_cfg,
+                    pitch_comp=_pc_cfg, guard_mode=_gm)
 
 
 def projected_gravity(quat_wxyz):
@@ -492,31 +516,40 @@ def correct_gravity(g, bias_deg=None):
 #:                 "debounce_s": 0.2, "slew_deg_per_tick": 0.25, "roll_clamp_deg": 15.0}
 #: 값은 시뮬 검증(--roll_comp 스윕) 으로 확정한 뒤에만 켠다 — 코드에 운용값을 박지 않는다.
 #: 범위는 0913 적대검수(F5) 기준 = 시뮬로 실제 훑은 봉투 안쪽으로만 허용한다.
-ROLL_COMP_JOINT_CHOICES = ("ankle_r", "hip_a")
+ROLL_COMP_JOINT_CHOICES = ("ankle_r", "hip_a", "ankle_f")
+#: 0923 추가 — 보정기 축. roll = 느린 좌우 드리프트 보정(종전). pitch = 앞뒤 균형 복원항.
+#: 근거: 0922 3회차 실물 무보조 구간에서 발목 명령이 평발 기하선(−1.00 °/°)을 그대로 따라가
+#: 복원 작용이 0(잔차 −0.021 °/°)이었다. 같은 정책이 시뮬에서는 +0.35~0.64, 실물도 손 보조
+#: 구간에서는 +0.39 를 냈다. 모자란 그 항을 명령 위에 직접 더한다.
+ROLL_COMP_AXIS_CHOICES = ("roll", "pitch")
 ROLL_COMP_GATE_CHOICES = ("both", "any")        # "none"(상시 작동)은 실물에서 거부 — 공중·낙상 중 구동 금지
 ROLL_COMP_K_MAX = 1.5
-ROLL_COMP_TAU_MIN_S, ROLL_COMP_TAU_MAX_S = 0.5, 5.0
-ROLL_COMP_LIMIT_MAX_DEG = {"ankle_r": 5.0, "hip_a": 3.0}
+ROLL_COMP_TAU_MIN_S, ROLL_COMP_TAU_MAX_S = 0.5, 5.0        # roll 축 봉투(종전, 불변)
+#: 축별 봉투. pitch 축은 느린 드리프트 보정이 아니라 빠른 되먹임이라 τ·슬루 범위가 다르다.
+#: τ 를 0.5s 로 두면 이미 있는 320ms 루프 지연 위에 또 지연을 얹어 복원항이 늦는다.
+ROLL_COMP_TAU_RANGE = {"roll": (0.5, 5.0), "pitch": (0.02, 5.0)}
+ROLL_COMP_SLEW_RANGE = {"roll": (0.05, 0.5), "pitch": (0.05, 2.0)}
+ROLL_COMP_LIMIT_MAX_DEG = {"ankle_r": 5.0, "hip_a": 3.0, "ankle_f": 15.0}
 ROLL_COMP_DEBOUNCE_MIN_S, ROLL_COMP_DEBOUNCE_MAX_S = 0.1, 1.0
 ROLL_COMP_SLEW_MIN_DEG, ROLL_COMP_SLEW_MAX_DEG = 0.05, 0.5
 ROLL_COMP_ROLLCLAMP_MIN_DEG, ROLL_COMP_ROLLCLAMP_MAX_DEG = 5.0, 30.0
 ROLL_COMP_DEFAULTS = {"K": 1.0, "tau_s": 1.0, "debounce_s": 0.2,
                       "slew_deg_per_tick": 0.25, "roll_clamp_deg": 15.0}
 ROLL_COMP_KEYS = frozenset(
-    ("enabled", "K", "tau_s", "limit_deg", "joints", "sign", "lr", "gate",
+    ("enabled", "axis", "K", "tau_s", "limit_deg", "joints", "sign", "lr", "gate",
      "debounce_s", "slew_deg_per_tick", "roll_clamp_deg", "note"))
 
 
-def _rc_num(rc, key, val, lo, hi):
-    """roll_comp 수치 필드 → float. 유한 float·lo~hi 아니면 ValueError (bool 거부)."""
+def _rc_num(rc, key, val, lo, hi, name="roll_comp"):
+    """보정기 수치 필드 → float. 유한 float·lo~hi 아니면 ValueError (bool 거부)."""
     if (isinstance(val, bool) or not isinstance(val, (int, float))
             or not math.isfinite(float(val)) or not (lo <= float(val) <= hi)):
         raise ValueError(
-            f"하드웨어맵 roll_comp {key}={val!r} 이상 (유한 float, {lo}~{hi} 필요): {rc!r}")
+            f"하드웨어맵 {name} {key}={val!r} 이상 (유한 float, {lo}~{hi} 필요): {rc!r}")
     return float(val)
 
 
-def _validate_roll_comp(rc):
+def _validate_roll_comp(rc, name="roll_comp"):
     """하드웨어맵 roll_comp dict → 정규화 설정 dict. 키 없음 또는 enabled=false → None(완전 OFF).
 
     범위 밖·오타 키는 조용히 무시하지 않고 기동 시점에 ValueError
@@ -527,50 +560,54 @@ def _validate_roll_comp(rc):
     if rc is None:
         return None
     if not isinstance(rc, dict):
-        raise ValueError(f"하드웨어맵 roll_comp 형식 오류: {rc!r} (dict 필요)")
+        raise ValueError(f"하드웨어맵 {name} 형식 오류: {rc!r} (dict 필요)")
     unknown = set(rc) - ROLL_COMP_KEYS
     if unknown:
         raise ValueError(
-            f"하드웨어맵 roll_comp 미지의 키 {sorted(unknown)} — 오타 의심 "
+            f"하드웨어맵 {name} 미지의 키 {sorted(unknown)} — 오타 의심 "
             f"(허용 {sorted(ROLL_COMP_KEYS)})")
-    joints = rc.get("joints", "ankle_r")
+    axis = rc.get("axis", "roll")
+    if axis not in ROLL_COMP_AXIS_CHOICES:
+        raise ValueError(f"하드웨어맵 {name} axis={axis!r} 이상 ({list(ROLL_COMP_AXIS_CHOICES)} 중 하나)")
+    joints = rc.get("joints", "ankle_r" if axis == "roll" else "ankle_f")
     if joints not in ROLL_COMP_JOINT_CHOICES:
         raise ValueError(
-            f"하드웨어맵 roll_comp joints={joints!r} 이상 ({list(ROLL_COMP_JOINT_CHOICES)} 중 하나)")
+            f"하드웨어맵 {name} joints={joints!r} 이상 ({list(ROLL_COMP_JOINT_CHOICES)} 중 하나)")
     lim_max = ROLL_COMP_LIMIT_MAX_DEG[joints]
-    k = _rc_num(rc, "K", rc.get("K", ROLL_COMP_DEFAULTS["K"]), 0.0, ROLL_COMP_K_MAX)
-    tau = _rc_num(rc, "tau_s", rc.get("tau_s", ROLL_COMP_DEFAULTS["tau_s"]),
-                  ROLL_COMP_TAU_MIN_S, ROLL_COMP_TAU_MAX_S)
-    lim = _rc_num(rc, "limit_deg", rc.get("limit_deg", lim_max), 0.0, lim_max)
+    _tlo, _thi = ROLL_COMP_TAU_RANGE[axis]
+    _slo, _shi = ROLL_COMP_SLEW_RANGE[axis]
+    k = _rc_num(rc, "K", rc.get("K", ROLL_COMP_DEFAULTS["K"]), 0.0, ROLL_COMP_K_MAX, name)
+    tau = _rc_num(rc, "tau_s", rc.get("tau_s", ROLL_COMP_DEFAULTS["tau_s"]), _tlo, _thi, name)
+    lim = _rc_num(rc, "limit_deg", rc.get("limit_deg", lim_max), 0.0, lim_max, name)
     sign = rc.get("sign", 1)
     if isinstance(sign, bool) or sign not in (-1, 1):
-        raise ValueError(f"하드웨어맵 roll_comp sign={sign!r} 이상 (±1 만 허용)")
+        raise ValueError(f"하드웨어맵 {name} sign={sign!r} 이상 (±1 만 허용)")
     lr = rc.get("lr", [1, 1])
     if not isinstance(lr, (list, tuple)) or len(lr) != 2:
-        raise ValueError(f"하드웨어맵 roll_comp lr={lr!r} 이상 (길이 2 리스트 [좌, 우])")
+        raise ValueError(f"하드웨어맵 {name} lr={lr!r} 이상 (길이 2 리스트 [좌, 우])")
     for v in lr:
         if isinstance(v, bool) or v not in (-1, 1):
-            raise ValueError(f"하드웨어맵 roll_comp lr={lr!r} 이상 (각 항목 +1 또는 −1 만)")
+            raise ValueError(f"하드웨어맵 {name} lr={lr!r} 이상 (각 항목 +1 또는 −1 만)")
     lr = [float(v) for v in lr]
     gate = rc.get("gate", "both")
     if gate not in ROLL_COMP_GATE_CHOICES:
         raise ValueError(
-            f"하드웨어맵 roll_comp gate={gate!r} 이상 ({list(ROLL_COMP_GATE_CHOICES)} 중 하나; "
+            f"하드웨어맵 {name} gate={gate!r} 이상 ({list(ROLL_COMP_GATE_CHOICES)} 중 하나; "
             "'none'(상시 작동)은 실물에서 금지)")
     deb = _rc_num(rc, "debounce_s", rc.get("debounce_s", ROLL_COMP_DEFAULTS["debounce_s"]),
-                  ROLL_COMP_DEBOUNCE_MIN_S, ROLL_COMP_DEBOUNCE_MAX_S)
+                  ROLL_COMP_DEBOUNCE_MIN_S, ROLL_COMP_DEBOUNCE_MAX_S, name)
     slew = _rc_num(rc, "slew_deg_per_tick",
                    rc.get("slew_deg_per_tick", ROLL_COMP_DEFAULTS["slew_deg_per_tick"]),
-                   ROLL_COMP_SLEW_MIN_DEG, ROLL_COMP_SLEW_MAX_DEG)
+                   _slo, _shi, name)
     rclamp = _rc_num(rc, "roll_clamp_deg",
                      rc.get("roll_clamp_deg", ROLL_COMP_DEFAULTS["roll_clamp_deg"]),
-                     ROLL_COMP_ROLLCLAMP_MIN_DEG, ROLL_COMP_ROLLCLAMP_MAX_DEG)
+                     ROLL_COMP_ROLLCLAMP_MIN_DEG, ROLL_COMP_ROLLCLAMP_MAX_DEG, name)
     enabled = rc.get("enabled", False)
     if not isinstance(enabled, bool):
-        raise ValueError(f"하드웨어맵 roll_comp enabled={enabled!r} 이상 (true/false)")
+        raise ValueError(f"하드웨어맵 {name} enabled={enabled!r} 이상 (true/false)")
     if not enabled:
         return None
-    return {"K": k, "tau_s": tau, "limit_deg": lim, "limit_rad": math.radians(lim),
+    return {"axis": axis, "K": k, "tau_s": tau, "limit_deg": lim, "limit_rad": math.radians(lim),
             "joints": joints, "sign": float(sign), "lr": lr, "gate": gate,
             "debounce_s": deb, "slew_deg_per_tick": slew, "slew_rad": math.radians(slew),
             "roll_clamp_deg": rclamp, "roll_clamp_rad": math.radians(rclamp)}
@@ -656,13 +693,18 @@ class RollComp:
         self.gate_off_ticks = 0 if raw_gate else self.gate_off_ticks + 1
         eff_gate = raw_gate or self.gate_off_ticks < self.debounce_ticks
         self.gate_on = eff_gate
-        roll = math.atan2(float(grav[1]), -float(grav[2]))
-        if not math.isfinite(roll):      # 상류 관측 게이트가 이미 막지만 NaN 명령은 절대 금지
-            roll = 0.0
+        # 축: roll = atan2(g_y, −g_z) (종전) / pitch = atan2(g_x, −g_z).
+        # 두 식 모두 시뮬 mdp_hang.torso · 브리지 _roll_pitch_deg 와 같은 정의. pitch + = 앞기울임.
+        if self.cfg.get("axis", "roll") == "pitch":
+            ang = math.atan2(float(grav[0]), -float(grav[2]))
+        else:
+            ang = math.atan2(float(grav[1]), -float(grav[2]))
+        if not math.isfinite(ang):       # 상류 관측 게이트가 이미 막지만 NaN 명령은 절대 금지
+            ang = 0.0
         rc = self.cfg["roll_clamp_rad"]
-        roll = max(-rc, min(rc, roll))   # 공중 40° 같은 큰 기울기가 필터를 끌고 가지 못하게
+        ang = max(-rc, min(rc, ang))     # 공중 40° 같은 큰 기울기가 필터를 끌고 가지 못하게
         if raw_gate:
-            self.f += (self.dt / self.cfg["tau_s"]) * (roll - self.f)
+            self.f += (self.dt / self.cfg["tau_s"]) * (ang - self.f)
         elif not eff_gate:               # 디바운스 창 밖 = 같은 τ 로 0 을 향해 감쇠
             self.f += (self.dt / self.cfg["tau_s"]) * (0.0 - self.f)
         # (디바운스 중에는 f 유지 = 오프셋 유지)
@@ -1837,9 +1879,12 @@ def main():
     class RlBridgeNode(Node):
         def __init__(self):
             super().__init__("humanoid_rl_bridge")
+            self._gnote = {}            # guard_mode=data 기록 throttle: {이벤트: (마지막 사유, 마지막 시각)}
             self.core = BridgeCore(args.checkpoint)
             self.frames = frames        # 모터↔관절 프레임 변환 (기동 시 검증 완료)
             self.roll_comp = RollComp(frames.roll_comp)   # 느린 기울기 롤 보정기 — 맵 키 없으면 OFF(no-op)
+            self.pitch_comp = RollComp(frames.pitch_comp)  # 앞뒤 균형 복원항 — 맵 키 없으면 OFF(no-op)
+            self.guard_mode = getattr(frames, "guard_mode", "safe")
             self.live = bool(args.live)
             self.joint_deg = {}         # {관절: '모터 인코더 프레임' deg} — 변환 전 원본
             self.joint_ts = 0.0
@@ -2123,6 +2168,7 @@ def main():
                         "기존 리프트 가드 복원")
                 self.tgt_filt = None
                 self.roll_comp.reset()
+                self.pitch_comp.reset()
                 self.osc_tgt = OscGuard(JOINT_ORDER)
                 self.prev_tgt = None
                 self.core.reset(checkpoint=ck)
@@ -2159,6 +2205,7 @@ def main():
             if not proceed:
                 self.prev_qpos = None
                 self.roll_comp.reset()   # 정책 미구동(홀드-프라임) → 보정기 필터 0
+                self.pitch_comp.reset()
                 if wact == "prime":
                     self._send_hold_prime()
                     if now - getattr(self, "_warm_log_t", 0.0) >= 0.5:   # 판별 측정: 무엇이 낡았나 (H1 관절 한 분기 vs H3 status 전체)
@@ -2249,16 +2296,26 @@ def main():
                 self._bb_write({"timestamp": _t, "event": "hang_guard", "state": _st})
                 self.get_logger().info(f"행잉 가드 상태 → {_st}")
             if self.live and _why:
-                self._bb_write({"timestamp": now, "event": "lift_guard", "why": _why})
-                self._stop_all(_why)
-                self.core.active = False
-                self.get_logger().error(f"리프트 가드 — {_why}. 동결 홀드. 줄·발 확인!")
-                return
+                if self.guard_mode == "data":
+                    # 데이터 수집 모드: 양발 무접촉(=낙상 중)에도 멈추지 않는다. 그 구간이
+                    # 바로 재려는 구간이기 때문이다. 회수는 운영자의 줄·손이 책임진다.
+                    self._guard_note(now, "lift_guard", _why)
+                else:
+                    self._bb_write({"timestamp": now, "event": "lift_guard", "why": _why})
+                    self._stop_all(_why)
+                    self.core.active = False
+                    self.get_logger().error(f"리프트 가드 — {_why}. 동결 홀드. 줄·발 확인!")
+                    return
             # 발진 가드 — 피드백 기반이라 정책 출력과 무관하게 몸의 발진을 감지.
             # 트리거 시 STOP_ALL(동결 홀드) 후 비활성: 이후 절차 = 줄 재인장 →
             # release_all.py (0802 프로토콜)
             if self.live and self.osc_tripped is None:
                 why = self.osc.update(now, qpos, qvel)
+                if why and self.guard_mode == "data" and not why.startswith("과속"):
+                    # 발진 자체는 허용(운영자 판단). 과속 폭주(OSC_VEL_HARD)는 발진이 아니라
+                    # 기구 보호 한계라 데이터 모드에서도 그대로 정지한다.
+                    self._guard_note(now, "osc_guard", why)
+                    why = None
                 if why:
                     self.osc_tripped = why
                     self._bb_write({"timestamp": now, "event": "osc_guard",
@@ -2281,6 +2338,9 @@ def main():
                          for x, p in zip(targets_rad, self.prev_tgt)])
                 self.prev_tgt = list(targets_rad)
                 why_t = self.osc_tgt.update(now, targets_rad, tvel)
+                if why_t and self.guard_mode == "data" and not why_t.startswith("과속"):
+                    self._guard_note(now, "osc_guard_tgt", why_t)
+                    why_t = None
                 if why_t:
                     self.osc_tripped = why_t
                     self._bb_write({"timestamp": now, "event": "osc_guard_tgt",
@@ -2299,16 +2359,22 @@ def main():
             # (틱당 ≤ slew·|off| ≤ limit·τ ≥ 0.5s) 발진할 수 없다 — 근거는 RollComp docstring.
             # add_to 는 새 리스트를 내므로 LPF 상태(self.tgt_filt)는 오염되지 않는다.
             rc_off, rc_gate = 0.0, False
+            pc_off, pc_gate = 0.0, False
             rc_pre_deg = None
-            if self.roll_comp.enabled:
+            if self.roll_comp.enabled or self.pitch_comp.enabled:
                 # F3: 접지 확인 상태(HangGuard 가 PRE_CONTACT 를 벗어남)를 게이트에 AND.
                 # 지상 인계(hang_arm 없음)에선 상태가 처음부터 CONTACT_ACQUIRED 라 항상 참이고,
                 # 행잉 ARM 에선 '양발 접촉 0.3s 확인' 전까지 보정기가 돌지 않는다.
                 rc_landed = self.hang_guard.state != HangGuard.PRE_CONTACT
                 rc_pre_deg = [round(math.degrees(float(v)), 4) for v in targets_rad]
-                rc_off, rc_gate = self.roll_comp.update(
-                    self.core.last_grav, contact2, self.core.active, rc_landed)
-                targets_rad = self.roll_comp.add_to(targets_rad, rc_off)
+                if self.roll_comp.enabled:
+                    rc_off, rc_gate = self.roll_comp.update(
+                        self.core.last_grav, contact2, self.core.active, rc_landed)
+                    targets_rad = self.roll_comp.add_to(targets_rad, rc_off)
+                if self.pitch_comp.enabled:
+                    pc_off, pc_gate = self.pitch_comp.update(
+                        self.core.last_grav, contact2, self.core.active, rc_landed)
+                    targets_rad = self.pitch_comp.add_to(targets_rad, pc_off)
             # 출력 변환: 관절 프레임 rad → 모터 인코더 프레임 deg
             #   motor_target_deg = SZ + DIR × degrees(policy_target_rad)
             targets_deg_joint = {}   # URDF 관절 프레임 (진단 표기용)
@@ -2383,6 +2449,15 @@ def main():
                 dbg["roll_comp_raw_gate"] = bool(self.roll_comp.raw_gate)
                 dbg["roll_comp_joints"] = self.roll_comp.cfg["joints"]
                 dbg["targets_deg_joint_pre_rc"] = rc_pre_deg          # JOINT_ORDER 순 [deg]
+            if self.pitch_comp.enabled:
+                dbg["pitch_comp_deg"] = round(math.degrees(pc_off), 4)
+                dbg["pitch_comp_gate"] = bool(pc_gate)
+                dbg["pitch_comp_raw_gate"] = bool(self.pitch_comp.raw_gate)
+                dbg["pitch_comp_K"] = self.pitch_comp.cfg["K"]
+                if rc_pre_deg is not None:
+                    dbg["targets_deg_joint_pre_rc"] = rc_pre_deg
+            if self.guard_mode != "safe":
+                dbg["guard_mode"] = self.guard_mode
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
             if not (self.live and self.armed):
@@ -2457,6 +2532,16 @@ def main():
                 self.bb = None
                 self.get_logger().error("블랙박스 기록 실패 — 기록 중단 (제어는 계속)")
 
+        def _guard_note(self, now, event, why):
+            """guard_mode=data 에서 가드가 잡았지만 멈추지 않을 때의 기록. 사유가 바뀌거나
+            1초가 지났을 때만 쓴다 — 매 틱 기록하면 블랙박스가 가드 로그로 덮인다."""
+            prev = self._gnote.get(event)
+            if prev is not None and prev[0] == why and (now - prev[1]) < 1.0:
+                return
+            self._gnote[event] = (why, now)
+            self._bb_write({"timestamp": now, "event": event + "_noted",
+                            "why": why, "guard_mode": "data", "stopped": False})
+            self.get_logger().warn(f"[data] {event} 감지 — {why} (정지하지 않음)")
         def _stop_all(self, reason):
             self.stop_reason = str(reason)
             self.get_logger().warning(f"STOP_ALL ({reason})")

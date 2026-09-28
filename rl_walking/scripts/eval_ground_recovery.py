@@ -44,6 +44,8 @@ parser.add_argument("--slew_deg", type=float, default=None)
 parser.add_argument("--ankle_play_deg", type=float, default=None, help="발목앞뒤 유격 반폭 고정 [deg] (0919 실측 대역 ~8° → 반폭 4). 실물 발산 재현 스윕용")
 parser.add_argument("--ankle_coulomb", type=float, default=None, help="발목앞뒤 쿨롱 마찰 [Nm] 고정")
 parser.add_argument("--ankle_kp_scale", type=float, default=None, help="발목앞뒤 kp 배율 (명령→몸 응답 이득 저하 재현)")
+parser.add_argument("--ankle_stiction", type=float, default=None,
+                    help="발목 유격 안 정지 마찰 켜기, 값 = 쿨롱 대비 배율 (0928). 미지정 = 종전(정지 마찰 없음)")
 parser.add_argument("--level_s", type=float, default=0.0,
                     help="사전검사 앞에 자동수평 단계 [s] (0928: 실물 절차 착지→자동수평→인계 재현). 0=끔")
 parser.add_argument("--level_rate", type=float, default=2.0, help="자동수평 힙 트림 최대 속도 [deg/s] (실물 0.5)")
@@ -206,6 +208,15 @@ if args_cli.com_fix is not None and getattr(env_cfg.events, "base_com", None):
 if args_cli.delay_steps:
     _dlo, _dhi = _pair(args_cli.delay_steps)
     env_cfg.actions.joint_pos.min_delay_steps = int(_dlo); env_cfg.actions.joint_pos.max_delay_steps = int(_dhi)
+if args_cli.ankle_stiction is not None:
+    from rl_walking.actuators_play import DeadzoneCoulombImplicitActuatorCfg as _DZC2
+    _n_st = 0
+    for _k, _a in list(env_cfg.scene.robot.actuators.items()):
+        if isinstance(_a, _DZC2):
+            _a.stiction = True; _a.stiction_ratio = float(args_cli.ankle_stiction); _n_st += 1
+    print(f"[stiction] 발목 유격 정지 마찰 ON — 배율 {args_cli.ankle_stiction:g} · 대상 액추에이터 {_n_st}개", flush=True)
+    if _n_st == 0:
+        raise SystemExit("--ankle_stiction: DeadzoneCoulomb 액추에이터가 없다")
 def _parse_set(txt):
     out = {}
     for part in [x for x in (txt or "").split(";") if x.strip()]:

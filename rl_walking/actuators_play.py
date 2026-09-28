@@ -154,6 +154,12 @@ class DeadzoneCoulombImplicitActuator(DeadzoneImplicitActuator):
 
     def reset(self, env_ids):
         super().reset(env_ids)
+        # 정지 마찰 고정점 무효화 → 다음 compute 에서 현재각으로 재초기화
+        if getattr(self, "_anchor_ok", None) is not None:
+            if env_ids is None or isinstance(env_ids, slice):
+                self._anchor_ok[:] = False
+            elif len(env_ids) > 0:
+                self._anchor_ok[torch.as_tensor(env_ids, device=self._anchor_ok.device, dtype=torch.long)] = False
         if self._c_rng is None or env_ids is None:
             return
         if isinstance(env_ids, slice):
@@ -161,8 +167,44 @@ class DeadzoneCoulombImplicitActuator(DeadzoneImplicitActuator):
         if len(env_ids) > 0:
             self._resample_c(torch.as_tensor(env_ids, device=self._tau_c.device, dtype=torch.long))
 
+    def _compute_stiction(self, control_action, joint_pos, joint_vel):
+        """0928: 유격 안 **정지 마찰**.
+
+        종전 DeadzoneImplicit 은 유격 안에서 목표 = 현재각(강성 0)이고, 쿨롱은 τ = −τc·tanh(v/v0) 라
+        **속도 0 에서 마찰 0** 이다. 그래서 발목은 유격 스톱에 기대지 않으면 버티지 못했다
+        (명목 홀드 −4° 정착 = 뒤 스톱 위치, 학습 분포 홀드 31.8 %). 실물 발목 대역(0919 실측 ~8°)은
+        마찰 히스테리시스 — 대역 어디서든 정지 마찰로 버틴다(0928 몸통 0° 에서 왼발목 1.28 Nm, 101 s 자립).
+
+        구현(암시적 드라이브를 그대로 써서 수치 안정):
+          유격 안에서 목표 = 고정점 a. a 는 현재각 q 에서 δ = τs/kp 이상 벌어질 수 없도록 끌려간다:
+              a ← q + clamp(a − q, −δ, +δ)
+          → PD 가 내는 버팀 토크 |kp·(a−q)| ≤ τs (정지 마찰 한계). 요구 토크가 τs 를 넘으면 a 가 q 를
+          따라 미끄러진다(파단). 유격 밖에서는 종전대로 PD 가 지배하고 고정점은 현재각으로 재설정.
+        τs = 정지 마찰 = 쿨롱 크기 × stiction_ratio (env 별 쿨롱 DR 을 그대로 따른다).
+        """
+        q = joint_pos
+        if getattr(self, "_anchor", None) is None or self._anchor.shape != q.shape:
+            self._anchor = q.clone()
+            self._anchor_ok = torch.zeros(q.shape[0], dtype=torch.bool, device=q.device)
+        a = torch.where(self._anchor_ok.unsqueeze(1), self._anchor, q)
+        e = control_action.joint_positions - q
+        inside = e.abs() <= self._play
+        kp = torch.clamp(self.stiffness, min=1e-3)
+        delta = (self._tau_c * float(self.cfg.stiction_ratio)) / kp
+        a = q + torch.clamp(a - q, -delta, delta)
+        e_dz = torch.sign(e) * torch.clamp(e.abs() - self._play, min=0.0)
+        tgt = torch.where(inside, a, q + e_dz)
+        self._anchor = torch.where(inside, a, q)
+        self._anchor_ok[:] = True
+        control_action.joint_positions = tgt
+        return control_action
+
     def compute(self, control_action, joint_pos: torch.Tensor, joint_vel: torch.Tensor):
-        control_action = super().compute(control_action, joint_pos, joint_vel)
+        if self.cfg.stiction:
+            control_action = self._compute_stiction(control_action, joint_pos, joint_vel)
+            control_action = ImplicitActuator.compute(self, control_action, joint_pos, joint_vel)
+        else:
+            control_action = super().compute(control_action, joint_pos, joint_vel)
         ff = -self._tau_c * torch.tanh(joint_vel / self._v0)
         control_action.joint_efforts = ff if control_action.joint_efforts is None else control_action.joint_efforts + ff
         return control_action
@@ -174,3 +216,5 @@ class DeadzoneCoulombImplicitActuatorCfg(DeadzoneImplicitActuatorCfg):
     coulomb_nm: dict[str, float] | float = 0.0     # 쿨롱 마찰 토크 [Nm]
     coulomb_v0: float = 0.05                        # tanh 속도 스케일 [rad/s]
     coulomb_range: tuple[float, float] | None = None  # env 별 배율 U(lo,hi) (DR)
+    stiction: bool = False                          # 0928: 유격 안 정지 마찰(고정점 모델). 기본 OFF — 기존 세대 환경 불변
+    stiction_ratio: float = 1.0                     # 정지 마찰 = 쿨롱 × 이 배율

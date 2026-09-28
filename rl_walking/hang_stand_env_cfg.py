@@ -1351,3 +1351,60 @@ class Biped12HangStandG10EnvCfg(Biped12HangStandG9EnvCfg):
 @configclass
 class Biped12HangStandG10HoldEnvCfg(Biped12HangStandG10EnvCfg):
     """G10 대조군(평가용)."""
+
+
+# ─────────────── 0928 G11: 플랜트 정합 (발목 정지 마찰 + 기본자세 편향 절반) ───────────────
+_G11_POSE_BIAS_HALF = {
+    "hip_f_rad": (-0.035, 0.035), "knee_rad": (-0.0175, 0.0175), "ankle_f_rad": (-0.01, 0.01),
+    "shared_knee_rad": (-0.236, -0.183), "shared_hip_f_rad": (-0.052, -0.018), "reset_noise_rad": 0.025,
+}
+
+
+@configclass
+class Biped12HangStandG11aEnvCfg(Biped12HangStandG9EnvCfg):
+    """G11a (0928): **G9 + 플랜트 정합만**. 보상 불변(물리 변경의 효과를 따로 보기 위한 분리 세대).
+
+    근거(reports/real_0928/WHY_SIX_GENERATIONS_FAILED.md): 정책 없이 가만히 서 있기가 G10 학습 분포에서 31.8 % 만
+    성공했다(실물은 같은 자세로 101 s 자립). 원인 두 가지를 시험으로 분리:
+      1) 발목 유격 안 **정지 마찰 부재** — 쿨롱이 tanh 형이라 속도 0 에서 0 → 발목이 스톱에 기대야 섬.
+         → DeadzoneCoulomb 에 stiction(고정점 모델), τs = 쿨롱×2 = 3~6 Nm(쿨롱 DR ×0.75~1.5 를 따름). **가정값.**
+      2) 기본자세 편향의 조합 폭 — 폭을 절반으로.
+    홀드 3 s: 61/192 → 150/192(이 환경). 기점은 G9(v5); G10 의 명령 한계 벌점은 지연 강건성 저하 의심이 미해결이라 뺀다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        from rl_walking.actuators_play import DeadzoneCoulombImplicitActuatorCfg as _DZC
+        n = 0
+        for _k, _a in self.scene.robot.actuators.items():
+            if isinstance(_a, _DZC):
+                _a.stiction = True; _a.stiction_ratio = 2.0; n += 1
+        assert n == 1, f"발목 DeadzoneCoulomb 액추에이터가 1개여야 한다 (찾음 {n})"
+        self.events.default_pose_bias.params.update(dict(_G11_POSE_BIAS_HALF))
+
+
+@configclass
+class Biped12HangStandG11aHoldEnvCfg(Biped12HangStandG11aEnvCfg):
+    """G11a 대조군(평가용)."""
+
+
+@configclass
+class Biped12HangStandG11bEnvCfg(Biped12HangStandG11aEnvCfg):
+    """G11b (0928): **G11a + 정착 보너스를 회복 게이트에서 해제** 단일 변경.
+
+    G8 부터 settle_quiet_bonus 가 state_gated(회복 게이트가 닫힌 동안만)로 묶였다. 외란 뒤 가라앉아야 할 바로 그
+    구간에 정착 유인이 꺼져 있었다. 또 G10 학습 에피소드는 평균 10.5 s 인데 첫 외란이 평균 6 s 에 와서 '외란 뒤
+    다시 조용해지는' 경험이 드물었다. 보너스 자체가 settled 램프(양발 접촉·기울기 8° 이내 0.5 s 유지)를 곱하므로
+    스텝 중에는 자연히 0 이다 — 게이트를 풀어도 회복 스텝을 벌하지 않는다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = getattr(self.rewards, "settle_quiet_bonus", None)
+        assert t is not None, "settle_quiet_bonus 가 없다"
+        assert t.func is mdp_hang.state_gated, "G8 이후라면 게이트돼 있어야 한다 — 단일 변경 전제 확인"
+        self.rewards.settle_quiet_bonus = RewTerm(func=t.params["func"], weight=t.weight, params=dict(t.params["params"]))
+
+
+@configclass
+class Biped12HangStandG11bHoldEnvCfg(Biped12HangStandG11bEnvCfg):
+    """G11b 대조군(평가용)."""
+

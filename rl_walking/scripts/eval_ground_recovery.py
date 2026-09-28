@@ -44,6 +44,10 @@ parser.add_argument("--slew_deg", type=float, default=None)
 parser.add_argument("--ankle_play_deg", type=float, default=None, help="발목앞뒤 유격 반폭 고정 [deg] (0919 실측 대역 ~8° → 반폭 4). 실물 발산 재현 스윕용")
 parser.add_argument("--ankle_coulomb", type=float, default=None, help="발목앞뒤 쿨롱 마찰 [Nm] 고정")
 parser.add_argument("--ankle_kp_scale", type=float, default=None, help="발목앞뒤 kp 배율 (명령→몸 응답 이득 저하 재현)")
+parser.add_argument("--dr_off", type=str, default="",
+                    help="DR 축을 쉼표로 나열해 그 축만 명목화 (나머지는 DR 유지). "
+                         "축: pose,gains,delay,com,posebias,play,mass,friction,calib,asym. "
+                         "0928 분해 실험용 — 홀드를 무너뜨리는 축을 단일 변수로 찾는다.")
 parser.add_argument("--delay_steps", type=str, default=None, help="액션 지연 lo,hi [틱] (기본: 명목 4,4 / DR 학습 대역)")
 parser.add_argument("--dist", type=str, default="", help="외란 목록 ';' 구분, 시각은 인계 기준 [s]")
 parser.add_argument("--recover_s", type=float, default=6.0, help="외란 종료 뒤 회복 판정 창 [s]")
@@ -97,25 +101,40 @@ if hasattr(env_cfg.actions.joint_pos, "lpf_beta_range") and not args_cli.no_chai
     env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)         # 필터는 배포 체인 1개만
 _hp = env_cfg.events.hang_support_reset.params
 assert float(_hp["r0_range"][1]) <= 1e-6, f"지면 절차 평가는 지지 0 태스크에서만 (r0_range={_hp['r0_range']})"
-if args_cli.nominal:
+_DR_AXES = ("pose", "gains", "delay", "com", "posebias", "play", "mass", "friction", "calib", "asym")
+_OFF = {x.strip() for x in (args_cli.dr_off or "").split(",") if x.strip()}
+_bad = _OFF - set(_DR_AXES)
+if _bad:
+    raise SystemExit(f"--dr_off 미지의 축 {sorted(_bad)} (허용 {list(_DR_AXES)})")
+
+
+def _nom(axis):
+    """이 축을 명목화하는가 — --nominal 이면 전부, 아니면 --dr_off 에 적힌 축만."""
+    return args_cli.nominal or axis in _OFF
+
+
+if args_cli.nominal or _OFF:
     ev = env_cfg.events
-    for _k in ("roll", "pitch"):
-        if _k in ev.reset_base.params["pose_range"]:
-            ev.reset_base.params["pose_range"][_k] = (0.0, 0.0)
-    if getattr(ev, "reset_robot_joints", None):
-        ev.reset_robot_joints.params["position_range"] = (0.0, 0.0)
-    ev.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
-    ev.actuator_gains.params["damping_distribution_params"] = (1.0, 1.0)
+    if _nom("pose"):
+        for _k in ("roll", "pitch"):
+            if _k in ev.reset_base.params["pose_range"]:
+                ev.reset_base.params["pose_range"][_k] = (0.0, 0.0)
+        if getattr(ev, "reset_robot_joints", None):
+            ev.reset_robot_joints.params["position_range"] = (0.0, 0.0)
+    if _nom("gains"):
+        ev.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
+        ev.actuator_gains.params["damping_distribution_params"] = (1.0, 1.0)
     # 0922 정정: 명목 지연을 4틱으로 고정해 온 것은 **실물보다 낙관적**이었다.
     #   실측 루프지연(0911 realdata_model_id §5): 중앙 6.3틱 · IQR 5.7~7.0 · p95 8.9.
     #   지연 스윕에서 발목 명령 최대가 4틱 34.4° → 9틱 51.6° 로 단조 증가하고, 실물 2회차 56.7° 는 9~11틱 구간이다.
     #   → 명목 = 실측 중앙 6틱. 강건성 판정은 --delay_steps 9,9(p95)로 따로 본다.
-    env_cfg.actions.joint_pos.min_delay_steps = 6; env_cfg.actions.joint_pos.max_delay_steps = 6
-    if hasattr(env_cfg.actions.joint_pos, "lpf_beta_range"): env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)
-    if hasattr(env_cfg.actions.joint_pos, "backlash_rad_range"): env_cfg.actions.joint_pos.backlash_rad_range = (0.0, 0.0)
-    if getattr(ev, "base_com", None):
+    if _nom("delay"):
+        env_cfg.actions.joint_pos.min_delay_steps = 6; env_cfg.actions.joint_pos.max_delay_steps = 6
+        if hasattr(env_cfg.actions.joint_pos, "lpf_beta_range"): env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)
+        if hasattr(env_cfg.actions.joint_pos, "backlash_rad_range"): env_cfg.actions.joint_pos.backlash_rad_range = (0.0, 0.0)
+    if _nom("com") and getattr(ev, "base_com", None):
         ev.base_com.params["com_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
-    if getattr(ev, "default_pose_bias", None):
+    if _nom("posebias") and getattr(ev, "default_pose_bias", None):
         _pb = ev.default_pose_bias.params
         for _k in ("hip_f_rad", "knee_rad", "ankle_f_rad"):
             if _pb.get(_k) is not None: _pb[_k] = (0.0, 0.0)
@@ -123,25 +142,28 @@ if args_cli.nominal:
             if _pb.get(_k) is not None:
                 _c = 0.5 * (float(_pb[_k][0]) + float(_pb[_k][1])); _pb[_k] = (_c, _c)
         _pb["reset_noise_rad"] = 0.0
-    for _nm, _key in (("ankle_f_gains", "stiffness_distribution_params"), ("ankle_f_friction", "friction_distribution_params")):
-        _e = getattr(ev, _nm, None)
+    for _nm, _key in ((("ankle_f_gains", "stiffness_distribution_params") if _nom("gains") else (None, None)),
+                      (("ankle_f_friction", "friction_distribution_params") if _nom("friction") else (None, None))):
+        _e = getattr(ev, _nm, None) if _nm else None
         if _e is not None:
             _c = 0.5 * (float(_e.params[_key][0]) + float(_e.params[_key][1])); _e.params[_key] = (_c, _c)
-    if getattr(ev, "calib_bias", None):
+    if _nom("calib") and getattr(ev, "calib_bias", None):
         for _k in list(ev.calib_bias.params):
             if _k.endswith("_rad") and ev.calib_bias.params[_k] is not None: ev.calib_bias.params[_k] = (0.0, 0.0)
         if "imu_lag_steps" in ev.calib_bias.params: ev.calib_bias.params["imu_lag_steps"] = (0, 0)
-    for _e in ("stance_asym", "effort_scale"):
-        if getattr(ev, _e, None) is not None: setattr(ev, _e, None)
-    if getattr(ev, "add_base_mass", None):
+    if _nom("asym"):
+        for _e in ("stance_asym", "effort_scale"):
+            if getattr(ev, _e, None) is not None: setattr(ev, _e, None)
+    if _nom("mass") and getattr(ev, "add_base_mass", None):
         _op = ev.add_base_mass.params.get("operation", "add")
         ev.add_base_mass.params["mass_distribution_params"] = ((1.0, 1.0) if _op == "scale" else (0.0, 0.0))
-    if getattr(ev, "joint_friction", None): ev.joint_friction.params["friction_distribution_params"] = (0.0, 0.0)
-    if getattr(ev, "physics_material", None):
-        ev.physics_material.params["static_friction_range"] = (0.8, 0.8); ev.physics_material.params["dynamic_friction_range"] = (0.6, 0.6)
-    if getattr(ev, "joint_armature", None): ev.joint_armature.params["armature_distribution_params"] = (1.0, 1.0)
+    if _nom("friction"):
+        if getattr(ev, "joint_friction", None): ev.joint_friction.params["friction_distribution_params"] = (0.0, 0.0)
+        if getattr(ev, "physics_material", None):
+            ev.physics_material.params["static_friction_range"] = (0.8, 0.8); ev.physics_material.params["dynamic_friction_range"] = (0.6, 0.6)
+        if getattr(ev, "joint_armature", None): ev.joint_armature.params["armature_distribution_params"] = (1.0, 1.0)
     from rl_walking.actuators_play import DeadzoneCoulombImplicitActuatorCfg as _DZC
-    for _k, _a in list(env_cfg.scene.robot.actuators.items()):
+    for _k, _a in (list(env_cfg.scene.robot.actuators.items()) if _nom("play") else []):
         if getattr(_a, "play_rad_range", None) is None: continue
         if isinstance(_a, _DZC) and not args_cli.nominal_play_zero:
             _pc = 0.5 * (float(_a.play_rad_range[0]) + float(_a.play_rad_range[1])); _a.play_rad_range = None

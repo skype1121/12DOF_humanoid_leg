@@ -44,6 +44,10 @@ parser.add_argument("--slew_deg", type=float, default=None)
 parser.add_argument("--ankle_play_deg", type=float, default=None, help="발목앞뒤 유격 반폭 고정 [deg] (0919 실측 대역 ~8° → 반폭 4). 실물 발산 재현 스윕용")
 parser.add_argument("--ankle_coulomb", type=float, default=None, help="발목앞뒤 쿨롱 마찰 [Nm] 고정")
 parser.add_argument("--ankle_kp_scale", type=float, default=None, help="발목앞뒤 kp 배율 (명령→몸 응답 이득 저하 재현)")
+parser.add_argument("--pb_set", type=str, default="",
+                    help="default_pose_bias 파라미터 직접 지정 'key=lo,hi;key=lo,hi' [rad] (0928 세분 분해)")
+parser.add_argument("--com_set", type=str, default="",
+                    help="base_com com_range 성분 직접 지정 'x=lo,hi;y=lo,hi;z=lo,hi' [m] (0928 세분 분해)")
 parser.add_argument("--dr_off", type=str, default="",
                     help="DR 축을 쉼표로 나열해 그 축만 명목화 (나머지는 DR 유지). "
                          "축: pose,gains,delay,com,posebias,play,mass,friction,calib,asym. "
@@ -198,6 +202,25 @@ if args_cli.com_fix is not None and getattr(env_cfg.events, "base_com", None):
 if args_cli.delay_steps:
     _dlo, _dhi = _pair(args_cli.delay_steps)
     env_cfg.actions.joint_pos.min_delay_steps = int(_dlo); env_cfg.actions.joint_pos.max_delay_steps = int(_dhi)
+def _parse_set(txt):
+    out = {}
+    for part in [x for x in (txt or "").split(";") if x.strip()]:
+        k, v = part.split("=")
+        lo, hi = (float(z) for z in v.split(","))
+        out[k.strip()] = (lo, hi)
+    return out
+if args_cli.pb_set:
+    _pbp = env_cfg.events.default_pose_bias.params
+    for _k, _v in _parse_set(args_cli.pb_set).items():
+        if _k not in _pbp:
+            raise SystemExit(f"--pb_set 미지의 키 {_k} (있는 키 {sorted(_pbp)})")
+        _pbp[_k] = (float(_v[0]) if _k == "reset_noise_rad" else _v)   # reset_noise_rad 는 스칼라
+    print(f"[pb_set] default_pose_bias ← {_parse_set(args_cli.pb_set)}")
+if args_cli.com_set:
+    _cr = dict(env_cfg.events.base_com.params["com_range"])
+    _cr.update(_parse_set(args_cli.com_set))
+    env_cfg.events.base_com.params["com_range"] = _cr
+    print(f"[com_set] base_com com_range ← {_cr}")
 _pr = env_cfg.events.reset_base.params["pose_range"]
 if args_cli.tilt_pitch_deg != 0.0:
     _r = math.radians(args_cli.tilt_pitch_deg); _pr["pitch"] = (_r, _r)     # env 규약: +피치 = 앞으로 기울임(projected_gravity x>0) 과 같은 부호로 둔다(아래 실측 표에서 확인)

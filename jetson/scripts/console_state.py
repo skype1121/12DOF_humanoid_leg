@@ -106,6 +106,7 @@ class TrialState:
         self.stop_delivery = None
         self.measurement = {"state": "waiting", "elapsed": 0.0, "reason": "모든 줄 느슨·무보조 확인 전"}
         self.slack_at = None
+        self.commander_at_slack = None   # 무보조 확인 시점의 명령 주체 — 홀드/정책 혼동 방지
         self.max_elapsed = 0.0
         self.view = {}
         self.history = []
@@ -121,6 +122,26 @@ class TrialState:
     def drain_events(self):
         rows, self.changes = self.changes, []
         return rows
+
+    def commander(self):
+        """지금 실제로 명령을 내고 있는 제어기 — "policy" | "hold" | None.
+
+        0928: 무보조 확인(op_slack_done)이 정책 armed 만 허용하고 있어서, 홀드만으로 선
+        자립을 기록할 방법이 없었다(70개 세션 전수 op_slack_done 0건 — 못 섰기 때문이 아니라
+        누를 수 없었기 때문). 프로젝트 판정 기준은 '모든 줄 느슨·무보조 5초'이고 어떤 제어기가
+        명령 중인지는 규정하지 않는다. 다만 **홀드 자립과 정책 자립은 절대 섞지 않는다** —
+        그래서 제어기를 반환하고 측정 기록에 남긴다.
+        """
+        s = self.view.get("stage8", {}) or {}
+        b = self.view.get("bridge", {}) or {}
+        fresh = self.view.get("fresh", {}) or {}
+        if "stand" in self.completed and fresh.get("bridge") and b.get("armed"):
+            return "policy"
+        # 홀드: stage8 이 ARM 되어 스트리밍 중이고 정책은 명령하지 않는 상태
+        if ("arm" in self.completed and fresh.get("status")
+                and s.get("armed") and s.get("running") and not b.get("armed")):
+            return "hold"
+        return None
 
     def flow(self):
         # The legacy ground marker also enables an airborne handoff. It is an
@@ -196,8 +217,9 @@ class TrialState:
                     return "정지·고장 후에는 회수하고 새 시험을 시작하세요"
                 if getattr(self, "releasing", False):
                     return "방출 정지(⏸)를 먼저 기록하세요 — 윈치 조작 중에는 느슨 확인 불가"
-                if "stand" not in self.completed or not fresh.get("bridge") or not b.get("armed"):
-                    return "정책 제어 중인 상태 확인 필요"
+                if self.commander() is None:
+                    return ("명령 중인 제어기 확인 필요 — 정책 제어 중이거나, "
+                            "stage8 홀드가 ARM·스트리밍 중이어야 합니다")
                 if self.slack_at is not None or self.measurement["state"] != "waiting":
                     return "이미 측정한 시험입니다. 회수 후 새 시험을 시작하세요"
                 return self._sensor_reason(True) or self._contact_reason()
@@ -349,8 +371,12 @@ class TrialState:
             self.releasing = False
             self.slack_at = self.clock()
             self._pose_stamps = None
+            self.commander_at_slack = self.commander()
+            _who = {"policy": "정책", "hold": "홀드(정책 없음)"}.get(self.commander_at_slack, "미확인")
             self.measurement = {"state": "measuring", "elapsed": 0.0,
-                                "reason": "운영자 무보조 확인 · 영상 검토 필요", "review_required": True}
+                                "commander": self.commander_at_slack,
+                                "reason": f"운영자 무보조 확인 · 명령 주체 {_who} · 영상 검토 필요",
+                                "review_required": True}
         self.revision += 1
         self.emit(action, note=str(payload.get("note", ""))[:300])
 
@@ -393,8 +419,18 @@ class TrialState:
             reason = self._sensor_reason(True) or self._contact_reason()
             if not view.get("session", {}).get("active"):
                 reason = "기록 중단"
-            if not s.get("armed") or not s.get("running") or not b.get("armed"):
-                reason = "정책 제어 상태 상실"
+            _who = getattr(self, "commander_at_slack", None)
+            if _who == "policy":
+                if not s.get("armed") or not s.get("running") or not b.get("armed"):
+                    reason = "정책 제어 상태 상실"
+            elif _who == "hold":
+                # 홀드 측정 중 정책이 명령을 잡으면 그 시점부터는 다른 시험이다 — 무효 처리.
+                if not s.get("armed") or not s.get("running"):
+                    reason = "홀드 제어 상태 상실"
+                elif b.get("armed"):
+                    reason = "측정 중 정책이 명령을 잡음 — 홀드 자립 측정 무효"
+            else:
+                reason = "명령 주체 미확인"
             if reason:
                 self.invalidate(reason)
             else:

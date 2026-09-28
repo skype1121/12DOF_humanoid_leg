@@ -564,3 +564,86 @@ def test_release_no_bus_completes_step_with_reason():
     t = run("OK", 0)
     assert "release" in t.completed and t.last_result["ok"] is True
     assert not getattr(t, "release_no_bus", False)
+
+
+def test_slack_confirm_allows_hold_only_and_records_commander():
+    """0928: 무보조 확인이 정책 armed 만 허용해 홀드 자립을 기록할 수 없었다(70세션 전수 0건).
+    이제 홀드(stage8 ARM·스트리밍, 정책 미명령)도 허용하되 명령 주체를 기록해 절대 섞지 않는다."""
+    from jetson.scripts import console_state as cs
+
+    def mk(completed, s8, br, fresh, contact=(True, True), t=100.0):
+        st = cs.TrialState("stand_crouch_v6")
+        st.completed = set(completed)
+        st.view = {"stage8": s8, "bridge": br, "fresh": fresh,
+                   "foot": {"contact": list(contact)}, "procs": {},
+                   "session": {"active": True}, "received": {}, "server_time": t}
+        return st
+
+    S8_ON = {"armed": True, "running": True, "holding": True, "baseline": 12}
+    FRESH_ALL = {"status": True, "imu": True, "foot": True, "bridge": True, "joints": True}
+
+    # 1) 정책이 명령 중 → "policy" (종전 동작 유지)
+    t = mk(("arm", "bridge", "stand"), S8_ON, {"armed": True}, FRESH_ALL)
+    assert t.commander() == "policy", t.commander()
+
+    # 2) 홀드만 (정책 미명령) → "hold" — 종전엔 None 이라 버튼이 막혔다
+    t = mk(("arm",), S8_ON, {"armed": False}, dict(FRESH_ALL, bridge=False))
+    assert t.commander() == "hold", t.commander()
+
+    # 3) stage8 이 ARM 아니면 None
+    t = mk(("arm",), {"armed": False, "running": True}, {"armed": False}, FRESH_ALL)
+    assert t.commander() is None
+    # 4) arm 단계 미완료면 None (홀드가 명령 중이라 볼 수 없다)
+    t = mk((), S8_ON, {"armed": False}, FRESH_ALL)
+    assert t.commander() is None
+    # 5) status 피드백이 낡으면 None
+    t = mk(("arm",), S8_ON, {"armed": False}, dict(FRESH_ALL, status=False))
+    assert t.commander() is None
+
+
+def test_slack_confirm_hold_measurement_invalidated_if_policy_takes_over():
+    """홀드 자립 측정 중 정책이 명령을 잡으면 그 시험은 무효 — 두 자립을 섞지 않는다."""
+    from jetson.scripts import console_state as cs
+    S8_ON = {"armed": True, "running": True, "holding": True, "baseline": 12}
+    FRESH = {"status": True, "imu": True, "foot": True, "bridge": False, "joints": True}
+
+    t = cs.TrialState("stand_crouch_v6")
+    t.completed = {"arm"}
+    base = {"stage8": S8_ON, "bridge": {"armed": False}, "fresh": FRESH,
+            "foot": {"contact": [True, True]}, "procs": {},
+            "session": {"active": True}, "received": {}, "server_time": 100.0}
+    t.update(dict(base))
+    t.operator_event("op_slack_done", {})
+    assert t.measurement["state"] == "measuring"
+    assert t.measurement["commander"] == "hold", t.measurement
+    assert "홀드" in t.measurement["reason"], t.measurement["reason"]
+
+    # 홀드 유지 → 계속 측정, 5초 관측 표시
+    t.update(dict(base, server_time=106.0))
+    assert t.measurement["state"] == "measuring", t.measurement
+    assert t.measurement.get("observed_5s") is True, t.measurement
+
+    # 정책이 명령을 잡음 → 무효
+    t.update(dict(base, server_time=107.0, bridge={"armed": True},
+                  fresh=dict(FRESH, bridge=True)))
+    assert t.measurement["state"] == "interrupted", t.measurement
+    assert "정책이 명령을 잡음" in t.measurement["reason"], t.measurement["reason"]
+
+
+def test_slack_confirm_still_needs_contact_and_fresh_sensors():
+    """완화는 제어기 조건에만 적용된다 — 접촉·센서 신선도 요구는 그대로여야 한다."""
+    from jetson.scripts import console_state as cs
+    S8_ON = {"armed": True, "running": True, "holding": True, "baseline": 12}
+    FRESH = {"status": True, "imu": True, "foot": True, "bridge": False, "joints": True}
+
+    def reason(contact=(True, True), fresh=None):
+        t = cs.TrialState("stand_crouch_v6")
+        t.completed = {"arm"}
+        t.update({"stage8": S8_ON, "bridge": {"armed": False}, "fresh": fresh or FRESH,
+                  "foot": {"contact": list(contact)}, "procs": {},
+                  "session": {"active": True}, "received": {}, "server_time": 100.0})
+        return t.reason("op_slack_done")
+
+    assert reason() is None, reason()                       # 홀드·양발·신선 → 허용
+    assert reason(contact=(False, True)) is not None        # 한 발만 → 거부
+    assert reason(fresh=dict(FRESH, imu=False)) is not None  # IMU 낡음 → 거부

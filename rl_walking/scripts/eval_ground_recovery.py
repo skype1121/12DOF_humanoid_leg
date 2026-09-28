@@ -44,6 +44,10 @@ parser.add_argument("--slew_deg", type=float, default=None)
 parser.add_argument("--ankle_play_deg", type=float, default=None, help="발목앞뒤 유격 반폭 고정 [deg] (0919 실측 대역 ~8° → 반폭 4). 실물 발산 재현 스윕용")
 parser.add_argument("--ankle_coulomb", type=float, default=None, help="발목앞뒤 쿨롱 마찰 [Nm] 고정")
 parser.add_argument("--ankle_kp_scale", type=float, default=None, help="발목앞뒤 kp 배율 (명령→몸 응답 이득 저하 재현)")
+parser.add_argument("--level_s", type=float, default=0.0,
+                    help="사전검사 앞에 자동수평 단계 [s] (0928: 실물 절차 착지→자동수평→인계 재현). 0=끔")
+parser.add_argument("--level_rate", type=float, default=2.0, help="자동수평 힙 트림 최대 속도 [deg/s] (실물 0.5)")
+parser.add_argument("--level_gain", type=float, default=0.5, help="자동수평 비례 이득 [deg 트림 / deg 편차 / 틱]")
 parser.add_argument("--pb_set", type=str, default="",
                     help="default_pose_bias 파라미터 직접 지정 'key=lo,hi;key=lo,hi' [rad] (0928 세분 분해)")
 parser.add_argument("--com_set", type=str, default="",
@@ -226,7 +230,7 @@ if args_cli.tilt_pitch_deg != 0.0:
     _r = math.radians(args_cli.tilt_pitch_deg); _pr["pitch"] = (_r, _r)     # env 규약: +피치 = 앞으로 기울임(projected_gravity x>0) 과 같은 부호로 둔다(아래 실측 표에서 확인)
 if args_cli.tilt_roll_deg != 0.0:
     _r = math.radians(args_cli.tilt_roll_deg); _pr["roll"] = (_r, _r)
-T_pre = float(args_cli.precheck_s); T_after = float(args_cli.after_s)
+T_pre = float(args_cli.precheck_s) + float(args_cli.level_s); T_after = float(args_cli.after_s)
 env_cfg.episode_length_s = T_pre + T_after + 1.0
 
 if args_cli.video:
@@ -344,6 +348,20 @@ def _rp():
     pg = robot.data.projected_gravity_b
     return torch.rad2deg(torch.atan2(pg[:, 0], -pg[:, 2])), torch.rad2deg(torch.atan2(pg[:, 1], -pg[:, 2]))
 
+# ── 0928 자동수평 에뮬레이션 (실물 콘솔 auto_level_tick 과 같은 법칙) ──
+#   힙 앞뒤 트림: 좌 +off / 우 −off (off>0 = 굴곡 증가 = 몸통 앞으로). err = 목표(0°) − 피치.
+#   양발 접촉 · |편차| ≤ 8°(초과 시 일시정지) · |ω_y| < 0.06 rad/s 일 때만 적분, 0.3° 안이면 정지, |off| ≤ 10°.
+#   실물은 0.5°/s 로 ~20 s 걸린다. 시뮬은 기본 2°/s 로 빠르게(--level_rate).
+LEVEL_STEPS = int(round(float(args_cli.level_s) * 50))
+_lvl = torch.zeros(N, device=dev)                # 트림 [deg]
+_lvl_term = uenv.action_manager.get_term("joint_pos")
+_jn = list(robot.joint_names)
+_jids = getattr(_lvl_term, "_joint_ids", slice(None))
+_jlist = list(range(len(_jn))) if isinstance(_jids, slice) else [int(x) for x in _jids]
+_LH = _jlist.index(_jn.index("left_hip_f_joint")); _RH = _jlist.index(_jn.index("right_hip_f_joint"))
+_lvl_base = None
+_lvl_pitch0 = None
+
 # ── 기록 ──
 alive = torch.ones(N, dtype=torch.bool, device=dev)
 death_step = torch.full((N,), -1, dtype=torch.long, device=dev)
@@ -426,6 +444,13 @@ if args_cli.dump_envs > 0:
 
 QUIET_W, QUIET_V, QUIET_QD, QUIET_TICKS = 0.15, 0.05, 0.30, 25
 
+# 0928: 스폰 시점 편향·CoM 을 env 별로 보존 (낙상 뒤 리셋되면 값이 바뀌므로 루프 전에 떠 둔다)
+_BIAS0 = getattr(uenv, "_default_pose_bias", None)
+_BIAS0 = _BIAS0.clone() if isinstance(_BIAS0, torch.Tensor) else None
+try:
+    _COM0 = robot.root_physx_view.get_coms()[:, _base_id, :3].clone().cpu()
+except Exception:  # noqa: BLE001
+    _COM0 = None
 for i in range(STEPS):
     t_rel = (i - STEPS_PRE) / 50.0                          # 인계 기준 시각
     if i == STEPS_PRE and use_chain:                        # 인계: 체인을 홀드 명령각에서 시작
@@ -456,6 +481,23 @@ for i in range(STEPS):
     qd_rms = (robot.data.joint_vel ** 2).mean(1).sqrt()
     f = _cs.data.net_forces_w[:, [_fl, _fr], :].norm(dim=-1); contact = f > 5.0
     both = contact[:, 0] & contact[:, 1]
+    if LEVEL_STEPS > 0 and i < LEVEL_STEPS:
+        if _lvl_base is None:
+            _lvl_base = _lvl_term._offset[:, [_LH, _RH]].clone(); _lvl_pitch0 = pitch.clone()
+        _err = 0.0 - pitch
+        _wy = robot.data.root_ang_vel_b[:, 1].abs()
+        _ok = both & (_err.abs() <= 8.0) & (_err.abs() > 0.3) & (_wy < 0.06)
+        _step = torch.clamp(float(args_cli.level_gain) * _err, -float(args_cli.level_rate) / 50.0, float(args_cli.level_rate) / 50.0)
+        _lvl = torch.clamp(_lvl + torch.where(_ok, _step, torch.zeros_like(_step)), -10.0, 10.0)
+        _lvl_term._offset[:, _LH] = _lvl_base[:, 0] + torch.deg2rad(_lvl)
+        _lvl_term._offset[:, _RH] = _lvl_base[:, 1] - torch.deg2rad(_lvl)
+        if i == LEVEL_STEPS - 1:
+            _pa = pitch[alive]
+            print(f"[자동수평] {args_cli.level_s:.1f}s 후 생존 {int(alive.sum())}/{N} · 피치 평균 "
+                  f"{float(_lvl_pitch0[alive].mean()) if alive.any() else float('nan'):+.2f}° → "
+                  f"{float(_pa.mean()) if alive.any() else float('nan'):+.2f}° (표준편차 {float(_pa.std()) if alive.sum()>1 else 0:.2f}) · "
+                  f"트림 평균 {float(_lvl[alive].mean()) if alive.any() else 0:+.2f}° 범위 "
+                  f"{float(_lvl[alive].min()) if alive.any() else 0:+.1f}~{float(_lvl[alive].max()) if alive.any() else 0:+.1f}°", flush=True)
     cmd = _LAST_CMD[0] if _LAST_CMD[0] is not None else _DEF
     a_ = alive.clone()
     newly = a_ & term
@@ -665,11 +707,17 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
 import csv  # noqa: E402
 with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}_envs.csv"), "w", newline="") as fh:
     wcsv = csv.writer(fh)
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")])
+    _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
+    _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols)
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
             row += [int(d_fell[e, k]), float(d_lift[e, k]), int(d_rec[e, k]), (round(float(d_trec[e, k]), 2) if d_rec[e, k] else ""), round(float(d_pmax[e, k]), 1)]
+        if _BIAS0 is not None:
+            row += [round(math.degrees(float(v)), 3) for v in _BIAS0[e]]
+        if _COM0 is not None:
+            row += [round(float(v), 4) for v in _COM0[e]]
         wcsv.writerow(row)
 if _VID is not None and _VID["n"] > 0:
     import subprocess  # noqa: E402

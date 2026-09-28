@@ -46,6 +46,11 @@ parser.add_argument("--ankle_coulomb", type=float, default=None, help="발목앞
 parser.add_argument("--ankle_kp_scale", type=float, default=None, help="발목앞뒤 kp 배율 (명령→몸 응답 이득 저하 재현)")
 parser.add_argument("--ankle_stiction", type=float, default=None,
                     help="발목 유격 안 정지 마찰 켜기, 값 = 쿨롱 대비 배율 (0928). 미지정 = 종전(정지 마찰 없음)")
+parser.add_argument("--land_s", type=float, default=0.0,
+                    help="스폰 직후 부드러운 착지 [s]: 몸통에 체중만큼의 위쪽 지지력을 주고 0 까지 선형 감소 "
+                         "(0928: 실물은 줄로 내려 착지해 스폰 충격이 없다). 0=끔")
+parser.add_argument("--pb_chain", type=str, default="",
+                    help="사슬 합 보존 편향 'lo_deg,hi_deg,leg_noise_deg' — 힙 = 무릎 − 발목 + c + n (0928)")
 parser.add_argument("--level_s", type=float, default=0.0,
                     help="사전검사 앞에 자동수평 단계 [s] (0928: 실물 절차 착지→자동수평→인계 재현). 0=끔")
 parser.add_argument("--level_rate", type=float, default=2.0, help="자동수평 힙 트림 최대 속도 [deg/s] (실물 0.5)")
@@ -217,6 +222,11 @@ if args_cli.ankle_stiction is not None:
     print(f"[stiction] 발목 유격 정지 마찰 ON — 배율 {args_cli.ankle_stiction:g} · 대상 액추에이터 {_n_st}개", flush=True)
     if _n_st == 0:
         raise SystemExit("--ankle_stiction: DeadzoneCoulomb 액추에이터가 없다")
+if args_cli.pb_chain:
+    _lo, _hi, _nz = (float(x) for x in args_cli.pb_chain.split(","))
+    _pbc = env_cfg.events.default_pose_bias.params
+    _pbc["chain_target_rad"] = (math.radians(_lo), math.radians(_hi)); _pbc["chain_leg_noise_rad"] = math.radians(_nz)
+    print(f"[pb_chain] 사슬 합 목표 {_lo:+.1f}~{_hi:+.1f}° · 다리별 잡음 ±{_nz:.1f}°", flush=True)
 def _parse_set(txt):
     out = {}
     for part in [x for x in (txt or "").split(";") if x.strip()]:
@@ -373,6 +383,7 @@ _LH = _jlist.index(_jn.index("left_hip_f_joint")); _RH = _jlist.index(_jn.index(
 _lvl_base = None
 _lvl_pitch0 = None
 
+_TERM_CNT = {}
 # ── 기록 ──
 alive = torch.ones(N, dtype=torch.bool, device=dev)
 death_step = torch.full((N,), -1, dtype=torch.long, device=dev)
@@ -475,6 +486,20 @@ for i in range(STEPS):
             fN = d.force_at(t_rel)
             if fN != 0.0:
                 fvec[:, 0, :] += _dir_vec(d.dir) * fN; f_now += fN
+    if float(args_cli.land_s) > 0.0 and i < int(round(float(args_cli.land_s) * 50)) + 1:
+        # 0928 수정: 골반 한 점에 주면 무게중심과 어긋나 회전력이 생긴다(0.72 s 에 +20° 전도).
+        #   → 링크마다 자기 질량만큼 위로 받친다 = 중력을 잠시 줄이는 것과 같다(회전력 없음).
+        if "_LAND_M" not in globals():
+            globals()["_LAND_M"] = robot.root_physx_view.get_masses().to(dev)          # (N, B)
+        _frac = max(0.0, 1.0 - i / max(1.0, float(args_cli.land_s) * 50))
+        _B = _LAND_M.shape[1]
+        _fw = torch.zeros(N, _B, 3, device=dev); _fw[..., 2] = _LAND_M * 9.81 * _frac
+        _q = robot.data.body_quat_w.reshape(-1, 4)
+        _fb = quat_apply_inverse(_q, _fw.reshape(-1, 3)).reshape(N, _B, 3)
+        robot.set_external_force_and_torque(_fb, torch.zeros_like(_fb))
+    elif float(args_cli.land_s) > 0.0 and i == int(round(float(args_cli.land_s) * 50)) + 1:
+        _z = torch.zeros(N, robot.num_bodies, 3, device=dev)
+        robot.set_external_force_and_torque(_z, _z)
     if dists:
         # 0920 검증: Isaac Lab 2.3.2 의 is_global=True 가 실제로는 로컬로 걸렸다(1 env 검증에서 뒤 밀기에 골반이 앞으로) → 월드 힘을 base 쿼터니언으로 직접 로컬 변환해 기본 경로(로컬)로 건다
         fvec_b = quat_apply_inverse(robot.data.root_quat_w, fvec[:, 0, :]).unsqueeze(1)
@@ -513,6 +538,13 @@ for i in range(STEPS):
     a_ = alive.clone()
     newly = a_ & term
     death_step[newly] = i; pitch_death[newly] = pitch[newly]; roll_death[newly] = roll[newly]
+    if bool(newly.any()):     # 0928: 어떤 종료 조건이 걸렸는지 집계 (낙상 판정 검증용)
+        _tm = uenv.termination_manager
+        for _nm in _tm.active_terms:
+            _v = _tm.get_term(_nm)
+            _c = int((_v & newly).sum())
+            if _c:
+                _TERM_CNT[_nm] = _TERM_CNT.get(_nm, 0) + _c
     ever_both |= (a_ & both)
     lift = (a_ & ever_both & prev_both & ~both).float()
     lift_total += lift
@@ -715,6 +747,7 @@ print(txt)
 os.makedirs(os.path.join(REPO, "log_picture"), exist_ok=True)
 with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}.txt"), "w", encoding="utf-8") as fh:
     fh.write(txt + "\n")
+P(f"[종료 조건] {_TERM_CNT if _TERM_CNT else '없음'}")
 import csv  # noqa: E402
 with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}_envs.csv"), "w", newline="") as fh:
     wcsv = csv.writer(fh)

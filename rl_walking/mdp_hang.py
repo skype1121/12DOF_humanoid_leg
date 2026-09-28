@@ -1052,7 +1052,8 @@ if __name__ == "__main__":
 def resample_default_pose_bias(env, env_ids, hip_f_rad=(-0.21, 0.21), knee_rad=(-0.087, 0.087),
                                ankle_f_rad=(-0.14, 0.14), reset_noise_rad: float = 0.05,
                                action_term: str = "joint_pos", asset_cfg=None,
-                               shared_hip_f_rad=None, shared_knee_rad=None, shared_ankle_f_rad=None):
+                               shared_hip_f_rad=None, shared_knee_rad=None, shared_ankle_f_rad=None,
+                               chain_target_rad=None, chain_leg_noise_rad: float = 0.0):
     """에피소드마다 env 별로 '물리 기본자세'를 nominal + 편향으로 바꾼다.
 
     모델: 실물 영점 오차·사슬 오프셋 = 정책 프레임(엔코더 D)이 물리 자세와 어긋나는 것. 시뮬 등가 =
@@ -1083,6 +1084,21 @@ def resample_default_pose_bias(env, env_ids, hip_f_rad=(-0.21, 0.21), knee_rad=(
         for i, n in enumerate(names):
             if n.endswith(key):
                 bias[:, i] += (v[:, 0] if n.startswith("left") else -v[:, 0])
+    # 0928: 사슬 합 보존 — 힙 편향을 무릎·발목 편향에 맞춰 정한다.
+    #   독립 힙/무릎 편향은 사슬 합(굴곡 기준 힙−무릎+발목)을 −22~−6° 로 뿌려, 착지 몸통을 실물이
+    #   한 번도 보이지 않은 각도로 기울였다(홀드 실패의 주 예측변수, 상관 −0.37).
+    #   실물: 오른다리 힙 +7.4°·무릎 +9.1° 가 함께 움직여 사슬 합 ±1.2° 유지(0928 자립),
+    #   착지 직후 몸통 −3.6~0°(0918·0928) ↔ 시뮬 사슬 합 −14~−10°(명목 −14 → 몸통 −4 · 자동수평 +3.6 → 0).
+    #   → 힙 = 무릎 − 발목 + c + n  (c ~ U(chain_target) env 공통, n ~ U(±chain_leg_noise) 다리별)
+    if chain_target_rad is not None:
+        c = torch.empty(len(ids), device=env.device).uniform_(float(chain_target_rad[0]), float(chain_target_rad[1]))
+        for side, sg in (("left", 1.0), ("right", -1.0)):
+            ih = names.index(f"{side}_hip_f_joint"); ik = names.index(f"{side}_knee_joint"); ia = names.index(f"{side}_ankle_f_joint")
+            k_flex = -sg * bias[:, ik]           # 굴곡 + 로 통일 (왼 무릎 − / 오른 무릎 + 가 굴곡)
+            a_flex = sg * bias[:, ia]
+            n = torch.empty(len(ids), device=env.device).uniform_(-float(chain_leg_noise_rad), float(chain_leg_noise_rad))
+            h_flex = k_flex - a_flex + c + n
+            bias[:, ih] = sg * h_flex
     new = nom.unsqueeze(0) + bias
     asset.data.default_joint_pos[ids] = new
     env._default_pose_bias[ids] = bias

@@ -93,6 +93,26 @@ ROM_REL = {
 KP_AIR, KD_AIR = 20.0, 1.0
 KP_MAX, KD_MAX = 150.0, 5.0
 DEV_ABORT_DEG = 15.0
+#: 관절별 이탈 한계 [deg]. 승윤님 승인(0928) — 무릎만 따로, 지속 조건은 넣지 않는다.
+#:
+#: 왜 무릎만 다른가 (실측):
+#:   무하중에서 링크각 = 엔코더각(±1°)이고 고정 영점 오차는 없다. 하중이 실리면 엔코더각이
+#:   명령에서 **+12.6°** 벌어진다 — 엔코더 뒤 직렬 컴플라이언스의 탄성 처짐이고 고장이 아니다
+#:   (k ≈ 35~45 Nm/rad, 대역 무관, 좌우 차 ≤1.5°). 힙·발목은 이만큼 크지 않다.
+#:   종전 15° 는 이 정상 처짐 위에 2.4° 밖에 안 남긴다. 검사는 매 틱(50Hz)·한 틱만 넘어도
+#:   전 모터 릴리즈라, 착지 충격 한 번이면 터진다. 0928 실기에서 착지 도중 실제로 터져
+#:   전 모터가 무토크로 풀렸다(같은 세션 2회: 53s 자세유지 시작, 532.7s 착지 중).
+#: 25° 의 근거: 실측 정적 처짐 12.6° × 2 = 25.2° → 하중이 순간 2배가 되는 충격까지 통과.
+#:   기구 여유 충분 — 스탠바이 무릎 ∓38.5° 에서 25° 벗어나도 소프트 밴드
+#:   (좌 [−83.5,+4.0] / 우 [−4.0,+80.0]) 안이고, 타깃은 ROM 클램프가 따로 막는다.
+#: 완화이므로 조용히 넘기지 않는다: 종전 한계를 넘은 관절은 관절별 1회 경고를 남긴다.
+DEV_ABORT_DEG_BY_MOTOR = {4: 25.0, 10: 25.0}     # 4 = left_knee, 10 = right_knee
+
+
+def dev_limit_deg(mid):
+    """모터별 이탈 한계 [deg]. 표에 없으면 공용 DEV_ABORT_DEG."""
+    return DEV_ABORT_DEG_BY_MOTOR.get(mid, DEV_ABORT_DEG)
+
 FB_TIMEOUT_S = 0.5
 RAMP_RATE_DEG_S = 5.0
 GAIN_RAMP_S = 8.0
@@ -416,6 +436,7 @@ def main():
         raise SystemExit(f"[중단] CAN 열기 실패({a.channel}): {e} — can_up.sh 후 재실행")
 
     abort = None
+    relaxed_noted = set()       # 관절별 '완화 구간 진입' 경고 1회용
     soft_stop = False
     handoff = False
     try:
@@ -712,9 +733,16 @@ def main():
                     say(f"[경고] 모터{m} 폴트 1회 관측 (0x{fault[m]:X}) — "
                         f"{FAULT_ABORT_N}회 시 릴리즈")
             for m in IDS:
-                if abs(pos[m] - cmd_of(m, frac)) > DEV_ABORT_DEG:
-                    abort = f"모터{m} 이탈 {pos[m] - cmd_of(m, frac):+.1f}°"
+                _dev = pos[m] - cmd_of(m, frac)
+                _lim = dev_limit_deg(m)
+                if abs(_dev) > _lim:
+                    abort = f"모터{m} 이탈 {_dev:+.1f}° (한계 {_lim:g}°)"
                     break
+                if abs(_dev) > DEV_ABORT_DEG and m not in relaxed_noted:
+                    # 완화 구간 진입 = 종전이면 여기서 풀렸을 지점. 조용히 넘기지 않는다.
+                    relaxed_noted.add(m)
+                    say(f"[주의] 모터{m} 이탈 {_dev:+.1f}° — 종전 한계 {DEV_ABORT_DEG:g}° 초과, "
+                        f"관절별 한계 {_lim:g}° 로 계속 진행")
                 if now - seen[m] > FB_TIMEOUT_S:
                     abort = f"모터{m} 피드백 두절"
                     break

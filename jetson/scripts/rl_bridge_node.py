@@ -257,6 +257,13 @@ CHECKPOINTS = {
     #   ⚠ **독립 시뮬 판정 없이 배포**(승윤님 지시, 0922 점검 일정) — 성능 근거는 학습 지표뿐이다.
     "stand_crouch_v6": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-22_13-32-53_g10/exported"),
+    # stand_crouch_g11a (0929, G11a = G9 + 플랜트 정합: 발목 유격 안 정지 마찰 τs 3~6 Nm(가정값) + 기본자세 편향 폭 절반,
+    #   models/stand_crouch_g11a) — **승격 아님, 실물 비교 시험 후보**(승윤님 결정 0929).
+    #   사전 기준(reports/gen_g11/PROMOTION_CRITERIA.md) 탈락: 정지 도달 120/192(기준 135)·뒤 18N 회복 37 %(기준 39 %).
+    #   v6 대비(같은 판정 환경): 정지 69→120 · 지연11틱 생존 118→152 · 뒤18N 26→34 % · 명령 부호반전 0.258→0.062.
+    #   기본자세는 v5/v6 와 동일(CROUCH_V5). 관측·액션 계약은 G9 계열 그대로.
+    "stand_crouch_g11a": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-09-28_23-19-13_g11a/exported"),
     # stand_crouch_v2 (0918 저녁, S9d, models/stand_crouch_v2) — **등록 보류**: 기본자세 = 실물 v4 명령 + 무릎 직렬 처짐 편향 DR.
     # 시뮬 명목 94.5 % 이나 목 센서 500틱(IMU 무반응) 시험에서 기본자세 출발도 슬루 최대로 발산(틱 34 비유한) → 공중·줄 고정
     # 몸통에서 관절 폭주 위험. 정책 500틱 selftest 는 등록된 stand_* 전부를 순회하므로 등록 자체가 prep 게이트를 막는다.
@@ -285,6 +292,7 @@ CKPT_DEFAULT_POSE = {
     "stand_crouch_v1c": [float(_CROUCH_V1_POSE[j]) for j in JOINT_ORDER],
     "stand_crouch_v5": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
     "stand_crouch_v6": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
+    "stand_crouch_g11a": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
 }
 
 
@@ -296,7 +304,7 @@ def ckpt_default_pose(checkpoint):
 #: 위상 어긋난 관측 → 보행 파괴). 미등록 = 1.4 (기존 가족 전체의 계약).
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
-CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "stand_crouch_v6": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
+CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "stand_crouch_v6": 1.1, "stand_crouch_g11a": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
                    "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1, "stand_hang_v1": 1.1, "stand_hang_v2": 1.1, "stand_hang_v3": 1.1, "stand_hang_v4": 1.1, "stand_hang_v5": 1.1, "stand_hang_v5p": 1.1, "stand_hang_v6": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 #: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).

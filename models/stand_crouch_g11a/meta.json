@@ -1,0 +1,18 @@
+{
+  "name": "stand_crouch_g11a",
+  "run": "2026-09-28_23-19-13_g11a",
+  "checkpoint": "model_8699.pt",
+  "checkpoint_md5": "080ef66f33c5b4855e2ff78b0d77a674",
+  "task": "Biped12-HangStand-G11a-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "G9 model_5700 (stand_crouch_v5)",
+  "summary": "비교 시험 후보(승격 아님). G11a = G9 + 발목 정지마찰(τs 3~6 Nm 가정)·편향 절반. 판정 탈락 A 120/135·D 37%/39%. v6 대비: 정지 69→120, 지연11 생존 118→152, 뒤18N 26→34%, 부호반전 0.258→0.062",
+  "legacy": false,
+  "files": {
+    "policy.pt": "51f3e2b7b73168ec881312175447684b",
+    "policy.onnx": "a090aa871b654a099ada80b4287046fd",
+    "env.yaml": "ab1c12ebc0a55ec3554c669f5eb5680d",
+    "agent.yaml": "52da55f0f4de998609f7fcb7537bdfec"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-28_23-19-13_g11a"
+}

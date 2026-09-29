@@ -538,7 +538,8 @@ for _stage in ("G6", "G6Hold", "G7", "G7Hold",    # 0921 G7: 지속 외력·회�
                 "G8", "G8a", "G8b", "G8c", "G8d", "G8Hold",   # 0921 G8: 회복 보너스·상태 게이트 수정 + 분리 실험
                 "G9", "G9Hold",                               # 0921 G9: 무릎 밴드 보상 게이트 단일 변경
                 "G10", "G10Hold",                             # 0922 G10: 명령 기준 한계 벌점 단일 변경
-                "G11a", "G11aHold", "G11b", "G11bHold"):     # 0928 G11: 발목 정지 마찰+편향 절반 / +정착 보너스 게이트 해제
+                "G11a", "G11aHold", "G11b", "G11bHold",
+                "G11c", "G11cHold"):                          # 0929 G11c: 회복 품질 보상 5→10 단일 변경     # 0928 G11: 발목 정지 마찰+편향 절반 / +정착 보너스 게이트 해제
     gym.register(
         id=f"Biped12-HangStand-{_stage}-v0",
         entry_point="isaaclab.envs:ManagerBasedRLEnv",

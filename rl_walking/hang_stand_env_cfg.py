@@ -1408,3 +1408,19 @@ class Biped12HangStandG11bEnvCfg(Biped12HangStandG11aEnvCfg):
 class Biped12HangStandG11bHoldEnvCfg(Biped12HangStandG11bEnvCfg):
     """G11b 대조군(평가용)."""
 
+
+@configclass
+class Biped12HangStandG11cEnvCfg(Biped12HangStandG11aEnvCfg):
+    """G11c (0929): **G11a + 회복 품질 보상 가중 5 → 10** 단일 변경. G11a-8699 에서 이어서 학습.
+
+    근거(reports/gen_g11/VERDICT.md): G11a 는 정지 도달 75→120·명령 부호반전 0.32→0.06 으로 크게 개선됐으나
+    뒤 18 N 회복이 v5 44 % → 34~37 % 로 약해져 사전 기준 D(≥39 %)에서 탈락. 가라앉는 법을 배우며 뒤 밀기에
+    내딛는 반응이 줄었다. recovery_quality 는 회복 게이트가 열린 동안 안정 상태에 가까울수록 주는 등급형 보상 —
+    정지 구간에는 작용하지 않으므로 정착을 해치지 않고 회복만 강화한다."""
+    W_QUALITY = 10.0
+
+
+@configclass
+class Biped12HangStandG11cHoldEnvCfg(Biped12HangStandG11cEnvCfg):
+    """G11c 대조군(평가용)."""
+

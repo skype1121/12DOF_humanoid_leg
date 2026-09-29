@@ -1949,7 +1949,16 @@ def main():
                 os.makedirs(d, exist_ok=True)
                 path = os.path.join(
                     d, time.strftime("rl_bridge_%Y%m%d_%H%M%S.jsonl"))
-                self.bb = open(path, "a", buffering=1)
+                # 0929: 제어 루프가 디스크를 기다리지 않도록 블랙박스는 전용 스레드가 쓴다.
+                #   사고: 0929 20:04:30 자세유지 루프 122 ms 송신 공백 → 모터가 명령을 잃고 두 무릎 22~25° 꺾임.
+                #   /tmp·로그가 90 % 찬 eMMC 위에 있고 쓰기 평균 18 ms — 한 번 막히면 틱 전체가 멈춘다.
+                #   브리지도 매 틱(50 Hz) 블랙박스를 직접 write() 하고 있었다 → 큐에 넣고 즉시 돌아간다.
+                self.bb = open(path, "a", buffering=1 << 16)
+                import queue as _queue, threading as _threading
+                self._bbq = _queue.Queue(maxsize=20000)
+                self._bb_dropped = 0
+                self._bbt = _threading.Thread(target=self._bb_writer, name="bb_writer", daemon=True)
+                self._bbt.start()
                 self.get_logger().info(f"블랙박스 기록: {path}")
             self.create_subscription(String, JOINT_STATES_TOPIC, self._on_js, 10)
             self.create_subscription(String, STATUS_TOPIC, self._on_status, 10)
@@ -2530,22 +2539,65 @@ def main():
                     f"낡은관절 {stale if stale else '없음'}")
 
         def _bb_write(self, obj):
-            """블랙박스 기록 — 실패(디스크 만충 등)해도 안전동작을 못 막게 격리.
+            """블랙박스 기록 — 제어 틱에서는 직렬화만 하고 큐에 넣는다(디스크 대기 없음).
 
-            (적대리뷰 A3: 종전엔 write 예외가 STOP_ALL 발행 전에 콜백을 죽여
-            안전동작 유실 + 노드 사망 경로였음)
+            실제 쓰기는 bb_writer 스레드. 큐가 가득 차면(디스크가 오래 막힘) 기록을 버리고 개수만 센다 —
+            기록을 위해 제어를 멈추지 않는다. 버린 개수는 다음 기록에 bb_dropped 로 남는다.
+            (적대리뷰 A3 원칙 유지: 기록 실패가 안전동작을 막지 않는다)
             """
             if not self.bb:
                 return
             try:
-                self.bb.write(json.dumps(obj) + "\n")
-            except OSError:
+                if self._bb_dropped:
+                    obj = dict(obj); obj["bb_dropped"] = self._bb_dropped
+                self._bbq.put_nowait(json.dumps(obj))
+                if self._bb_dropped:
+                    self._bb_dropped = 0
+            except Exception:  # noqa: BLE001 — queue.Full 포함
+                self._bb_dropped += 1
+
+        def _bb_writer(self):
+            import queue as _queue
+            while True:
+                try:
+                    line = self._bbq.get(timeout=0.5)
+                except _queue.Empty:
+                    try:
+                        if self.bb:
+                            self.bb.flush()
+                    except OSError:
+                        pass
+                    continue
+                if line is None:
+                    break
+                try:
+                    self.bb.write(line + "\n")
+                    if self._bbq.empty():
+                        self.bb.flush()
+                except (OSError, AttributeError, ValueError):
+                    try:
+                        self.bb.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    self.bb = None
+                    self.get_logger().error("블랙박스 기록 실패 — 기록 중단 (제어는 계속)")
+                    return
+
+        def _bb_close(self):
+            """종료 시 큐에 남은 기록을 최대 3 s 안에 비우고 닫는다."""
+            t = getattr(self, "_bbt", None)
+            if t is not None and t.is_alive():
+                try:
+                    self._bbq.put(None, timeout=1.0)
+                except Exception:  # noqa: BLE001
+                    pass
+                t.join(timeout=3.0)
+            if self.bb:
                 try:
                     self.bb.close()
                 except OSError:
                     pass
                 self.bb = None
-                self.get_logger().error("블랙박스 기록 실패 — 기록 중단 (제어는 계속)")
 
         def _guard_note(self, now, event, why):
             """guard_mode=data 에서 가드가 잡았지만 멈추지 않을 때의 기록. 사유가 바뀌거나
@@ -2577,11 +2629,10 @@ def main():
     try:
         rclpy.spin(node)
     finally:
-        if getattr(node, "bb", None):
-            try:
-                node.bb.close()
-            except OSError:
-                pass
+        try:
+            node._bb_close()
+        except Exception:  # noqa: BLE001
+            pass
         node.destroy_node()
         rclpy.shutdown()
     return 0

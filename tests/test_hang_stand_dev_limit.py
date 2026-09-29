@@ -29,12 +29,13 @@ def _load():
 
 M = _load()
 KNEES = (4, 10)
+HIPS_F = (1, 7)
 
 
 def test_knee_limit_is_25_others_15():
     for mid in range(1, 13):
         lim = M.dev_limit_deg(mid)
-        want = 25.0 if mid in KNEES else 15.0
+        want = 25.0 if mid in KNEES + HIPS_F else 15.0
         assert lim == want, (mid, lim, want)
 
 
@@ -48,8 +49,8 @@ def test_knee_covers_measured_sag_with_margin():
 
 
 def test_non_knee_unchanged():
-    """힙·발목은 종전 15° 그대로 — 이번 완화가 다른 관절로 새지 않는다."""
-    for mid in (1, 2, 3, 5, 6, 7, 8, 9, 11, 12):
+    """힙 좌우·회전·발목은 15° 그대로 — 완화가 다른 관절로 새지 않는다(힙 앞뒤는 0929 승윤님 지시로 25°)."""
+    for mid in (2, 3, 5, 6, 8, 9, 11, 12):
         assert M.dev_limit_deg(mid) == M.DEV_ABORT_DEG == 15.0, mid
 
 

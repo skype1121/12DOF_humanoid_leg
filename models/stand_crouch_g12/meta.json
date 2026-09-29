@@ -1,0 +1,18 @@
+{
+  "name": "stand_crouch_g12",
+  "run": "2026-09-29_14-32-50_g12",
+  "checkpoint": "model_9500.pt",
+  "checkpoint_md5": "32a1a819652a8a8c74ebdfb3ab983770",
+  "task": "Biped12-HangStand-G12-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "G11a model_8699 (stand_crouch_g11a)",
+  "summary": "비교 시험 후보(승격 아님). G12 = G11a + 학습 지연 3~8→9~14틱. 사전 기준 B 1/192 차 탈락. 지연11틱: 정지 116→141, 몸통|ω| 0.065→0.035, 지연14 생존 131→147",
+  "legacy": false,
+  "files": {
+    "policy.pt": "dc9cd5867932e15103684055476565ba",
+    "policy.onnx": "6c5f8a7e08696cd07b1e5abf328fa616",
+    "env.yaml": "0c07175148c9fdbbd71d9e1b125d7814",
+    "agent.yaml": "0bb4d1d87e47de447ae1a9aaef735108"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12"
+}

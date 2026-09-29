@@ -51,6 +51,8 @@ parser.add_argument("--land_s", type=float, default=0.0,
                          "(0928: 실물은 줄로 내려 착지해 스폰 충격이 없다). 0=끔")
 parser.add_argument("--pb_chain", type=str, default="",
                     help="사슬 합 보존 편향 'lo_deg,hi_deg,leg_noise_deg' — 힙 = 무릎 − 발목 + c + n (0928)")
+parser.add_argument("--pb_fixed", type=str, default="",
+                    help="관절별 고정 편향 '관절=deg;관절=deg' (관절 프레임 원값, 0929 좌우 비대칭 시험)")
 parser.add_argument("--level_s", type=float, default=0.0,
                     help="사전검사 앞에 자동수평 단계 [s] (0928: 실물 절차 착지→자동수평→인계 재현). 0=끔")
 parser.add_argument("--level_rate", type=float, default=2.0, help="자동수평 힙 트림 최대 속도 [deg/s] (실물 0.5)")
@@ -227,6 +229,12 @@ if args_cli.pb_chain:
     _pbc = env_cfg.events.default_pose_bias.params
     _pbc["chain_target_rad"] = (math.radians(_lo), math.radians(_hi)); _pbc["chain_leg_noise_rad"] = math.radians(_nz)
     print(f"[pb_chain] 사슬 합 목표 {_lo:+.1f}~{_hi:+.1f}° · 다리별 잡음 ±{_nz:.1f}°", flush=True)
+if args_cli.pb_fixed:
+    _fx = {}
+    for _p in [x for x in args_cli.pb_fixed.split(";") if x.strip()]:
+        _k, _v = _p.split("="); _fx[_k.strip()] = math.radians(float(_v))
+    env_cfg.events.default_pose_bias.params["fixed_bias_rad"] = _fx
+    print(f"[pb_fixed] 고정 편향 {args_cli.pb_fixed}", flush=True)
 def _parse_set(txt):
     out = {}
     for part in [x for x in (txt or "").split(";") if x.strip()]:

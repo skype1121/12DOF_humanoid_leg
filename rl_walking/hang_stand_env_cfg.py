@@ -1424,3 +1424,23 @@ class Biped12HangStandG11cEnvCfg(Biped12HangStandG11aEnvCfg):
 class Biped12HangStandG11cHoldEnvCfg(Biped12HangStandG11cEnvCfg):
     """G11c 대조군(평가용)."""
 
+
+@configclass
+class Biped12HangStandG12EnvCfg(Biped12HangStandG11aEnvCfg):
+    """G12 (0929): **G11a + 액션 지연 3~8 → 9~14 틱** 단일 변경. G11a-8699 에서 이어서 학습.
+
+    근거: 실물 g11a(0929 14:02)는 정책 출력·발목·몸통이 같은 2 Hz 로 휘청이다 넘어졌다. 명령→관절 반응 지연 실측
+    16틱(320 ms, 0922·0929 동일). 시뮬에서 액션 지연 6틱 → 반응 ~11틱, 11틱 → ~16틱 이므로 실물 ≈ 시뮬 지연 11틱.
+    G11a 는 3~8틱으로 학습하고 6틱에서 정착을 판정했다 — 실물 루프 지연이 학습 범위 밖이었다.
+    기각한 대안(재생·시뮬 대조로 확인): 좌우 비대칭 · 접촉 깜빡임 · 관측 잡음 · 관절 위치 갱신 누락 37 %."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.min_delay_steps = 9
+        self.actions.joint_pos.max_delay_steps = 14
+
+
+@configclass
+class Biped12HangStandG12HoldEnvCfg(Biped12HangStandG12EnvCfg):
+    """G12 대조군(평가용)."""
+

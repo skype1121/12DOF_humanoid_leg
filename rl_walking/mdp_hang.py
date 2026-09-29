@@ -1053,7 +1053,8 @@ def resample_default_pose_bias(env, env_ids, hip_f_rad=(-0.21, 0.21), knee_rad=(
                                ankle_f_rad=(-0.14, 0.14), reset_noise_rad: float = 0.05,
                                action_term: str = "joint_pos", asset_cfg=None,
                                shared_hip_f_rad=None, shared_knee_rad=None, shared_ankle_f_rad=None,
-                               chain_target_rad=None, chain_leg_noise_rad: float = 0.0):
+                               chain_target_rad=None, chain_leg_noise_rad: float = 0.0,
+                               fixed_bias_rad=None):
     """에피소드마다 env 별로 '물리 기본자세'를 nominal + 편향으로 바꾼다.
 
     모델: 실물 영점 오차·사슬 오프셋 = 정책 프레임(엔코더 D)이 물리 자세와 어긋나는 것. 시뮬 등가 =
@@ -1099,6 +1100,11 @@ def resample_default_pose_bias(env, env_ids, hip_f_rad=(-0.21, 0.21), knee_rad=(
             n = torch.empty(len(ids), device=env.device).uniform_(-float(chain_leg_noise_rad), float(chain_leg_noise_rad))
             h_flex = k_flex - a_flex + c + n
             bias[:, ih] = sg * h_flex
+    # 0929: 관절별 고정 편향 (실물 좌우 비대칭 재현 시험). {관절 이름: rad} — 모든 env 에 같은 값 가산.
+    #   default_joint_pos 에 들어가므로 물리 자세만 바뀌고 정책 관측(joint_pos_rel)에는 0 으로 보인다 = '숨은 비대칭'.
+    if fixed_bias_rad:
+        for jn, v in dict(fixed_bias_rad).items():
+            bias[:, names.index(jn)] += float(v)
     new = nom.unsqueeze(0) + bias
     asset.data.default_joint_pos[ids] = new
     env._default_pose_bias[ids] = bias

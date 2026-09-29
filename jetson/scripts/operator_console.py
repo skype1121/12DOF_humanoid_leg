@@ -64,8 +64,11 @@ BRIDGE_JOINT_FRESH_SEC = 0.2  # rl_bridge_node.SENSOR_STALE_SEC 와 동일 — '
 # 0922: stand_crouch_v5 를 목록 **맨 앞(기본값)** 으로. 기본자세가 실물 v5 스탠바이(힙 ±30.26·무릎 ∓38.50·발목 ±28.00)와
 #   일치하는 유일한 정책이다. stand_crouch_v1* 는 기본자세 힙 15° 라 인계 블렌딩이 '힙 15° 펴기' 명령이 되어
 #   0918 실물 stand 낙상을 만들었다 — 목록에는 남기되 기본값에서 뺀다.
-CKPT_CHOICES = ["stand_crouch_g11a", "stand_crouch_v6", "stand_crouch_v5", "stand_crouch_v1c", "stand_crouch_v1b", "stand_crouch_v1", "stand_hang_v5", "stand_hang_v6", "stand_v18b", "stand_hang_v4", "stand_hang_v3", "stand_hang_v2", "stand_hang_v1", "stand_v17", "stand_v15", "stand_v18", "stand_v16",
-                "stand_v9", "stand_v8", "stand_v7", "march_v5b"]
+# 0929: 승윤님 지시 — 의미 없는 이전 세대는 목록에서 뺀다. 오늘 비교 시험에 쓰는 두 개만 남긴다.
+#   stand_crouch_g11a = 고친 플랜트(발목 정지 마찰·편향 절반)로 학습한 비교 후보(승격 아님)
+#   stand_crouch_v6   = 같은 날 대조군(0922 배포본)
+#   브리지 CHECKPOINTS 등록은 그대로 둔다 — 과거 기록 재현·셀프테스트용. 콘솔 선택지만 줄인다.
+CKPT_CHOICES = ["stand_crouch_g11a", "stand_crouch_v6"]
 CKPT_DEFAULT = CKPT_CHOICES[0]
 
 

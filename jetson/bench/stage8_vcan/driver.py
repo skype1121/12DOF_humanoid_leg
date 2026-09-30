@@ -9,11 +9,12 @@ JOINTS = ["left_hip_f_joint", "left_hip_a_joint", "left_hip_r_joint", "left_knee
           "right_hip_f_joint", "right_hip_a_joint", "right_hip_r_joint", "right_knee_joint", "right_ankle_f_joint", "right_ankle_r_joint"]
 rclpy.init(); node = rclpy.create_node("s8bench_driver")
 pub = node.create_publisher(String, CMD, 10)
-st_log = []; pub_log = []
+st_log = []; pub_log = []; cmd_timing = []
 def on_st(m):
     try: d = json.loads(m.data)
     except Exception: return
     st_log.append((time.time(), d.get("command_seq"), d.get("last_command"), d.get("armed"), d.get("running"), d.get("last_reject_reason")))
+    if isinstance(d.get("cmd_timing"), dict): cmd_timing.append((time.time(), d["cmd_timing"]))
 node.create_subscription(String, ST, on_st, 10)
 def send(obj): pub.publish(String(data=json.dumps(obj)))
 def spin_for(s):
@@ -27,11 +28,12 @@ t0 = time.time(); k = 0
 def tick():
     global k
     t = time.time(); rel = 2.0 * math.sin(2 * math.pi * 0.7 * (t - t0))
-    pub_log.append((t, rel)); send({"command": "SET_JOINT_TARGETS", "targets": {j: rel for j in JOINTS}}); k += 1
+    pub_log.append((t, rel)); send({"command": "SET_JOINT_TARGETS", "targets": {j: rel for j in JOINTS},
+                                    "seq": k + 1, "sent_ts": t, "src": "bench"}); k += 1
 timer = node.create_timer(0.02, tick)
 spin_for(STREAM_S)
 node.destroy_timer(timer)
 send({"command": "STOP_ALL"}); spin_for(0.5)
-json.dump({"pub": pub_log, "st": st_log}, open(OUT, "w"))
+json.dump({"pub": pub_log, "st": st_log, "cmd_timing": cmd_timing[-400:]}, open(OUT, "w"))
 print("published", len(pub_log), "status", len(st_log), flush=True)
 node.destroy_node(); rclpy.shutdown()

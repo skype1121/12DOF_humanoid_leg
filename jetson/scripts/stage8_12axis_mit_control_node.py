@@ -12,6 +12,7 @@ Current deployment uses the main PC, ROS2 topics, and SocketCAN (default
 """
 
 import argparse
+import collections
 import json
 import math
 import os
@@ -91,6 +92,8 @@ FC_READONLY_REQUEST_DATA = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC]
 CONTROL_PERIOD_SEC = 0.02
 STATUS_PERIOD_SEC = 0.01
 MAX_TARGET_STEP_DEG_PER_TICK = 4.0
+#: 0930: 발행 → stage8 처리까지 이보다 늦은 목표 명령을 '늦음'으로 센다. 기록·표시 전용 — 명령 처리 동작은 바꾸지 않는다.
+CMD_STALE_MS = 60.0
 FEEDBACK_TIMEOUT_SEC = 3.0
 #: 피드백 공백 무장해제 — armed 상태에서 피드백 두절이 이 시간을 넘으면 자동
 #: 무장해제+베이스라인 폐기 (0802 감사: 세션 중단 후 살아남은 armed 노드가
@@ -303,6 +306,69 @@ def build_12axis_mit_preview(joint, target_deg):
     )
 
 
+class CommandTiming:
+    """브리지가 목표 명령에 넣는 seq·sent_ts·src 로 '발행 → stage8 처리' 지연·누락·출처 변경을 잰다 (0930).
+
+    0929 실물: 이 구간이 200–220 ms 였고(하드웨어맵 재파싱으로 실행기가 밀림, 1f67f48 에서 수정) 아무 기록에도 직접 안 보였다.
+    기록 전용 — 명령 수락·거부는 그대로. 필드가 없는 옛 발행자(콘솔·stage8_cmd·구 브리지)는 측정만 빠지고 그대로 통과."""
+
+    def __init__(self):
+        self.n = 0
+        self.last_age_ms = None
+        self.stale = 0
+        self.gaps = 0
+        self.regress = 0
+        self.src = None
+        self.src_changes = 0
+        self.last_seq = None
+        self._win = collections.deque()
+
+    @staticmethod
+    def _num(x):
+        return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(float(x))
+
+    def update(self, now, payload):
+        src = payload.get("src")
+        if isinstance(src, str) and src != self.src:
+            if self.src is not None:
+                self.src_changes += 1
+            self.src = src
+            self.last_seq = None
+        seq = payload.get("seq")
+        if isinstance(seq, int) and not isinstance(seq, bool):
+            if self.last_seq is not None:
+                if seq > self.last_seq + 1:
+                    self.gaps += seq - self.last_seq - 1
+                elif seq <= self.last_seq:
+                    self.regress += 1
+            self.last_seq = seq
+        sent = payload.get("sent_ts")
+        if self._num(sent):
+            age = (float(now) - float(sent)) * 1000.0
+            self.n += 1
+            self.last_age_ms = round(age, 1)
+            if age > CMD_STALE_MS:
+                self.stale += 1
+            self._win.append((float(now), age))
+            self._prune(now)
+
+    def _prune(self, now):
+        while self._win and float(now) - self._win[0][0] > 1.0:
+            self._win.popleft()
+
+    def snapshot(self, now):
+        self._prune(now)
+        ages = sorted(a for _, a in self._win)
+        return {
+            "n": self.n, "last_age_ms": self.last_age_ms,
+            "p50_age_ms_1s": round(ages[len(ages) // 2], 1) if ages else None,
+            "max_age_ms_1s": round(ages[-1], 1) if ages else None,
+            "count_1s": len(ages), "stale_over_ms": CMD_STALE_MS, "stale": self.stale,
+            "seq_gaps": self.gaps, "seq_regress": self.regress,
+            "src": self.src, "src_changes": self.src_changes,
+        }
+
+
 class Stage8TwelveAxisMitControlCore:
     def __init__(self, now_fn=time.time):
         self.now_fn = now_fn
@@ -330,6 +396,7 @@ class Stage8TwelveAxisMitControlCore:
         self.commanded_relative_deg_by_joint = {joint: 0.0 for joint in JOINT_NAMES_12DOF}
         self.last_preview_by_joint = {}
         self.command_seq = 0
+        self.cmd_timing = CommandTiming()   # 0930: 목표 명령 지연·누락 기록 (동작 불변)
         self.last_command = None
         self.last_reject_reason = None
         self.soft_clamp_counts = {}   # 관절별 soft 경계 클램프 누적 (status 노출)
@@ -468,6 +535,7 @@ class Stage8TwelveAxisMitControlCore:
             return self._set_joint_target(payload)
 
         if command == COMMAND_SET_JOINT_TARGETS:
+            self.cmd_timing.update(self.now_fn(), payload)
             return self._set_joint_targets_batch(payload)
 
         return self._reject("unsupported_command")
@@ -1390,6 +1458,7 @@ class Stage8TwelveAxisMitControlCore:
             "accepted": self.accepted,
             "executed": self.executed,
             "command_seq": self.command_seq,
+            "cmd_timing": self.cmd_timing.snapshot(self.now_fn()),
             "last_command": self.last_command,
             "last_reject_reason": self.last_reject_reason,
             "soft_clamp_counts": dict(self.soft_clamp_counts),

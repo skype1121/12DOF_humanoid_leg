@@ -1933,6 +1933,9 @@ def main():
             # 축으로 대조할 수 있어야 한다 (실물 전류 기록 요구, 승윤님).
             self.tau_est = {}
             self.temp_raw = {}
+            self._cmd_seq = 0        # 0930: 목표 명령 순번·발행 시각·출처 — stage8 cmd_timing 이 발행→처리 지연·누락을 잰다
+            self._cmd_src = f"bridge:{os.getpid()}:{int(time.time())}"
+            self.s8_cmd_timing = None
             self.status_ts = 0.0     # 마지막 stage8 status 수신 시각 — 블랙박스 status_age_s (0905 감사 C4: tau_est 동결값 식별)
             # stage8 soft 클램프 누적·거부 사유 (0905 감사 B7: 클램프 발생이 블랙박스에 없어 사후분석에서 보이지 않았음)
             self.clamp_total = None
@@ -2013,6 +2016,8 @@ def main():
                 return
             self.armed = bool(d.get("armed"))
             self.status_ts = time.time()
+            _ct = d.get("cmd_timing")
+            self.s8_cmd_timing = _ct if isinstance(_ct, dict) else None
             self.clamp_total = d.get("soft_clamp_total")
             cc = d.get("soft_clamp_counts")
             self.clamp_counts = cc if isinstance(cc, dict) else {}
@@ -2450,6 +2455,10 @@ def main():
                    "temp_raw": [self.temp_raw.get(j) for j in JOINT_ORDER],
                    # stage8 status 신선도 [s] — analyze_fall 이 0.1s 초과 틱의 tau_est 를 동결값으로 제외
                    "status_age_s": round(now - self.status_ts, 3) if self.status_ts > 0.0 else None,
+                   # 0930: stage8 가 잰 '발행 → 처리' 명령 지연·누락 (필드 없으면 옛 stage8)
+                   "s8_cmd": ({k: self.s8_cmd_timing.get(k) for k in ("last_age_ms", "p50_age_ms_1s", "max_age_ms_1s",
+                                                                     "count_1s", "stale", "seq_gaps", "seq_regress", "src_changes")}
+                              if self.s8_cmd_timing else None),
                    # stage8 soft 클램프 누적(총·관절별)·마지막 거부 사유 — 클램프/거부가 낙상과 겹치는지 사후분석 (감사 B7)
                    "soft_clamp_total": self.clamp_total,
                    "soft_clamp_counts": [self.clamp_counts.get(j) for j in JOINT_ORDER],
@@ -2504,8 +2513,7 @@ def main():
                 # (baseline이 어떤 자세로 캡처됐든 상쇄되어 무관)
                 targets[j] = targets_deg_motor[j] - base
             if targets:
-                self.pub_cmd.publish(String(data=json.dumps(
-                    {"command": "SET_JOINT_TARGETS", "targets": targets})))
+                self.pub_cmd.publish(String(data=self._targets_msg(targets)))
 
         def _send_hold_prime(self):
             """인계 워밍업 전용: **현재 실측 자세**를 유지하는 명령(rel = joint_deg − baseline)을 보내
@@ -2528,8 +2536,13 @@ def main():
                     if b is None or q is None:
                         return
                     tg[j] = q - b            # 폴백: 실측 자세 유지
-            self.pub_cmd.publish(String(data=json.dumps(
-                {"command": "SET_JOINT_TARGETS", "targets": tg})))
+            self.pub_cmd.publish(String(data=self._targets_msg(tg)))
+
+        def _targets_msg(self, targets):
+            """SET_JOINT_TARGETS + 순번·발행 시각·출처 (0930). stage8 은 targets 만 쓰고 나머지는 지연 기록용."""
+            self._cmd_seq += 1
+            return json.dumps({"command": "SET_JOINT_TARGETS", "targets": targets,
+                               "seq": self._cmd_seq, "sent_ts": time.time(), "src": self._cmd_src})
 
         def _warmup_diag(self, now):
             stale = [j for j in JOINT_ORDER

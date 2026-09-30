@@ -18,4 +18,8 @@ for v in sys.argv[2:]:
     best = max(range(0, 200), key=lambda L: np.corrcoef(a[:len(a) - L], b[L:])[0, 1])   # 양의 상관만 (반주기 역상 오선택 방지)
     r = np.corrcoef(a[:len(a) - best], b[best:])[0, 1]
     can_rate = len(c) / (c[-1, 0] - c[0, 0])
-    print(f"{v}: 명령 처리 {rate:5.1f}/s (발행 50) | 상태 수신 {st_rate:5.1f}/s | CAN 명령 {can_rate:5.1f}/s | 발행→CAN 지연 {best*5:4d} ms (r={r:+.3f})")
+    ct = drv.get("cmd_timing") or []
+    ct_mid = [c for t, c in ct if t0 + 5 <= t <= t1 - 1]
+    ct_s = (f" | stage8 기록: 지연 p50 {ct_mid[-1]['p50_age_ms_1s']} ms, 최대(1s) {max(c['max_age_ms_1s'] or 0 for c in ct_mid)} ms, "
+            f"누락 {ct_mid[-1]['seq_gaps']}, 늦음 {ct_mid[-1]['stale']}") if ct_mid else ""
+    print(f"{v}: 명령 처리 {rate:5.1f}/s (발행 50) | 상태 수신 {st_rate:5.1f}/s | CAN 명령 {can_rate:5.1f}/s | 발행→CAN 지연 {best*5:4d} ms (r={r:+.3f})" + ct_s)

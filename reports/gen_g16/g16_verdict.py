@@ -89,8 +89,8 @@ TH = {
     'formal': dict(nd13_fall=1, nd13_sus=1.5, nd13_damp=2, b8_gf=2, d6_fall=2, d6_sus=3, d11_fall=3, d11_sus=5,
                    sat_nd=0.2, rev_nd=0.004, sat_b18=1.5, lift=2),
 }
-def c0(mc, mb, th):
-    """mc/mb: {(dl,ds): summary}. 실패 항목 목록(빈 목록 = 통과)."""
+def c0(mc, mb, th, skip_d11=False):
+    """mc/mb: {(dl,ds): summary}. 실패 항목 목록(빈 목록 = 통과). skip_d11: G16d 보정(§7) — d11 항목 미적용."""
     bad = []
     for dl in (1, 3):
         c, b = mc[(dl, 'nd')], mb[(dl, 'nd')]
@@ -100,6 +100,8 @@ def c0(mc, mb, th):
     c, b = mc[(3, 'b8')], mb[(3, 'b8')]
     if c['gf'] > b['gf'] + th['b8_gf']: bad.append(f'd3 뒤8N 성장·낙상 {c["gf"]:.1f}>{b["gf"]:.1f}+{th["b8_gf"]}')
     for dl, kf, ks in ((6, 'd6_fall', 'd6_sus'), (11, 'd11_fall', 'd11_sus')):
+        if skip_d11 and dl == 11:
+            continue
         c, b = mc[(dl, 'nd')], mb[(dl, 'nd')]
         if c['fall'] > b['fall'] + th[kf]: bad.append(f'd{dl} 무외란 낙상 {c["fall"]:.1f}>{b["fall"]:.1f}+{th[kf]}')
         if c['sus'] > b['sus'] + th[ks]: bad.append(f'd{dl} 흔들림지속 {c["sus"]:.1f}>{b["sus"]:.1f}+{th[ks]}')
@@ -148,7 +150,7 @@ def main():
             R = {k: cand(fam, ck, *k, seeds1) for k in ALL}
             if any(v is None for v in R.values()): continue
             M = {k: summarize(R[k], B1[k]) for k in ALL}
-            bad = c0(M, MB1, TH['screen']); screen[(fam, ck)] = (M, bad)
+            bad = c0(M, MB1, TH['screen'], skip_d11=(fam == 'g16d')); screen[(fam, ck)] = (M, bad)
             print(f"{fam + '-' + str(ck):16s} " + ' '.join(f'{x:6.1f}' if i < 10 else f'{x:6.3f}' for i, x in enumerate(row(M)))
                   + ('  ✓' if not bad else '  ✗ ' + '; '.join(bad)))
     # 체크포인트 선택(사전 규칙): 선별 C0 통과 중 뒤 18 N 평균(d1·d3·d6) 최소, 5 %p 이내 동률이면 d6+d11 흔들림 지속 합이 작은 것, 다음 토크포화
@@ -176,7 +178,7 @@ def main():
             R = {k: cand(fam, ck, *k, (1, 2, 3)) for k in ALL}
             if any(v is None for v in R.values()): print(f'  {fam}-{ck}: 대기'); continue
             M = {k: summarize(R[k], B3[k]) for k in ALL}
-            bad = c0(M, MB3, TH['formal']); formal[fam] = (ck, M, bad)
+            bad = c0(M, MB3, TH['formal'], skip_d11=(fam == 'g16d')); formal[fam] = (ck, M, bad)
             pair = ' '.join(f"{k[0]}{k[1]}:{M[k]['only_c']}/{M[k]['only_b']}" for k in C1_CONDS)
             print(f"  {fam}-{ck}: {'통과' if not bad else '탈락 — ' + '; '.join(bad)} | 뒤18N 낙상 d1/d3/d6 "
                   f"{M[(1,'b18')]['fall']:.1f}/{M[(3,'b18')]['fall']:.1f}/{M[(6,'b18')]['fall']:.1f} (기준 {MB3[(1,'b18')]['fall']:.1f}/{MB3[(3,'b18')]['fall']:.1f}/{MB3[(6,'b18')]['fall']:.1f}) 짝(후보만/기준만 낙상) {pair}")

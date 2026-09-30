@@ -270,6 +270,11 @@ CHECKPOINTS = {
     #   정지 116→141 · 몸통 |ω| 0.065→0.035 · 지연14 생존 131→147 · 지연6 정지 120→150. 기본자세 CROUCH_V5 동일.
     "stand_crouch_g12": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported"),
+    # stand_crouch_g12_ema0 (1001) — **같은 정책 파일**, 관측 joint_vel_ema 만 0 (CKPT_JVEL_EMA_MODE). G4~G15 는 학습 중 이 채널이
+    #   0+잡음이었다(mdp_hang 구버전 encoder_joint_vel_ema 결함, 커밋 9264b5a) → 학습 계약 복원판. 시뮬 단일 변수 대조(311쌍):
+    #   무외란·8 N 동일, d3 뒤 18 N 낙상 v2 52.1 % vs 학습 계약 44.7 % (McNemar p=0.019). 이름 그대로 = 0929 과 같은 동작(v2).
+    "stand_crouch_g12_ema0": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported"),
     # stand_crouch_v2 (0918 저녁, S9d, models/stand_crouch_v2) — **등록 보류**: 기본자세 = 실물 v4 명령 + 무릎 직렬 처짐 편향 DR.
     # 시뮬 명목 94.5 % 이나 목 센서 500틱(IMU 무반응) 시험에서 기본자세 출발도 슬루 최대로 발산(틱 34 비유한) → 공중·줄 고정
     # 몸통에서 관절 폭주 위험. 정책 500틱 selftest 는 등록된 stand_* 전부를 순회하므로 등록 자체가 prep 게이트를 막는다.
@@ -300,6 +305,7 @@ CKPT_DEFAULT_POSE = {
     "stand_crouch_v6": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
     "stand_crouch_g11a": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
     "stand_crouch_g12": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
+    "stand_crouch_g12_ema0": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
 }
 
 
@@ -311,9 +317,14 @@ def ckpt_default_pose(checkpoint):
 #: 위상 어긋난 관측 → 보행 파괴). 미등록 = 1.4 (기존 가족 전체의 계약).
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
-CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "stand_crouch_v6": 1.1, "stand_crouch_g11a": 1.1, "stand_crouch_g12": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
+CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "stand_crouch_v6": 1.1, "stand_crouch_g11a": 1.1, "stand_crouch_g12": 1.1, "stand_crouch_g12_ema0": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
                    "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1, "stand_hang_v1": 1.1, "stand_hang_v2": 1.1, "stand_hang_v3": 1.1, "stand_hang_v4": 1.1, "stand_hang_v5": 1.1, "stand_hang_v5p": 1.1, "stand_hang_v6": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
+
+#: 1001 관측 joint_vel_ema 모드 (러너 jvel_ema_mode). 미등록 = 'v2'(실제 속도 EMA, 0929 까지의 동작).
+#: 'ema0' 은 학습 env.yaml 의 joint_vel_ema 가 구버전(encoder_joint_vel_ema = 학습 중 0+잡음)인 정책에만 허용 —
+#: v2 로 학습한 정책(G16~)에 0 을 넣는 반대 방향 결함은 _jvel_ema_contract 검사가 기동을 거부한다.
+CKPT_JVEL_EMA_MODE = {"stand_crouch_g12_ema0": "ema0"}
 #: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).
 #: 대체는 경고 로그로 드러낸다 (0905 감사 A1: 무언 대체 'stand_v7' = 10.49kg 자산 정책 탑승 경로).
 STAND_DEFAULT = "stand_v18b"
@@ -792,7 +803,8 @@ class BridgeCore:
         self.runner = PolicyRunnerStage4(
             CHECKPOINTS[checkpoint],
             gait_freq=CKPT_GAIT_FREQ.get(checkpoint, CKPT_GAIT_FREQ_DEFAULT),
-            default_pose_rad=CKPT_DEFAULT_POSE.get(checkpoint))
+            default_pose_rad=CKPT_DEFAULT_POSE.get(checkpoint),
+            jvel_ema_mode=ckpt_jvel_ema_mode(checkpoint))
         self.ckpt_name = checkpoint
         self.hh = HeadingHold(kp=1.0, wz_limit=0.6)
         self.hh_ref_set = False
@@ -806,7 +818,8 @@ class BridgeCore:
             self.runner = PolicyRunnerStage4(
                 CHECKPOINTS[checkpoint],
                 gait_freq=CKPT_GAIT_FREQ.get(checkpoint, CKPT_GAIT_FREQ_DEFAULT),
-                default_pose_rad=CKPT_DEFAULT_POSE.get(checkpoint))
+                default_pose_rad=CKPT_DEFAULT_POSE.get(checkpoint),
+                jvel_ema_mode=ckpt_jvel_ema_mode(checkpoint))
             self.ckpt_name = checkpoint
         self.runner.reset()
         self.hh_ref_set = False
@@ -1179,6 +1192,7 @@ def _parse_env_contract(path):
     sect = None
     in_init = in_jp = done_jp = False
     jp_indent = 0
+    obs_group = obs_term = None
     with open(path, encoding="utf-8") as f:
         for raw in f:
             s = raw.rstrip("\n")
@@ -1190,8 +1204,17 @@ def _parse_env_contract(path):
             if indent == 0:
                 sect = key
                 in_init = in_jp = False
+                obs_group = obs_term = None
                 if key == "decimation":
                     out["decimation"] = int(val)
+                continue
+            if sect == "observations":     # 1001: 정책 관측 joint_vel_ema 함수(학습 계약 legacy/v2 판별)
+                if indent == 2:
+                    obs_group, obs_term = key, None
+                elif indent == 4:
+                    obs_term = key
+                elif indent == 6 and key == "func" and obs_group == "policy" and obs_term == "joint_vel_ema":
+                    out["jvel_ema_func"] = val
                 continue
             if sect == "sim" and key == "dt" and indent == 2:
                 out["dt"] = float(val)
@@ -1222,12 +1245,42 @@ def _parse_env_contract(path):
     return out
 
 
+def _jvel_ema_contract(func):
+    """env.yaml 의 observations.policy.joint_vel_ema.func → 'legacy'(학습 중 0+잡음, 1001 결함) | 'v2'(실제 속도 EMA) | None(항 없음)."""
+    if not func:
+        return None
+    name = str(func).split(":")[-1].strip()
+    if name == "encoder_joint_vel_ema":
+        return "legacy"
+    if name in ("encoder_joint_vel_ema_v2", "joint_vel_ema"):
+        return "v2"
+    raise ValueError(f"알 수 없는 joint_vel_ema 함수: {func}")
+
+
+def _ckpt_env_yaml(name):
+    return os.path.join(os.path.dirname(CHECKPOINTS[name].rstrip("/")), "params", "env.yaml")
+
+
+def ckpt_jvel_ema_mode(name):
+    """체크포인트의 러너 jvel_ema_mode. 'ema0' 이면 env.yaml 로 legacy 계약을 확인하고, 아니면 기동 거부(ValueError).
+    env.yaml 이 없으면 ema0 도 거부(계약을 확인할 수 없음)."""
+    mode = CKPT_JVEL_EMA_MODE.get(name, "v2")
+    if mode == "ema0":
+        yml = _ckpt_env_yaml(name)
+        if not os.path.isfile(yml):
+            raise ValueError(f"{name}: ema0 인데 env.yaml 없음 ({yml}) — 학습 계약 확인 불가, 기동 거부")
+        c = _jvel_ema_contract(_parse_env_contract(yml).get("jvel_ema_func"))
+        if c != "legacy":
+            raise ValueError(f"{name}: ema0 은 legacy 계약 정책에만 — 이 정책의 joint_vel_ema 계약 = {c} (반대 방향 결함), 기동 거부")
+    return mode
+
+
 def _selftest_contract(required=()):
     """(0906 — 반복 감사 질문의 코드화) 배포 stand 정책의 학습 env(params/env.yaml)와 러너 상수의 계약:
     DEFAULT_POSE(관절명 기준 12개) · 액션 스케일 · 슬루 4°/틱 · 제어 주기 50Hz(decimation×dt) · use_default_offset.
     env.yaml 이 없는 세대는 SKIP(구 세대·비 stand). STAND_DEFAULT 와 required 의 stand_* 는 env.yaml 이 있어야 한다
     (배포 패키지가 models/<gen>/env.yaml 을 <run>/params/ 로 싣는다)."""
-    names = [n for n in dict.fromkeys([STAND_DEFAULT] + list(required)) if n in CHECKPOINTS]
+    names = [n for n in dict.fromkeys([STAND_DEFAULT] + list(required) + list(CKPT_JVEL_EMA_MODE)) if n in CHECKPOINTS]
     checked, skipped = [], []
     for name in names:
         yml = os.path.join(os.path.dirname(CHECKPOINTS[name].rstrip("/")), "params", "env.yaml")
@@ -1245,7 +1298,9 @@ def _selftest_contract(required=()):
         hz = 1.0 / (c["dt"] * c["decimation"])
         assert abs(hz - _DC.RATE_HZ) < 1e-6, f"{name}: 제어 주기 {hz:.2f}Hz ≠ {_DC.RATE_HZ}"
         assert c.get("use_default_offset") is True, f"{name}: use_default_offset={c.get('use_default_offset')} (기대 True)"
-        checked.append(f"{name}(지연 {c.get('min_delay', '?')}~{c.get('max_delay', '?')}틱)")
+        ema_c = _jvel_ema_contract(c.get("jvel_ema_func"))
+        ema_m = ckpt_jvel_ema_mode(name)          # ema0 인데 legacy 계약이 아니면 여기서 ValueError
+        checked.append(f"{name}(지연 {c.get('min_delay', '?')}~{c.get('max_delay', '?')}틱, EMA 계약 {ema_c}·모드 {ema_m})")
     need = [n for n in names if n in skipped and (n == STAND_DEFAULT or n.startswith("stand_"))]
     assert not need, f"stand 정책의 env.yaml 없음: {need} — 배포 패키지에 params/env.yaml 포함 필요"
     return ("DEFAULT_POSE 12관절·스케일 0.25·슬루 4°/틱·50Hz·default_offset 일치: " + ", ".join(checked)
@@ -1976,7 +2031,7 @@ def main():
             self.timer = self.create_timer(TICK_SEC, self._tick)
             self.get_logger().info(
                 f"RL 브리지 기동 — {'LIVE' if self.live else 'DRY-RUN'}, "
-                f"checkpoint={self.core.ckpt_name}")
+                f"checkpoint={self.core.ckpt_name} jvel_ema={getattr(self.core.runner, 'jvel_ema_mode', 'v2')}")
 
         # ---- 입력 콜백 ----
         def _on_js(self, msg):
@@ -2470,6 +2525,11 @@ def main():
                    "obs": ([round(float(v), 4) for v in self.core.runner.last_obs]
                            if getattr(self.core.runner, "last_obs", None) is not None else None),
                    "raw_action": [round(float(v), 4) for v in self.core.runner.last_action],
+                   # 1001: 관측 joint_vel_ema 모드(v2 = 실제 속도 EMA / ema0 = 0, 학습 계약 복원)와 실제 속도 EMA RMS(두 모드 모두 계산)
+                   "jvel_ema_mode": getattr(self.core.runner, "jvel_ema_mode", "v2"),
+                   "jvel_ema_rms": (round(math.sqrt(sum(float(v) * float(v) for v in self.core.runner.last_jvel_ema)
+                                                    / len(self.core.runner.last_jvel_ema)), 4)
+                                    if getattr(self.core.runner, "last_jvel_ema", None) is not None else None),
                    "rp_deg": _roll_pitch_deg(quat),
                    "imu_mount_bias_deg": [IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1]],
                    "osc_tripped": self.osc_tripped,

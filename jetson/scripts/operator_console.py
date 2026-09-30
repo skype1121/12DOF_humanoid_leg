@@ -68,7 +68,9 @@ BRIDGE_JOINT_FRESH_SEC = 0.2  # rl_bridge_node.SENSOR_STALE_SEC 와 동일 — '
 #   stand_crouch_g11a = 고친 플랜트(발목 정지 마찰·편향 절반)로 학습한 비교 후보(승격 아님)
 #   stand_crouch_v6   = 같은 날 대조군(0922 배포본)
 #   브리지 CHECKPOINTS 등록은 그대로 둔다 — 과거 기록 재현·셀프테스트용. 콘솔 선택지만 줄인다.
-CKPT_CHOICES = ["stand_crouch_g12", "stand_crouch_g11a"]   # 0929: g12 비교 시험 · g11a 대조
+# 1001: stand_crouch_g12_ema0 = 같은 G12 정책 파일, 관측 joint_vel_ema 만 0(학습 계약 복원 — 학습 중 이 채널은 0+잡음이었다).
+#   이름 그대로의 stand_crouch_g12 는 0929 과 같은 동작(실제 속도 EMA). 기본값(맨 앞)은 바꾸지 않는다 — 선택은 시험 전 승윤님 결정.
+CKPT_CHOICES = ["stand_crouch_g12", "stand_crouch_g12_ema0", "stand_crouch_g11a"]   # 0929: g12 비교 시험 · g11a 대조
 CKPT_DEFAULT = CKPT_CHOICES[0]
 
 

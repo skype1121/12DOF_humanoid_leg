@@ -259,13 +259,20 @@ class PolicyRunnerStage4:
 
     def __init__(self, model_path=DEFAULT_MODEL_DIR_STAGE4, backend: str = "auto",
                  gait_freq: float = GAIT_FREQ_HZ, obs_dim: int | None = None,
-                 default_pose_rad=None):
+                 default_pose_rad=None, jvel_ema_mode: str = "v2"):
         """model_path: exported/ 디렉토리 또는 .onnx/.pt 파일 경로 (callable=스텁).
         backend: 'auto'(onnx 우선→torch 폴백) | 'onnx' | 'torch'.
         gait_freq: 클록 주파수 [Hz] — 반드시 체크포인트의 학습 클록과 일치
         (v5=1.1, 그 외=1.4). 불일치 = 위상 어긋난 관측 → 보행 파괴.
         obs_dim: 245(기존) | 320(S8a raw+EMA). None = 모델에서 검출 (스텁은 245 기본).
+        jvel_ema_mode: 'v2'(기본, 기존 동작) = joint_vel_ema 에 실제 관절속도의 EMA |
+            'ema0' = joint_vel_ema 프레임을 0 으로 (1001: G4~G15 는 학습 중 이 채널이 0+잡음이었다 — mdp_hang 구버전
+            encoder_joint_vel_ema 결함. 그 정책들의 학습 계약 복원용. EMA 상태는 진단용으로 계속 계산해 last_jvel_ema 에 둔다).
         """
+        if jvel_ema_mode not in ("v2", "ema0"):
+            raise ValueError(f"jvel_ema_mode 는 'v2' | 'ema0' (받음 {jvel_ema_mode!r})")
+        self.jvel_ema_mode = jvel_ema_mode
+        self.last_jvel_ema = None        # 이번 틱 실제 속도 EMA (ema0 에서도 계산 — 블랙박스 진단용)
         self.gait_freq = float(gait_freq)
         # 0918: 체크포인트별 기본자세(S9c 크라우치 등). None = 학습 공통 DEFAULT_POSE_RAD. 관측 joint_pos·액션 오프셋 둘 다 이 값.
         self.default_pose = (np.asarray(default_pose_rad, dtype=np.float32).reshape(12)
@@ -277,6 +284,8 @@ class PolicyRunnerStage4:
             raise ValueError(f"지원하지 않는 관측 차원 {obs_dim} (245 | 320 | 512)")
         self.obs_dim = int(obs_dim)
         self.terms = _TERMS_BY_DIM[self.obs_dim]
+        if self.jvel_ema_mode == "ema0" and "joint_vel_ema" not in dict(self.terms):
+            raise ValueError(f"jvel_ema_mode='ema0' 은 joint_vel_ema 항이 있는 모델(320/512)에만 — 이 모델 {self.obs_dim}")
         self._hist = {name: _TermHistory(dim, TERM_HISTORY.get(name, HISTORY_LEN)) for name, dim in self.terms}
         self._ema = {}                   # S8a: 항 → 현재 EMA (리셋 시 비움; 첫 틱 = 현재값 — mdp_hang._ema_state 와 동일)
         # 절대각 소프트 리밋 로드 (joint_limits_12dof.json — 표준lib 로더).
@@ -309,6 +318,7 @@ class PolicyRunnerStage4:
         self._prev_emitted = None
         self._tick = 0
         self._ema = {}
+        self.last_jvel_ema = None
         for h in self._hist.values():
             h.reset()
 
@@ -352,6 +362,9 @@ class PolicyRunnerStage4:
                 prev = self._ema.get(name)
                 self._ema[name] = x.copy() if prev is None else (1.0 - EMA_ALPHA_S8A) * prev + EMA_ALPHA_S8A * x
                 frames[name] = self._ema[name]
+            self.last_jvel_ema = self._ema["joint_vel_ema"].copy()
+            if self.jvel_ema_mode == "ema0":   # 1001: legacy 학습 계약(이 채널 = 0+잡음)의 평균값
+                frames["joint_vel_ema"] = np.zeros(12, dtype=np.float32)
         if "action_hist16" in self._hist:    # G13: 같은 last_action 을 16틀로 따로 쌓는다
             frames["action_hist16"] = self.last_action
         for name, _dim in self.terms:
@@ -686,6 +699,42 @@ def _selftest_g13() -> str:
     return "G13 512 조립 OK (앞 320 비트동일·16틀 액션 이력 最古→最新·5틀 블록 정합·리셋 백필·차원 검출 512)"
 
 
+def _selftest_ema0() -> str:
+    """(h) 1001 jvel_ema_mode='ema0': 320·512 에서 joint_vel_ema 블록[260:320] 만 0, 나머지는 v2 모드와 비트 동일.
+    EMA 상태는 계속 계산(last_jvel_ema = v2 의 최신 EMA 프레임). 잘못된 모드·245 모델의 ema0 은 거부."""
+    def stub(obs):
+        return np.zeros(ACT_DIM, np.float32)
+    off, dim = 260, 60
+    out = []
+    for od in (OBS_DIM_S8A, OBS_DIM_G13):
+        rv = PolicyRunnerStage4(model_path=stub, obs_dim=od)
+        rz = PolicyRunnerStage4(model_path=stub, obs_dim=od, jvel_ema_mode="ema0")
+        rv.reset(); rz.reset()
+        for k in range(9):
+            ins = _mk_inputs(k)
+            rv.step(*ins); rz.step(*ins)
+            ov, oz = rv.last_obs, rz.last_obs
+            assert np.array_equal(ov[:off], oz[:off]) and np.array_equal(ov[off + dim:], oz[off + dim:]), f"{od}: EMA 밖 블록이 다름"
+            assert not np.any(oz[off:off + dim]), f"{od}: ema0 인데 EMA 블록이 0 이 아님"
+            assert np.any(ov[off:off + dim]), f"{od}: v2 EMA 블록이 0 (시험 입력 결함)"
+            assert np.array_equal(ov[off + dim - 12:off + dim], rz.last_jvel_ema), f"{od}: last_jvel_ema ≠ v2 최신 EMA 프레임"
+        out.append(od)
+    for od in (OBS_DIM_S8A, OBS_DIM_G13):     # 오프셋 260 을 항 목록에서 독립 산출
+        o = 0
+        for name, d in _TERMS_BY_DIM[od]:
+            if name == "joint_vel_ema":
+                assert (o, d * TERM_HISTORY.get(name, HISTORY_LEN)) == (off, dim), f"{od}: joint_vel_ema 오프셋 {o}"
+            o += d * TERM_HISTORY.get(name, HISTORY_LEN)
+        assert o == od
+    for bad in (dict(jvel_ema_mode="zero"), dict(obs_dim=OBS_DIM_STAGE4, jvel_ema_mode="ema0")):
+        try:
+            PolicyRunnerStage4(model_path=stub, **bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"거부되지 않음: {bad}")
+    return f"ema0 OK ({'/'.join(map(str, out))}: [260:320] 만 0·나머지 비트동일·EMA 진단값 유지·잘못된 모드/245 거부)"
+
+
 def _run_selftest() -> int:
     tests = [("조립 골든", _selftest_golden),
              ("이력 백필", _selftest_backfill),
@@ -693,7 +742,8 @@ def _run_selftest() -> int:
              ("슬루/입력검증", _selftest_slew),
              ("모델 추론", _selftest_model),
              ("S8a 320 조립", _selftest_s8a),
-             ("G13 512 조립", _selftest_g13)]
+             ("G13 512 조립", _selftest_g13),
+             ("EMA0 계약 모드", _selftest_ema0)]
     failed = 0
     for name, fn in tests:
         try:

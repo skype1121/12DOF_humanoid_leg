@@ -579,7 +579,7 @@ def test_slack_confirm_allows_hold_only_and_records_commander():
                    "session": {"active": True}, "received": {}, "server_time": t}
         return st
 
-    S8_ON = {"armed": True, "running": True, "holding": True, "baseline": 12}
+    S8_ON = {"armed": True, "running": True, "holding": True, "baseline": 12, "feedback_ok": True}   # 실제 콘솔 뷰에는 항상 있음(operator_console.py feedback_ok)
     FRESH_ALL = {"status": True, "imu": True, "foot": True, "bridge": True, "joints": True}
 
     # 1) 정책이 명령 중 → "policy" (종전 동작 유지)
@@ -604,10 +604,11 @@ def test_slack_confirm_allows_hold_only_and_records_commander():
 def test_slack_confirm_hold_measurement_invalidated_if_policy_takes_over():
     """홀드 자립 측정 중 정책이 명령을 잡으면 그 시험은 무효 — 두 자립을 섞지 않는다."""
     from jetson.scripts import console_state as cs
-    S8_ON = {"armed": True, "running": True, "holding": True, "baseline": 12}
+    S8_ON = {"armed": True, "running": True, "holding": True, "baseline": 12, "feedback_ok": True}   # 실제 콘솔 뷰에는 항상 있음(operator_console.py feedback_ok)
     FRESH = {"status": True, "imu": True, "foot": True, "bridge": False, "joints": True}
 
-    t = cs.TrialState("stand_crouch_v6")
+    now = [100.0]                                   # 측정 경과는 주입 시계(TrialState.clock)로 잰다 — server_time 과 같이 움직인다
+    t = cs.TrialState("stand_crouch_v6", clock=lambda: now[0])
     t.completed = {"arm"}
     base = {"stage8": S8_ON, "bridge": {"armed": False}, "fresh": FRESH,
             "foot": {"contact": [True, True]}, "procs": {},
@@ -619,11 +620,13 @@ def test_slack_confirm_hold_measurement_invalidated_if_policy_takes_over():
     assert "홀드" in t.measurement["reason"], t.measurement["reason"]
 
     # 홀드 유지 → 계속 측정, 5초 관측 표시
+    now[0] = 106.0
     t.update(dict(base, server_time=106.0))
     assert t.measurement["state"] == "measuring", t.measurement
     assert t.measurement.get("observed_5s") is True, t.measurement
 
     # 정책이 명령을 잡음 → 무효
+    now[0] = 107.0
     t.update(dict(base, server_time=107.0, bridge={"armed": True},
                   fresh=dict(FRESH, bridge=True)))
     assert t.measurement["state"] == "interrupted", t.measurement
@@ -633,7 +636,7 @@ def test_slack_confirm_hold_measurement_invalidated_if_policy_takes_over():
 def test_slack_confirm_still_needs_contact_and_fresh_sensors():
     """완화는 제어기 조건에만 적용된다 — 접촉·센서 신선도 요구는 그대로여야 한다."""
     from jetson.scripts import console_state as cs
-    S8_ON = {"armed": True, "running": True, "holding": True, "baseline": 12}
+    S8_ON = {"armed": True, "running": True, "holding": True, "baseline": 12, "feedback_ok": True}   # 실제 콘솔 뷰에는 항상 있음(operator_console.py feedback_ok)
     FRESH = {"status": True, "imu": True, "foot": True, "bridge": False, "joints": True}
 
     def reason(contact=(True, True), fresh=None):

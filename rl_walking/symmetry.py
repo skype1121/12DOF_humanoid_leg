@@ -95,7 +95,14 @@ S8A_EXTRA_DIM = HISTORY_LEN * sum(d for _, d, _, _ in _S8_EMA_TERMS)            
 S8B_EXTRA_DIM = S8A_EXTRA_DIM + HISTORY_LEN * sum(d for _, d, _, _ in _S8_LOAD_TERMS)      # 80
 POLICY_OBS_DIM_S8A = POLICY_OBS_DIM + S8A_EXTRA_DIM                                        # 320
 POLICY_OBS_DIM_S8B = POLICY_OBS_DIM + S8B_EXTRA_DIM                                        # 325
-_POLICY_KIND_BY_DIM = {POLICY_OBS_DIM: "policy", POLICY_OBS_DIM_S8A: "policy_s8a", POLICY_OBS_DIM_S8B: "policy_s8b"}
+# G13 (0930): S8a 끝에 last_action 16틀 이력(192)을 추가 — 실물 명령→반응 지연 ~16틱 동안 '보냈지만 아직 반영 안 된 명령'을
+# 정책이 볼 수 있게. 항 튜플 5번째 원소 = 그 항만의 이력 길이(없으면 HISTORY_LEN).
+G13_ACT_HIST = 16
+_G13_ACT_TERMS = (("action_hist16",) + tuple(t[1:] for t in _POLICY_TERMS if t[0] == "actions")[0] + (G13_ACT_HIST,),)
+_POLICY_TERMS_G13 = _POLICY_TERMS_S8A + _G13_ACT_TERMS
+POLICY_OBS_DIM_G13 = POLICY_OBS_DIM_S8A + G13_ACT_HIST * NUM_JOINTS                          # 512
+_POLICY_KIND_BY_DIM = {POLICY_OBS_DIM: "policy", POLICY_OBS_DIM_S8A: "policy_s8a", POLICY_OBS_DIM_S8B: "policy_s8b",
+                       POLICY_OBS_DIM_G13: "policy_g13"}
 
 
 def build_perm_sign(terms, history: int) -> tuple[torch.Tensor, torch.Tensor]:
@@ -103,13 +110,15 @@ def build_perm_sign(terms, history: int) -> tuple[torch.Tensor, torch.Tensor]:
     perm: list[int] = []
     sign: list[float] = []
     offset = 0
-    for _name, dim, p, s in terms:
+    for term in terms:
+        _name, dim, p, s = term[:4]
+        h = term[4] if len(term) > 4 else history
         assert len(p) == dim and len(s) == dim
-        for t in range(history):
+        for t in range(h):
             base = offset + t * dim
             perm += [base + i for i in p]
             sign += list(s)
-        offset += history * dim
+        offset += h * dim
     return torch.tensor(perm, dtype=torch.long), torch.tensor(sign, dtype=torch.float32)
 
 
@@ -118,6 +127,7 @@ _GROUP_SPECS = {
     "policy": (_POLICY_TERMS, HISTORY_LEN, POLICY_OBS_DIM),
     "policy_s8a": (_POLICY_TERMS_S8A, HISTORY_LEN, POLICY_OBS_DIM_S8A),
     "policy_s8b": (_POLICY_TERMS_S8B, HISTORY_LEN, POLICY_OBS_DIM_S8B),
+    "policy_g13": (_POLICY_TERMS_G13, HISTORY_LEN, POLICY_OBS_DIM_G13),
     "critic": (_CRITIC_TERMS, HISTORY_LEN, CRITIC_GROUP_DIM),
     "actions": (
         (("actions", NUM_JOINTS, tuple(_JOINT_PERM), tuple(_JOINT_SIGN)),),

@@ -101,11 +101,17 @@ assert FRAME_DIM * HISTORY_LEN == OBS_DIM_STAGE4
 STAGE4_TERMS_S8A = STAGE4_TERMS + (("gyro_ema", 3), ("joint_vel_ema", 12))
 OBS_DIM_S8A = HISTORY_LEN * sum(d for _, d in STAGE4_TERMS_S8A)      # 320
 EMA_ALPHA_S8A = 0.1                       # mdp_hang.gyro_ema/joint_vel_ema alpha (τ≈10틱=200ms)
-_TERMS_BY_DIM = {OBS_DIM_STAGE4: STAGE4_TERMS, OBS_DIM_S8A: STAGE4_TERMS_S8A}
+#: G13 (0930) — S8a 끝에 last_action **16틀** 이력 추가(실물 명령→반응 지연 ~16틱 동안 보낸 명령을 정책이 보게).
+#: hang_stand_env_cfg.Biped12HangStandG13EnvCfg / symmetry.policy_g13 와 동기. 이 항만 이력 길이가 다르다.
+G13_ACT_HIST = 16
+STAGE4_TERMS_G13 = STAGE4_TERMS_S8A + (("action_hist16", 12),)
+TERM_HISTORY = {"action_hist16": G13_ACT_HIST}        # 없는 항 = HISTORY_LEN
+OBS_DIM_G13 = OBS_DIM_S8A + G13_ACT_HIST * 12                     # 512
+_TERMS_BY_DIM = {OBS_DIM_STAGE4: STAGE4_TERMS, OBS_DIM_S8A: STAGE4_TERMS_S8A, OBS_DIM_G13: STAGE4_TERMS_G13}
 
 
-def _probe_obs_dim(net, candidates=(OBS_DIM_STAGE4, OBS_DIM_S8A)) -> int:
-    """모델이 받는 관측 차원 검출 — 0 벡터 추론을 후보 차원(245 → 320)으로 시도. 전부 실패 = 계약 밖 모델."""
+def _probe_obs_dim(net, candidates=(OBS_DIM_STAGE4, OBS_DIM_S8A, OBS_DIM_G13)) -> int:
+    """모델이 받는 관측 차원 검출 — 0 벡터 추론을 후보 차원(245 → 320 → 512)으로 시도. 전부 실패 = 계약 밖 모델."""
     errs = []
     for d in candidates:
         try:
@@ -215,9 +221,9 @@ class _TermHistory:
     - flat(): CircularBuffer.buffer.reshape(-1)와 동일 — index0=最古, 끝=最新.
     """
 
-    def __init__(self, dim: int):
+    def __init__(self, dim: int, length: int = HISTORY_LEN):
         self.dim = dim
-        self._buf = np.zeros((HISTORY_LEN, dim), dtype=np.float32)
+        self._buf = np.zeros((int(length), dim), dtype=np.float32)
         self._pushes = 0
 
     def reset(self) -> None:
@@ -268,10 +274,10 @@ class PolicyRunnerStage4:
         if obs_dim is None:
             obs_dim = OBS_DIM_STAGE4 if self.backend == "stub" else _probe_obs_dim(self._net)
         if int(obs_dim) not in _TERMS_BY_DIM:
-            raise ValueError(f"지원하지 않는 관측 차원 {obs_dim} (245 | 320)")
+            raise ValueError(f"지원하지 않는 관측 차원 {obs_dim} (245 | 320 | 512)")
         self.obs_dim = int(obs_dim)
         self.terms = _TERMS_BY_DIM[self.obs_dim]
-        self._hist = {name: _TermHistory(dim) for name, dim in self.terms}
+        self._hist = {name: _TermHistory(dim, TERM_HISTORY.get(name, HISTORY_LEN)) for name, dim in self.terms}
         self._ema = {}                   # S8a: 항 → 현재 EMA (리셋 시 비움; 첫 틱 = 현재값 — mdp_hang._ema_state 와 동일)
         # 절대각 소프트 리밋 로드 (joint_limits_12dof.json — 표준lib 로더).
         # 실패 시 클램프 비활성 (기존 동작 유지) — 실물 배포에서는 반드시 활성 확인.
@@ -339,13 +345,15 @@ class PolicyRunnerStage4:
             "gait_clock": gait_clock_stage4(self._tick, self.gait_freq),
             "feet_contact": self._contact2(contact2),
         }
-        if self.obs_dim == OBS_DIM_S8A:
+        if "gyro_ema" in self._hist:         # S8a·G13
             # raw+EMA(α0.1): 첫 틱은 현재값으로 시작, 이후 (1−α)·prev + α·x — 시뮬 mdp_hang._ema_state 와 같은 수열
             for name, src in (("gyro_ema", "base_ang_vel"), ("joint_vel_ema", "joint_vel")):
                 x = np.asarray(frames[src], dtype=np.float32)
                 prev = self._ema.get(name)
                 self._ema[name] = x.copy() if prev is None else (1.0 - EMA_ALPHA_S8A) * prev + EMA_ALPHA_S8A * x
                 frames[name] = self._ema[name]
+        if "action_hist16" in self._hist:    # G13: 같은 last_action 을 16틀로 따로 쌓는다
+            frames["action_hist16"] = self.last_action
         for name, _dim in self.terms:
             self._hist[name].append(frames[name])
         obs = np.concatenate([self._hist[name].flat() for name, _ in self.terms])
@@ -637,13 +645,55 @@ def _selftest_s8a() -> str:
     return "S8a 320 조립 OK (앞 245 비트동일·EMA α0.1 이력 일치·리셋 재시작·차원 검출 245/320)"
 
 
+def _selftest_g13() -> str:
+    """(g) G13 512 조립: 앞 320 은 S8a판과 비트 동일, 뒤 192 = 직전 액션 16틀(index0=最古, 첫 push 백필 — CircularBuffer 규약)을
+    독립 산술로 대조. 5틀 actions 블록의 마지막 5틀과도 일치해야 한다. 리셋 뒤 백필 재시작·차원 검출 512 확인."""
+    outs = []
+
+    def stub(obs):
+        a = np.full(ACT_DIM, 0.01 * (len(outs) + 1), np.float32); a[0] = -a[0]; outs.append(a.copy())
+        return a
+
+    def stub0(obs):
+        return np.zeros(ACT_DIM, np.float32)
+    r320 = PolicyRunnerStage4(model_path=stub0, obs_dim=OBS_DIM_S8A)
+    r512 = PolicyRunnerStage4(model_path=stub, obs_dim=OBS_DIM_G13)
+    r320.reset(); r512.reset()
+    N = 21
+    acts_seen = []                    # 각 틱에 관측으로 들어간 last_action
+    for k in range(N):
+        ins = _mk_inputs(k)
+        acts_seen.append(r512.last_action.copy())
+        r512.step(*ins)
+        r320.last_action = acts_seen[-1].copy(); r320.step(*ins)   # 같은 last_action 을 넣어 앞 320 비교
+    o = r512.last_obs
+    assert o.shape == (OBS_DIM_G13,) and o.dtype == np.float32
+    assert np.array_equal(o[:OBS_DIM_S8A], r320.last_obs), "앞 320 이 S8a판과 다름"
+    exp = np.stack(acts_seen[-G13_ACT_HIST:]).reshape(-1)
+    assert np.array_equal(o[OBS_DIM_S8A:], exp), "16틀 액션 이력 불일치"
+    off_a = _term_offsets()["actions"][0]
+    assert np.array_equal(o[off_a: off_a + 60].reshape(HISTORY_LEN, 12), np.stack(acts_seen[-HISTORY_LEN:])), "5틀 actions 블록과 불일치"
+    r512.reset(); r512.step(*_mk_inputs(3))
+    assert np.array_equal(r512.last_obs[OBS_DIM_S8A:], np.zeros(G13_ACT_HIST * 12, np.float32)), "리셋 뒤 16틀 백필(0) 아님"
+
+    def only(d):
+        def f(obs):
+            if obs.shape != (d,):
+                raise ValueError("dim")
+            return np.zeros(ACT_DIM, np.float32)
+        return f
+    assert _probe_obs_dim(only(OBS_DIM_G13)) == OBS_DIM_G13
+    return "G13 512 조립 OK (앞 320 비트동일·16틀 액션 이력 最古→最新·5틀 블록 정합·리셋 백필·차원 검출 512)"
+
+
 def _run_selftest() -> int:
     tests = [("조립 골든", _selftest_golden),
              ("이력 백필", _selftest_backfill),
              ("클록 공식", _selftest_clock),
              ("슬루/입력검증", _selftest_slew),
              ("모델 추론", _selftest_model),
-             ("S8a 320 조립", _selftest_s8a)]
+             ("S8a 320 조립", _selftest_s8a),
+             ("G13 512 조립", _selftest_g13)]
     failed = 0
     for name, fn in tests:
         try:

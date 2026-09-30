@@ -424,6 +424,9 @@ q_w = torch.zeros(N, device=dev); q_qd2 = torch.zeros(N, device=dev); q_p2 = tor
 # 인계 뒤 전체: 한계 근접·포화
 post_n = torch.zeros(N, device=dev); lim_ank = torch.zeros(N, device=dev); lim_any = torch.zeros(N, J, device=dev); sat = torch.zeros(N, device=dev)
 final_quiet = torch.zeros(N, dtype=torch.bool, device=dev); fq_run = torch.zeros(N, device=dev)
+# 0930: 흔들림 성장/감쇠 판정 — 인계 뒤 1 s 구간마다 env 별 피치 최대-최소 [deg] (살아 있는 틱만). 실물 0929 G12 '느린 흔들림이 커지다 넘어짐' 대조용.
+NB_OSC = int(math.ceil(float(T_after)))
+osc_max = torch.full((N, NB_OSC), float("-inf"), device=dev); osc_min = torch.full((N, NB_OSC), float("inf"), device=dev)
 _geo = {}   # 사전 검사 끝 시점 링크 기울기(실물 폰 수평계 대조용)
 # 외란 방향 검증: 힘 창 시작/끝의 피치·롤·골반 위치(앞축 성분) 변화
 d_p0 = torch.full((N, D), float("nan"), device=dev); d_p1 = torch.full((N, D), float("nan"), device=dev)
@@ -525,6 +528,10 @@ for i in range(STEPS):
     qd_rms = (robot.data.joint_vel ** 2).mean(1).sqrt()
     f = _cs.data.net_forces_w[:, [_fl, _fr], :].norm(dim=-1); contact = f > 5.0
     both = contact[:, 0] & contact[:, 1]
+    if i >= STEPS_PRE:
+        _ob = min(int(t_rel), NB_OSC - 1); _ok = alive & ~term
+        osc_max[:, _ob] = torch.where(_ok, torch.maximum(osc_max[:, _ob], pitch), osc_max[:, _ob])
+        osc_min[:, _ob] = torch.where(_ok, torch.minimum(osc_min[:, _ob], pitch), osc_min[:, _ob])
     if LEVEL_STEPS > 0 and i < LEVEL_STEPS:
         if _lvl_base is None:
             _lvl_base = _lvl_term._offset[:, [_LH, _RH]].clone(); _lvl_pitch0 = pitch.clone()
@@ -761,7 +768,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols)
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)])
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -770,6 +777,8 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
             row += [round(math.degrees(float(v)), 3) for v in _BIAS0[e]]
         if _COM0 is not None:
             row += [round(float(v), 4) for v in _COM0[e]]
+        _pp = (osc_max[e] - osc_min[e]).tolist()
+        row += [(round(v, 2) if math.isfinite(v) else "") for v in _pp]
         wcsv.writerow(row)
 if _VID is not None and _VID["n"] > 0:
     import subprocess  # noqa: E402

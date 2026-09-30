@@ -1444,3 +1444,66 @@ class Biped12HangStandG12EnvCfg(Biped12HangStandG11aEnvCfg):
 class Biped12HangStandG12HoldEnvCfg(Biped12HangStandG12EnvCfg):
     """G12 대조군(평가용)."""
 
+
+
+@configclass
+class Biped12HangStandG13EnvCfg(Biped12HangStandG12EnvCfg):
+    """G13 (0930): **G12 + 정책 관측 끝에 last_action 16틀 이력(192차원) 추가** 단일 변경. 320 → 512.
+    G12-9500 을 expand_checkpoint 로 0 열 확장해 이어서 학습(확장 직후 출력 = G12 와 동일).
+
+    근거(reports/gen_g13/OSC_REPRO_PLAN.md·OSC_REPRO_RESULT.md): 실물 0929 G12 는 보정 방향은 맞지만(피치와 역위상)
+    명령→관절 반응이 0.34 s(17틱) 늦어, 흔들림이 커지다 넘어졌다. 시뮬도 지연이 길수록 작은 밀기 뒤 성장·낙상이
+    늘었다(뒤 8 N: 지연 6 → 17틱 1.9 → 19.0 %). 홀드는 흔들림을 유지하지 않았다 → 정책 루프 문제.
+    기존 관측의 액션 이력은 5틀(0.1 s)뿐이라 이미 보냈지만 아직 반영 안 된 보정(9~14틱)을 정책이 모른다 →
+    같은 보정을 더 넣는 과보정 가설. 대조군: 같은 G12 환경·같은 반복수로 G12-9500 을 그대로 이어 학습."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.envs import mdp as _mdp
+        P = self.observations.policy
+        assert getattr(P, "action_hist16", None) is None
+        P.action_hist16 = _ObsTerm(func=_mdp.last_action, clip=(-10.0, 10.0), history_length=16, flatten_history_dim=True)
+
+
+@configclass
+class Biped12HangStandG13HoldEnvCfg(Biped12HangStandG13EnvCfg):
+    """G13 대조군(평가용)."""
+
+
+# ─────────────── 0930 G14: 회복 이벤트 보너스 제거 (2×2: 관측 이력 × 보너스) ───────────────
+def _drop_recovery_event(cfg):
+    t = getattr(cfg.rewards, "recovery_event", None)
+    assert t is not None and t.weight > 0, "recovery_event 가 있어야 단일 변경"
+    cfg.rewards.recovery_event = None
+
+
+@configclass
+class Biped12HangStandG14aEnvCfg(Biped12HangStandG12EnvCfg):
+    """G14a (0930): **G12 + recovery_event(균형 상실→회복 1회당 보너스) 제거** 단일 변경. 대조군 = G12c(같은 seed·반복수).
+
+    근거(reports/gen_g13/G13_VERDICT.md): G12 환경에서 이어 학습하면 관측 변경과 무관하게 무외란 지속 흔들림이
+    29 → 88~152 로 늘고 감쇠가 92.6 → 75~84 % 로 떨어졌다. 같은 기간 recovery_event 보상이 +40~60 % 늘었다.
+    가설: 흔들리며 균형을 잃었다 되찾기를 반복하면 이 보너스를 반복 수령 → 조용히 서기보다 흔들림이 이득."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _drop_recovery_event(self)
+
+
+@configclass
+class Biped12HangStandG14aHoldEnvCfg(Biped12HangStandG14aEnvCfg):
+    """G14a 대조군(평가용)."""
+
+
+@configclass
+class Biped12HangStandG14bEnvCfg(Biped12HangStandG13EnvCfg):
+    """G14b (0930): **G13(액션 16틀 관측) + recovery_event 제거**. 대조군 = G13(같은 seed·반복수). G14a 와 함께 2×2."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _drop_recovery_event(self)
+
+
+@configclass
+class Biped12HangStandG14bHoldEnvCfg(Biped12HangStandG14bEnvCfg):
+    """G14b 대조군(평가용)."""

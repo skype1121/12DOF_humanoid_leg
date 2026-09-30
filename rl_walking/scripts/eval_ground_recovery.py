@@ -73,7 +73,7 @@ parser.add_argument("--tilt_roll_deg", type=float, default=0.0)
 parser.add_argument("--cmd_deadband_deg", type=float, default=0.0, help="배포 체인 출력 뒤 명령 데드밴드 [deg]: 직전 명령 대비 변화가 이보다 작으면 명령을 바꾸지 않는다(정숙용 배포측 레버, 학습 변경 없음)")
 parser.add_argument("--freeze_after", type=float, default=None, help="인계 기준 이 시각[s] 이후 **정책 출력 전체를 고정**(마지막 액션 유지) — 흔들림이 명령에서 오는지 플랜트에서 오는지 가르는 대조군")
 parser.add_argument("--dump_envs", type=int, default=0)
-parser.add_argument("--enc_obs", type=str, default="", choices=("", "legacy", "v2"),
+parser.add_argument("--enc_obs", type=str, default="", choices=("", "legacy", "v2", "ema0"),
                     help="1001: 정책 관측의 엔코더 관절각·속도·속도 EMA 함수를 강제 — v2 = 실물 배포와 같은 의미(속도 EMA 에 진짜 속도), "
                          "legacy = G4~G15 학습 조건(속도 EMA 에 0+잡음). 비우면 태스크 설정 그대로.")
 parser.add_argument("--obs_hold", type=int, default=0,
@@ -222,17 +222,22 @@ if args_cli.com_fix is not None and getattr(env_cfg.events, "base_com", None):
 if args_cli.enc_obs:
     from rl_walking import mdp_hang as _mh
     _P = env_cfg.observations.policy
-    _sfx = "_v2" if args_cli.enc_obs == "v2" else "_legacy"
+    _sfx = "_legacy" if args_cli.enc_obs == "legacy" else "_v2"     # ema0 = v2 위치·속도 + EMA 0 (배포 러너 ema0 모드)
     for _nm, _fn in (("joint_pos", "encoder_joint_pos_rel"), ("joint_vel", "encoder_joint_vel"), ("joint_vel_ema", "encoder_joint_vel_ema")):
         _t = getattr(_P, _nm, None)
         if _t is None:
             continue
         _t.func = getattr(_mh, _fn + _sfx)
         _t.params = {k: v for k, v in dict(_t.params or {}).items() if k in ("alpha", "noise")}
+    if args_cli.enc_obs == "ema0" and getattr(_P, "joint_vel_ema", None) is not None:
+        def _ema_zero(env, alpha: float = 0.25, noise: float = 1.5, asset_cfg=None):
+            a = env.scene[(asset_cfg or _mh._base_cfg()).name]
+            return torch.zeros_like(a.data.joint_pos)
+        _P.joint_vel_ema.func = _ema_zero
     print(f"[enc_obs] 정책 관측 엔코더 함수 = {args_cli.enc_obs}", flush=True)
 if args_cli.obs_hold > 0:
-    if args_cli.enc_obs != "v2":
-        raise SystemExit("--obs_hold 는 --enc_obs v2 와 함께 (배포 러너 의미)")
+    if args_cli.enc_obs not in ("v2", "ema0"):
+        raise SystemExit("--obs_hold 는 --enc_obs v2 | ema0 와 함께 (배포 러너 의미)")
     from rl_walking import mdp_hang as _mh
     _HN = int(args_cli.obs_hold)
 
@@ -273,7 +278,8 @@ if args_cli.obs_hold > 0:
         return _mh._ema_state(env, "_s8_hold_jvel_ema", x, alpha).clone()
 
     _P = env_cfg.observations.policy
-    for _nm, _fn in (("joint_pos", _hold_pos_rel), ("joint_vel", _hold_vel), ("joint_vel_ema", _hold_vel_ema)):
+    _hold_terms = [("joint_pos", _hold_pos_rel), ("joint_vel", _hold_vel)] + ([("joint_vel_ema", _hold_vel_ema)] if args_cli.enc_obs == "v2" else [])
+    for _nm, _fn in _hold_terms:
         _t = getattr(_P, _nm, None)
         if _t is not None:
             _t.func = _fn

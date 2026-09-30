@@ -959,6 +959,16 @@ def settle_quiet(env, w_ang: float = 1.0, w_lin: float = 1.0, w_jvel: float = 0.
     return val * settled_ramp(env, hold_s, ramp_s, tilt_deg, min_height, sensor_cfg, threshold, r_eps)
 
 
+def ang_vel_xy_exp(env, std: float = 0.5, asset_cfg=None) -> torch.Tensor:
+    """(N,) 몸통 롤·피치 각속도의 유계 양(+) 커널 exp(−(ωx²+ωy²)/std²) — 상태 게이트 없이 상시 (0930 G15w).
+
+    근거(reports/oss_review): mjlab/cyclo 는 영명령 서기에서 track_angular_velocity(ωx²+ωy² 포함, σ²=0.5, 가중 1.2)를
+    상시 켜 둔다. 0.5–2 Hz ±2° 흔들림에 우리 ang_vel_xy_l2(−0.1)보다 ~21–24배 큰 비용(계산). action_rate 류는 이 대역에 거의 무반응."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    w = asset.data.root_ang_vel_b[:, :2]
+    return torch.exp(-(w * w).sum(1) / (float(std) ** 2))
+
+
 def action_accel_l2(env) -> torch.Tensor:
     """액션 2차 차분 |a_t − 2a_{t−1} + a_{t−2}|² 평균 — 느린 보정은 두고 고주파 채터만 겨냥. 스텝당 1회 계산(캐시)."""
     step = int(env.common_step_counter)

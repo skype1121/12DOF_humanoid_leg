@@ -1507,3 +1507,76 @@ class Biped12HangStandG14bEnvCfg(Biped12HangStandG13EnvCfg):
 @configclass
 class Biped12HangStandG14bHoldEnvCfg(Biped12HangStandG14bEnvCfg):
     """G14b 대조군(평가용)."""
+
+
+# ─────────────── 0930 G15: stage8 지연 수정 뒤 — 보상·지연 단일 변경 (모두 G12-9500 에서 2000 반복, 대조군 = G12c) ───────────────
+# 사전 기준: reports/gen_g15/G15_CRITERIA.md (학습 전 작성). 평가 = 새 실물 루프 상당 지연(1·3틱) + 스트레스(11틱·18 N).
+
+@configclass
+class Biped12HangStandG15qEnvCfg(Biped12HangStandG12EnvCfg):
+    """G15q: **정숙 보너스 settled 조건의 골반고 문턱 0.60 → 0.52 m** 단일 변경.
+    근거: CROUCH_V5 정착 골반고 0.594–0.602 m 라 문턱 0.60 에 걸려 settle_quiet_bonus 기여가 +0.001 (사실상 미발동, 구 스탠스용 문턱).
+    0.52 = 정착 높이 −8 cm, 낙상 종료(0.45)보다 7 cm 위."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.settle_quiet_bonus
+        assert t.func is mdp_hang.state_gated and t.params["func"] is mdp_hang.settle_quiet_bonus
+        assert "min_height" not in t.params["params"], "기본값(0.60)을 쓰고 있어야 단일 변경"
+        t.params["params"]["min_height"] = 0.52
+
+
+@configclass
+class Biped12HangStandG15uEnvCfg(Biped12HangStandG12EnvCfg):
+    """G15u: **상태 게이트 해제** 단일 변경 — state_gated 로 감싼 항(균형 상실 중 꺼지던 자세·접촉·정숙·action-rate)을 상시 적용,
+    게이트 열림 전용 약한 action-rate(action_rate_window)는 이중 계산이라 제거. 회복 품질·이벤트 보상은 그대로.
+    근거: 오픈소스 4종 모두 상태 게이트 없음(reports/oss_review), 우리는 흔들려 게이트가 열리면 벌점이 꺼져 흔들림이 싸다.
+    위험: G8 이 게이트를 둔 이유(회복 스텝을 벌하지 않기) — 18 N 뒤 밀기 생존을 비퇴보 지표로 본다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        rw = self.rewards; n = 0
+        for name in list(vars(rw).keys()):
+            t = getattr(rw, name, None)
+            if t is not None and getattr(t, "func", None) is mdp_hang.state_gated:
+                setattr(rw, name, RewTerm(func=t.params["func"], weight=t.weight, params=dict(t.params.get("params") or {})))
+                n += 1
+        assert n >= 10, f"게이트된 항이 10개 이상이어야 한다 (찾음 {n})"
+        assert getattr(rw, "action_rate_window", None) is not None
+        rw.action_rate_window = None
+
+
+@configclass
+class Biped12HangStandG15wEnvCfg(Biped12HangStandG12EnvCfg):
+    """G15w: **상시 롤·피치 각속도 exp 커널(가중 +1.0, std 0.5 rad/s) 추가** 단일 변경. 기존 ang_vel_xy_l2(−0.1)는 그대로."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        assert getattr(self.rewards, "ang_vel_xy_exp", None) is None
+        self.rewards.ang_vel_xy_exp = RewTerm(func=mdp_hang.ang_vel_xy_exp, weight=1.0, params={"std": 0.5})
+
+
+@configclass
+class Biped12HangStandG15dEnvCfg(Biped12HangStandG12EnvCfg):
+    """G15d: **액션 지연 9–14 → 0–14 틱** 단일 변경. stage8 적체 수정(1f67f48) 뒤 실물 루프 ≈ 시뮬 지연 0–1틱(추정, 실물 재측정 전).
+    G12(9–14 학습)가 지연 1·3틱에서 오히려 가장 안정했으므로 긴 지연은 유지하고 짧은 쪽만 넓힌다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        assert self.actions.joint_pos.min_delay_steps == 9 and self.actions.joint_pos.max_delay_steps == 14
+        self.actions.joint_pos.min_delay_steps = 0
+
+
+@configclass
+class Biped12HangStandG15kEnvCfg(Biped12HangStandG12EnvCfg):
+    """G15k: **발목앞뒤 PD kp 150 → 40, kd 5 → 2** 단일 변경 (유격·마찰 모델 그대로). 평가도 이 환경(같은 게인)으로 한다.
+    근거(reports/oss_review): 참고 휴머노이드 전부 발목 kp 가 무릎의 1/4–1/10 (unitree G1 40/2, HV G1 20/0.2). 우리는 전 관절 150.
+    가설: 백래시 ±4° + 강한 발목 PD + 지연 = 흔들림을 유지하는 한계 사이클 조건. ⚠ 실물 적용은 하드웨어맵 발목 게인 변경(모터 5·11)이
+    필요하므로 시뮬 통과 뒤에도 승윤님 결정 사항. 균형 토크 권한이 줄어드는 대가(5° 기울기 중력 토크 ~3.8 Nm/발목 → 오차 ~5°)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        a = self.scene.robot.actuators["ankle_f_play"]
+        assert float(a.stiffness) == 150.0 and float(a.damping) == 5.0, (a.stiffness, a.damping)
+        a.stiffness = 40.0
+        a.damping = 2.0

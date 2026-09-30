@@ -5,8 +5,10 @@ It keeps 12DOF CAN order and Isaac DOF order tied through joint-name keyed
 dictionaries.
 """
 
+import copy
 import json
 import math
+import os
 from pathlib import Path
 
 
@@ -43,14 +45,35 @@ def default_config_path():
     return project_root() / CONFIG_RELATIVE_PATH
 
 
-def load_12dof_config(path=None):
+# 0930: 파싱 캐시. 종전에는 관절 조회마다 21 KB 맵을 다시 읽고 파싱했다 — 젯슨 stage8 프로파일에서 초당 ~740회,
+# 프로세스 시간의 62 %. 제어 틱 18 ms + 명령 11 ms 로 20 ms 주기를 못 맞춰 명령을 초당 31건만 처리 → 구독 큐(깊이 10)가
+# 늘 차서 200 ms 지연·38 % 누락 (reports/real_0929/can/DELAY_BREAKDOWN_0930.md). 파일이 바뀌면(inode·mtime·크기)
+# 다음 조회에서 다시 읽으므로 '디스크의 현재 맵을 읽는다'는 기존 의미는 그대로다.
+_CONFIG_CACHE = {}
+
+
+def _cached_config(path=None):
+    """내부 읽기 전용. 반환 객체를 수정하지 말 것 (공개 경로는 load_12dof_config 의 사본)."""
     config_path = Path(path) if path is not None else default_config_path()
+    st = os.stat(config_path)
+    stamp = (st.st_ino, st.st_mtime_ns, st.st_size)
+    key = str(config_path)
+    hit = _CONFIG_CACHE.get(key)
+    if hit is not None and hit[0] == stamp:
+        return hit[1]
     with config_path.open("r", encoding="utf-8") as file_obj:
-        return json.load(file_obj)
+        data = json.load(file_obj)
+    _CONFIG_CACHE[key] = (stamp, data)
+    return data
+
+
+def load_12dof_config(path=None):
+    # 호출자가 결과를 수정해도 캐시가 오염되지 않도록 깊은 사본을 준다 (종전: 매번 새 객체).
+    return copy.deepcopy(_cached_config(path))
 
 
 def _load_joints(path=None):
-    data = load_12dof_config(path)
+    data = _cached_config(path)
     joints = data.get("joints")
     if not isinstance(joints, dict):
         raise ValueError("12DOF map must contain a joints object")
@@ -96,7 +119,8 @@ def get_isaac_dof_joint_names():
 
 
 def get_joint_config(joint_name):
-    return dict(_require_joint(joint_name))
+    # 캐시 항목의 중첩 리스트(isaac_dof_aliases 등)를 호출자가 바꿔도 캐시가 안전하도록 깊은 사본.
+    return copy.deepcopy(_require_joint(joint_name))
 
 
 def get_motor_id(joint_name):

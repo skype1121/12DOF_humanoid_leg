@@ -108,8 +108,30 @@ def test_recovery_gate_max_open_guard():
     assert float(st["rec_open"][0]) == 0.0
 
 
+def test_recovery_quality_require_both():
+    """1001 G16a: 한 발 비접촉·게이트 열림·기울기 < tilt_ok 에서 require_both=True 는 0, False 는 > 0 (양발 조건 제거 확인)."""
+    env = _FakeEnv(N=2)
+    st = mdp_hang._state(env); st["rec_open"][:] = 1.0
+    saved = mdp_hang._balance_state
+    try:
+        mdp_hang._balance_state = lambda e, *a, **k: (torch.tensor([False, True]), torch.tensor([2.0, 2.0]),
+                                                      torch.zeros(2), torch.zeros(2), torch.zeros(2))
+        q_both = mdp_hang.recovery_quality(env, require_both=True)
+        q_any = mdp_hang.recovery_quality(env, require_both=False)
+        assert float(q_both[0]) == 0.0 and float(q_both[1]) > 0.99      # 기존(G12): 한 발 들면 0
+        assert float(q_any[0]) > 0.99 and float(q_any[1]) > 0.99        # G16a: 한 발 들어도 지급
+        st["rec_open"][:] = 0.0
+        assert float(mdp_hang.recovery_quality(env, require_both=False).abs().sum()) == 0.0   # 게이트 닫히면 0 (공통)
+        mdp_hang._balance_state = lambda e, *a, **k: (torch.tensor([False, False]), torch.tensor([7.0, 7.0]),
+                                                      torch.zeros(2), torch.zeros(2), torch.zeros(2))
+        st["rec_open"][:] = 1.0
+        assert float(mdp_hang.recovery_quality(env, require_both=False).abs().sum()) == 0.0   # 기울기 ≥ tilt_ok(6.5) 면 0
+    finally:
+        mdp_hang._balance_state = saved
+
+
 if __name__ == "__main__":
     for fn in (test_onset_alpha_shape_and_monotone, test_dist_profile_ramp_and_impulse, test_dist_window_and_end_time,
                test_dist_force_vector_direction, test_quat_apply_matches_rotation,
-               test_recovery_gate_state_based, test_recovery_gate_max_open_guard):
+               test_recovery_gate_state_based, test_recovery_gate_max_open_guard, test_recovery_quality_require_both):
         fn(); print("PASS", fn.__name__)

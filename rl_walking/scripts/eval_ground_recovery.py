@@ -73,6 +73,9 @@ parser.add_argument("--tilt_roll_deg", type=float, default=0.0)
 parser.add_argument("--cmd_deadband_deg", type=float, default=0.0, help="배포 체인 출력 뒤 명령 데드밴드 [deg]: 직전 명령 대비 변화가 이보다 작으면 명령을 바꾸지 않는다(정숙용 배포측 레버, 학습 변경 없음)")
 parser.add_argument("--freeze_after", type=float, default=None, help="인계 기준 이 시각[s] 이후 **정책 출력 전체를 고정**(마지막 액션 유지) — 흔들림이 명령에서 오는지 플랜트에서 오는지 가르는 대조군")
 parser.add_argument("--dump_envs", type=int, default=0)
+parser.add_argument("--enc_obs", type=str, default="", choices=("", "legacy", "v2"),
+                    help="1001: 정책 관측의 엔코더 관절각·속도·속도 EMA 함수를 강제 — v2 = 실물 배포와 같은 의미(속도 EMA 에 진짜 속도), "
+                         "legacy = G4~G15 학습 조건(속도 EMA 에 0+잡음). 비우면 태스크 설정 그대로.")
 parser.add_argument("--out_tag", type=str, default="rec")
 parser.add_argument("--video", action="store_true", help="측면 카메라 프레임(10 Hz)·mp4 저장 + 힘 화살표 주석 (env --video_env)")
 parser.add_argument("--video_env", type=int, default=0)
@@ -212,6 +215,17 @@ if args_cli.ankle_kp_scale is not None:
             print(f"[plant] {_k}: 발목 kp ×{args_cli.ankle_kp_scale} → {_a.stiffness}")
 if args_cli.com_fix is not None and getattr(env_cfg.events, "base_com", None):
     env_cfg.events.base_com.params["com_range"]["x"] = (float(args_cli.com_fix), float(args_cli.com_fix))
+if args_cli.enc_obs:
+    from rl_walking import mdp_hang as _mh
+    _P = env_cfg.observations.policy
+    _sfx = "_v2" if args_cli.enc_obs == "v2" else "_legacy"
+    for _nm, _fn in (("joint_pos", "encoder_joint_pos_rel"), ("joint_vel", "encoder_joint_vel"), ("joint_vel_ema", "encoder_joint_vel_ema")):
+        _t = getattr(_P, _nm, None)
+        if _t is None:
+            continue
+        _t.func = getattr(_mh, _fn + _sfx)
+        _t.params = {k: v for k, v in dict(_t.params or {}).items() if k in ("alpha", "noise")}
+    print(f"[enc_obs] 정책 관측 엔코더 함수 = {args_cli.enc_obs}", flush=True)
 if args_cli.delay_steps:
     _dlo, _dhi = _pair(args_cli.delay_steps)
     env_cfg.actions.joint_pos.min_delay_steps = int(_dlo); env_cfg.actions.joint_pos.max_delay_steps = int(_dhi)
@@ -768,7 +782,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)])
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm"])
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -779,6 +793,9 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
             row += [round(float(v), 4) for v in _COM0[e]]
         _pp = (osc_max[e] - osc_min[e]).tolist()
         row += [(round(v, 2) if math.isfinite(v) else "") for v in _pp]
+        # 1001: 스텝 계측(인계 뒤, 양발 접지 이후 이륙 수·0.3 s 생존 이륙 수·착지당 발 전후 이동 평균[cm, − = 뒤로])
+        row += [float(n_takeoff[e]), float(n_surv_takeoff[e]),
+                (round(float(sw_travel[e] / sw_n[e]) * 100.0, 2) if float(sw_n[e]) > 0 else "")]
         wcsv.writerow(row)
 if _VID is not None and _VID["n"] > 0:
     import subprocess  # noqa: E402

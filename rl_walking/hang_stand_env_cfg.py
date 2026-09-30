@@ -1580,3 +1580,63 @@ class Biped12HangStandG15kEnvCfg(Biped12HangStandG12EnvCfg):
         assert float(a.stiffness) == 150.0 and float(a.damping) == 5.0, (a.stiffness, a.damping)
         a.stiffness = 40.0
         a.damping = 2.0
+
+
+# ─────────────── 1001 G16: 엔코더 속도 관측 결함 수정(기반) ───────────────
+def _use_encoder_obs_v2(cfg):
+    """정책 관측의 엔코더 관절각·속도·속도 EMA 를 *_v2 로 — 같은 스텝 이중 호출에서 joint_vel_ema 가 0 을 받던 결함 제거.
+    실물 러너는 진짜 관절속도의 EMA 를 넣으므로(policy_runner_stage4) 이것이 배포 계약과 같은 의미다."""
+    P = cfg.observations.policy
+    for nm, fn in (("joint_pos", mdp_hang.encoder_joint_pos_rel_v2), ("joint_vel", mdp_hang.encoder_joint_vel_v2),
+                   ("joint_vel_ema", mdp_hang.encoder_joint_vel_ema_v2)):
+        t = getattr(P, nm, None)
+        assert t is not None, nm
+        t.func = fn
+        t.params = {k: v for k, v in dict(t.params or {}).items() if k in ("alpha", "noise")}
+
+
+@configclass
+class Biped12HangStandG16oEnvCfg(Biped12HangStandG12EnvCfg):
+    """G16o (1001): **G12 + 엔코더 속도 관측 결함 수정(v2)** 단일 변경. G12-9500 에서 이어 학습. 대조군 = G12c(같은 반복, 구관측).
+
+    결함: G4(0920) 이후 모든 세대에서 mdp_hang 의 구버전 encoder_joint_vel* 가 개선판을 모듈 뒤쪽에서 덮어써,
+    joint_vel_ema(정책 관측 60차원)가 항상 속도 0 + 잡음을 받았다. 실물 러너는 진짜 속도의 EMA 를 넣어, 흔들릴 때 그 채널이
+    학습 분포의 6–17배(0929 실물 95 % 0.51·최대 1.34 rad/s vs 학습 95 % 0.078). reports/gen_g16/ 참조."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _use_encoder_obs_v2(self)
+
+
+@configclass
+class Biped12HangStandG16aEnvCfg(Biped12HangStandG16oEnvCfg):
+    """G16a: G16o + **recovery_quality 의 양발 접촉 조건 제거** 단일 변경 (가중·게이트·나머지 불변)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.recovery_quality
+        assert t.func is mdp_hang.recovery_quality and "require_both" not in (t.params or {})
+        t.params["require_both"] = False
+
+
+@configclass
+class Biped12HangStandG16iEnvCfg(Biped12HangStandG16oEnvCfg):
+    """G16i: G16o + **순간 충격 세기 F_imp_range (5,30) → (10,45) N** 단일 변경 — 스텝이 필요한 충격 비율 상향(van Marum Single Contact++)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        p = self.events.disturbance.params
+        assert tuple(p["F_imp_range"]) == (5.0, 30.0), p["F_imp_range"]
+        p["F_imp_range"] = (10.0, 45.0)
+
+
+@configclass
+class Biped12HangStandG16dEnvCfg(Biped12HangStandG16oEnvCfg):
+    """G16d: G16o + **액션 지연 DR 9–14 → 0–6 틱** 단일 변경 — stage8 적체 수정 뒤 짧은 루프(추정 1–3틱)용."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        a = self.actions.joint_pos
+        assert a.min_delay_steps == 9 and a.max_delay_steps == 14
+        a.min_delay_steps = 0
+        a.max_delay_steps = 6

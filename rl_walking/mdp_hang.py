@@ -343,7 +343,7 @@ def recovery_open(env) -> torch.Tensor:
 
 
 def recovery_quality(env, s_ang: float = 0.30, s_lin: float = 0.10, s_jvel: float = 0.50, tilt_ok: float = 6.5,
-                     sensor_cfg=None, threshold: float = 5.0, asset_cfg=None) -> torch.Tensor:
+                     sensor_cfg=None, threshold: float = 5.0, asset_cfg=None, require_both: bool = True) -> torch.Tensor:
     """**회복 게이트가 열려 있는 동안만** 주는 등급형(rational) 정숙 보상 0~1 — 문턱 미달로 0 에 갇히지 않는다.
     σ 는 학습 중 실제 운동 수준(평가 관측 |ω|≈0.1~0.2·q̇≈0.11, 학습은 액션 잡음으로 더 큼)을 감싸도록 넉넉히 잡는다.
     G7 의 recovery_bonus(경성 문턱 0.15/0.05/0.3 + 0.5 s 연속)는 학습 내내 0 이었다 — 그 결함의 교체항."""
@@ -351,7 +351,9 @@ def recovery_quality(env, s_ang: float = 0.30, s_lin: float = 0.10, s_jvel: floa
     def g(x, sig):
         return 1.0 / (1.0 + (x / sig) ** 2)
     q = (g(w, s_ang) + g(v, s_lin) + g(qd, s_jvel)) / 3.0
-    q = q * both.to(q.dtype) * (tilt < tilt_ok).to(q.dtype)
+    if require_both:   # 1001 G16a: False 면 한 발을 들어도(회복 스텝) 품질 보상을 잃지 않는다 — van Marum 2024 '양발 접촉 보상은 회복 스텝을 벌한다'
+        q = q * both.to(q.dtype)
+    q = q * (tilt < tilt_ok).to(q.dtype)
     return q * _state(env)["rec_open"]
 
 
@@ -1215,7 +1217,7 @@ def _enc_target(env, asset, action_term="joint_pos") -> torch.Tensor:
     return ref
 
 
-def encoder_joint_pos(env, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
+def encoder_joint_pos_v2(env, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
     """로터(엔코더) 절대각 θ_enc (num_envs, |joint_ids|) [rad] — 진단·다른 항의 재료. 정책 관측은 encoder_joint_pos_rel 을 쓴다."""
     asset, jid = _enc_asset(env, asset_cfg)
     q = asset.data.joint_pos
@@ -1230,7 +1232,7 @@ def encoder_joint_pos(env, asset_cfg=None, action_term: str = "joint_pos", play_
     return enc[:, jid]
 
 
-def encoder_joint_pos_rel(env, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
+def encoder_joint_pos_rel_v2(env, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
     """**엔코더(로터측) 관절각 − 기본자세** (num_envs, |joint_ids|). joint_pos_rel 의 실물 계약판.
 
     이 관측을 쓰는 env 는 **실물 엔코더 계약(로터측)과 일치**한다: 물리 관절각(출력측)과 엔코더각의 차이 = **유격 안 이동**
@@ -1241,18 +1243,18 @@ def encoder_joint_pos_rel(env, asset_cfg=None, action_term: str = "joint_pos", p
     - 유격 0 인 관절·리셋 직후·유격 액추에이터가 없는 env 에서는 joint_pos_rel 과 동일.
     - default_joint_pos 는 asset.data 의 현재값(resample_default_pose_bias 가 바꾼 env 별 기본자세 포함)."""
     asset, jid = _enc_asset(env, asset_cfg)
-    enc = encoder_joint_pos(env, asset_cfg, action_term, play_rad)
+    enc = encoder_joint_pos_v2(env, asset_cfg, action_term, play_rad)
     return enc - asset.data.default_joint_pos[:, jid]
 
 
-def encoder_link_gap(env, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
+def encoder_link_gap_v2(env, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
     """θ_enc − θ_j (num_envs, |joint_ids|): 정책이 못 보는 유격 안 이동. **크리틱 특권 관측·진단·기록용** (actor 에 넣지 않는다)."""
     asset, jid = _enc_asset(env, asset_cfg)
-    enc = encoder_joint_pos(env, asset_cfg, action_term, play_rad)
+    enc = encoder_joint_pos_v2(env, asset_cfg, action_term, play_rad)
     return enc - asset.data.joint_pos[:, jid]
 
 
-def encoder_joint_vel(env, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
+def encoder_joint_vel_v2(env, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
     """**엔코더각 θ_enc 의 유한차분 속도** (num_envs, |joint_ids|) [rad/s], dt = env.step_dt. joint_vel_rel 의 실물 계약판
     (실물 브리지 qvel 도 로터 엔코더 관측의 유한차분). 물리 관절속도(출력측)와 달리 유격 안 이동은 속도에도 나타나지 않는다.
     - 버퍼 env._enc_prev(전 관절 θ_enc)·env._enc_step(마지막 갱신 스텝)·env._enc_vel(마지막 값). 같은 스텝(common_step_counter)
@@ -1260,7 +1262,7 @@ def encoder_joint_vel(env, asset_cfg=None, action_term: str = "joint_pos", play_
     - 리셋 직후(episode_length_buf == 0)에는 0 이고 버퍼를 현재 θ_enc 로 다시 시작한다(전 에피소드와의 차분 금지).
     - default_joint_vel 이 있으면 뺀다(joint_vel_rel 규약, 이 로봇은 0)."""
     asset, jid = _enc_asset(env, asset_cfg)
-    enc = encoder_joint_pos(env, asset_cfg, action_term, play_rad)   # (N, |jid|)
+    enc = encoder_joint_pos_v2(env, asset_cfg, action_term, play_rad)   # (N, |jid|)
     full = enc
     step = int(getattr(env, "common_step_counter", 0))
     prev = getattr(env, "_enc_prev", None)
@@ -1287,11 +1289,11 @@ def encoder_joint_vel(env, asset_cfg=None, action_term: str = "joint_pos", play_
     return vel
 
 
-def encoder_joint_vel_ema(env, alpha: float = 0.25, noise: float = 1.5, asset_cfg=None,
+def encoder_joint_vel_ema_v2(env, alpha: float = 0.25, noise: float = 1.5, asset_cfg=None,
                           action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
     """노이즈 낀 **엔코더 속도**의 EMA — joint_vel_ema(S8a) 와 같은 규약(alpha·noise 는 함수 안에서, cfg noise=None; 버퍼 _ema_state 로
     episode_length_buf ≤ 1 에서 현재값 재시작). 버퍼 키 '_s8_enc_jvel_ema' (기존 '_s8_jvel_ema' 와 독립)."""
-    x = encoder_joint_vel(env, asset_cfg, action_term, play_rad)
+    x = encoder_joint_vel_v2(env, asset_cfg, action_term, play_rad)
     if noise > 0.0:
         x = x + (torch.rand_like(x) * 2.0 - 1.0) * noise
     return _ema_state(env, "_s8_enc_jvel_ema", x, alpha).clone()
@@ -1324,6 +1326,11 @@ def _play_by_joint(env, asset):
     return play
 
 
+# ⚠ 1001 발견: 아래 구버전(0920)이 위의 개선판(같은 이름)을 모듈 뒤쪽에서 **덮어써** G4 이후 모든 세대가 구버전으로 학습됐다.
+#   구버전 _encoder_vel 은 호출할 때마다 env._enc_prev 를 갱신한다 → 같은 스텝에 joint_vel(먼저) 과 joint_vel_ema(나중) 가 둘 다 부르면
+#   **joint_vel_ema 는 항상 속도 0(+잡음)** 을 받는다(단위시험·G12 env.yaml 관측 순서로 확인). 실물 러너는 진짜 속도의 EMA 를 넣으므로
+#   흔들릴 때 이 60차원이 학습 분포의 6–17배(0929 실물 로그 95 % 0.51, 최대 1.34 rad/s vs 학습 95 % 0.078).
+#   재현성을 위해 기존 이름은 구버전 의미 그대로 두고(_legacy 와 동일), 새 세대는 *_v2 를 쓴다.
 def _encoder_pos(env, asset, action_term="joint_pos"):
     """θ_enc = θ_j + clamp(θ_ref − θ_j, −play, +play): 유격 안에서는 모터가 목표에 붙어 있고(θ_enc≈θ_ref), 밖에서는 유격만큼 어긋난 채 링크를 민다."""
     q = asset.data.joint_pos
@@ -1367,3 +1374,9 @@ def encoder_joint_vel_ema(env, alpha: float = 0.25, noise: float = 1.5, asset_cf
     if noise > 0.0:
         x = x + (torch.rand_like(x) * 2.0 - 1.0) * noise
     return _ema_state(env, "_s8_enc_jvel_ema", x, alpha).clone()
+
+
+# 1001: 이름 명시 — 기존 이름 = 구버전(학습 재현용), *_legacy = 같은 것, *_v2 = 스텝 캐시로 고친 것.
+encoder_joint_pos_rel_legacy = encoder_joint_pos_rel
+encoder_joint_vel_legacy = encoder_joint_vel
+encoder_joint_vel_ema_legacy = encoder_joint_vel_ema

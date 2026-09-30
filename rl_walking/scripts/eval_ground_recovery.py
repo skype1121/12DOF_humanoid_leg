@@ -76,6 +76,10 @@ parser.add_argument("--dump_envs", type=int, default=0)
 parser.add_argument("--enc_obs", type=str, default="", choices=("", "legacy", "v2"),
                     help="1001: 정책 관측의 엔코더 관절각·속도·속도 EMA 함수를 강제 — v2 = 실물 배포와 같은 의미(속도 EMA 에 진짜 속도), "
                          "legacy = G4~G15 학습 조건(속도 EMA 에 0+잡음). 비우면 태스크 설정 그대로.")
+parser.add_argument("--obs_hold", type=int, default=0,
+                    help="1001: 실물 브리지 관절 상태 샘플홀드 모사 — 관절마다 N틱에 한 번 갱신(env·관절별 무작위 위상, 라운드로빈 폴링 흉내). "
+                         "정책 관측 joint_pos = 마지막 갱신값, joint_vel = 브리지 추정기(값 그대로면 0, 바뀌면 Δq/(틱×머문 틱), 머문 틱 상한 12), "
+                         "joint_vel_ema = 그 속도의 EMA(v2 의미). --enc_obs v2 필요. 0 = 끔")
 parser.add_argument("--out_tag", type=str, default="rec")
 parser.add_argument("--video", action="store_true", help="측면 카메라 프레임(10 Hz)·mp4 저장 + 힘 화살표 주석 (env --video_env)")
 parser.add_argument("--video_env", type=int, default=0)
@@ -226,6 +230,54 @@ if args_cli.enc_obs:
         _t.func = getattr(_mh, _fn + _sfx)
         _t.params = {k: v for k, v in dict(_t.params or {}).items() if k in ("alpha", "noise")}
     print(f"[enc_obs] 정책 관측 엔코더 함수 = {args_cli.enc_obs}", flush=True)
+if args_cli.obs_hold > 0:
+    if args_cli.enc_obs != "v2":
+        raise SystemExit("--obs_hold 는 --enc_obs v2 와 함께 (배포 러너 의미)")
+    from rl_walking import mdp_hang as _mh
+    _HN = int(args_cli.obs_hold)
+
+    def _held(env, asset_cfg=None):
+        """(pos, vel) — 스텝당 한 번 갱신(common_step_counter 캐시). 리셋 첫 틱은 현재값·속도 0·머문 틱 1."""
+        enc = _mh.encoder_joint_pos_v2(env, asset_cfg)
+        st = getattr(env, "_hold_st", None)
+        step = int(env.common_step_counter)
+        if st is None or st["pos"].shape != enc.shape:
+            g = torch.Generator(device="cpu"); g.manual_seed(1234)
+            st = {"phase": torch.randint(0, _HN, enc.shape, generator=g).to(enc.device), "pos": enc.clone(),
+                  "vel": torch.zeros_like(enc), "hold": torch.ones_like(enc), "step": None}
+            env._hold_st = st
+        if st["step"] != step:
+            upd = ((step + st["phase"]) % _HN) == 0
+            new_pos = torch.where(upd, enc, st["pos"])
+            changed = new_pos != st["pos"]
+            st["vel"] = torch.where(changed, (new_pos - st["pos"]) / (float(env.step_dt) * st["hold"]), torch.zeros_like(enc))
+            st["hold"] = torch.where(changed, torch.ones_like(st["hold"]), torch.clamp(st["hold"] + 1, max=12.0))
+            st["pos"] = new_pos; st["step"] = step
+            fresh = (env.episode_length_buf == 0).view(-1, 1)
+            if bool(fresh.any()):
+                st["pos"] = torch.where(fresh, enc, st["pos"]); st["vel"] = torch.where(fresh, torch.zeros_like(enc), st["vel"])
+                st["hold"] = torch.where(fresh, torch.ones_like(st["hold"]), st["hold"])
+        return st["pos"], st["vel"]
+
+    def _hold_pos_rel(env, asset_cfg=None):
+        a = env.scene[(asset_cfg or _mh._base_cfg()).name]
+        return _held(env, asset_cfg)[0] - a.data.default_joint_pos
+
+    def _hold_vel(env, asset_cfg=None):
+        return _held(env, asset_cfg)[1].clone()
+
+    def _hold_vel_ema(env, alpha: float = 0.25, noise: float = 1.5, asset_cfg=None):
+        x = _held(env, asset_cfg)[1]
+        if noise > 0.0:
+            x = x + (torch.rand_like(x) * 2.0 - 1.0) * noise
+        return _mh._ema_state(env, "_s8_hold_jvel_ema", x, alpha).clone()
+
+    _P = env_cfg.observations.policy
+    for _nm, _fn in (("joint_pos", _hold_pos_rel), ("joint_vel", _hold_vel), ("joint_vel_ema", _hold_vel_ema)):
+        _t = getattr(_P, _nm, None)
+        if _t is not None:
+            _t.func = _fn
+    print(f"[obs_hold] 관절 상태 샘플홀드 {_HN}틱 (브리지 qvel 추정기 모사)", flush=True)
 if args_cli.delay_steps:
     _dlo, _dhi = _pair(args_cli.delay_steps)
     env_cfg.actions.joint_pos.min_delay_steps = int(_dlo); env_cfg.actions.joint_pos.max_delay_steps = int(_dhi)

@@ -18,3 +18,9 @@ rsl_rl 3.1.2: ppo.py:313 손실, :364-365 zero_grad/backward, on_policy_runner.p
 G18a last_action 블록(관측 165–224) 한정 야코비안 벌점(Hutchinson, λ=0.01) / G18b LCP 원형 λ=0.002 / G18c last_action 관측 잡음 ±0.1.
 무비용 대조: 평가에서 last_action 관측을 지연/배포 명령 역변환으로 바꿔 떨림 소멸 여부.
 사전검사(CPU): 자기루프 진동 ≤5 %, ‖J_act‖² ≤1.5, ‖J_gyro‖² ≥ G17o×0.7.
+
+## 폐루프 대조 사전 기록 (1002 04:5x, 실행 전) — `--last_action_ema α`
+G17o-10400 · eval seed 1 · 실물 계약 d1 · nd·sf10·b18 · α ∈ {0.1, 0.3} vs 없음. 대조 G12-9500 nd α0.1.
+- H-loop(25 Hz 떨림 = last_action 경유 자기루프): α0.1 nd 부호반전이 0.392 → ≤0.08(−80 %) 이고 action-rate RMS ≤0.08 이면 지지.
+  부호반전이 −30 % 미만 감소면 기각(다른 경로 — 관절속도·자이로).
+- 보고: sf10·b18 낙상 변화(관측 분포 밖 입력이라 해석은 제한적).

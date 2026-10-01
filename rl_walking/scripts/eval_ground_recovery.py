@@ -93,6 +93,8 @@ parser.add_argument("--replay_bb", type=str, default="",
 parser.add_argument("--replay_t0", type=float, default=0.0, help="재생 시작 = 블랙박스 첫 틱 + 이 시간 [s]")
 parser.add_argument("--contact_real", action="store_true",
                     help="1001 G17: 정책 접촉 관측을 실물 계약으로(mdp_hang.feet_contact_real: 발 평평 θ_off 2–6°·10 Hz 유지·1틱 전송) — 모든 정책 공통 적용")
+parser.add_argument("--last_action_ema", type=float, default=0.0,
+                    help="진단: 정책 관측 last_action 을 EMA(α) 로 느리게 만든 값으로 대체(0=끔). 25 Hz 2주기 자기루프(last_action 경유) 가설의 폐루프 대조")
 parser.add_argument("--gyro_delay", type=int, default=0,
                     help="1001: 정책 관측 자이로(base_ang_vel·gyro_ema 입력)를 N 정책 틱 늦게 — 실물 IMU 경로 지연 가설 시험")
 parser.add_argument("--contact_drop", type=str, default="",
@@ -343,6 +345,19 @@ if args_cli.contact_real:
     _kp5.update({"hold_ticks": 5, "extra_delay": 1, "tilt_off_deg": (6.0, 20.0)})
     _fc5.func = _mh5.feet_contact_real; _fc5.params = _kp5
     print("[contact_real] 정책 접촉 관측 = 실물 계약(평평·10 Hz·1틱)", flush=True)
+if args_cli.last_action_ema > 0:
+    _LA = env_cfg.observations.policy.actions; _la_orig = _LA.func; _ALPHA = float(args_cli.last_action_ema)
+    def _la_ema(env, action_name=None):
+        x = _la_orig(env) if action_name is None else _la_orig(env, action_name=action_name)
+        st = getattr(env, "_la_ema_st", None); step = int(env.common_step_counter)
+        if st is None or st["y"].shape != x.shape:
+            st = {"y": x.clone(), "step": None}; env._la_ema_st = st
+        if st["step"] != step:
+            fresh = env.episode_length_buf == 0
+            st["y"] = torch.where(fresh.view(-1, 1), x, st["y"] + _ALPHA * (x - st["y"])); st["step"] = step
+        return st["y"].clone()
+    _LA.func = _la_ema
+    print(f"[last_action_ema] 정책 last_action 관측 = EMA α{_ALPHA} (진단 전용, 배포 계약 아님)")
 if args_cli.gyro_delay > 0:
     from collections import deque as _dq
     from rl_walking import mdp_hang as _mh4

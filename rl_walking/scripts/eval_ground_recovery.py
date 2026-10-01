@@ -80,6 +80,9 @@ parser.add_argument("--obs_hold", type=int, default=0,
                     help="1001: 실물 브리지 관절 상태 샘플홀드 모사 — 관절마다 N틱에 한 번 갱신(env·관절별 무작위 위상, 라운드로빈 폴링 흉내). "
                          "정책 관측 joint_pos = 마지막 갱신값, joint_vel = 브리지 추정기(값 그대로면 0, 바뀌면 Δq/(틱×머문 틱), 머문 틱 상한 12), "
                          "joint_vel_ema = 그 속도의 EMA(v2 의미). --enc_obs v2 필요. 0 = 끔")
+parser.add_argument("--contact_drop", type=str, default="",
+                    help="1001: 정책 관측의 발 접촉 비트만 강제로 0 (물리 접촉·채점 불변) — 'L|R|B:t_rel:dur' ';' 구분, t_rel 은 인계 기준 [s]. "
+                         "실물 3 Hz 진동이 '한 발 접촉 비트 상실'에서 시작되는지 보는 관측 교란 대조")
 parser.add_argument("--out_tag", type=str, default="rec")
 parser.add_argument("--video", action="store_true", help="측면 카메라 프레임(10 Hz)·mp4 저장 + 힘 화살표 주석 (env --video_env)")
 parser.add_argument("--video_env", type=int, default=0)
@@ -284,6 +287,28 @@ if args_cli.obs_hold > 0:
         if _t is not None:
             _t.func = _fn
     print(f"[obs_hold] 관절 상태 샘플홀드 {_HN}틱 (브리지 qvel 추정기 모사)", flush=True)
+if args_cli.contact_drop:
+    _CD = []
+    for _it in args_cli.contact_drop.split(";"):
+        _side, _t, _d = _it.split(":")
+        _CD.append(({"L": [0], "R": [1], "B": [0, 1]}[_side.strip().upper()], float(_t), float(_d)))
+    _fc = getattr(env_cfg.observations.policy, "feet_contact", None)
+    if _fc is None:
+        raise SystemExit("--contact_drop: 정책 관측에 feet_contact 항 없음")
+    _fc_orig = _fc.func
+
+    def _fc_drop(env, sensor_cfg=None, threshold: float = 5.0, delay_steps: int = 0, threshold_range=None):
+        out = _fc_orig(env, sensor_cfg=sensor_cfg, threshold=threshold, delay_steps=delay_steps,
+                       threshold_range=threshold_range).clone()
+        t_rel = env.episode_length_buf.to(out.dtype) * float(env.step_dt) - float(args_cli.precheck_s)
+        for cols, t0_, d_ in _CD:
+            m = (t_rel >= t0_) & (t_rel < t0_ + d_)
+            if bool(m.any()):
+                for c_ in cols:
+                    out[m, c_] = 0.0
+        return out
+    _fc.func = _fc_drop
+    print(f"[contact_drop] 정책 접촉 비트 강제 0: {args_cli.contact_drop}", flush=True)
 if args_cli.delay_steps:
     _dlo, _dhi = _pair(args_cli.delay_steps)
     env_cfg.actions.joint_pos.min_delay_steps = int(_dlo); env_cfg.actions.joint_pos.max_delay_steps = int(_dhi)

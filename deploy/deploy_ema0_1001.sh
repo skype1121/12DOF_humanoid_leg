@@ -46,8 +46,16 @@ $SSH "cd $R && source /opt/ros/humble/setup.bash && python3 rl_walking/deploy/po
 $SSH "cd $R && source /opt/ros/humble/setup.bash && timeout 600 python3 jetson/scripts/rl_bridge_node.py --selftest 2>&1 | grep -E '학습 계약|정책 500틱|selftest:' | cut -c1-300"
 $SSH "cd $R && source /opt/ros/humble/setup.bash && timeout 300 python3 jetson/scripts/operator_console.py --selftest 2>&1 | tail -1"
 if [ $RESTART -eq 1 ]; then
-  [ -z "$SENS" ] || { echo "센서가 떠 있어 콘솔 재기동 보류 — 콘솔에서 센서 정리 뒤 다시(--apply --restart-console)"; exit 1; }
-  echo "== 콘솔 재기동"
-  $SSH "echo "$JETSON_PW" | sudo -S systemctl restart operator-console && sleep 3 && systemctl is-active operator-console"
+  # 센서가 떠 있어도 재기동해도 되는 조건(1001 확인): KillMode=process(콘솔만 재시작, 자식 센서는 유지) +
+  # 떠 있는 센서 PID 가 전부 ~/run/*.pid(sensors_up.sh 소유)에 있음(새 콘솔이 PID파일 소유로 인수·재기동 가능, 0919 수정).
+  KM=$($SSH "systemctl show operator-console -p KillMode --value")
+  SPIDS=$($SSH "ps -eo pid,args | grep -E '[i]mu_node|[f]oot_force_adapter|[p]ressure_serial_node|[i]mu_adapter' | awk '{print \$1}' | sort | tr '\n' ' '")
+  RPIDS=$($SSH "cat ~/run/*.pid 2>/dev/null | sort | tr '\n' ' '")
+  for p in $SPIDS; do echo " $RPIDS " | grep -q " $p " || { echo "센서 pid $p 가 PID파일에 없음(콘솔 추적 밖) — 재기동 보류"; exit 1; }; done
+  [ "$KM" == "process" ] || { echo "KillMode=$KM — 콘솔 재기동이 센서를 함께 죽일 수 있어 보류"; exit 1; }
+  echo "== 콘솔 재기동 (KillMode=process, 센서 pid [$SPIDS] 는 PID파일 소유 → 유지)"
+  $SSH "echo "$JETSON_PW" | sudo -S systemctl restart operator-console && sleep 4 && systemctl is-active operator-console"
+  $SSH "curl -s -m 5 http://127.0.0.1:8800/api/state" | python3 -c "import json,sys; d=json.load(sys.stdin); print('   콘솔 신선도', d['fresh'], '· 센서 pid 유지:', d.get('ros'))"
+  $SSH "curl -s -m 5 http://127.0.0.1:8800/ | grep -o '<option>[a-z0-9_]*</option>' | tr '\n' ' '"; echo
 fi
 echo "== 배포 완료 — 콘솔 드롭다운: stand_crouch_g12(v2, 0929 동일) / stand_crouch_g12_ema0(학습 계약)"

@@ -26,7 +26,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 33.1
+      "stand_zero_deg": 32.84
     },
     "left_hip_a_joint": {
       "joint_name": "left_hip_a_joint",
@@ -47,7 +47,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 5.63
+      "stand_zero_deg": 4.69
     },
     "left_hip_r_joint": {
       "joint_name": "left_hip_r_joint",
@@ -68,7 +68,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": -0.12
+      "stand_zero_deg": 6.98
     },
     "left_knee_joint": {
       "joint_name": "left_knee_joint",
@@ -89,7 +89,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 13.91
+      "stand_zero_deg": 12.36
     },
     "left_ankle_f_joint": {
       "joint_name": "left_ankle_f_joint",
@@ -110,7 +110,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 40.64
+      "stand_zero_deg": 42.22
     },
     "left_ankle_r_joint": {
       "joint_name": "left_ankle_r_joint",
@@ -131,7 +131,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 14.35
+      "stand_zero_deg": -6.73
     },
     "right_hip_f_joint": {
       "joint_name": "right_hip_f_joint",
@@ -152,7 +152,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 11.7
+      "stand_zero_deg": 6.72
     },
     "right_hip_a_joint": {
       "joint_name": "right_hip_a_joint",
@@ -173,7 +173,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 8.23
+      "stand_zero_deg": 8.21
     },
     "right_hip_r_joint": {
       "joint_name": "right_hip_r_joint",
@@ -194,7 +194,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 27.05
+      "stand_zero_deg": 32.49
     },
     "right_knee_joint": {
       "joint_name": "right_knee_joint",
@@ -215,7 +215,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 24.03
+      "stand_zero_deg": 17.91
     },
     "right_ankle_f_joint": {
       "joint_name": "right_ankle_f_joint",
@@ -236,7 +236,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 20.69
+      "stand_zero_deg": 20.12
     },
     "right_ankle_r_joint": {
       "joint_name": "right_ankle_r_joint",
@@ -257,7 +257,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": 8.99
+      "stand_zero_deg": 8.95
     }
   },
   "_provenance": {
@@ -741,6 +741,813 @@
           }
         ],
         "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260914_225519.json"
+      },
+      {
+        "at": "20260917_182936",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 14.35,
+            "to": 4.35
+          },
+          {
+            "joint": "right_hip_r_joint",
+            "from": 27.05,
+            "to": -8.95
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260917_182936.json"
+      },
+      {
+        "at": "20260918_181926",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "right_hip_r_joint",
+            "from": -8.95,
+            "to": 27.05
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260918_181926.json"
+      },
+      {
+        "at": "20260918_213506",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "right_ankle_r_joint",
+            "from": 8.99,
+            "to": 18.99
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260918_213506.json"
+      },
+      {
+        "at": "20260918_213621",
+        "mode": "recapture",
+        "changed": [
+          {
+            "joint": "left_hip_f_joint",
+            "from": 33.1,
+            "to": 31.83
+          },
+          {
+            "joint": "left_hip_a_joint",
+            "from": 5.63,
+            "to": 6.2
+          },
+          {
+            "joint": "left_hip_r_joint",
+            "from": -0.12,
+            "to": 4.73
+          },
+          {
+            "joint": "left_knee_joint",
+            "from": 13.91,
+            "to": 12.93
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": 40.64,
+            "to": 41.08
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 4.35,
+            "to": 8.08
+          },
+          {
+            "joint": "right_hip_f_joint",
+            "from": 11.7,
+            "to": 8.16
+          },
+          {
+            "joint": "right_hip_a_joint",
+            "from": 8.23,
+            "to": 6.81
+          },
+          {
+            "joint": "right_hip_r_joint",
+            "from": 27.05,
+            "to": 30.87
+          },
+          {
+            "joint": "right_knee_joint",
+            "from": 24.03,
+            "to": 20.03
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 20.69,
+            "to": 23.24
+          },
+          {
+            "joint": "right_ankle_r_joint",
+            "from": 18.99,
+            "to": 16.71
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260918_213621.json"
+      },
+      {
+        "at": "20260918_220013",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "right_ankle_r_joint",
+            "from": 16.71,
+            "to": 6.71
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260918_220013.json"
+      },
+      {
+        "at": "20260918_220105",
+        "mode": "recapture",
+        "changed": [
+          {
+            "joint": "left_hip_f_joint",
+            "from": 31.83,
+            "to": 32.84
+          },
+          {
+            "joint": "left_hip_a_joint",
+            "from": 6.2,
+            "to": 6.63
+          },
+          {
+            "joint": "left_hip_r_joint",
+            "from": 4.73,
+            "to": 4.45
+          },
+          {
+            "joint": "left_knee_joint",
+            "from": 12.93,
+            "to": 10.63
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": 41.08,
+            "to": 36.97
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 8.08,
+            "to": 3.4
+          },
+          {
+            "joint": "right_hip_f_joint",
+            "from": 8.16,
+            "to": 9.02
+          },
+          {
+            "joint": "right_hip_a_joint",
+            "from": 6.81,
+            "to": 7.66
+          },
+          {
+            "joint": "right_hip_r_joint",
+            "from": 30.87,
+            "to": 27.73
+          },
+          {
+            "joint": "right_knee_joint",
+            "from": 20.03,
+            "to": 22.31
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 23.24,
+            "to": 22.39
+          },
+          {
+            "joint": "right_ankle_r_joint",
+            "from": 6.71,
+            "to": 8.29
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260918_220105.json"
+      },
+      {
+        "at": "20260919_200419",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 3.4,
+            "to": 13.4
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260919_200419.json"
+      },
+      {
+        "at": "20260919_200426",
+        "mode": "recapture",
+        "changed": [
+          {
+            "joint": "left_hip_f_joint",
+            "from": 32.84,
+            "to": 33.67
+          },
+          {
+            "joint": "left_hip_a_joint",
+            "from": 6.63,
+            "to": 6.9
+          },
+          {
+            "joint": "left_hip_r_joint",
+            "from": 4.45,
+            "to": 1.17
+          },
+          {
+            "joint": "left_knee_joint",
+            "from": 10.63,
+            "to": 12.36
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": 36.97,
+            "to": 39.09
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 13.4,
+            "to": 13.5
+          },
+          {
+            "joint": "right_hip_f_joint",
+            "from": 9.02,
+            "to": 9.87
+          },
+          {
+            "joint": "right_knee_joint",
+            "from": 22.31,
+            "to": 22.46
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 22.39,
+            "to": 22.24
+          },
+          {
+            "joint": "right_ankle_r_joint",
+            "from": 8.29,
+            "to": 8.25
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260919_200426.json"
+      },
+      {
+        "at": "20260922_115103",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "left_hip_r_joint",
+            "from": 1.17,
+            "to": -34.83
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 13.5,
+            "to": 3.5
+          },
+          {
+            "joint": "right_hip_r_joint",
+            "from": 27.73,
+            "to": -8.27
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260922_115103.json"
+      },
+      {
+        "at": "20260922_115122",
+        "mode": "recapture",
+        "changed": [
+          {
+            "joint": "left_hip_f_joint",
+            "from": 33.67,
+            "to": 28.58
+          },
+          {
+            "joint": "left_hip_a_joint",
+            "from": 6.9,
+            "to": 6.35
+          },
+          {
+            "joint": "left_hip_r_joint",
+            "from": -34.83,
+            "to": -24.4
+          },
+          {
+            "joint": "left_knee_joint",
+            "from": 12.36,
+            "to": 7.57
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": 39.09,
+            "to": 40.51
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 3.5,
+            "to": 5.34
+          },
+          {
+            "joint": "right_hip_f_joint",
+            "from": 9.87,
+            "to": 8.03
+          },
+          {
+            "joint": "right_hip_a_joint",
+            "from": 7.66,
+            "to": 6.66
+          },
+          {
+            "joint": "right_hip_r_joint",
+            "from": -8.27,
+            "to": 2.13
+          },
+          {
+            "joint": "right_knee_joint",
+            "from": 22.46,
+            "to": 21.32
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 22.24,
+            "to": 23.53
+          },
+          {
+            "joint": "right_ankle_r_joint",
+            "from": 8.25,
+            "to": 8.23
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260922_115122.json"
+      },
+      {
+        "at": "20260922_120314",
+        "mode": "recapture",
+        "changed": [
+          {
+            "joint": "left_hip_f_joint",
+            "from": 28.58,
+            "to": 30.98
+          },
+          {
+            "joint": "left_hip_a_joint",
+            "from": 6.35,
+            "to": 6.07
+          },
+          {
+            "joint": "left_hip_r_joint",
+            "from": -24.4,
+            "to": -25.15
+          },
+          {
+            "joint": "left_knee_joint",
+            "from": 7.57,
+            "to": 12.23
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": 40.51,
+            "to": 42.5
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 5.34,
+            "to": 5.17
+          },
+          {
+            "joint": "right_hip_f_joint",
+            "from": 8.03,
+            "to": 8.45
+          },
+          {
+            "joint": "right_hip_r_joint",
+            "from": 2.13,
+            "to": 1.98
+          },
+          {
+            "joint": "right_knee_joint",
+            "from": 21.32,
+            "to": 23.44
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 23.53,
+            "to": 24.67
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260922_120314.json"
+      },
+      {
+        "at": "20260922_124258",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "left_hip_r_joint",
+            "from": -25.15,
+            "to": 10.85
+          },
+          {
+            "joint": "left_knee_joint",
+            "from": 12.23,
+            "to": 48.23
+          },
+          {
+            "joint": "right_hip_r_joint",
+            "from": 1.98,
+            "to": 37.98
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260922_124258.json"
+      },
+      {
+        "at": "20260922_124306",
+        "mode": "recapture",
+        "changed": [
+          {
+            "joint": "left_hip_f_joint",
+            "from": 30.98,
+            "to": 30.7
+          },
+          {
+            "joint": "left_hip_a_joint",
+            "from": 6.07,
+            "to": 4.64
+          },
+          {
+            "joint": "left_hip_r_joint",
+            "from": 10.85,
+            "to": 7.57
+          },
+          {
+            "joint": "left_knee_joint",
+            "from": 48.23,
+            "to": 43.48
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": 42.5,
+            "to": 37.54
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 5.17,
+            "to": 5.61
+          },
+          {
+            "joint": "right_hip_f_joint",
+            "from": 8.45,
+            "to": 10.44
+          },
+          {
+            "joint": "right_hip_a_joint",
+            "from": 6.66,
+            "to": 9.21
+          },
+          {
+            "joint": "right_hip_r_joint",
+            "from": 37.98,
+            "to": 34.72
+          },
+          {
+            "joint": "right_knee_joint",
+            "from": 23.44,
+            "to": 29.98
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 24.67,
+            "to": 25.65
+          },
+          {
+            "joint": "right_ankle_r_joint",
+            "from": 8.23,
+            "to": 8.78
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260922_124306.json"
+      },
+      {
+        "at": "20260922_135226",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "left_knee_joint",
+            "from": 43.48,
+            "to": -28.52
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": 37.54,
+            "to": -34.46
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 5.61,
+            "to": 15.61
+          },
+          {
+            "joint": "right_hip_f_joint",
+            "from": 10.44,
+            "to": 46.44
+          },
+          {
+            "joint": "right_knee_joint",
+            "from": 29.98,
+            "to": 101.98
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 25.65,
+            "to": 97.65
+          },
+          {
+            "joint": "right_ankle_r_joint",
+            "from": 8.78,
+            "to": 28.78
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260922_135226.json"
+      },
+      {
+        "at": "20260922_135233",
+        "mode": "recapture",
+        "changed": [
+          {
+            "joint": "left_hip_f_joint",
+            "from": 30.7,
+            "to": 33.54
+          },
+          {
+            "joint": "left_hip_a_joint",
+            "from": 4.64,
+            "to": 5.91
+          },
+          {
+            "joint": "left_hip_r_joint",
+            "from": 7.57,
+            "to": 3.29
+          },
+          {
+            "joint": "left_knee_joint",
+            "from": -28.52,
+            "to": -22.46
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": -34.46,
+            "to": -30.41
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 15.61,
+            "to": 13.06
+          },
+          {
+            "joint": "right_hip_f_joint",
+            "from": 46.44,
+            "to": 44.29
+          },
+          {
+            "joint": "right_hip_a_joint",
+            "from": 9.21,
+            "to": 6.81
+          },
+          {
+            "joint": "right_hip_r_joint",
+            "from": 34.72,
+            "to": 30.15
+          },
+          {
+            "joint": "right_knee_joint",
+            "from": 101.98,
+            "to": 88.71
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 97.65,
+            "to": 88.51
+          },
+          {
+            "joint": "right_ankle_r_joint",
+            "from": 28.78,
+            "to": 28.62
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260922_135233.json"
+      },
+      {
+        "at": "20260928_105704",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "left_knee_joint",
+            "from": -22.46,
+            "to": 13.54
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": -30.41,
+            "to": 41.59
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 13.06,
+            "to": 3.06
+          },
+          {
+            "joint": "right_knee_joint",
+            "from": 88.71,
+            "to": 16.71
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 88.51,
+            "to": 16.51
+          },
+          {
+            "joint": "right_ankle_r_joint",
+            "from": 28.62,
+            "to": 8.62
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260928_105704.json"
+      },
+      {
+        "at": "20260928_130924",
+        "mode": "recapture",
+        "changed": [
+          {
+            "joint": "left_hip_f_joint",
+            "from": 33.54,
+            "to": 32.84
+          },
+          {
+            "joint": "left_hip_a_joint",
+            "from": 5.91,
+            "to": 4.69
+          },
+          {
+            "joint": "left_hip_r_joint",
+            "from": 3.29,
+            "to": 6.98
+          },
+          {
+            "joint": "left_knee_joint",
+            "from": 13.54,
+            "to": 12.36
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": 41.59,
+            "to": 42.22
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 3.06,
+            "to": 3.27
+          },
+          {
+            "joint": "right_hip_f_joint",
+            "from": 44.29,
+            "to": 42.72
+          },
+          {
+            "joint": "right_hip_a_joint",
+            "from": 6.81,
+            "to": 8.21
+          },
+          {
+            "joint": "right_hip_r_joint",
+            "from": 30.15,
+            "to": 32.49
+          },
+          {
+            "joint": "right_knee_joint",
+            "from": 16.71,
+            "to": 17.91
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 16.51,
+            "to": 20.12
+          },
+          {
+            "joint": "right_ankle_r_joint",
+            "from": 8.62,
+            "to": 8.95
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260928_130924.json"
+      },
+      {
+        "at": "20260928_192616",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 3.27,
+            "to": 13.27
+          },
+          {
+            "joint": "right_hip_f_joint",
+            "from": 42.72,
+            "to": 6.72
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260928_192616.json"
+      },
+      {
+        "at": "20260929_135928",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 13.27,
+            "to": 3.27
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260929_135928.json"
+      },
+      {
+        "at": "20260929_205833",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "left_hip_r_joint",
+            "from": 6.98,
+            "to": -101.02
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": 42.22,
+            "to": 6.22
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 3.27,
+            "to": 23.27
+          },
+          {
+            "joint": "right_hip_r_joint",
+            "from": 32.49,
+            "to": 68.49
+          },
+          {
+            "joint": "right_knee_joint",
+            "from": 17.91,
+            "to": 53.91
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 20.12,
+            "to": 56.12
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260929_205833.json"
+      },
+      {
+        "at": "20260930_213504",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "left_hip_r_joint",
+            "from": -101.02,
+            "to": 6.98
+          },
+          {
+            "joint": "left_ankle_f_joint",
+            "from": 6.22,
+            "to": 42.22
+          },
+          {
+            "joint": "left_ankle_r_joint",
+            "from": 23.27,
+            "to": -6.73
+          },
+          {
+            "joint": "right_hip_r_joint",
+            "from": 68.49,
+            "to": 32.49
+          },
+          {
+            "joint": "right_knee_joint",
+            "from": 53.91,
+            "to": 17.91
+          },
+          {
+            "joint": "right_ankle_f_joint",
+            "from": 56.12,
+            "to": 20.12
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20260930_213504.json"
       }
     ],
     "direction_history": [
@@ -784,5 +1591,23 @@
     "slew_deg_per_tick": 0.25,
     "roll_clamp_deg": 15.0,
     "note": "0913 시뮬 확정값(v5): 줄 없이 6 Nm 31→98.4 %. 켜기는 실행카드 §2.5(승인). enabled:true 는 두 사본 동시에."
-  }
+  },
+  "pitch_comp": {
+    "enabled": false,
+    "axis": "pitch",
+    "joints": "ankle_f",
+    "K": 0.35,
+    "tau_s": 0.06,
+    "limit_deg": 8.0,
+    "sign": 1,
+    "lr": [
+      1,
+      -1
+    ],
+    "gate": "any",
+    "debounce_s": 0.3,
+    "slew_deg_per_tick": 1.0,
+    "roll_clamp_deg": 25.0
+  },
+  "guard_mode": "data"
 }

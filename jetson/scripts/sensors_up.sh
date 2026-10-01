@@ -68,6 +68,17 @@ for name in imu_adapter foot_adapter; do
 done
 sleep 5
 
+# 1001: IMU 경로(imu_node → imu_adapter)를 실시간 우선순위로 — 일반 우선순위 파이썬 노드가 가끔 0.1–0.3 s 멈춰
+#   브리지 센서 스테일(0.2 s) STOP_ALL 을 냈다(1001 18:49:56, 4.5 h 에 5회). 전 스레드에 SCHED_FIFO 40.
+#   한도(RLIMIT_RTPRIO)가 없으면 경고만 하고 진행(콘솔 서비스 drop-in LimitRTPRIO=50 필요).
+for name in imu_node imu_adapter; do
+  pid=$(cat ~/run/"$name".pid 2>/dev/null)
+  [ -n "$pid" ] && [ -d /proc/"$pid" ] || continue
+  n=0; fail=0
+  for tid in $(ls /proc/"$pid"/task); do chrt -f -p 40 "$tid" 2>/dev/null && n=$((n+1)) || fail=$((fail+1)); done
+  echo "  실시간 우선순위 $name(pid $pid): 적용 $n · 실패 $fail"
+done
+
 ok=0
 for i in 1 2 3; do
   IMU=$(timeout 3 ros2 topic echo /humanoid/imu --field data 2>/dev/null | head -1)

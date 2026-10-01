@@ -62,14 +62,20 @@ def summarize(res, base=None):
     return dict(n=n, fall=P(fall, n), gf=P(gf, n), sus=P(sus, n), lift=P(lift, n), sat=sum(sats) / len(sats),
                 rev=sum(revs) / len(revs), takeoff=to[0], takeoff_ok=to[1], only_c=oc, only_b=ob)
 
+OPTIONAL = ('d5nd', 'd5b8')   # 보고 전용(부록 §8) — 선별에서는 생략 가능(1002 05시, 평가 처리량)
+NAN = dict(n=0, fall=math.nan, gf=math.nan, sus=math.nan, lift=math.nan, sat=math.nan, rev=math.nan, takeoff=0, takeoff_ok=0, only_c=0, only_b=0)
 def load(load_run, ck, pfx, seeds):
     out = {}
     for c in CONDS:
         d = {}
         for sd in seeds:
             r = one(f'{pfx}_{c}_s{sd}', load_run, ck, sd, c)
-            if r is None: return None
+            if r is None:
+                d = None; break
             d[sd] = r
+        if d is None:
+            if c in OPTIONAL: continue
+            return None
         out[c] = d
     return out
 
@@ -119,18 +125,18 @@ def main():
     hdr = f"{'낙상 %':14s} " + ' '.join(f'{c:>5s}' for c in SHOW)
     B1 = load(G12, 'model_9500.pt', 'g17b_g12', (1,))
     if B1 is None: print('기준선 seed 1 대기'); return
-    MB1 = {c: summarize(v) for c, v in B1.items()}
+    MB1 = {c: (summarize(B1[c]) if c in B1 else NAN) for c in CONDS}
     print('[선별] seed 1\n' + hdr); print(table('G12-9500', MB1))
     for ck in CKS:   # 이어 학습 대조(판정 미사용, 부록 §8)
         R = load(G12C, f'model_{ck}.pt', f'g17c_g12c_{ck}', (1,))
-        if R is not None: print(table(f'[대조]G12c-{ck}', {c: summarize(R[c], B1[c]) for c in CONDS}))
+        if R is not None: print(table(f'[대조]G12c-{ck}', {c: (summarize(R[c], B1[c]) if c in R and c in B1 else NAN) for c in CONDS}))
     screen = {}
     for fam in FAMS:
         rd = run_dir(fam)
         for ck in CKS:
             R = load(rd, f'model_{ck}.pt', f'g17_{fam}_{ck}', (1,)) if rd else None
             if R is None: continue
-            M = {c: summarize(R[c], B1[c]) for c in CONDS}
+            M = {c: (summarize(R[c], B1[c]) if c in R and c in B1 else NAN) for c in CONDS}
             bad = c0(M, MB1, TH['screen']); ok1, k, sc, note = c1(M, MB1)
             screen[(fam, ck)] = (M, bad, sc)
             print(table(f'{fam}-{ck}', M) + f"  C0{'✓' if not bad else '✗ ' + '; '.join(bad)} C1({k}/3 점수{sc:+.1f}%p{note})")
@@ -148,13 +154,13 @@ def main():
     B3 = load(G12, 'model_9500.pt', 'g17b_g12', FS)
     print('\n[정식] seed 2–4')
     if B3 is None: print('  기준선 seed 2–4 대기'); return
-    MB3 = {c: summarize(v) for c, v in B3.items()}
+    MB3 = {c: (summarize(B3[c]) if c in B3 else NAN) for c in CONDS}
     print(hdr); print(table('G12-9500', MB3))
     formal = {}
     for fam, ck in pick.items():
         R = load(run_dir(fam), f'model_{ck}.pt', f'g17_{fam}_{ck}', FS)
         if R is None: print(f'  {fam}-{ck}: 대기'); continue
-        M = {c: summarize(R[c], B3[c]) for c in CONDS}
+        M = {c: (summarize(R[c], B3[c]) if c in R and c in B3 else NAN) for c in CONDS}
         bad = c0(M, MB3, TH['formal']); ok1, k, sc, note = c1(M, MB3)
         formal[fam] = (ck, M, bad, ok1, sc)
         pair = ' '.join(f"{c}:{M[c]['only_c']}/{M[c]['only_b']}(p={mcnemar(M[c]['only_c'], M[c]['only_b']):.3f})" for c in ('sf10', 'sb10', 'b18'))

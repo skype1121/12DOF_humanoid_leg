@@ -36,6 +36,12 @@ parser.add_argument("--export_io_descriptors", action="store_true", default=Fals
 parser.add_argument(
     "--ray-proc-id", "-rid", type=int, default=None, help="Automatically configured by Ray integration, otherwise None."
 )
+parser.add_argument("--gp_coef", type=float, default=0.0,
+                    help="G18: SmoothPPO 관측 블록 야코비안 벌점 계수(0=기존 PPO 그대로)")
+parser.add_argument("--gp_block", type=str, default="165:225",
+                    help="벌점 관측 구간 'a:b'(기본 last_action 이력 165–224) 또는 'all'")
+parser.add_argument("--restore_lr", action="store_true", default=False,
+                    help="G18: 이어 학습 시 체크포인트 optimizer 의 학습률을 alg.learning_rate 로 복원(rsl_rl 3.1.2 누락, 5.5.1 ppo.py:405)")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -200,6 +206,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # wrap around environment for rsl-rl
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
+    if args_cli.gp_coef > 0:
+        import rsl_rl.runners.on_policy_runner as _opr
+        from rl_walking.smooth_ppo import SmoothPPO
+        SmoothPPO.GP_COEF = float(args_cli.gp_coef)
+        SmoothPPO.GP_SL = None if args_cli.gp_block == "all" else slice(*map(int, args_cli.gp_block.split(":")))
+        _opr.PPO = SmoothPPO
+        print(f"[G18] SmoothPPO 야코비안 벌점 coef={SmoothPPO.GP_COEF} block={SmoothPPO.GP_SL}")
     # create runner from rsl-rl
     if agent_cfg.class_name == "OnPolicyRunner":
         runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
@@ -214,6 +227,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
         runner.load(resume_path)
+        if args_cli.restore_lr:
+            runner.alg.learning_rate = float(runner.alg.optimizer.param_groups[0]["lr"])
+            print(f"[G18] 학습률 복원 = {runner.alg.learning_rate:.2e}")
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)

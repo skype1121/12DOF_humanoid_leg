@@ -1643,7 +1643,7 @@ class Biped12HangStandG16dEnvCfg(Biped12HangStandG16oEnvCfg):
 
 
 # ─────────────────────── 1001 G17: 실물 실측 정합 세대 (reports/gen_g17/) ───────────────────────
-def _g17_sensor_contract(cfg, gyro_max_lag=3, hold_ticks=5, extra_delay=1, tilt_off_deg=(2.0, 6.0)):
+def _g17_sensor_contract(cfg, gyro_max_lag=3, hold_ticks=5, extra_delay=1, tilt_off_deg=(6.0, 20.0)):
     """정책 관측을 실물 센서 계약에 맞춘다 (관측 차원·순서 불변 — 러너·브리지 그대로):
     자이로(base_ang_vel·gyro_ema 입력) env 별 0..gyro_max_lag 틱 지연 / 발 접촉 = 법선력 & 발 평평(θ_off 2–6°) · 10 Hz 표본 유지 · 1틱 전송."""
     P = cfg.observations.policy

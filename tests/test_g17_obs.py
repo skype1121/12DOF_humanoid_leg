@@ -39,8 +39,19 @@ def test_gyro_lag_per_env():
         assert abs(float(out[-1][e]) - (7 - int(lag[e]))) < 1e-6
 
 
+def _qmul(p, q):
+    w1, x1, y1, z1 = p; w2, x2, y2, z2 = q
+    return torch.tensor([w1*w2 - x1*x2 - y1*y2 - z1*z2, w1*x2 + x1*w2 + y1*z2 - z1*y2,
+                         w1*y2 - x1*z2 + y1*w2 + z1*x2, w1*z2 + x1*y2 - y1*x2 + z1*w2])
+
+
+# 발 링크 +Y = 위 → 평평하게 선 발 = 월드 X 축 +90° 회전 (1002 fcr_diag: 정착 서기 발 좌표 중력 (0,−1.00,0))
+FLAT = torch.tensor([math.cos(math.pi / 4), math.sin(math.pi / 4), 0.0, 0.0])
+
+
 def test_contact_hold_delay_and_tilt():
     env, a, cfg = _env(N=2)
+    a.data.body_quat_w = FLAT.repeat(2, 2, 1)
     force = {"v": torch.ones(2, 2)}
     s4_orig = s4.feet_contact_binary
     s4.feet_contact_binary = lambda env_, sc, thr, d, tr: force["v"].clone()
@@ -53,13 +64,15 @@ def test_contact_hold_delay_and_tilt():
                 force["v"] = torch.zeros(2, 2)          # 접촉 상실
             seq.append(m.feet_contact_real(env, sc, hold_ticks=5, extra_delay=1, tilt_off_deg=(3.0, 3.0), asset_cfg=cfg)[:, 0].clone())
         s = torch.stack(seq)                              # (20, 2)
+        assert float(s[2:8].min()) == 1.0                 # 평평·힘 접촉 = 1 (1차 구현 결함의 회귀 시험: 스폰 자세 무관)
         for e in range(2):
             first0 = int((s[:, e] == 0).nonzero()[0])
             assert 9 <= first0 <= 8 + 5 + 1, (e, first0)  # 표본 유지(≤5틱) + 전송 1틱 안에 반영
         # 기울기: 발을 10° 기울이면 힘이 있어도 꺼짐
         force["v"] = torch.ones(2, 2)
         ang = math.radians(10.0)
-        a.data.body_quat_w = torch.tensor([math.cos(ang / 2), 0, math.sin(ang / 2), 0]).repeat(2, 2, 1)
+        qy = torch.tensor([math.cos(ang / 2), 0, math.sin(ang / 2), 0])
+        a.data.body_quat_w = _qmul(qy, FLAT).repeat(2, 2, 1)   # 평평 발을 월드 Y 축으로 10° 기울임
         for k in range(20, 32):
             env.common_step_counter = k + 1
             o = m.feet_contact_real(env, sc, hold_ticks=5, extra_delay=1, tilt_off_deg=(3.0, 3.0), asset_cfg=cfg)

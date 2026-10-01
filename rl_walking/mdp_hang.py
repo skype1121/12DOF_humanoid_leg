@@ -1427,11 +1427,12 @@ def gyro_ema_lagged(env, alpha: float = 0.25, noise: float = 0.2, max_lag: int =
 
 
 def feet_contact_real(env, sensor_cfg=None, threshold: float = 5.0, threshold_range=None, hold_ticks: int = 5,
-                      extra_delay: int = 1, tilt_off_deg=(2.0, 6.0), asset_cfg=None) -> torch.Tensor:
+                      extra_delay: int = 1, tilt_off_deg=(6.0, 20.0), asset_cfg=None) -> torch.Tensor:
     """실물 발 접촉 관측 계약 (N, 2) [왼, 오] 0/1:
     (1) 법선력 > 임계(env 별 DR, mdp_stage4.feet_contact_binary 지연 0)
-    (2) **발이 거의 평평할 때만**: 발 몸체 기울기(에피소드 시작 자세 대비) < θ_off(env·발 DR) — 실물 얇은 패드는 발 앞끝·모서리로
-        섰을 때 안 눌려 꺼진다(1001 3회차: 발바닥 +4°↑ 에서 패드 꺼짐, 시뮬은 발 전체 힘이라 켜진 채).
+    (2) **발이 거의 평평할 때만**: 발바닥 법선(발 링크 +Y, 영자세 위 — 정착 서기 실측 중력 (0,−1.00,0)) 과 월드 수직의 각 < θ_off(env·발 DR)
+        — 실물 얇은 패드는 발 앞끝·모서리로 섰을 때 안 눌려 꺼진다(1001 3회차 튐: 발 피치 +20–40° 에서 0). θ_off 는 **가정**(실측 대기).
+        1002 수정: 기준을 에피소드 시작(공중 스폰) 자세로 잡던 1차 구현은 정착 서기 접촉=1 이 57–66 % 였다(fcr_diag).
     (3) **10 Hz 표본 유지**: hold_ticks 틱마다 갱신(env 별 무작위 위상) + extra_delay 틱 전송 지연 — 실물 RA30P 갱신 100 ms(1001 실측).
     관측 차원·의미(0/1) 불변."""
     import math as _m
@@ -1456,9 +1457,8 @@ def feet_contact_real(env, sensor_cfg=None, threshold: float = 5.0, threshold_ra
     elb = getattr(env, "episode_length_buf", None)
     fresh = (elb == 0) if isinstance(elb, torch.Tensor) else torch.zeros(N, dtype=torch.bool, device=dev)
     if st["ref"] is None:
-        st["ref"] = g.clone()
+        st["ref"] = torch.tensor([0.0, -1.0, 0.0], device=dev).expand(N, 2, 3).clone()   # 발바닥 평평 = 발 좌표 −Y 가 중력
     if bool(fresh.any()):
-        st["ref"][fresh] = g[fresh]
         st["thr"][fresh] = torch.empty(int(fresh.sum()), 2, device=dev).uniform_(_m.radians(tilt_off_deg[0]), _m.radians(tilt_off_deg[1]))
         st["phase"][fresh] = torch.randint(0, int(hold_ticks), (int(fresh.sum()),), device=dev)
     cosang = (g * st["ref"]).sum(-1).clamp(-1.0, 1.0)

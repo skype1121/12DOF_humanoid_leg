@@ -340,7 +340,7 @@ if args_cli.contact_real:
     from rl_walking import mdp_hang as _mh5
     _fc5 = env_cfg.observations.policy.feet_contact
     _kp5 = {k: v for k, v in dict(_fc5.params).items() if k in ("sensor_cfg", "threshold", "threshold_range")}
-    _kp5.update({"hold_ticks": 5, "extra_delay": 1, "tilt_off_deg": (2.0, 6.0)})
+    _kp5.update({"hold_ticks": 5, "extra_delay": 1, "tilt_off_deg": (6.0, 20.0)})
     _fc5.func = _mh5.feet_contact_real; _fc5.params = _kp5
     print("[contact_real] 정책 접촉 관측 = 실물 계약(평평·10 Hz·1틱)", flush=True)
 if args_cli.gyro_delay > 0:

@@ -91,6 +91,8 @@ parser.add_argument("--replay_bb", type=str, default="",
                     help="1001: 실물 브리지 블랙박스(jsonl)의 관절 목표각(targets_deg_joint)을 인계 뒤 정책 출력 대신 그대로 재생(오픈루프). "
                          "실물 기본자세(CROUCH_V5)에서 벗어난 양을 시뮬 env 기본자세(편향 포함)에 더한다. 정책·플랜트 분리용")
 parser.add_argument("--replay_t0", type=float, default=0.0, help="재생 시작 = 블랙박스 첫 틱 + 이 시간 [s]")
+parser.add_argument("--gyro_delay", type=int, default=0,
+                    help="1001: 정책 관측 자이로(base_ang_vel·gyro_ema 입력)를 N 정책 틱 늦게 — 실물 IMU 경로 지연 가설 시험")
 parser.add_argument("--contact_drop", type=str, default="",
                     help="1001: 정책 관측의 발 접촉 비트만 강제로 0 (물리 접촉·채점 불변) — 'L|R|B:t_rel:dur' ';' 구분, t_rel 은 인계 기준 [s]. "
                          "실물 3 Hz 진동이 '한 발 접촉 비트 상실'에서 시작되는지 보는 관측 교란 대조")
@@ -332,6 +334,35 @@ if args_cli.knee_play_deg is not None:
     if _pb is not None and "shared_knee_rad" in _pb.params and not args_cli.knee_keep_bias:
         _pb.params["shared_knee_rad"] = None
     print(f"[knee_play] 무릎 유격 반폭 {args_cli.knee_play_deg}° · 공유 무릎 편향 {'유지' if args_cli.knee_keep_bias else '끔'}", flush=True)
+if args_cli.gyro_delay > 0:
+    from collections import deque as _dq
+    from rl_walking import mdp_hang as _mh4
+    _GD = int(args_cli.gyro_delay)
+    _P4 = env_cfg.observations.policy
+    _ga = _P4.base_ang_vel; _ga_orig = _ga.func
+    def _delayed(env, key, x):
+        st = getattr(env, key, None)
+        step = int(env.common_step_counter)
+        if st is None:
+            st = {"q": _dq(maxlen=_GD + 1), "step": None, "out": x}; setattr(env, key, st)
+        if st["step"] != step:
+            st["q"].append(x.clone()); st["step"] = step
+            st["out"] = st["q"][0]
+        return st["out"]
+    def _ang_delayed(env, asset_cfg=None):
+        x = _ga_orig(env) if asset_cfg is None else _ga_orig(env, asset_cfg=asset_cfg)
+        return _delayed(env, "_gd_ang", x).clone()
+    _ga.func = _ang_delayed
+    _ge = getattr(_P4, "gyro_ema", None)
+    if _ge is not None:
+        def _gyro_ema_delayed(env, alpha: float = 0.25, noise: float = 0.2, asset_cfg=None):
+            asset = env.scene[(asset_cfg or _mh4._base_cfg()).name]
+            x = _delayed(env, "_gd_ema_src", asset.data.root_ang_vel_b.clone())
+            if noise > 0.0:
+                x = x + (torch.rand_like(x) * 2.0 - 1.0) * noise
+            return _mh4._ema_state(env, "_s8_gyro_ema", x, alpha).clone()
+        _ge.func = _gyro_ema_delayed
+    print(f"[gyro_delay] 자이로 관측 {_GD} 틱 지연", flush=True)
 if args_cli.contact_drop:
     _CD = []
     for _it in args_cli.contact_drop.split(";"):

@@ -1706,3 +1706,41 @@ class Biped12HangStandG17rpEnvCfg(Biped12HangStandG17pEnvCfg):
         super().__post_init__()
         self.rewards.action_rate_l2.weight *= 3.0
         self.rewards.action_rate_window.weight *= 3.0
+
+
+@configclass
+class Biped12HangStandG18oEnvCfg(Biped12HangStandG17oEnvCfg):
+    """G18o (1002) — G18 공통 대조군: G17o + **접촉 관측 v2**(feet_contact_real_v2: 접촉 임계를 에피소드 시작에만 추출 —
+    v1 은 delay 0 경로에서 _contact_reset_ids 미소비로 임계가 매 틱 재추출, OSS 감사 3). 그 외 G17o 와 동일.
+    G18 변형은 모두 이것 위의 단일 변경이며 같은 출발점(G12-9500)·같은 반복·같은 seed 로 짝 비교한다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        fc = self.observations.policy.feet_contact
+        assert fc.func is mdp_hang.feet_contact_real
+        fc.func = mdp_hang.feet_contact_real_v2
+
+
+@configclass
+class Biped12HangStandG18dEnvCfg(Biped12HangStandG18oEnvCfg):
+    """G18d: G18o + **액션 지연 DR 0–3 → 1–3틱** 단일 변경 (OSS 분석 3: 실측 d≈1, 지연 0 은 실물에 없음;
+    짧은 지연 학습 = 정지 떨림(G16d ~100배·G17o 6–8배) 가설)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        a = self.actions.joint_pos
+        assert a.min_delay_steps == 0 and a.max_delay_steps == 3
+        a.min_delay_steps = 1
+
+
+@configclass
+class Biped12HangStandG18qEnvCfg(Biped12HangStandG18oEnvCfg):
+    """G18q: G18o + **회복 품질 보상의 접촉 조건을 외란 창(외력 시작 ~ 종료 + 1.5 s) 안에서만 '한 발 이상'** 단일 변경
+    (OSS 분석 2: 게이트 열림 중 유일한 양(+) 보상이 q *= both 라 스윙 = 구조적 손해; Ferigo 2021·van Marum 2024).
+    창 밖은 양발 조건 그대로 → G16a 의 무외란 발 들기(게이트 자기 개방) 경로 차단."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.recovery_quality
+        assert t.func is mdp_hang.recovery_quality
+        t.params = dict(t.params or {}); t.params["step_window_s"] = 1.5

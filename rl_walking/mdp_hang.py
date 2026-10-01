@@ -343,7 +343,8 @@ def recovery_open(env) -> torch.Tensor:
 
 
 def recovery_quality(env, s_ang: float = 0.30, s_lin: float = 0.10, s_jvel: float = 0.50, tilt_ok: float = 6.5,
-                     sensor_cfg=None, threshold: float = 5.0, asset_cfg=None, require_both: bool = True) -> torch.Tensor:
+                     sensor_cfg=None, threshold: float = 5.0, asset_cfg=None, require_both: bool = True,
+                     step_window_s: float = 0.0) -> torch.Tensor:
     """**회복 게이트가 열려 있는 동안만** 주는 등급형(rational) 정숙 보상 0~1 — 문턱 미달로 0 에 갇히지 않는다.
     σ 는 학습 중 실제 운동 수준(평가 관측 |ω|≈0.1~0.2·q̇≈0.11, 학습은 액션 잡음으로 더 큼)을 감싸도록 넉넉히 잡는다.
     G7 의 recovery_bonus(경성 문턱 0.15/0.05/0.3 + 0.5 s 연속)는 학습 내내 0 이었다 — 그 결함의 교체항."""
@@ -351,7 +352,18 @@ def recovery_quality(env, s_ang: float = 0.30, s_lin: float = 0.10, s_jvel: floa
     def g(x, sig):
         return 1.0 / (1.0 + (x / sig) ** 2)
     q = (g(w, s_ang) + g(v, s_lin) + g(qd, s_jvel)) / 3.0
-    if require_both:   # 1001 G16a: False 면 한 발을 들어도(회복 스텝) 품질 보상을 잃지 않는다 — van Marum 2024 '양발 접촉 보상은 회복 스텝을 벌한다'
+    if require_both and step_window_s > 0:
+        # 1002 G18q (OSS 분석 2: Ferigo 2021 '한 발 이상' 접촉 보상): **외란 창(외력 시작 ~ 종료 + step_window_s) 안에서만** 한 발 이상이면
+        # 품질 보상 유지 — 스윙 공백 제거. 창은 정책이 만들 수 없는 외생 신호라 G16a 의 게이트 자기 개방 경로(무외란 발 들기)는 닫힌 채.
+        asset = env.scene[(asset_cfg or _base_cfg()).name]
+        if sensor_cfg is not None and not isinstance(getattr(sensor_cfg, "body_ids", slice(None)), slice):
+            f = env.scene.sensors[sensor_cfg.name].data.net_forces_w[:, sensor_cfg.body_ids, :]
+        else:
+            f = env.scene.sensors["contact_forces"].data.net_forces_w[:, _feet_body_ids(env), :]
+        anyc = (torch.norm(f, dim=-1) > threshold).any(dim=1)
+        ok = torch.where(dist_window_mask(env, step_window_s), anyc, both)
+        q = q * ok.to(q.dtype)
+    elif require_both:   # 1001 G16a: False 면 한 발을 들어도(회복 스텝) 품질 보상을 잃지 않는다 — van Marum 2024 '양발 접촉 보상은 회복 스텝을 벌한다'
         q = q * both.to(q.dtype)
     q = q * (tilt < tilt_ok).to(q.dtype)
     return q * _state(env)["rec_open"]

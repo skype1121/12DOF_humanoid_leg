@@ -2018,13 +2018,12 @@ def main():
                 self._bbt = _threading.Thread(target=self._bb_writer, name="bb_writer", daemon=True)
                 self._bbt.start()
                 self.get_logger().info(f"블랙박스 기록: {path}")
-            # 0930: 센서·상태 구독은 최신값 1칸(KEEP_LAST 1) — 콜백이 최신값 덮어쓰기만 하므로 동작은 같고, 실행기가 밀릴 때
-            #   낡은 메시지가 큐에 쌓여 '최신'으로 소비되는 것을 막는다 (오픈소스 배포 3종 공통 패턴, reports/oss_review A1).
-            #   브리지 명령(stand/estop)은 명령이므로 깊이 10 유지 — 덮어쓰면 안 된다.
-            self.create_subscription(String, JOINT_STATES_TOPIC, self._on_js, 1)
-            self.create_subscription(String, STATUS_TOPIC, self._on_status, 1)
-            self.create_subscription(String, IMU_TOPIC, self._on_imu, 1)
-            self.create_subscription(String, FOOT_TOPIC, self._on_foot, 1)
+            # 1001 되돌림: 0930 의 '최신값 1칸(KEEP_LAST 1)' 은 실물에서 IMU 수신이 0.5–0.8 s 늦어져 stand 중력 게이트(0.5 s)가
+            #   매번 거부했다(젯슨 dry-run A/B: 깊이 1 = 3/3 거부·age 0.68–0.82 s, 깊이 10/50 = 3/3 통과). 0929 실물 검증 값으로 복귀.
+            self.create_subscription(String, JOINT_STATES_TOPIC, self._on_js, 10)
+            self.create_subscription(String, STATUS_TOPIC, self._on_status, 10)
+            self.create_subscription(String, IMU_TOPIC, self._on_imu, 50)
+            self.create_subscription(String, FOOT_TOPIC, self._on_foot, 50)
             self.create_subscription(String, BRIDGE_CMD_TOPIC, self._on_cmd, 10)
             self.pub_cmd = self.create_publisher(String, COMMAND_TOPIC, 10)
             self.pub_dbg = self.create_publisher(String, BRIDGE_DEBUG_TOPIC, 10)

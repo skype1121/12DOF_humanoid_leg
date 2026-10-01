@@ -1473,3 +1473,52 @@ def feet_contact_real(env, sensor_cfg=None, threshold: float = 5.0, threshold_ra
     out = st["q"].pop(0)
     st["out"] = out; st["step"] = step
     return out.clone()
+
+
+def feet_contact_real_v2(env, sensor_cfg=None, threshold: float = 5.0, threshold_range=None, hold_ticks: int = 5,
+                         extra_delay: int = 1, tilt_off_deg=(6.0, 20.0), asset_cfg=None) -> torch.Tensor:
+    """feet_contact_real 과 같은 계약(힘 ∧ 발바닥 평평 + 10 Hz 표본 유지 + 전송 지연), 단 접촉 임계를 **자체 상태**로 두고
+    에피소드 시작에만 뽑는다. v1 은 feet_contact_binary(delay 0) 가 _contact_reset_ids 를 비우지 않아 마지막 리셋 묶음의
+    임계 U(lo, hi) 가 매 틱 재추출됐다(평가에선 전 env — 1002 OSS 감사 3, mdp_stage4.py:67-73). G17 판정은 v1 로 일관 평가."""
+    import math as _m
+    from isaaclab.utils.math import quat_apply_inverse as _qinv
+    sensor = env.scene.sensors[sensor_cfg.name]
+    fn = torch.norm(sensor.data.net_forces_w[:, sensor_cfg.body_ids, :], dim=-1)          # (N, 2)
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    N = fn.shape[0]; dev = fn.device
+    lo, hi = (threshold_range if threshold_range is not None else (threshold, threshold))
+    st = getattr(env, "_fcr2_st", None)
+    if st is None or st["held"].shape[0] != N:
+        ids, _ = asset.find_bodies(list(sensor_cfg.body_names), preserve_order=True)
+        z = torch.zeros(N, 2, device=dev)
+        st = {"ids": ids, "held": z.clone(), "q": [z.clone() for _ in range(max(1, extra_delay))],
+              "phase": torch.randint(0, int(hold_ticks), (N,), device=dev),
+              "thr": torch.empty(N, 2, device=dev).uniform_(_m.radians(tilt_off_deg[0]), _m.radians(tilt_off_deg[1])),
+              "fthr": torch.empty(N, 1, device=dev).uniform_(float(lo), float(hi)), "step": None, "init": True}
+        env._fcr2_st = st
+    step = int(getattr(env, "common_step_counter", 0))
+    if st["step"] == step:
+        return st["out"].clone()
+    elb = getattr(env, "episode_length_buf", None)
+    fresh = (elb == 0) if isinstance(elb, torch.Tensor) else torch.zeros(N, dtype=torch.bool, device=dev)
+    if st.pop("init", False):
+        fresh = torch.ones(N, dtype=torch.bool, device=dev)
+    if bool(fresh.any()):
+        k = int(fresh.sum())
+        st["thr"][fresh] = torch.empty(k, 2, device=dev).uniform_(_m.radians(tilt_off_deg[0]), _m.radians(tilt_off_deg[1]))
+        st["fthr"][fresh] = torch.empty(k, 1, device=dev).uniform_(float(lo), float(hi))
+        st["phase"][fresh] = torch.randint(0, int(hold_ticks), (k,), device=dev)
+    now = (fn > st["fthr"]).to(torch.float32)
+    q = asset.data.body_quat_w[:, st["ids"], :]
+    g = _qinv(q.reshape(-1, 4), torch.tensor([0.0, 0.0, -1.0], device=dev).expand(N * 2, 3)).reshape(N, 2, 3)
+    tilt = torch.acos((-g[..., 1]).clamp(-1.0, 1.0))                     # 발바닥 법선(발 링크 +Y) 대 월드 수직
+    bit = now * (tilt < st["thr"]).to(now.dtype)
+    upd = ((step + st["phase"]) % int(hold_ticks) == 0) | fresh
+    st["held"] = torch.where(upd.view(-1, 1), bit, st["held"])
+    if bool(fresh.any()):
+        for k in range(len(st["q"])):
+            st["q"][k][fresh] = st["held"][fresh]
+    st["q"].append(st["held"].clone())
+    out = st["q"].pop(0)
+    st["out"] = out; st["step"] = step
+    return out.clone()

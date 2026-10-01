@@ -79,3 +79,22 @@ def test_contact_hold_delay_and_tilt():
         assert float(o.sum()) == 0.0
     finally:
         s4.feet_contact_binary = s4_orig
+
+
+def test_contact_v2_threshold_fixed_within_episode():
+    """v2: 접촉 임계는 에피소드 시작에만 뽑힌다 — 힘이 임계 대역(2–20 N) 안에서 일정하면 비트도 일정해야 한다(v1 은 매 틱 재추출)."""
+    env, a, cfg = _env(N=64)
+    a.data.body_quat_w = FLAT.repeat(64, 2, 1)
+    class Scene(dict): pass
+    sc_ = Scene(env.scene); sens = types.SimpleNamespace(data=types.SimpleNamespace(net_forces_w=torch.zeros(64, 2, 3)))
+    sc_.sensors = {"cs": sens}; env.scene = sc_
+    sens.data.net_forces_w[..., 2] = 11.0                              # 대역 중앙 힘
+    sc = types.SimpleNamespace(name="cs", body_names=["L", "R"], body_ids=[0, 1])
+    outs = []
+    for k in range(40):
+        env.common_step_counter = k + 1
+        outs.append(m.feet_contact_real_v2(env, sc, threshold_range=(2.0, 20.0), hold_ticks=5, extra_delay=1, asset_cfg=cfg).clone())
+    o = torch.stack(outs[8:])                                          # 초기 지연 뒤
+    assert torch.equal(o.max(0).values, o.min(0).values)               # env 별로 일정
+    frac = float(o[0].mean())
+    assert 0.2 < frac < 0.8                                            # env 마다 임계가 달라 일부만 켜짐

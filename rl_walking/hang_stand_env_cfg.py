@@ -1640,3 +1640,69 @@ class Biped12HangStandG16dEnvCfg(Biped12HangStandG16oEnvCfg):
         assert a.min_delay_steps == 9 and a.max_delay_steps == 14
         a.min_delay_steps = 0
         a.max_delay_steps = 6
+
+
+# ─────────────────────── 1001 G17: 실물 실측 정합 세대 (reports/gen_g17/) ───────────────────────
+def _g17_sensor_contract(cfg, gyro_max_lag=3, hold_ticks=5, extra_delay=1, tilt_off_deg=(2.0, 6.0)):
+    """정책 관측을 실물 센서 계약에 맞춘다 (관측 차원·순서 불변 — 러너·브리지 그대로):
+    자이로(base_ang_vel·gyro_ema 입력) env 별 0..gyro_max_lag 틱 지연 / 발 접촉 = 법선력 & 발 평평(θ_off 2–6°) · 10 Hz 표본 유지 · 1틱 전송."""
+    P = cfg.observations.policy
+    P.base_ang_vel.func = mdp_hang.base_ang_vel_lagged
+    P.base_ang_vel.params = {"max_lag": int(gyro_max_lag)}
+    ge = P.gyro_ema
+    ge.func = mdp_hang.gyro_ema_lagged
+    ge.params = {"alpha": ge.params.get("alpha", 0.1), "noise": ge.params.get("noise", 0.05), "max_lag": int(gyro_max_lag)}
+    fc = P.feet_contact
+    keep = {k: v for k, v in dict(fc.params).items() if k in ("sensor_cfg", "threshold", "threshold_range")}
+    keep.update({"hold_ticks": int(hold_ticks), "extra_delay": int(extra_delay), "tilt_off_deg": tuple(tilt_off_deg)})
+    fc.func = mdp_hang.feet_contact_real
+    fc.params = keep
+
+
+@configclass
+class Biped12HangStandG17oEnvCfg(Biped12HangStandG16oEnvCfg):
+    """G17o (1001 밤) — 실측 정합 기반: G16o(관측 v2) + **액션 지연 DR 9–14 → 0–3틱**(1001 실측 명령 경로 p95 3 ms·응답 4틱 = 시뮬 지연 0–1)
+    + **실물 센서 계약**(_g17_sensor_contract: 자이로 지연 0–3틱 가정·접촉 10 Hz 유지·발 기울면 접촉 꺼짐).
+    보상·외란·게이트 불변. 이후 G17 변형의 공통 대조군."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        a = self.actions.joint_pos
+        assert a.min_delay_steps == 9 and a.max_delay_steps == 14
+        a.min_delay_steps = 0
+        a.max_delay_steps = 3
+        _g17_sensor_contract(self)
+
+
+@configclass
+class Biped12HangStandG17rEnvCfg(Biped12HangStandG17oEnvCfg):
+    """G17r: G17o + **명령 변화 벌점 ×3**(action_rate_l2·action_rate_window 둘 다, 게이트 불변) 단일 변경.
+    근거: G16d(짧은 지연 학습) 부호반전 ~100배 채터, 1001 실물 3 Hz 는 자이로·관절속도 고이득 되먹임 → 빠른 반응 억제(0802 march_v3 action_rate 6배 선례)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.action_rate_l2.weight *= 3.0
+        self.rewards.action_rate_window.weight *= 3.0
+
+
+@configclass
+class Biped12HangStandG17pEnvCfg(Biped12HangStandG17oEnvCfg):
+    """G17p: G17o + **빠른 지속 외력**: 램프 상승 1–4 s → 0.3–4 s, 램프 세기 3–20 → 3–25 N 단일 변경(외란 분포만).
+    근거: 실물 실패 = 0.5 s 안팎으로 '꾸욱' 누르는 지속력(1001 3회차), G12 는 느린 앞 10 N(0.5 s 상승) 낙상 48 %."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        p = self.events.disturbance.params
+        assert tuple(p["rise_range"]) == (1.0, 4.0) and tuple(p["F_ramp_range"]) == (3.0, 20.0)
+        p["rise_range"] = (0.3, 4.0)
+        p["F_ramp_range"] = (3.0, 25.0)
+
+
+@configclass
+class Biped12HangStandG17rpEnvCfg(Biped12HangStandG17pEnvCfg):
+    """G17rp: G17p + 명령 변화 벌점 ×3 (G17r 과 G17p 의 결합 — 두 단일 변경 효과가 각각 확인될 때 해석)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.action_rate_l2.weight *= 3.0
+        self.rewards.action_rate_window.weight *= 3.0

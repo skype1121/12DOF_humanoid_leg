@@ -91,6 +91,8 @@ parser.add_argument("--replay_bb", type=str, default="",
                     help="1001: 실물 브리지 블랙박스(jsonl)의 관절 목표각(targets_deg_joint)을 인계 뒤 정책 출력 대신 그대로 재생(오픈루프). "
                          "실물 기본자세(CROUCH_V5)에서 벗어난 양을 시뮬 env 기본자세(편향 포함)에 더한다. 정책·플랜트 분리용")
 parser.add_argument("--replay_t0", type=float, default=0.0, help="재생 시작 = 블랙박스 첫 틱 + 이 시간 [s]")
+parser.add_argument("--contact_real", action="store_true",
+                    help="1001 G17: 정책 접촉 관측을 실물 계약으로(mdp_hang.feet_contact_real: 발 평평 θ_off 2–6°·10 Hz 유지·1틱 전송) — 모든 정책 공통 적용")
 parser.add_argument("--gyro_delay", type=int, default=0,
                     help="1001: 정책 관측 자이로(base_ang_vel·gyro_ema 입력)를 N 정책 틱 늦게 — 실물 IMU 경로 지연 가설 시험")
 parser.add_argument("--contact_drop", type=str, default="",
@@ -334,6 +336,13 @@ if args_cli.knee_play_deg is not None:
     if _pb is not None and "shared_knee_rad" in _pb.params and not args_cli.knee_keep_bias:
         _pb.params["shared_knee_rad"] = None
     print(f"[knee_play] 무릎 유격 반폭 {args_cli.knee_play_deg}° · 공유 무릎 편향 {'유지' if args_cli.knee_keep_bias else '끔'}", flush=True)
+if args_cli.contact_real:
+    from rl_walking import mdp_hang as _mh5
+    _fc5 = env_cfg.observations.policy.feet_contact
+    _kp5 = {k: v for k, v in dict(_fc5.params).items() if k in ("sensor_cfg", "threshold", "threshold_range")}
+    _kp5.update({"hold_ticks": 5, "extra_delay": 1, "tilt_off_deg": (2.0, 6.0)})
+    _fc5.func = _mh5.feet_contact_real; _fc5.params = _kp5
+    print("[contact_real] 정책 접촉 관측 = 실물 계약(평평·10 Hz·1틱)", flush=True)
 if args_cli.gyro_delay > 0:
     from collections import deque as _dq
     from rl_walking import mdp_hang as _mh4

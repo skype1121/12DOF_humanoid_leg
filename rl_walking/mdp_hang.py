@@ -1389,3 +1389,87 @@ def encoder_joint_vel_ema(env, alpha: float = 0.25, noise: float = 1.5, asset_cf
 encoder_joint_pos_rel_legacy = encoder_joint_pos_rel
 encoder_joint_vel_legacy = encoder_joint_vel
 encoder_joint_vel_ema_legacy = encoder_joint_vel_ema
+
+
+# ─────────────────────── 1001 G17: 실물 센서 계약 정합 (자이로 지연 · 접촉 10 Hz 유지 · 앞끝 접촉 꺼짐) ───────────────────────
+def base_ang_vel_lagged(env, max_lag: int = 3, asset_cfg=None) -> torch.Tensor:
+    """몸통 각속도(자이로) — env 별 0..max_lag 정책 틱 지연(리셋마다 재추출). 스텝 캐시(같은 스텝 재호출 동일값).
+    근거: 1001 실물 3 Hz 흔들림의 주 경로가 자이로 되먹임(attrib_3hz), 실물 IMU 경로 지연 미측정 → 넓게 DR."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    w = asset.data.root_ang_vel_b
+    N = w.shape[0]; L = int(max_lag)
+    st = getattr(env, "_gyro_lag_st", None)
+    if st is None or st["buf"].shape[1] != N or st["buf"].shape[0] != L + 1:
+        st = {"buf": w.unsqueeze(0).repeat(L + 1, 1, 1).clone(),
+              "lag": torch.randint(0, L + 1, (N,), device=w.device), "step": None, "out": w.clone()}
+        env._gyro_lag_st = st
+    step = int(getattr(env, "common_step_counter", 0))
+    if st["step"] != step:
+        fresh = getattr(env, "episode_length_buf", None)
+        fresh = (fresh == 0) if isinstance(fresh, torch.Tensor) else torch.zeros(N, dtype=torch.bool, device=w.device)
+        if bool(fresh.any()):
+            st["buf"][:, fresh] = w[fresh].unsqueeze(0)
+            st["lag"][fresh] = torch.randint(0, L + 1, (int(fresh.sum()),), device=w.device)
+        st["buf"] = torch.roll(st["buf"], 1, 0)
+        st["buf"][0] = w
+        idx = st["lag"].view(1, -1, 1).expand(1, N, w.shape[1])
+        st["out"] = torch.gather(st["buf"], 0, idx).squeeze(0)
+        st["step"] = step
+    return st["out"].clone()
+
+
+def gyro_ema_lagged(env, alpha: float = 0.25, noise: float = 0.2, max_lag: int = 3, asset_cfg=None) -> torch.Tensor:
+    """gyro_ema 와 같은 규약이되 입력 자이로가 base_ang_vel_lagged(같은 env 별 지연)."""
+    x = base_ang_vel_lagged(env, max_lag, asset_cfg)
+    if noise > 0.0:
+        x = x + (torch.rand_like(x) * 2.0 - 1.0) * noise
+    return _ema_state(env, "_s8_gyro_ema", x, alpha).clone()
+
+
+def feet_contact_real(env, sensor_cfg=None, threshold: float = 5.0, threshold_range=None, hold_ticks: int = 5,
+                      extra_delay: int = 1, tilt_off_deg=(2.0, 6.0), asset_cfg=None) -> torch.Tensor:
+    """실물 발 접촉 관측 계약 (N, 2) [왼, 오] 0/1:
+    (1) 법선력 > 임계(env 별 DR, mdp_stage4.feet_contact_binary 지연 0)
+    (2) **발이 거의 평평할 때만**: 발 몸체 기울기(에피소드 시작 자세 대비) < θ_off(env·발 DR) — 실물 얇은 패드는 발 앞끝·모서리로
+        섰을 때 안 눌려 꺼진다(1001 3회차: 발바닥 +4°↑ 에서 패드 꺼짐, 시뮬은 발 전체 힘이라 켜진 채).
+    (3) **10 Hz 표본 유지**: hold_ticks 틱마다 갱신(env 별 무작위 위상) + extra_delay 틱 전송 지연 — 실물 RA30P 갱신 100 ms(1001 실측).
+    관측 차원·의미(0/1) 불변."""
+    import math as _m
+    from isaaclab.utils.math import quat_apply_inverse as _qinv
+    from rl_walking.mdp_stage4 import feet_contact_binary
+    now = feet_contact_binary(env, sensor_cfg, threshold, 0, threshold_range)
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    N = now.shape[0]; dev = now.device
+    st = getattr(env, "_fcr_st", None)
+    if st is None or st["held"].shape[0] != N:
+        ids, _ = asset.find_bodies(list(sensor_cfg.body_names), preserve_order=True)
+        st = {"ids": ids, "ref": None, "held": now.clone(), "prev": now.clone(), "q": [now.clone() for _ in range(max(1, extra_delay))],
+              "phase": torch.randint(0, int(hold_ticks), (N,), device=dev),
+              "thr": torch.empty(N, 2, device=dev).uniform_(_m.radians(tilt_off_deg[0]), _m.radians(tilt_off_deg[1])), "step": None}
+        env._fcr_st = st
+    step = int(getattr(env, "common_step_counter", 0))
+    if st["step"] == step:
+        return st["out"].clone()
+    q = asset.data.body_quat_w[:, st["ids"], :]                       # (N,2,4)
+    down = torch.tensor([0.0, 0.0, -1.0], device=dev).expand(N, 2, 3)
+    g = _qinv(q.reshape(-1, 4), down.reshape(-1, 3)).reshape(N, 2, 3)  # 발 좌표계의 중력 방향
+    elb = getattr(env, "episode_length_buf", None)
+    fresh = (elb == 0) if isinstance(elb, torch.Tensor) else torch.zeros(N, dtype=torch.bool, device=dev)
+    if st["ref"] is None:
+        st["ref"] = g.clone()
+    if bool(fresh.any()):
+        st["ref"][fresh] = g[fresh]
+        st["thr"][fresh] = torch.empty(int(fresh.sum()), 2, device=dev).uniform_(_m.radians(tilt_off_deg[0]), _m.radians(tilt_off_deg[1]))
+        st["phase"][fresh] = torch.randint(0, int(hold_ticks), (int(fresh.sum()),), device=dev)
+    cosang = (g * st["ref"]).sum(-1).clamp(-1.0, 1.0)
+    tilt = torch.acos(cosang)
+    bit = now * (tilt < st["thr"]).to(now.dtype)
+    upd = ((step + st["phase"]) % int(hold_ticks) == 0) | fresh
+    st["held"] = torch.where(upd.view(-1, 1), bit, st["held"])
+    if bool(fresh.any()):
+        for k in range(len(st["q"])):
+            st["q"][k][fresh] = st["held"][fresh]
+    st["q"].append(st["held"].clone())
+    out = st["q"].pop(0)
+    st["out"] = out; st["step"] = step
+    return out.clone()

@@ -80,6 +80,13 @@ parser.add_argument("--obs_hold", type=int, default=0,
                     help="1001: 실물 브리지 관절 상태 샘플홀드 모사 — 관절마다 N틱에 한 번 갱신(env·관절별 무작위 위상, 라운드로빈 폴링 흉내). "
                          "정책 관측 joint_pos = 마지막 갱신값, joint_vel = 브리지 추정기(값 그대로면 0, 바뀌면 Δq/(틱×머문 틱), 머문 틱 상한 12), "
                          "joint_vel_ema = 그 속도의 EMA(v2 의미). --enc_obs v2 필요. 0 = 끔")
+parser.add_argument("--knee_sea", type=float, default=None,
+                    help="1001: 무릎을 직렬 탄성 액추에이터로(값 = 스프링 k Nm/rad, 예 42). 고정 무릎 공유 편향(처짐 정적 모델)은 끈다")
+parser.add_argument("--knee_play_deg", type=float, default=None,
+                    help="1001: 무릎 유격(데드밴드) 반폭 [deg] — DeadzoneImplicit(유격 안 자유, 엔코더 관측은 모터측). 고정 무릎 공유 편향은 끈다")
+parser.add_argument("--knee_keep_bias", action="store_true", help="--knee_play_deg 와 함께: 고정 무릎 공유 편향(평형 자세)은 유지하고 유격만 동적으로 더한다")
+parser.add_argument("--knee_sea_damp", type=float, default=0.3)
+parser.add_argument("--knee_sea_J", type=float, default=0.01)
 parser.add_argument("--contact_drop", type=str, default="",
                     help="1001: 정책 관측의 발 접촉 비트만 강제로 0 (물리 접촉·채점 불변) — 'L|R|B:t_rel:dur' ';' 구분, t_rel 은 인계 기준 [s]. "
                          "실물 3 Hz 진동이 '한 발 접촉 비트 상실'에서 시작되는지 보는 관측 교란 대조")
@@ -287,6 +294,40 @@ if args_cli.obs_hold > 0:
         if _t is not None:
             _t.func = _fn
     print(f"[obs_hold] 관절 상태 샘플홀드 {_HN}틱 (브리지 qvel 추정기 모사)", flush=True)
+if args_cli.knee_sea is not None:
+    import re as _re2
+    from isaaclab.actuators import ImplicitActuatorCfg as _Impl2
+    from rl_walking.actuators_play import SeriesElasticPDActuatorCfg
+    _acts = env_cfg.scene.robot.actuators; _b = _acts["ak70"]
+    _ex = _b.joint_names_expr if isinstance(_b.joint_names_expr, (list, tuple)) else [_b.joint_names_expr]
+    _keep = [e for e in _ex if not _re2.fullmatch(e, "left_knee_joint")]
+    _acts["ak70"] = _Impl2(joint_names_expr=_keep, effort_limit_sim=_b.effort_limit_sim, velocity_limit_sim=_b.velocity_limit_sim,
+                          stiffness=_b.stiffness, damping=_b.damping, armature=_b.armature)
+    _acts["knee_sea"] = SeriesElasticPDActuatorCfg(
+        joint_names_expr=[".*_knee_joint"], effort_limit=_b.effort_limit_sim, velocity_limit=_b.velocity_limit_sim,
+        stiffness=_b.stiffness, damping=_b.damping, armature=0.0,
+        spring_k=float(args_cli.knee_sea), spring_damping=float(args_cli.knee_sea_damp), motor_inertia=float(args_cli.knee_sea_J),
+        sim_dt=float(env_cfg.sim.dt))
+    _pb = getattr(env_cfg.events, "default_pose_bias", None)
+    if _pb is not None and "shared_knee_rad" in _pb.params:
+        _pb.params["shared_knee_rad"] = None
+    print(f"[knee_sea] 무릎 직렬 탄성 k={args_cli.knee_sea} c={args_cli.knee_sea_damp} J={args_cli.knee_sea_J} dt={env_cfg.sim.dt} · 공유 무릎 편향 끔", flush=True)
+if args_cli.knee_play_deg is not None:
+    import re as _re3, math as _m3
+    from isaaclab.actuators import ImplicitActuatorCfg as _Impl3
+    from rl_walking.actuators_play import DeadzoneImplicitActuatorCfg as _DZ3
+    _acts = env_cfg.scene.robot.actuators; _b = _acts["ak70"]
+    _ex = _b.joint_names_expr if isinstance(_b.joint_names_expr, (list, tuple)) else [_b.joint_names_expr]
+    _keep = [e for e in _ex if not _re3.fullmatch(e, "left_knee_joint")]
+    _acts["ak70"] = _Impl3(joint_names_expr=_keep, effort_limit_sim=_b.effort_limit_sim, velocity_limit_sim=_b.velocity_limit_sim,
+                          stiffness=_b.stiffness, damping=_b.damping, armature=_b.armature)
+    _acts["knee_play"] = _DZ3(joint_names_expr=[".*_knee_joint"], effort_limit_sim=_b.effort_limit_sim, velocity_limit_sim=_b.velocity_limit_sim,
+                              stiffness=_b.stiffness, damping=_b.damping, armature=_b.armature,
+                              play_rad=_m3.radians(args_cli.knee_play_deg), play_rad_range=None)
+    _pb = getattr(env_cfg.events, "default_pose_bias", None)
+    if _pb is not None and "shared_knee_rad" in _pb.params and not args_cli.knee_keep_bias:
+        _pb.params["shared_knee_rad"] = None
+    print(f"[knee_play] 무릎 유격 반폭 {args_cli.knee_play_deg}° · 공유 무릎 편향 {'유지' if args_cli.knee_keep_bias else '끔'}", flush=True)
 if args_cli.contact_drop:
     _CD = []
     for _it in args_cli.contact_drop.split(";"):

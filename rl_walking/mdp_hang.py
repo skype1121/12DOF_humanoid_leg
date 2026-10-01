@@ -1229,6 +1229,15 @@ def encoder_joint_pos_v2(env, asset_cfg=None, action_term: str = "joint_pos", pl
             ref = torch.where(fresh, q, ref)
     play = _enc_play(env, asset, play_rad)
     enc = q + torch.clamp(ref - q, -play, play)
+    # 1001: 직렬 탄성(SEA) 관절은 엔코더 = 모터(로터)측 각도 — 하중 처짐이 관측에 안 보인다(실물과 같음)
+    for act in (getattr(asset, "actuators", None) or {}).values():
+        thm = getattr(act, "_theta_m", None)
+        if isinstance(thm, torch.Tensor) and thm.shape[0] == enc.shape[0]:
+            idx = act.joint_indices
+            if isinstance(idx, slice):
+                enc[:, idx] = thm
+            else:
+                enc[:, torch.as_tensor(idx, device=enc.device)] = thm
     return enc[:, jid]
 
 

@@ -218,3 +218,78 @@ class DeadzoneCoulombImplicitActuatorCfg(DeadzoneImplicitActuatorCfg):
     coulomb_range: tuple[float, float] | None = None  # env 별 배율 U(lo,hi) (DR)
     stiction: bool = False                          # 0928: 유격 안 정지 마찰(고정점 모델). 기본 OFF — 기존 세대 환경 불변
     stiction_ratio: float = 1.0                     # 정지 마찰 = 쿨롱 × 이 배율
+
+
+# ─────────────────────── 1001 무릎 직렬 탄성(SEA) — 동적 처짐 모델 ───────────────────────
+class SeriesElasticPDActuator(IdealPDActuator):
+    """모터(로터측) 상태를 따로 적분하는 직렬 탄성 액추에이터.
+
+    모터: J_m·ω̇_m = τ_pd − τ_s,  τ_pd = clip(kp(θ_cmd − θ_m) + kd(ω_cmd − ω_m), ±effort)
+    스프링: τ_s = k_s(θ_m − θ_link) + c_s(ω_m − ω_link)  → 링크에 τ_s 를 가한다.
+    엔코더(실물 로터 엔코더)는 θ_m 을 본다 — mdp_hang 엔코더 관측이 _theta_m 을 쓴다(처짐은 관측에 안 보임).
+    0919 실측: 서기 무릎 처짐 10–12.5°, 시뮬 서기 무릎 토크 8–10 Nm → k_s ≈ 40–50 Nm/rad.
+    물리 스텝(sim dt) 안을 n_sub 로 나눠 반암시적 오일러 적분(ω_n√(kp/J) 큰 경우 안정)."""
+    cfg: "SeriesElasticPDActuatorCfg"
+
+    def __init__(self, cfg, *args, **kwargs):
+        super().__init__(cfg, *args, **kwargs)
+        self._theta_m = None
+        self._omega_m = None
+        n = self._num_envs if hasattr(self, "_num_envs") else None
+        self._ks_base = float(cfg.spring_k)
+        self._ks = None
+        self._rng = tuple(cfg.spring_k_range) if cfg.spring_k_range is not None else None
+
+    def _ensure(self, joint_pos):
+        if self._theta_m is None or self._theta_m.shape != joint_pos.shape:
+            self._theta_m = joint_pos.clone()
+            self._omega_m = torch.zeros_like(joint_pos)
+            self._ks = torch.full_like(joint_pos, self._ks_base)
+            if self._rng is not None:
+                self._ks = self._ks * torch.empty(joint_pos.shape[0], 1, device=joint_pos.device).uniform_(*self._rng)
+
+    def reset(self, env_ids: Sequence[int]):
+        super().reset(env_ids)
+        self._reset_ids = env_ids
+
+    def compute(self, control_action, joint_pos: torch.Tensor, joint_vel: torch.Tensor):
+        self._ensure(joint_pos)
+        rid = getattr(self, "_reset_ids", None)
+        if rid is not None:
+            idx = slice(None) if isinstance(rid, slice) else torch.as_tensor(rid, device=joint_pos.device, dtype=torch.long)
+            # 리셋: 모터를 링크 + 정적 처짐(스프링 무부하로 시작 — 첫 몇 틱에 처짐이 생긴다)
+            self._theta_m[idx] = joint_pos[idx]
+            self._omega_m[idx] = 0.0
+            if self._rng is not None and not isinstance(idx, slice):
+                self._ks[idx] = self._ks_base * torch.empty(len(idx), 1, device=joint_pos.device).uniform_(*self._rng)
+            self._reset_ids = None
+        tgt = control_action.joint_positions
+        vtgt = control_action.joint_velocities if control_action.joint_velocities is not None else torch.zeros_like(joint_vel)
+        J = float(self.cfg.motor_inertia); cs = float(self.cfg.spring_damping)
+        n = int(self.cfg.n_sub); h = float(self.cfg.sim_dt) / n
+        lim = self.effort_limit
+        th, om = self._theta_m, self._omega_m
+        tau_s = None
+        for _ in range(n):
+            tau_pd = torch.clamp(self.stiffness * (tgt - th) + self.damping * (vtgt - om), -lim, lim)
+            tau_s = self._ks * (th - joint_pos) + cs * (om - joint_vel)
+            om = om + h * (tau_pd - tau_s) / J
+            th = th + h * om
+        self._theta_m, self._omega_m = th, om
+        self.computed_effort = tau_s + (control_action.joint_efforts if control_action.joint_efforts is not None else 0.0)
+        self.applied_effort = self._clip_effort(self.computed_effort)
+        control_action.joint_efforts = self.applied_effort
+        control_action.joint_positions = None
+        control_action.joint_velocities = None
+        return control_action
+
+
+@configclass
+class SeriesElasticPDActuatorCfg(IdealPDActuatorCfg):
+    class_type: type = SeriesElasticPDActuator
+    spring_k: float = 42.0              # Nm/rad (0919 처짐 실측 역산)
+    spring_k_range: tuple | None = None  # 리셋마다 배율 DR (lo, hi)
+    spring_damping: float = 0.3          # Nm·s/rad (구조 감쇠, 가정)
+    motor_inertia: float = 0.01          # kg·m² 반사 관성(로터 × 감속비², 가정 — AK70-10)
+    sim_dt: float = 0.005
+    n_sub: int = 8

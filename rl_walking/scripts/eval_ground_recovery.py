@@ -87,6 +87,10 @@ parser.add_argument("--knee_play_deg", type=float, default=None,
 parser.add_argument("--knee_keep_bias", action="store_true", help="--knee_play_deg 와 함께: 고정 무릎 공유 편향(평형 자세)은 유지하고 유격만 동적으로 더한다")
 parser.add_argument("--knee_sea_damp", type=float, default=0.3)
 parser.add_argument("--knee_sea_J", type=float, default=0.01)
+parser.add_argument("--replay_bb", type=str, default="",
+                    help="1001: 실물 브리지 블랙박스(jsonl)의 관절 목표각(targets_deg_joint)을 인계 뒤 정책 출력 대신 그대로 재생(오픈루프). "
+                         "실물 기본자세(CROUCH_V5)에서 벗어난 양을 시뮬 env 기본자세(편향 포함)에 더한다. 정책·플랜트 분리용")
+parser.add_argument("--replay_t0", type=float, default=0.0, help="재생 시작 = 블랙박스 첫 틱 + 이 시간 [s]")
 parser.add_argument("--contact_drop", type=str, default="",
                     help="1001: 정책 관측의 발 접촉 비트만 강제로 0 (물리 접촉·채점 불변) — 'L|R|B:t_rel:dur' ';' 구분, t_rel 은 인계 기준 [s]. "
                          "실물 3 Hz 진동이 '한 발 접촉 비트 상실'에서 시작되는지 보는 관측 교란 대조")
@@ -433,6 +437,18 @@ _ASCALE = 0.25
 _term = uenv.action_manager.get_term("joint_pos")
 _orig_process = _term.process_actions
 _chain = None; _chain_on = [False]; _LAST_CMD = [None]; _LAST_RAW = [None]; _DB_PREV = [None]
+_REPLAY = None; _REPLAY_I = [0]; _REAL_DEF = None
+if args_cli.replay_bb:
+    import json as _js
+    from rl_walking.hang_stand_env_cfg import CROUCH_V5_DEFAULT_RAD as _CV5
+    _rows = [_js.loads(l) for l in open(args_cli.replay_bb)]
+    _rows = [r for r in _rows if "event" not in r and r.get("targets_deg_joint")]
+    _t0r = _rows[0]["timestamp"] + float(args_cli.replay_t0)
+    _rows = [r for r in _rows if r["timestamp"] >= _t0r]
+    _jn = list(robot.joint_names)
+    _REPLAY = torch.tensor([[math.radians(r["targets_deg_joint"][j]) for j in _jn] for r in _rows], device=dev, dtype=torch.float32)
+    _REAL_DEF = torch.tensor([_CV5[j] for j in _jn], device=dev, dtype=torch.float32)
+    print(f"[replay] {args_cli.replay_bb} · {len(_rows)} 틱({len(_rows)/50:.1f} s) 재생, 시작 +{args_cli.replay_t0}s", flush=True)
 use_chain = (policy is not None) and (not args_cli.no_chain)
 chain_desc = "없음(홀드)" if policy is None else ("없음(env 원생 액션)" if args_cli.no_chain else "")
 if use_chain:
@@ -458,6 +474,9 @@ if use_chain:
             else:
                 _DB_PREV[0] = torch.where((out - _DB_PREV[0]).abs() >= _db, out, _DB_PREV[0])
             out = _DB_PREV[0]
+        if _REPLAY is not None:
+            k = min(_REPLAY_I[0], _REPLAY.shape[0] - 1); _REPLAY_I[0] += 1
+            out = _DEF + (_REPLAY[k] - _REAL_DEF).unsqueeze(0)
         _LAST_CMD[0] = out.clone()
         _orig_process((out - _DEF) / _ASCALE)
         _term._raw_actions[:] = a          # 정책 '이전 액션' 관측은 원생 출력(브리지와 동일)

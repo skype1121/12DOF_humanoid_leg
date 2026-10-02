@@ -5,7 +5,7 @@ sys.path.insert(0, '/home/ryu/humanoid_leg_test1/reports/gen_g17')
 import g17_verdict as V
 LP = V.LP
 FAMS = [('g21o', None), ('g21a1', 'g21o'), ('g21a2', 'g21o'), ('g21a3', 'g21o'), ('g21a', 'g21o'), ('g21b', 'g21a'),
-        ('g21c1', 'g21b'), ('g21c2', 'g21c1'), ('g21d', 'g21c2'), ('g21a3s43', 'g21o')]
+        ('g21c1', 'g21b'), ('g21c2', 'g21c1'), ('g21d', 'g21c2'), ('g21a3s43', 'g21o'), ('g22a', 'g21a'), ('g22w', 'g21a'), ('g22ws43', 'g21a')]
 CKS = (11300, 11600)
 
 def chain(tag):

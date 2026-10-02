@@ -1959,3 +1959,16 @@ class Biped12HangStandG22cEnvCfg(Biped12HangStandG21c2EnvCfg):
         a = self.actions.joint_pos
         assert a.min_delay_steps == 0 and a.max_delay_steps == 3
         a.max_delay_steps = 5
+
+
+@configclass
+class Biped12HangStandG22wEnvCfg(Biped12HangStandG21aEnvCfg):
+    """G22w (1003, 외부 검토 권고): G21a + **액션 지연 범위 0–3 유지, 표본 분포만 가중** 0:10 % · 1:30 % · 2:25 % · 3:35 % 단일 변경.
+    실측 d≈1 을 많이 보이면서 약점(지연 3틱 흔들림)을 의도적으로 과표본. 지연은 에피소드마다 1회 추출·고정(종전과 같음).
+    gyro 지연·보상·게이트는 G21a 그대로(원인 분리)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        a = self.actions.joint_pos
+        assert a.min_delay_steps == 0 and a.max_delay_steps == 3
+        a.delay_probs = (0.10, 0.30, 0.25, 0.35)

@@ -1936,3 +1936,26 @@ class Biped12HangStandG21dEnvCfg(Biped12HangStandG21c2EnvCfg):
         super().__post_init__()
         self.rewards.action_accel_quiet = RewTerm(func=mdp_hang.g2_phase_gated, weight=-0.02,
                                                   params={"func": mdp_hang.action_accel_l2, "params": {}, "phases": [0, 2]})
+
+
+@configclass
+class Biped12HangStandG22aEnvCfg(Biped12HangStandG21aEnvCfg):
+    """G22a (1003): G21a + **액션 지연 DR 0–3 → 0–5 틱** 단일 변경. 근거: G21 정식 판정 전부가 지연 3틱 흔들림(5.3–6.5 %)으로 C0 탈락 —
+    평가 가드 d3 이 학습 분포 경계(0–3)였다. 실측 d≈1 은 그대로 안쪽, d3 을 분포 안쪽으로."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        a = self.actions.joint_pos
+        assert a.min_delay_steps == 0 and a.max_delay_steps == 3
+        a.max_delay_steps = 5
+
+
+@configclass
+class Biped12HangStandG22cEnvCfg(Biped12HangStandG21c2EnvCfg):
+    """G22c (1003): G21c2(회복 최상) + 액션 지연 DR 0–3 → 0–5 틱 단일 변경."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        a = self.actions.joint_pos
+        assert a.min_delay_steps == 0 and a.max_delay_steps == 3
+        a.max_delay_steps = 5

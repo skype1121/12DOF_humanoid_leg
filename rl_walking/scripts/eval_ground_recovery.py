@@ -489,7 +489,7 @@ if args_cli.obs_ema:
         _off[_n] = (_o, _o + _sz); _o += _sz
     for _tok in args_cli.obs_ema.split(","):
         _n, _al = _tok.split(":"); _OBS_EMA.append((*_off[_n], float(_al)))
-    print(f"[obs_ema] {[(n, _off[n]) for n in [t.split(':')[0] for t in args_cli.obs_ema.split(',')]]} 총 {_o}")
+    print(f"[obs_ema] {[(n, _off[n]) for n in [t.split(':')[0] for t in args_cli.obs_ema.split(',')]]} 총 {_o}", flush=True)
 _DEF = robot.data.default_joint_pos.clone()      # 정책 기본자세(= 액션 오프셋) — 시뮬 홀드 명령각
 _BOFF = torch.zeros_like(_DEF)                  # 인계 출발 자세 오프셋(실물 홀드 명령과 정책 기본의 차이 재현)
 if args_cli.blend_offset_deg:

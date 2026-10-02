@@ -1761,3 +1761,28 @@ class Biped12HangStandG18fEnvCfg(Biped12HangStandG18oEnvCfg):
         P = self.observations.policy
         P.actions.func = mdp_hang.last_action_lpf
         P.actions.params = {"action_name": "joint_pos"}
+
+
+@configclass
+class Biped12HangStandG19vEnvCfg(Biped12HangStandG18fEnvCfg):
+    """G19v: G18f + **관절속도 관측 = 유한차분 속도의 EMA(β0.25)** 단일 변경 (배포 계약 변경: 러너 qvel 관측에 같은 EMA).
+    근거: 1002 부록 D — G18f 잔여 떨림 경로 = 관절속도 되먹임(EMA 0.1 로 늦추면 부호반전 −98 %, b18 +5 %p 만)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        jv = self.observations.policy.joint_vel
+        assert jv.func is mdp_hang.encoder_joint_vel_v2
+        p = dict(jv.params or {}); p["beta"] = 0.25
+        jv.func = mdp_hang.encoder_joint_vel_lpf; jv.params = p
+
+
+@configclass
+class Biped12HangStandG19nEnvCfg(Biped12HangStandG18fEnvCfg):
+    """G19n: G18f + **관절속도 관측 잡음 ±0.3 → ±1.5 rad/s** 단일 변경 (배포 계약 불변; legged_gym 기본값 수준, OSS 분석 3).
+    가설: 잡음이 관절속도 고주파 되먹임 이득을 억제(정규화)해 잔여 떨림 감소."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        n = self.observations.policy.joint_vel.noise
+        assert abs(n.n_max - 0.3) < 1e-9
+        n.n_min, n.n_max = -1.5, 1.5

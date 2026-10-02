@@ -1554,3 +1554,17 @@ def last_action_lpf(env, action_name: str = "joint_pos") -> torch.Tensor:
         fresh = (env.episode_length_buf == 0).view(-1, 1)
         st["y"] = torch.where(fresh, x, b * x + (1.0 - b) * st["y"]); st["step"] = step
     return st["y"].clone()
+
+
+def encoder_joint_vel_lpf(env, beta: float = 0.25, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
+    """G19v 관측 계약: 관절속도 관측 = encoder_joint_vel_v2(유한차분)의 **EMA(β)**. 1002 부록 D 폐루프 귀속 —
+    G18f 잔여 25 Hz 떨림은 관절속도 되먹임 경로(이 항만 EMA 0.1 로 늦추면 부호반전 0.048→0.001), 충격 회복 기여는 작음(b18 17→22 %).
+    배포 러너는 같은 EMA(β)를 유한차분 속도에 걸어 넣는다. 에피소드 시작 틱은 원값으로 초기화. 잡음은 ObsTerm noise 가 EMA 뒤에 더함."""
+    x = encoder_joint_vel_v2(env, asset_cfg=asset_cfg, action_term=action_term, play_rad=play_rad)
+    st = getattr(env, "_jv_lpf_st", None); step = int(getattr(env, "common_step_counter", 0))
+    if st is None or st["y"].shape != x.shape:
+        st = {"y": x.clone(), "step": None}; env._jv_lpf_st = st
+    if st["step"] != step:
+        fresh = (env.episode_length_buf == 0).view(-1, 1)
+        st["y"] = torch.where(fresh, x, st["y"] + float(beta) * (x - st["y"])); st["step"] = step
+    return st["y"].clone()

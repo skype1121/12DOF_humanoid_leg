@@ -1568,3 +1568,246 @@ def encoder_joint_vel_lpf(env, beta: float = 0.25, asset_cfg=None, action_term: 
         fresh = (env.episode_length_buf == 0).view(-1, 1)
         st["y"] = torch.where(fresh, x, st["y"] + float(beta) * (x - st["y"])); st["step"] = step
     return st["y"].clone()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# G21 (1002, 승윤님 설계안): G19v-10700 의 회복 스텝을 보존하면서 보상 결함·회복 구조·정착·실물 강건성 교정
+# ---------------------------------------------------------------------------------------------------------------
+def settle_quiet_bonus_v2(env, s_ang: float = 0.2, s_lin: float = 0.06, s_jvel: float = 0.12, s_acc: float = 0.3,
+                          use_jvel: bool = True, use_acc: bool = True, rational: bool = True, h_nom: float = 0.60,
+                          s_h: float = 0.015, hold_s: float = 0.5, ramp_s: float = 1.0, tilt_deg: float = 8.0,
+                          sensor_cfg=None, threshold: float = 5.0, r_eps: float = 0.05, asset_cfg=None) -> torch.Tensor:
+    """G21a3: settle_quiet_bonus 와 같은 정숙 항, 단 골반고 **이진 문턱(>0.60) 제거 → 연속 Q_h = exp(−((h−h_nom)/σ_h)²)** 곱.
+    0930 결함: 문턱 0.60 vs 크라우치 0.597 → 사실상 미발동. h_nom 0.60 = 1002 시뮬 정착 실측(0.593–0.610, 평균 0.601)."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    w = asset.data.root_ang_vel_b[:, :2].norm(dim=1)
+    v = asset.data.root_lin_vel_b[:, :2].norm(dim=1)
+    def g(x, sig):
+        z = (x / sig) ** 2
+        return 1.0 / (1.0 + z) if rational else torch.exp(-z)
+    terms = [g(w, s_ang), g(v, s_lin)]
+    if use_jvel:
+        terms.append(g(asset.data.joint_vel.pow(2).mean(1).sqrt(), s_jvel))
+    if use_acc:
+        terms.append(g(action_accel_l2(env).sqrt(), s_acc))
+    qh = torch.exp(-((asset.data.root_pos_w[:, 2] - h_nom) / s_h) ** 2)
+    ramp = settled_ramp(env, hold_s, ramp_s, tilt_deg, -1.0e9, sensor_cfg, threshold, r_eps)
+    return torch.stack(terms, 1).mean(1) * ramp * qh
+
+
+def push_with_arm(env, env_ids, velocity_range: dict, arm_s: float = 2.5, asset_cfg=None):
+    """G21b: push_by_setting_velocity + **회복 래치 무장**(외부가 실제로 민 env 만, arm_s 동안). 래치는 정책이 만들 수 없는 외생 신호."""
+    from isaaclab.envs.mdp.events import push_by_setting_velocity
+    push_by_setting_velocity(env, env_ids, velocity_range, asset_cfg=asset_cfg or SceneEntityCfg("robot"))
+    st = _g2(env)
+    t = env.episode_length_buf.to(torch.float32) * env.step_dt
+    st["arm_until"][env_ids] = torch.maximum(st["arm_until"][env_ids], t[env_ids] + float(arm_s))
+
+
+def _g21_bids(env):
+    """발 링크(접촉 센서 발 순서와 같은 좌우 순서)의 articulation 바디 인덱스 — 보상이 이벤트보다 먼저 불려도 쓰도록 지연 해석."""
+    bid = getattr(env, "_g21_foot_bids", None)
+    if bid is None:
+        names = [n for n in env.scene.sensors["contact_forces"].body_names if "ankle_r" in n]
+        bid, _ = env.scene["robot"].find_bodies(names, preserve_order=True); env._g21_foot_bids = bid
+    return bid
+
+
+def _g2(env):
+    """G21 게이트 v2 상태 (env._g21). phase 0=STAND 1=RECOVERY 2=SETTLE."""
+    st = getattr(env, "_g21", None)
+    if st is None or st["phase"].shape[0] != env.num_envs:
+        N, dev = env.num_envs, env.device
+        z = lambda *s: torch.zeros(*(s or (N,)), device=dev)
+        st = {"phase": z(), "arm_until": z(), "rec_t": z(), "pre_t": z(), "settle_t": z(), "set_t": z(),
+              "swing_t": z(N, 2), "lift_xy": z(N, 2, 2), "td_pend": z(N, 2), "load_t": z(N, 2), "prev_c": z(N, 2),
+              "had_swing": z(), "td_done": z(), "load_done": z(),
+              "ev_td": z(), "ev_load": z(), "ev_settle": z(), "ev_timeout": z(), "fall_dir": z(N, 2)}
+        env._g21 = st
+    return st
+
+
+def recovery_gate_v2(env, env_ids, tilt_ok: float = 6.5, w_ok: float = 1.5, v_ok: float = 0.5, lift_tilt: float = 3.0,
+                     arm_s: float = 2.5, td_air_s: float = 0.06, td_disp_m: float = 0.02, load_frac: float = 0.25,
+                     load_s: float = 0.10, pre_tilt: float = 6.5, pre_w: float = 1.0, pre_v: float = 0.30, pre_s: float = 0.15,
+                     ok_tilt: float = 3.0, ok_w: float = 0.5, ok_v: float = 0.15, h_nom: float = 0.60, ok_h: float = 0.02,
+                     ok_s: float = 0.30, timeout_s: float = 4.0, settle_max_s: float = 3.0, threshold: float = 5.0, asset_cfg=None):
+    """mode="interval"(0 s): G21b 회복 게이트 — **무장 래치 + STAND→RECOVERY→SETTLE→STAND 3상** + 착지·하중·정착 이벤트.
+    - 무장(arm): 학습 외란 힘이 걸려 있거나(push 포함) 해제 뒤 arm_s 안. 무장되지 않은 불안정으로는 게이트가 열리지 않는다(G16a 자기 개방 차단).
+    - RECOVERY: 무장 & (외력 | 기울기>tilt_ok | |ω|>w_ok | |v|>v_ok | (한 발 & 기울기>lift_tilt)).
+      착지 이벤트 = 공중 > td_air_s 뒤 재접촉 & 수평 이동 > td_disp_m. 하중 수용 = 착지 발 Fz > load_frac·mg 가 load_s 유지.
+      SETTLE 진입 = 양발 & 기울기<pre_tilt & |ω|<pre_w & |v|<pre_v 가 pre_s 유지 **그리고**(이번 회복에서 발을 들었다면 착지·하중 수용 완료).
+      (해석: 스텝 없는 발목 전략 회복은 착지 조건 없이 정착으로 — 작은 밀기에 불필요한 스텝을 강요하지 않는다.)
+      timeout_s 넘게 불안정 → 실패 이벤트(ev_timeout) 1회 후 타이머 재시작(종전 4 s 강제 닫힘 대체).
+    - SETTLE: 성공 = 기울기<ok_tilt & |ω|<ok_w & |v|<ok_v & |h−h_nom|<ok_h & 양발이 ok_s 유지 → ev_settle → STAND.
+      다시 불안정하면 RECOVERY. settle_max_s 넘으면 이벤트 없이 STAND(자세 보상 복귀).
+    기존 state_gated/open_gated 와 호환: rec_open = (phase ≠ STAND)."""
+    st = _g2(env); hs = _state(env)
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    sensor = env.scene.sensors["contact_forces"]; fid = _feet_body_ids(env)
+    F = sensor.data.net_forces_w[:, fid, :]; fz = F[..., 2]; c = (torch.norm(F, dim=-1) > threshold).float()
+    both = c.min(1).values > 0.5
+    bid = _g21_bids(env)
+    fxy = asset.data.body_pos_w[:, bid, :2]
+    pg = asset.data.projected_gravity_b
+    tilt = torch.rad2deg(torch.acos((-pg[:, 2]).clamp(-1.0, 1.0)))
+    w = asset.data.root_ang_vel_b[:, :2].norm(dim=1); vxy = asset.data.root_lin_vel_w[:, :2]; v = vxy.norm(dim=1)
+    h = asset.data.root_pos_w[:, 2]
+    dt = env.step_dt; t = env.episode_length_buf.to(torch.float32) * dt
+    mg = float(G) * asset.data.default_mass.sum(1).to(fz.device)
+    fresh = env.episode_length_buf <= 1
+    if bool(fresh.any()):
+        for k, val in st.items():
+            val[fresh] = 0.0
+    force = hs["dst_F_now"] > 0.0
+    st["arm_until"] = torch.where(force, torch.maximum(st["arm_until"], t + arm_s), st["arm_until"])
+    armed = t < st["arm_until"]
+    unbal = force | (tilt > tilt_ok) | (w > w_ok) | (v > v_ok) | ((~both) & (tilt > lift_tilt))
+    for k in ("ev_td", "ev_load", "ev_settle", "ev_timeout"):
+        st[k].zero_()
+    ph = st["phase"]; rec = ph == 1
+    # 낙하 방향(몸통 수평속도 단위벡터) — 회복 품질의 스윙 방향 항
+    st["fall_dir"] = torch.where((v > 0.05).unsqueeze(1), vxy / v.clamp(min=1e-6).unsqueeze(1), st["fall_dir"])
+    # 발별 스윙·착지·하중
+    lifted = (st["prev_c"] > 0.5) & (c < 0.5)
+    st["lift_xy"] = torch.where(lifted.unsqueeze(-1), fxy, st["lift_xy"])
+    air = c < 0.5
+    landed = (st["prev_c"] < 0.5) & (c > 0.5)
+    disp = (fxy - st["lift_xy"]).norm(dim=-1)
+    td = landed & (st["swing_t"] > td_air_s) & (disp > td_disp_m) & rec.unsqueeze(1)
+    st["had_swing"] = torch.where(rec & (air & (st["swing_t"] + dt > td_air_s)).any(1), torch.ones_like(st["had_swing"]), st["had_swing"])
+    st["swing_t"] = torch.where(air, st["swing_t"] + dt, torch.zeros_like(st["swing_t"]))
+    st["ev_td"] = td.any(1).float()
+    st["td_done"] = torch.maximum(st["td_done"], st["ev_td"])
+    st["td_pend"] = torch.where(td, torch.ones_like(st["td_pend"]), st["td_pend"])
+    loaded = (st["td_pend"] > 0.5) & (fz > load_frac * mg.unsqueeze(1))
+    st["load_t"] = torch.where(loaded, st["load_t"] + dt, torch.zeros_like(st["load_t"]))
+    acc = st["load_t"] >= load_s
+    st["ev_load"] = (acc.any(1) & rec).float()
+    st["load_done"] = torch.maximum(st["load_done"], st["ev_load"])
+    st["td_pend"] = torch.where(acc, torch.zeros_like(st["td_pend"]), st["td_pend"])
+    st["prev_c"] = c
+    # 상태 전이
+    go_rec = (ph == 0) & armed & unbal
+    pre_ok = both & (tilt < pre_tilt) & (w < pre_w) & (v < pre_v)
+    st["pre_t"] = torch.where(rec & pre_ok, st["pre_t"] + dt, torch.zeros_like(st["pre_t"]))
+    step_ok = (st["had_swing"] < 0.5) | ((st["td_done"] > 0.5) & (st["load_done"] > 0.5))
+    go_set = rec & (st["pre_t"] >= pre_s) & step_ok
+    st["rec_t"] = torch.where(rec, st["rec_t"] + dt, torch.zeros_like(st["rec_t"]))
+    tout = rec & (st["rec_t"] > timeout_s) & unbal
+    st["ev_timeout"] = tout.float(); st["rec_t"] = torch.where(tout, torch.zeros_like(st["rec_t"]), st["rec_t"])
+    stl = ph == 2
+    ok = both & (tilt < ok_tilt) & (w < ok_w) & (v < ok_v) & ((h - h_nom).abs() < ok_h)
+    st["settle_t"] = torch.where(stl & ok, st["settle_t"] + dt, torch.zeros_like(st["settle_t"]))
+    st["set_t"] = torch.where(stl, st["set_t"] + dt, torch.zeros_like(st["set_t"]))
+    succ = stl & (st["settle_t"] >= ok_s)
+    back = stl & unbal & ~succ
+    expire = stl & (st["set_t"] > settle_max_s) & ~succ & ~back
+    st["ev_settle"] = succ.float()
+    new = ph.clone()
+    new = torch.where(go_rec, torch.ones_like(new), new)
+    new = torch.where(go_set, torch.full_like(new, 2.0), new)
+    new = torch.where(back, torch.ones_like(new), new)
+    new = torch.where(succ | expire, torch.zeros_like(new), new)
+    start = go_rec | back
+    for k in ("had_swing", "td_done", "load_done", "rec_t", "pre_t"):
+        st[k] = torch.where(start, torch.zeros_like(st[k]), st[k])
+    st["phase"] = new
+    hs["rec_open"] = (new != 0).float()
+    hs["rec_ev"] = st["ev_settle"]
+
+
+def g2_phase_gated(env, func, phases: list = (0,), params: dict | None = None) -> torch.Tensor:
+    """func 를 G21 게이트 phase ∈ phases 일 때만 적용 (0 STAND · 1 RECOVERY · 2 SETTLE)."""
+    val = func(env, **_resolve_nested(env, params))
+    ph = _g2(env)["phase"]
+    m = torch.zeros_like(ph, dtype=torch.bool)
+    for p in phases:
+        m |= ph == float(p)
+    return val * m.to(val.dtype)
+
+
+def g2_event(env, name: str = "ev_settle") -> torch.Tensor:
+    """G21 이벤트(ev_td·ev_load·ev_settle·ev_timeout) 0/1 — 보상 관리자 ×dt 이므로 가중치 = 실효/0.02."""
+    return _g2(env)[name]
+
+
+def g2_recovery_time(env) -> torch.Tensor:
+    """RECOVERY 상태면 1 (회복을 끌지 않게, 가중치 −0.10 ≈ 초당 −0.1·dt 누적)."""
+    return (_g2(env)["phase"] == 1).float()
+
+
+def recovery_quality_v2(env, s_ang: float = 0.3, s_lin: float = 0.1, s_w_swing: float = 1.0, s_slip: float = 0.1,
+                        foot_v_ref: float = 0.2, s_tilt: float = 5.0, load_frac: float = 0.25, threshold: float = 5.0, asset_cfg=None) -> torch.Tensor:
+    """G21b: RECOVERY 동안만, **접촉 상태별로 정의를 바꾼 회복 품질** 0–1 (종전: 양발 아니면 0 = 스윙 공백).
+    양발: 0.4·Q_mom(|ω|,|v| 감소) + 0.3·Q_ori(기울기) + 0.3·Q_load(두 발 중 약한 발 Fz / (load_frac·mg)).
+    한 발: 0.4·Q_body(|ω| 폭주 억제, σ s_w_swing) + 0.3·Q_support(지지발 수평 미끄럼) + 0.3·Q_foot(스윙발 속도의 낙하 방향 성분, 거리 보상 아님).
+    양발 공중: 0. 게이트가 무장 래치로만 열리므로 '발 들어 보상 캐기'(G16a)는 무외란에서 불가."""
+    st = _g2(env)
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    sensor = env.scene.sensors["contact_forces"]; fid = _feet_body_ids(env)
+    F = sensor.data.net_forces_w[:, fid, :]; fz = F[..., 2]; c = torch.norm(F, dim=-1) > threshold
+    bid = _g21_bids(env)
+    fv = asset.data.body_lin_vel_w[:, bid, :2]
+    g = lambda x, s: 1.0 / (1.0 + (x / s) ** 2)
+    w = asset.data.root_ang_vel_b[:, :2].norm(dim=1); v = asset.data.root_lin_vel_w[:, :2].norm(dim=1)
+    pg = asset.data.projected_gravity_b; tilt = torch.rad2deg(torch.acos((-pg[:, 2]).clamp(-1.0, 1.0)))
+    mg = float(G) * asset.data.default_mass.sum(1).to(fz.device)
+    q2 = 0.4 * 0.5 * (g(w, s_ang) + g(v, s_lin)) + 0.3 * g(tilt, s_tilt) + 0.3 * (fz.min(1).values / (load_frac * mg)).clamp(0.0, 1.0)
+    one = c.sum(1) == 1
+    stance = c.float().argmax(1); swing = 1 - stance
+    ar = torch.arange(fz.shape[0], device=fz.device)
+    slip = fv[ar, stance].norm(dim=-1)
+    toward = (fv[ar, swing] * st["fall_dir"]).sum(-1)
+    q1 = 0.4 * g(w, s_w_swing) + 0.3 * g(slip, s_slip) + 0.3 * (toward / foot_v_ref).clamp(0.0, 1.0)
+    q = torch.where(c.all(1), q2, torch.where(one, q1, torch.zeros_like(q2)))
+    return q * (st["phase"] == 1).float()
+
+
+def settle_quality(env, h_nom: float = 0.60, s_h: float = 0.015, s_w: float = 0.5, s_v: float = 0.20, asset_cfg=None) -> torch.Tensor:
+    """G21b SETTLE 동안만: Q_h·Q_ω·Q_v (연속, 문턱 절벽 없음) — exp(−((h−h_nom)/σh)²)·exp(−(|ω|/σω)²)·exp(−(|v|/σv)²)."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    w = asset.data.root_ang_vel_b[:, :2].norm(dim=1); v = asset.data.root_lin_vel_w[:, :2].norm(dim=1); h = asset.data.root_pos_w[:, 2]
+    q = torch.exp(-((h - h_nom) / s_h) ** 2) * torch.exp(-(w / s_w) ** 2) * torch.exp(-(v / s_v) ** 2)
+    return q * (_g2(env)["phase"] == 2).float()
+
+
+def unarmed_single_support(env, air_s: float = 0.08, dz: float = 0.01, threshold: float = 5.0, asset_cfg=None) -> torch.Tensor:
+    """G21b: 무장되지 않은 STAND 에서 한 발이 air_s 넘게 떠 있고 다른 발보다 dz 이상 높으면 1 (외란 없이 발 들기 금지)."""
+    st = _g2(env)
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    t = env.episode_length_buf.to(torch.float32) * env.step_dt
+    armed = t < st["arm_until"]
+    z = asset.data.body_pos_w[:, _g21_bids(env), 2]
+    up = (st["swing_t"] > air_s) & ((z - z.flip(1)) > dz)
+    return (up.any(1) & ~armed & (st["phase"] == 0)).float()
+
+
+def _lagged(env, key: str, x: torch.Tensor, max_lag: int) -> torch.Tensor:
+    """env 별 0..max_lag 틱 관측 지연(리셋마다 재추출, 스텝 캐시) — base_ang_vel_lagged 와 같은 방식의 일반판."""
+    st = getattr(env, key, None); step = int(getattr(env, "common_step_counter", 0)); N = x.shape[0]; L = int(max_lag)
+    if st is None or st["buf"].shape[1] != N:
+        st = {"buf": x.unsqueeze(0).repeat(L + 1, 1, 1).clone(), "lag": torch.randint(0, L + 1, (N,), device=x.device), "step": None, "out": x}
+        setattr(env, key, st)
+    if st["step"] == step:
+        return st["out"].clone()
+    fresh = env.episode_length_buf <= 1
+    if bool(fresh.any()):
+        st["buf"][:, fresh] = x[fresh].unsqueeze(0)
+        st["lag"][fresh] = torch.randint(0, L + 1, (int(fresh.sum()),), device=x.device)
+    st["buf"] = torch.roll(st["buf"], 1, dims=0); st["buf"][0] = x
+    out = st["buf"][st["lag"], torch.arange(N, device=x.device)]
+    st["out"] = out; st["step"] = step
+    return out.clone()
+
+
+def encoder_joint_vel_lpf_lagged(env, beta: float = 0.25, max_lag: int = 2, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
+    """G21c1: G19v 관절속도 관측(EMA β) 에 env 별 0..max_lag 틱 지연 DR (실물 3 Hz 재현율 관절속도 75 %)."""
+    x = encoder_joint_vel_lpf(env, beta=beta, asset_cfg=asset_cfg, action_term=action_term, play_rad=play_rad)
+    return _lagged(env, "_g21_jv_lag", x, max_lag)
+
+
+def encoder_joint_pos_rel_v2_lagged(env, max_lag: int = 1, asset_cfg=None, action_term: str = "joint_pos", play_rad=None) -> torch.Tensor:
+    """G21c2: 관절각 관측 env 별 0..max_lag 틱 지연 DR."""
+    x = encoder_joint_pos_rel_v2(env, asset_cfg=asset_cfg, action_term=action_term, play_rad=play_rad)
+    return _lagged(env, "_g21_jp_lag", x, max_lag)

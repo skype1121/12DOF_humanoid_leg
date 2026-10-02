@@ -1810,3 +1810,129 @@ class Biped12HangStandG20sEnvCfg(Biped12HangStandG19vEnvCfg):
         from .mdp_rewards import ang_vel_xy_l2_capped
         self.rewards.quiet_ang_vel = RewTerm(func=mdp_hang.state_gated, weight=-1.0,
                                              params={"func": ang_vel_xy_l2_capped, "params": {}})
+
+
+# =====================================================================================================
+# G21 (1002, 승윤님 설계안) — 기준 정책 G19v-10700 에서 이어 학습. 각 클래스는 직전 단계 대비 단일 변경.
+# =====================================================================================================
+_G21_MG = 17.6 * 9.81
+
+
+@configclass
+class Biped12HangStandG21a1EnvCfg(Biped12HangStandG19vEnvCfg):
+    """G21a1: feet_impact 문턱 180 N(12 kg 시절) → 1.5 mg ≈ 259 N (17.6 kg)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        p = dict(self.rewards.feet_impact.params or {}); p["max_force_n"] = 1.5 * _G21_MG
+        self.rewards.feet_impact.params = p
+
+
+@configclass
+class Biped12HangStandG21a2EnvCfg(Biped12HangStandG19vEnvCfg):
+    """G21a2: 낙상 종료 벌점 실효 −0.2 → −1.5 (is_terminated 0/1 × weight × dt 0.02 → weight −75; Isaac Lab 2.3.2 에 dt 상쇄 함수 없음)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        assert self.rewards.termination_penalty.weight == -10.0
+        self.rewards.termination_penalty.weight = -75.0
+
+
+@configclass
+class Biped12HangStandG21a3EnvCfg(Biped12HangStandG19vEnvCfg):
+    """G21a3: settle_quiet_bonus 의 골반고 이진 문턱(>0.60) → 연속 exp(−((h−0.60)/0.015)²) (settle_quiet_bonus_v2, 나머지 동일)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.settle_quiet_bonus
+        assert t.func is mdp_hang.state_gated and t.params["func"] is mdp_hang.settle_quiet_bonus
+        inner = dict(t.params["params"] or {})
+        t.params = {"func": mdp_hang.settle_quiet_bonus_v2, "params": inner}
+
+
+def _g21a_fix(cfg):
+    p = dict(cfg.rewards.feet_impact.params or {}); p["max_force_n"] = 1.5 * _G21_MG; cfg.rewards.feet_impact.params = p
+    cfg.rewards.termination_penalty.weight = -75.0
+    t = cfg.rewards.settle_quiet_bonus
+    t.params = {"func": mdp_hang.settle_quiet_bonus_v2, "params": dict(t.params["params"] or {})}
+
+
+@configclass
+class Biped12HangStandG21aEnvCfg(Biped12HangStandG19vEnvCfg):
+    """G21a: a1 + a2 + a3 결합(보상 결함 교정 묶음) — G21b 이후의 바탕."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _g21a_fix(self)
+
+
+@configclass
+class Biped12HangStandG21bEnvCfg(Biped12HangStandG21aEnvCfg):
+    """G21b: 무장 래치 회복 게이트(STAND/RECOVERY/SETTLE) + recovery_quality_v2 + 착지·하중·정착 이벤트 + 정착 보상 (한 묶음 — 설계안: 분리 불가).
+    B(STAND) = 종전 state_gated 항 그대로(+ 무장 안 된 한 발 들기 −2), settle_quiet_bonus 는 SETTLE 의 settle_quality 로 대체.
+    C(RECOVERY) = quality_v2 +5 · 착지 +5 · 하중 수용 +10 · 정착 성공 +20 · 회복 시간 −0.1 · action_rate −0.06 · 시간초과 실효 −1.5.
+    D(SETTLE) = settle_quality +1 · action_rate −0.30 · feet_slide −0.15 · foot_yaw_slip −0.5."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev = self.events
+        g = ev.recovery_gate
+        assert g.func is mdp_hang.recovery_gate_step
+        g.func = mdp_hang.recovery_gate_v2; g.params = {}
+        pr = ev.push_robot
+        pr.func = mdp_hang.push_with_arm; pr.params = {"velocity_range": dict(pr.params["velocity_range"]), "arm_s": 2.5}
+        rw = self.rewards
+        fs, fy, ar = rw.feet_slide, rw.foot_yaw_slip, rw.action_rate_l2
+        rw.settle_quiet_bonus = None
+        rw.recovery_event = None
+        rw.recovery_quality = RewTerm(func=mdp_hang.recovery_quality_v2, weight=5.0)
+        rw.unarmed_single_support = RewTerm(func=mdp_hang.unarmed_single_support, weight=-2.0)
+        rw.valid_touchdown = RewTerm(func=mdp_hang.g2_event, weight=5.0, params={"name": "ev_td"})
+        rw.load_accept = RewTerm(func=mdp_hang.g2_event, weight=10.0, params={"name": "ev_load"})
+        rw.settle_success = RewTerm(func=mdp_hang.g2_event, weight=20.0, params={"name": "ev_settle"})
+        rw.recovery_timeout = RewTerm(func=mdp_hang.g2_event, weight=-75.0, params={"name": "ev_timeout"})
+        rw.recovery_time = RewTerm(func=mdp_hang.g2_recovery_time, weight=-0.10)
+        arw = rw.action_rate_window
+        rw.action_rate_window = RewTerm(func=mdp_hang.g2_phase_gated, weight=arw.weight,
+                                        params={"func": arw.params["func"], "params": dict(arw.params.get("params") or {}), "phases": [1]})
+        rw.settle_quality = RewTerm(func=mdp_hang.settle_quality, weight=1.0)
+        rw.settle_action_rate = RewTerm(func=mdp_hang.g2_phase_gated, weight=-0.30,
+                                        params={"func": ar.params["func"], "params": dict(ar.params.get("params") or {}), "phases": [2]})
+        rw.settle_feet_slide = RewTerm(func=mdp_hang.g2_phase_gated, weight=-0.15,
+                                       params={"func": fs.params["func"], "params": dict(fs.params.get("params") or {}), "phases": [2]})
+        rw.settle_foot_yaw = RewTerm(func=mdp_hang.g2_phase_gated, weight=-0.5,
+                                     params={"func": fy.params["func"], "params": dict(fy.params.get("params") or {}), "phases": [2]})
+
+
+@configclass
+class Biped12HangStandG21c1EnvCfg(Biped12HangStandG21bEnvCfg):
+    """G21c1: G21b + 관절속도 관측 env 별 0–2 틱 지연 DR (EMA β0.25 뒤)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        jv = self.observations.policy.joint_vel
+        assert jv.func is mdp_hang.encoder_joint_vel_lpf
+        p = dict(jv.params or {}); p["max_lag"] = 2
+        jv.func = mdp_hang.encoder_joint_vel_lpf_lagged; jv.params = p
+
+
+@configclass
+class Biped12HangStandG21c2EnvCfg(Biped12HangStandG21c1EnvCfg):
+    """G21c2: G21c1 + 관절각 관측 env 별 0–1 틱 지연 DR."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        jp = self.observations.policy.joint_pos
+        assert jp.func is mdp_hang.encoder_joint_pos_rel_v2
+        p = dict(jp.params or {}); p["max_lag"] = 1
+        jp.func = mdp_hang.encoder_joint_pos_rel_v2_lagged; jp.params = p
+
+
+@configclass
+class Biped12HangStandG21dEnvCfg(Biped12HangStandG21c2EnvCfg):
+    """G21d: G21c2 + STAND·SETTLE 에서만 액션 2차 차분 벌점 −0.02 (회복 중 빠른 동작은 그대로)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.action_accel_quiet = RewTerm(func=mdp_hang.g2_phase_gated, weight=-0.02,
+                                                  params={"func": mdp_hang.action_accel_l2, "params": {}, "phases": [0, 2]})

@@ -1786,3 +1786,27 @@ class Biped12HangStandG19nEnvCfg(Biped12HangStandG18fEnvCfg):
         n = self.observations.policy.joint_vel.noise
         assert abs(n.n_max - 0.3) < 1e-9
         n.n_min, n.n_max = -1.5, 1.5
+
+
+@configclass
+class Biped12HangStandG20dEnvCfg(Biped12HangStandG19vEnvCfg):
+    """G20d: G19v + **액션 지연 DR 0–3 → 1–5틱** 단일 변경. 근거: 1002 부록 E — 느린 흔들림은 단일 관측 경로가 아니라 지연 의존
+    (G19v-10700 d0 <3.9 · d1 8.0 · d3 16.1 %) → 실측 d≈1·평가 가드 d3 을 학습 분포 안쪽에 두어 위상 여유를 확보(가설)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        a = self.actions.joint_pos
+        assert a.min_delay_steps == 0 and a.max_delay_steps == 3
+        a.min_delay_steps, a.max_delay_steps = 1, 5
+
+
+@configclass
+class Biped12HangStandG20sEnvCfg(Biped12HangStandG19vEnvCfg):
+    """G20s: G19v + **안정 상태(회복 게이트 닫힘)에서만 몸통 롤·피치 각속도 벌점 −1.0 추가** 단일 변경(기존 −0.1 상시 항은 그대로).
+    근거: 부록 E — 흔들림 = 폐루프 감쇠 부족. 게이트가 열린(외란·회복) 동안은 꺼져 회복 스텝을 벌하지 않는다(G15 정숙 보상의 회복 손실 교훈)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        from .mdp_rewards import ang_vel_xy_l2_capped
+        self.rewards.quiet_ang_vel = RewTerm(func=mdp_hang.state_gated, weight=-1.0,
+                                             params={"func": ang_vel_xy_l2_capped, "params": {}})

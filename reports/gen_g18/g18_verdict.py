@@ -3,7 +3,7 @@
 import sys, math
 sys.path.insert(0, '/home/ryu/humanoid_leg_test1/reports/gen_g17')
 import g17_verdict as V
-FAMS = ('g18o', 'g18j', 'g18d', 'g18q', 'g18f', 'g18f43', 'g19v', 'g19n')
+FAMS = ('g18o', 'g18j', 'g18d', 'g18q', 'g18f', 'g18f43', 'g19v', 'g19n', 'g20d', 'g20s')
 CKS = V.CKS
 
 def main():
@@ -39,6 +39,11 @@ def main():
         w = [hv(S[(fam, ck)], S[(ref, ck)]) for ck in CKS if (fam, ck) in S and (ref, ck) in S]
         return f'{sum(w)}/{len(w)} → ' + ('대기' if len(w) < 4 else ('지지(잠정)' if sum(w) >= 3 else '미지지'))
     print('  H-v (G19v vs G18f):', judge_vs('g19v', 'g18f')); print('  H-n (G19n vs G18f):', judge_vs('g19n', 'g18f'))
+    h20 = lambda a, o: ((a[0]['nd']['sus'] <= o[0]['nd']['sus'] - 3) or a[0]['nd']['sus'] <= 3.9) and a[0]['d3nd']['sus'] <= 0.5 * o[0]['d3nd']['sus'] \
+        and a[0]['nd']['rev'] <= 0.008 and a[0]['b18']['fall'] <= o[0]['b18']['fall'] + 10 and a[2] >= o[2] - 10
+    for fam in ('g20d', 'g20s'):
+        w = [h20(S[(fam, ck)], S[('g19v', ck)]) for ck in CKS if (fam, ck) in S and ('g19v', ck) in S]
+        print(f'  H-20 ({fam} vs G19v): {sum(w)}/{len(w)} → ' + ('대기' if len(w) < 4 else ('지지(잠정)' if sum(w) >= 3 else '미지지')))
     print('\n[배포 자격] 선별 C0 통과 체크포인트:', [f'{f}-{c}' for (f, c), v in S.items() if not v[1]] or '없음',
           '— 통과 시 정식 seed 2–4 + 독립 seed 5–6 필요(G18_DESIGN_CRITERIA §3)')
 

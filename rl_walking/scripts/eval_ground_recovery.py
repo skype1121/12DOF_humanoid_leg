@@ -95,6 +95,8 @@ parser.add_argument("--contact_real", action="store_true",
                     help="1001 G17: 정책 접촉 관측을 실물 계약으로(mdp_hang.feet_contact_real: 발 평평 θ_off 2–6°·10 Hz 유지·1틱 전송) — 모든 정책 공통 적용")
 parser.add_argument("--last_action_ema", type=float, default=0.0,
                     help="진단: 정책 관측 last_action 을 EMA(α) 로 느리게 만든 값으로 대체(0=끔). 25 Hz 2주기 자기루프(last_action 경유) 가설의 폐루프 대조")
+parser.add_argument("--obs_ema", type=str, default="",
+                    help="진단: 정책 관측 항을 시간 EMA 로 늦춤 'term:α,term:α' (예 base_ang_vel:0.1,joint_vel:0.1) — 폐루프 떨림 경로 귀속(배포 계약 아님)")
 parser.add_argument("--gyro_delay", type=int, default=0,
                     help="1001: 정책 관측 자이로(base_ang_vel·gyro_ema 입력)를 N 정책 틱 늦게 — 실물 IMU 경로 지연 가설 시험")
 parser.add_argument("--contact_drop", type=str, default="",
@@ -477,6 +479,17 @@ if not args_cli.hold:
     policy = runner.get_inference_policy(device=dev)
 
 obs = env.get_observations()
+_OBS_EMA = []; _OBS_EMA_ST = {}
+if args_cli.obs_ema:
+    _names = list(uenv.observation_manager.active_terms["policy"]); _dims = uenv.observation_manager.group_obs_term_dim["policy"]
+    _off = {}; _o = 0
+    for _n, _d in zip(_names, _dims):
+        _sz = 1
+        for _v in (_d if isinstance(_d, (tuple, list)) else (_d,)): _sz *= int(_v)
+        _off[_n] = (_o, _o + _sz); _o += _sz
+    for _tok in args_cli.obs_ema.split(","):
+        _n, _al = _tok.split(":"); _OBS_EMA.append((*_off[_n], float(_al)))
+    print(f"[obs_ema] {[(n, _off[n]) for n in [t.split(':')[0] for t in args_cli.obs_ema.split(',')]]} 총 {_o}")
 _DEF = robot.data.default_joint_pos.clone()      # 정책 기본자세(= 액션 오프셋) — 시뮬 홀드 명령각
 _BOFF = torch.zeros_like(_DEF)                  # 인계 출발 자세 오프셋(실물 홀드 명령과 정책 기본의 차이 재현)
 if args_cli.blend_offset_deg:
@@ -734,6 +747,13 @@ for i in range(STEPS):
                 _FROZEN[0] = a.clone(); print(f"[freeze] t_rel={t_rel:.2f}s 정책 출력 고정", flush=True)
             a = _FROZEN[0]
         obs, _, dones, _ = env.step(a)
+        if _OBS_EMA:
+            _po = obs["policy"]
+            for (_a0, _b0, _al) in _OBS_EMA:
+                _x = _po[:, _a0:_b0]
+                _st = _OBS_EMA_ST.get(_a0)
+                _y = _x.clone() if _st is None else _st + _al * (_x - _st)
+                _OBS_EMA_ST[_a0] = _y; _po[:, _a0:_b0] = _y
     term = uenv.termination_manager.terminated
     pitch, roll = _rp()
     w_xy = robot.data.root_ang_vel_b[:, :2].norm(dim=-1); v_xy = robot.data.root_lin_vel_b[:, :2].norm(dim=-1)

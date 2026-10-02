@@ -1534,3 +1534,23 @@ def feet_contact_real_v2(env, sensor_cfg=None, threshold: float = 5.0, threshold
     out = st["q"].pop(0)
     st["out"] = out; st["step"] = step
     return out.clone()
+
+
+def last_action_lpf(env, action_name: str = "joint_pos") -> torch.Tensor:
+    """G18f 관측 계약: 직전 액션 = **원시 액션의 EMA(β)** — β 는 그 env 의 액션 LPF β(SlewJointPositionAction._beta) 그대로.
+    즉 정책이 보는 '직전 액션'이 실제로 관절에 가는 필터된 명령(액션 단위)이 되어, last_action 자기루프가 LPF 를 거친다
+    (25 Hz 이득 ≈ β/(2−β) ≈ 0.16 @β0.27). 배포 러너는 같은 EMA(β=0.27)를 원시 액션에 걸어 넣으면 된다
+    (평가기: --last_action_ema 0.27). 1002 폐루프 대조(H-loop 지지)의 학습형 해법 — 정보는 유지, 루프 이득만 낮춤.
+    에피소드 시작 틱은 원시 액션으로 초기화(평가기 --last_action_ema 와 같은 규약)."""
+    x = env.action_manager.action
+    term = env.action_manager.get_term(action_name)
+    beta = getattr(term, "_beta", None)
+    st = getattr(env, "_la_lpf_st", None)
+    step = int(getattr(env, "common_step_counter", 0))
+    if st is None or st["y"].shape != x.shape:
+        st = {"y": x.clone(), "step": None}; env._la_lpf_st = st
+    if st["step"] != step:
+        b = beta.view(-1, 1) if beta is not None else torch.ones(x.shape[0], 1, device=x.device)
+        fresh = (env.episode_length_buf == 0).view(-1, 1)
+        st["y"] = torch.where(fresh, x, b * x + (1.0 - b) * st["y"]); st["step"] = step
+    return st["y"].clone()

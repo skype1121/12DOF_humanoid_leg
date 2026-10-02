@@ -1744,3 +1744,20 @@ class Biped12HangStandG18qEnvCfg(Biped12HangStandG18oEnvCfg):
         t = self.rewards.recovery_quality
         assert t.func is mdp_hang.recovery_quality
         t.params = dict(t.params or {}); t.params["step_window_s"] = 1.5
+
+
+@configclass
+class Biped12HangStandG18fEnvCfg(Biped12HangStandG18oEnvCfg):
+    """G18f: G18o + **배포 LPF 를 학습에 복원(β 0.2–0.4) + 관측 '직전 액션' = 그 LPF 를 거친 명령(원시 액션 EMA, 같은 β)**.
+    두 변경은 한 계약(관측이 실제 관절 명령과 일치)이라 묶는다. 근거: 1002 폐루프 대조 — 25 Hz 떨림 = last_action 자기루프(H-loop 지지),
+    G18j 처럼 이 경로 이득을 깎으면 충격 회복(b18)을 잃는다 → 정보는 두고 루프만 필터를 거치게 한다.
+    배포 계약 변경: 러너가 actions 관측에 EMA(β0.27)를 넣어야 함(평가기 --last_action_ema 0.27). G8 이후 학습엔 LPF 없음(배포만 β0.27)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        a = self.actions.joint_pos
+        assert tuple(a.lpf_beta_range) == (1.0, 1.0)
+        a.lpf_beta_range = (0.2, 0.4)
+        P = self.observations.policy
+        P.actions.func = mdp_hang.last_action_lpf
+        P.actions.params = {"action_name": "joint_pos"}

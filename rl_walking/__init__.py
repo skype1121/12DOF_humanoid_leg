@@ -541,7 +541,7 @@ for _stage in ("G6", "G6Hold", "G7", "G7Hold",    # 0921 G7: 지속 외력·회�
                 "G11a", "G11aHold", "G11b", "G11bHold",
                 "G11c", "G11cHold",
                 "G12", "G12Hold", "G13", "G13Hold", "G14a", "G14aHold", "G14b", "G14bHold",
-                "G15q", "G15u", "G15w", "G15d", "G15k", "G16o", "G16a", "G16i", "G16d", "G17o", "G17r", "G17p", "G17rp", "G18o", "G18d", "G18q"):                            # 0929 G12: 액션 지연 3~8 → 9~14 단일 변경                          # 0929 G11c: 회복 품질 보상 5→10 단일 변경     # 0928 G11: 발목 정지 마찰+편향 절반 / +정착 보너스 게이트 해제
+                "G15q", "G15u", "G15w", "G15d", "G15k", "G16o", "G16a", "G16i", "G16d", "G17o", "G17r", "G17p", "G17rp", "G18o", "G18d", "G18q", "G18f"):                            # 0929 G12: 액션 지연 3~8 → 9~14 단일 변경                          # 0929 G11c: 회복 품질 보상 5→10 단일 변경     # 0928 G11: 발목 정지 마찰+편향 절반 / +정착 보너스 게이트 해제
     gym.register(
         id=f"Biped12-HangStand-{_stage}-v0",
         entry_point="isaaclab.envs:ManagerBasedRLEnv",

@@ -2,7 +2,8 @@
 (1) 정책 평균 출력의 관측 블록별 야코비안 ‖∂μ/∂x_blk‖²_F, (2) last_action '자기루프' — 다른 관측은 고정, 출력만 actions 이력
 (165–224, 오래된→최신 12×5)으로 되먹여 120틱 굴린 뒤 마지막 60틱의 틱 간 부호반전 비율·액션 표준편차.
 플랜트 없는 개루프 지표 — 폐루프 떨림의 원인 증명이 아니다(OSS 분석 1 가설 확인용). 사용: jac_selfloop.py <ckpt.pt> ..."""
-import json, sys, numpy as np, torch
+import json, os, sys, numpy as np, torch
+EMA = float(os.environ.get('LA_EMA', '1.0'))   # G18f 계약: last_action 관측 = 원시 액션 EMA(β) — LA_EMA=0.27
 BLK = {'자이로': (0, 15), '관절속도': (105, 165), '직전액션': (165, 225), '관절각': (45, 105)}
 def actor(path):
     sd = torch.load(path, map_location='cpu', weights_only=False)['model_state_dict']
@@ -19,7 +20,7 @@ r = [x for x in r if 'event' not in x and x.get('obs')]
 t = np.array([x['timestamp'] for x in r]); t -= t[0]
 O = np.array([x['obs'] for x in r], dtype=np.float32)
 X0 = torch.tensor(O[(t >= 20) & (t < 40)][::25])
-print(f'관측점 {len(X0)}개 (실물 조용한 서기). 칸: 블록 야코비안² (자이로·관절속도·직전액션·관절각) | 자기루프 부호반전/틱 · 액션 표준편차')
+print(f'관측점 {len(X0)}개 (실물 조용한 서기). last_action 되먹임 EMA β={EMA}. 칸: 블록 야코비안² (자이로·관절속도·직전액션·관절각) | 자기루프 부호반전/틱 · 액션 표준편차')
 for p in sys.argv[1:]:
     pi = actor(p)
     x = X0.clone().requires_grad_(True); mu = pi(x)
@@ -30,7 +31,8 @@ for p in sys.argv[1:]:
         acts = []
         for k in range(120):
             a = pi(x); acts.append(a)
-            x[:, 165:213] = x[:, 177:225].clone(); x[:, 213:225] = a
+            new = EMA * a + (1.0 - EMA) * x[:, 213:225]
+            x[:, 165:213] = x[:, 177:225].clone(); x[:, 213:225] = new
         A = torch.stack(acts[60:])                      # (60, P, 12)
         d = A[1:] - A[:-1]
         rev = float(((d[1:] * d[:-1]) < 0).float().mean())

@@ -275,6 +275,12 @@ CHECKPOINTS = {
     #   무외란·8 N 동일, d3 뒤 18 N 낙상 v2 52.1 % vs 학습 계약 44.7 % (McNemar p=0.019). 이름 그대로 = 0929 과 같은 동작(v2).
     "stand_crouch_g12_ema0": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported"),
+    # stand_crouch_g21a (1003, G21a-11300 = G19v 계열 + 보상 결함 교정 a1·a2·a3, 승윤님·외부 검토 설계) — **승격 아님, 진단 실물 시험 전용**.
+    #   사전 기준(reports/gen_g18/G21_DESIGN_CRITERIA.md) 정식 C0 탈락(지연 3틱 흔들림 5.6 % > 2.9 %; 무외란 2.2 % 통과).
+    #   목적: G12 와 교대로 같은 약한 앞 밀기 → ① 3 Hz 진폭·성장률 ② 이륙→착지→하중 수용 ③ 착지 후 정착 시간 비교(승격 판단 없음).
+    #   관측 계약: actions = 원시 액션 EMA(β0.27) · joint_vel = 관절속도 EMA(β0.25) — env.yaml 로 자동 결정(ckpt_obs_filter), G12 는 종전 그대로.
+    "stand_crouch_g21a": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported"),
     # stand_crouch_v2 (0918 저녁, S9d, models/stand_crouch_v2) — **등록 보류**: 기본자세 = 실물 v4 명령 + 무릎 직렬 처짐 편향 DR.
     # 시뮬 명목 94.5 % 이나 목 센서 500틱(IMU 무반응) 시험에서 기본자세 출발도 슬루 최대로 발산(틱 34 비유한) → 공중·줄 고정
     # 몸통에서 관절 폭주 위험. 정책 500틱 selftest 는 등록된 stand_* 전부를 순회하므로 등록 자체가 prep 게이트를 막는다.
@@ -306,6 +312,7 @@ CKPT_DEFAULT_POSE = {
     "stand_crouch_g11a": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
     "stand_crouch_g12": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
     "stand_crouch_g12_ema0": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
+    "stand_crouch_g21a": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
 }
 
 
@@ -317,7 +324,7 @@ def ckpt_default_pose(checkpoint):
 #: 위상 어긋난 관측 → 보행 파괴). 미등록 = 1.4 (기존 가족 전체의 계약).
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
-CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "stand_crouch_v6": 1.1, "stand_crouch_g11a": 1.1, "stand_crouch_g12": 1.1, "stand_crouch_g12_ema0": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
+CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "stand_crouch_v6": 1.1, "stand_crouch_g11a": 1.1, "stand_crouch_g12": 1.1, "stand_crouch_g12_ema0": 1.1, "stand_crouch_g21a": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
                    "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1, "stand_hang_v1": 1.1, "stand_hang_v2": 1.1, "stand_hang_v3": 1.1, "stand_hang_v4": 1.1, "stand_hang_v5": 1.1, "stand_hang_v5p": 1.1, "stand_hang_v6": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 
@@ -804,7 +811,8 @@ class BridgeCore:
             CHECKPOINTS[checkpoint],
             gait_freq=CKPT_GAIT_FREQ.get(checkpoint, CKPT_GAIT_FREQ_DEFAULT),
             default_pose_rad=CKPT_DEFAULT_POSE.get(checkpoint),
-            jvel_ema_mode=ckpt_jvel_ema_mode(checkpoint))
+            jvel_ema_mode=ckpt_jvel_ema_mode(checkpoint),
+            act_obs_ema_beta=ckpt_obs_filter(checkpoint)[0], jvel_obs_ema_beta=ckpt_obs_filter(checkpoint)[1])
         self.ckpt_name = checkpoint
         self.hh = HeadingHold(kp=1.0, wz_limit=0.6)
         self.hh_ref_set = False
@@ -819,7 +827,8 @@ class BridgeCore:
                 CHECKPOINTS[checkpoint],
                 gait_freq=CKPT_GAIT_FREQ.get(checkpoint, CKPT_GAIT_FREQ_DEFAULT),
                 default_pose_rad=CKPT_DEFAULT_POSE.get(checkpoint),
-                jvel_ema_mode=ckpt_jvel_ema_mode(checkpoint))
+                jvel_ema_mode=ckpt_jvel_ema_mode(checkpoint),
+            act_obs_ema_beta=ckpt_obs_filter(checkpoint)[0], jvel_obs_ema_beta=ckpt_obs_filter(checkpoint)[1])
             self.ckpt_name = checkpoint
         self.runner.reset()
         self.hh_ref_set = False
@@ -1215,6 +1224,10 @@ def _parse_env_contract(path):
                     obs_term = key
                 elif indent == 6 and key == "func" and obs_group == "policy" and obs_term == "joint_vel_ema":
                     out["jvel_ema_func"] = val
+                elif indent == 6 and key == "func" and obs_group == "policy" and obs_term in ("actions", "joint_vel"):
+                    out[f"obs_{obs_term}_func"] = val          # 1003: 관측 필터 계약 판별
+                elif indent == 8 and key == "beta" and obs_group == "policy" and obs_term == "joint_vel":
+                    out["obs_joint_vel_beta"] = float(val)
                 continue
             if sect == "sim" and key == "dt" and indent == 2:
                 out["dt"] = float(val)
@@ -1257,6 +1270,40 @@ def _jvel_ema_contract(func):
     raise ValueError(f"알 수 없는 joint_vel_ema 함수: {func}")
 
 
+#: 1003 관측 필터 계약: 관측 'actions' 가 last_action_lpf 인 정책은 원시 액션 EMA(β = 배포 stand LPF β) 를 받는다(학습: 같은 env 의 액션 LPF β).
+OBS_ACT_EMA_BETA_DEPLOY = 0.27
+
+
+def obs_filter_contract(env_contract):
+    """env.yaml 계약 → (act_obs_ema_beta, jvel_obs_ema_beta). 학습 env 가 필터 함수를 선언한 정책에만 적용 —
+    그 밖의 함수(last_action·encoder_joint_vel_v2·joint_vel_rel_dropout 등 종전 정책)는 (None, None) = 종전 원시값 그대로.
+    이름에 'lpf' 가 있는데 모르는 함수는 기동 거부(새 필터 계약을 조용히 원시값으로 먹이는 사고 방지)."""
+    af = str(env_contract.get("obs_actions_func") or "").split(":")[-1].strip()
+    vf = str(env_contract.get("obs_joint_vel_func") or "").split(":")[-1].strip()
+    act = jv = None
+    if af == "last_action_lpf":
+        act = OBS_ACT_EMA_BETA_DEPLOY
+    elif "lpf" in af:
+        raise ValueError(f"알 수 없는 관측 actions 필터 함수: {af}")
+    if vf == "encoder_joint_vel_lpf":
+        jv = env_contract.get("obs_joint_vel_beta")
+        if jv is None:
+            raise ValueError("encoder_joint_vel_lpf 인데 env.yaml 에 beta 없음")
+    elif "lpf" in vf:
+        raise ValueError(f"알 수 없는 관측 joint_vel 필터 함수: {vf}")
+    return act, jv
+
+
+def ckpt_obs_filter(name):
+    """체크포인트의 러너 관측 필터 β. env.yaml 이 없으면 (None, None) — 종전 계약."""
+    if name not in CHECKPOINTS:
+        return None, None
+    yml = _ckpt_env_yaml(name)
+    if not os.path.isfile(yml):
+        return None, None
+    return obs_filter_contract(_parse_env_contract(yml))
+
+
 def _ckpt_env_yaml(name):
     return os.path.join(os.path.dirname(CHECKPOINTS[name].rstrip("/")), "params", "env.yaml")
 
@@ -1275,12 +1322,39 @@ def ckpt_jvel_ema_mode(name):
     return mode
 
 
+
+def _selftest_obs_filter():
+    """(1003) 체크포인트별 관측 필터 계약: G12 = 종전(필터 없음), G21a = actions EMA β0.27·joint_vel EMA β0.25 (env.yaml 기준).
+    BridgeCore 가 정책을 바꾸면 러너를 새로 만들어 필터·이력 상태가 비워진다(G21a → G12 전환 후 G12 러너에 필터 없음)."""
+    if "stand_crouch_g21a" not in CHECKPOINTS or not os.path.isfile(_ckpt_env_yaml("stand_crouch_g21a")):
+        return "SKIP (stand_crouch_g21a env.yaml 없음)"
+    g12 = ckpt_obs_filter("stand_crouch_g12"); g21 = ckpt_obs_filter("stand_crouch_g21a")
+    assert g12 == (None, None), f"G12 관측 필터가 생김: {g12} — G12 기준선 오염"
+    assert g21 == (OBS_ACT_EMA_BETA_DEPLOY, 0.25), f"G21a 관측 필터 {g21} ≠ (0.27, 0.25)"
+    core = BridgeCore("stand_crouch_g21a")
+    assert core.runner.act_obs_ema_beta == 0.27 and core.runner.jvel_obs_ema_beta == 0.25
+    q = ckpt_default_pose("stand_crouch_g21a")
+    for _ in range(3):
+        core.tick([0.01, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], q, [0.1] * 12, [1.0, 1.0])
+    assert core.runner._ema, "G21a 필터 상태가 쌓이지 않음"
+    core.reset("stand_crouch_g12")
+    assert core.runner.act_obs_ema_beta is None and core.runner.jvel_obs_ema_beta is None and not core.runner._ema, "전환 후 필터 상태 잔존"
+    core.reset("stand_crouch_g21a")
+    assert core.runner.act_obs_ema_beta == 0.27 and not core.runner._ema, "G21a 재전환 시 상태가 비어 있지 않음"
+    assert obs_filter_contract({"obs_joint_vel_func": "x:joint_vel_rel_dropout", "obs_actions_func": "x:last_action"}) == (None, None)
+    for bad in ({"obs_actions_func": "x:last_action_lpf_v9"}, {"obs_joint_vel_func": "x:encoder_joint_vel_lpf"}):
+        try:
+            obs_filter_contract(bad); raise AssertionError(f"잘못된 계약 허용: {bad}")
+        except ValueError:
+            pass
+    return "G12 필터 없음 · G21a act β0.27·jvel β0.25 · 정책 전환 시 러너 재생성(필터·이력 비움) · 미지 함수 거부"
+
 def _selftest_contract(required=()):
     """(0906 — 반복 감사 질문의 코드화) 배포 stand 정책의 학습 env(params/env.yaml)와 러너 상수의 계약:
     DEFAULT_POSE(관절명 기준 12개) · 액션 스케일 · 슬루 4°/틱 · 제어 주기 50Hz(decimation×dt) · use_default_offset.
     env.yaml 이 없는 세대는 SKIP(구 세대·비 stand). STAND_DEFAULT 와 required 의 stand_* 는 env.yaml 이 있어야 한다
     (배포 패키지가 models/<gen>/env.yaml 을 <run>/params/ 로 싣는다)."""
-    names = [n for n in dict.fromkeys([STAND_DEFAULT] + list(required) + list(CKPT_JVEL_EMA_MODE)) if n in CHECKPOINTS]
+    names = [n for n in dict.fromkeys([STAND_DEFAULT] + list(required) + list(CKPT_JVEL_EMA_MODE) + ["stand_crouch_g12", "stand_crouch_g21a"]) if n in CHECKPOINTS]
     checked, skipped = [], []
     for name in names:
         yml = os.path.join(os.path.dirname(CHECKPOINTS[name].rstrip("/")), "params", "env.yaml")
@@ -1300,7 +1374,8 @@ def _selftest_contract(required=()):
         assert c.get("use_default_offset") is True, f"{name}: use_default_offset={c.get('use_default_offset')} (기대 True)"
         ema_c = _jvel_ema_contract(c.get("jvel_ema_func"))
         ema_m = ckpt_jvel_ema_mode(name)          # ema0 인데 legacy 계약이 아니면 여기서 ValueError
-        checked.append(f"{name}(지연 {c.get('min_delay', '?')}~{c.get('max_delay', '?')}틱, EMA 계약 {ema_c}·모드 {ema_m})")
+        fa, fv = obs_filter_contract(c)             # 1003: 관측 필터 계약(알 수 없는 함수면 ValueError)
+        checked.append(f"{name}(지연 {c.get('min_delay', '?')}~{c.get('max_delay', '?')}틱, EMA 계약 {ema_c}·모드 {ema_m}, 관측필터 act={fa} jvel={fv})")
     need = [n for n in names if n in skipped and (n == STAND_DEFAULT or n.startswith("stand_"))]
     assert not need, f"stand 정책의 env.yaml 없음: {need} — 배포 패키지에 params/env.yaml 포함 필요"
     return ("DEFAULT_POSE 12관절·스케일 0.25·슬루 4°/틱·50Hz·default_offset 일치: " + ", ".join(checked)
@@ -1875,6 +1950,7 @@ def run_selftest(required=()):
              ("발진 가드", _selftest_osc_guard),
              ("행잉 가드", _selftest_hang_guard),
              ("학습 계약", lambda: _selftest_contract(required)),
+             ("관측 필터 계약(1003)", _selftest_obs_filter),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:

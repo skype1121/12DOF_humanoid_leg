@@ -1,0 +1,14 @@
+Biped12-HangStand-G12-v0 · logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported
+계약 act β=none jvel β=none mode=ema0 gait 1.1 lpf 1.0
+sim_restart2=1 · 틱 600 · 러너 리셋 1 · 첫 1e-3 초과 None
+관측 base_ang_vel       최대 |sim − runner| = 0.000e+00
+관측 projected_gravity  최대 |sim − runner| = 0.000e+00
+관측 velocity_commands  최대 |sim − runner| = 0.000e+00
+관측 joint_pos          최대 |sim − runner| = 2.980e-08
+관측 joint_vel          최대 |sim − runner| = 0.000e+00
+관측 actions            최대 |sim − runner| = 2.831e-07
+관측 gait_clock         최대 |sim − runner| = 5.960e-08
+관측 feet_contact       최대 |sim − runner| = 0.000e+00
+관측 gyro_ema           최대 |sim − runner| = 7.451e-09
+관측 joint_vel_ema      최대 |sim − runner| = 0.000e+00
+정책 출력(raw) 최대 |sim − runner| = 2.831e-07

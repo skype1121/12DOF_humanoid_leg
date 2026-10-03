@@ -259,7 +259,8 @@ class PolicyRunnerStage4:
 
     def __init__(self, model_path=DEFAULT_MODEL_DIR_STAGE4, backend: str = "auto",
                  gait_freq: float = GAIT_FREQ_HZ, obs_dim: int | None = None,
-                 default_pose_rad=None, jvel_ema_mode: str = "v2"):
+                 default_pose_rad=None, jvel_ema_mode: str = "v2",
+                 act_obs_ema_beta: float | None = None, jvel_obs_ema_beta: float | None = None):
         """model_path: exported/ 디렉토리 또는 .onnx/.pt 파일 경로 (callable=스텁).
         backend: 'auto'(onnx 우선→torch 폴백) | 'onnx' | 'torch'.
         gait_freq: 클록 주파수 [Hz] — 반드시 체크포인트의 학습 클록과 일치
@@ -268,7 +269,17 @@ class PolicyRunnerStage4:
         jvel_ema_mode: 'v2'(기본, 기존 동작) = joint_vel_ema 에 실제 관절속도의 EMA |
             'ema0' = joint_vel_ema 프레임을 0 으로 (1001: G4~G15 는 학습 중 이 채널이 0+잡음이었다 — mdp_hang 구버전
             encoder_joint_vel_ema 결함. 그 정책들의 학습 계약 복원용. EMA 상태는 진단용으로 계속 계산해 last_jvel_ema 에 둔다).
+        act_obs_ema_beta: (1003 G18f~G21a 계약) 관측 'actions' = 원시 액션의 EMA(β) — 학습 env mdp_hang.last_action_lpf.
+            None = 원시 직전 액션(종전, G12 등). 배포 β = 브리지 stand LPF 0.27.
+        jvel_obs_ema_beta: (1003 G19v~G21a 계약) 관측 'joint_vel' = 관절속도의 EMA(β) — 학습 env mdp_hang.encoder_joint_vel_lpf.
+            None = 원시 관절속도(종전). ⚠ joint_vel_ema(α0.1) 채널은 여전히 **원시** 속도에서 계산(학습 encoder_joint_vel_ema_v2 와 동일).
+        두 상태는 _ema 에 있고 reset() 이 비운다(정책 전환 시 BridgeCore 가 러너를 새로 만든다).
         """
+        for _b in (act_obs_ema_beta, jvel_obs_ema_beta):
+            if _b is not None and not (0.0 < float(_b) <= 1.0):
+                raise ValueError(f"관측 EMA β 는 (0,1] (받음 {_b})")
+        self.act_obs_ema_beta = None if act_obs_ema_beta is None else float(act_obs_ema_beta)
+        self.jvel_obs_ema_beta = None if jvel_obs_ema_beta is None else float(jvel_obs_ema_beta)
         if jvel_ema_mode not in ("v2", "ema0"):
             raise ValueError(f"jvel_ema_mode 는 'v2' | 'ema0' (받음 {jvel_ema_mode!r})")
         self.jvel_ema_mode = jvel_ema_mode
@@ -345,20 +356,29 @@ class PolicyRunnerStage4:
         틱당 정확히 1회만 불러야 한다 (이력·클록이 어긋남).
         """
         vec = PolicyRunner._vec
+        qvel_raw = vec(qvel_rad_s, 12, "qvel_rad_s")
         frames = {
             "base_ang_vel": vec(gyro_rad_s, 3, "gyro_rad_s"),
             "projected_gravity": vec(gravity_unit, 3, "gravity_unit"),
             "velocity_commands": vec(cmd, 3, "cmd"),
             "joint_pos": vec(qpos_rad, 12, "qpos_rad") - self.default_pose,
-            "joint_vel": vec(qvel_rad_s, 12, "qvel_rad_s"),
+            "joint_vel": qvel_raw,
             "actions": self.last_action,
             "gait_clock": gait_clock_stage4(self._tick, self.gait_freq),
             "feet_contact": self._contact2(contact2),
         }
+        # 1003 관측 필터 계약(체크포인트별, 학습 env.yaml 로 결정) — 첫 틱 = 현재값(학습 env 의 fresh 초기화와 같은 수열)
+        for name, src, beta in (("act_obs", "actions", self.act_obs_ema_beta), ("jvel_obs", "joint_vel", self.jvel_obs_ema_beta)):
+            if beta is None:
+                continue
+            x = np.asarray(frames[src], dtype=np.float32)
+            prev = self._ema.get(name)
+            self._ema[name] = x.copy() if prev is None else (prev + np.float32(beta) * (x - prev)).astype(np.float32)
+            frames[src] = self._ema[name]
         if "gyro_ema" in self._hist:         # S8a·G13
             # raw+EMA(α0.1): 첫 틱은 현재값으로 시작, 이후 (1−α)·prev + α·x — 시뮬 mdp_hang._ema_state 와 같은 수열
             for name, src in (("gyro_ema", "base_ang_vel"), ("joint_vel_ema", "joint_vel")):
-                x = np.asarray(frames[src], dtype=np.float32)
+                x = np.asarray(qvel_raw if src == "joint_vel" else frames[src], dtype=np.float32)   # 1003: joint_vel_ema 는 원시 속도에서
                 prev = self._ema.get(name)
                 self._ema[name] = x.copy() if prev is None else (1.0 - EMA_ALPHA_S8A) * prev + EMA_ALPHA_S8A * x
                 frames[name] = self._ema[name]
@@ -735,6 +755,47 @@ def _selftest_ema0() -> str:
     return f"ema0 OK ({'/'.join(map(str, out))}: [260:320] 만 0·나머지 비트동일·EMA 진단값 유지·잘못된 모드/245 거부)"
 
 
+
+def _selftest_obsfilter() -> str:
+    """(i) 1003 관측 필터 계약: β 없음 = 종전과 비트 동일(G12 무영향) / β 있음 = actions·joint_vel 블록이 EMA 수열,
+    joint_vel_ema 는 원시 속도 EMA(α0.1), 나머지 블록 비트 동일 / reset() 이 필터 상태를 비움."""
+    rng = np.random.default_rng(3)
+    def stub(obs):
+        return np.tanh(np.asarray(obs[:12], dtype=np.float32) * 0.7 + 0.1).astype(np.float32)
+    ra = PolicyRunnerStage4(model_path=stub, obs_dim=OBS_DIM_S8A)
+    rb = PolicyRunnerStage4(model_path=stub, obs_dim=OBS_DIM_S8A)
+    rf = PolicyRunnerStage4(model_path=stub, obs_dim=OBS_DIM_S8A, act_obs_ema_beta=0.27, jvel_obs_ema_beta=0.25)
+    off, o = {}, 0
+    for name, dim in rf.terms:
+        off[name] = (o, dim); o += rf._hist[name]._buf.shape[0] * dim
+    ya = yv = None; yema = None; acts = []
+    for k in range(9):
+        g, gr, c, q, v, ct = _mk_inputs(k)
+        v = (v + rng.normal(0, 0.3, 12)).astype(np.float32)
+        ea = ra.step(g, gr, c, q, v, ct); eb = rb.step(g, gr, c, q, v, ct)
+        assert np.array_equal(ra.last_obs, rb.last_obs) and np.array_equal(ea, eb), "β 없음 러너가 결정적이지 않음"
+        prev_act = rf.last_action.copy()
+        rf.step(g, gr, c, q, v, ct)
+        ya = prev_act.copy() if ya is None else (ya + np.float32(0.27) * (prev_act - ya)).astype(np.float32)
+        yv = v.copy() if yv is None else (yv + np.float32(0.25) * (v - yv)).astype(np.float32)
+        yema = v.copy() if yema is None else ((1.0 - EMA_ALPHA_S8A) * yema + EMA_ALPHA_S8A * v).astype(np.float32)
+        for name, want in (("actions", ya), ("joint_vel", yv), ("joint_vel_ema", yema)):
+            a0, d = off[name]; L = rf._hist[name]._buf.shape[0]
+            got = rf.last_obs[a0 + (L - 1) * d: a0 + L * d]
+            assert np.allclose(got, want, atol=1e-6), f"{name} 최신 프레임 불일치 (k={k})"
+    # 필터 외 블록은 같은 입력이면 같다(무필터 러너와 액션 이력만 다름 → 같은 입력 1틱으로 비교)
+    r1 = PolicyRunnerStage4(model_path=stub, obs_dim=OBS_DIM_S8A)
+    r2 = PolicyRunnerStage4(model_path=stub, obs_dim=OBS_DIM_S8A, act_obs_ema_beta=0.27, jvel_obs_ema_beta=0.25)
+    g, gr, c, q, v, ct = _mk_inputs(0); r1.step(g, gr, c, q, v, ct); r2.step(g, gr, c, q, v, ct)
+    assert np.array_equal(r1.last_obs, r2.last_obs), "첫 틱(EMA = 현재값)은 무필터와 같아야 함"
+    rf.reset(); assert not rf._ema, "reset() 뒤 필터 상태가 남음"
+    for bad in (0.0, 1.5, -0.1):
+        try:
+            PolicyRunnerStage4(model_path=stub, obs_dim=OBS_DIM_S8A, act_obs_ema_beta=bad); raise AssertionError(f"β={bad} 허용됨")
+        except ValueError:
+            pass
+    return "관측 필터 OK (β 없음 결정적·종전 경로 / actions·joint_vel EMA 수열 일치 / joint_vel_ema 원시 속도 / 첫 틱 동일 / reset 비움 / 잘못된 β 거부)"
+
 def _run_selftest() -> int:
     tests = [("조립 골든", _selftest_golden),
              ("이력 백필", _selftest_backfill),
@@ -743,7 +804,8 @@ def _run_selftest() -> int:
              ("모델 추론", _selftest_model),
              ("S8a 320 조립", _selftest_s8a),
              ("G13 512 조립", _selftest_g13),
-             ("EMA0 계약 모드", _selftest_ema0)]
+             ("EMA0 계약 모드", _selftest_ema0),
+             ("관측 필터 계약(1003)", _selftest_obsfilter)]
     failed = 0
     for name, fn in tests:
         try:

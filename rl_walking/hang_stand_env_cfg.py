@@ -2283,3 +2283,13 @@ class Biped12HangStandStepA0jEnvCfg(Biped12HangStandStepA0iEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.missed_step_event = RewTerm(func=mdp_hang.sb0_value, weight=-50.0, params={"name": "ev_miss"})
+
+
+@configclass
+class Biped12HangStandStepA0icEnvCfg(Biped12HangStandStepA0iEnvCfg):
+    """STEP-A0i-c (1004): A0i 이어 학습용 — **α 감쇠 조건만** 블록 하중 수용 ≥ 0.50 → ≥ 0.25 (환경·보상 동일).
+    근거: A0i 는 억제 없이 착지 0.17→0.30·하중 0.12→0.26 으로 상승 중이었으나 0.50 문턱(학습 확률 정책 블록)에 못 미쳐 600 반복 규칙으로 중단."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.curriculum.assist_anneal.params = dict(self.curriculum.assist_anneal.params, min_full=0.25)

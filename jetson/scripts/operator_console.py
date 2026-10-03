@@ -70,9 +70,9 @@ BRIDGE_JOINT_FRESH_SEC = 0.2  # rl_bridge_node.SENSOR_STALE_SEC 와 동일 — '
 #   브리지 CHECKPOINTS 등록은 그대로 둔다 — 과거 기록 재현·셀프테스트용. 콘솔 선택지만 줄인다.
 # 1001: stand_crouch_g12_ema0 = 같은 G12 정책 파일, 관측 joint_vel_ema 만 0(학습 계약 복원 — 학습 중 이 채널은 0+잡음이었다).
 #   이름 그대로의 stand_crouch_g12 는 0929·1002 실물과 같은 동작(실제 속도 EMA).
-# 1003 승윤님 결정: 교대 진단의 공식 G12 기준선 = ema0(학습 관측 계약) → 기본값(맨 앞). G21a = 학습 관측 필터 계약(진단 전용, 승격 아님).
-#   stand_crouch_g12(v2) 는 1002 실물 현상 재현용 보조 대조군 — A/B 데이터에 섞지 않는다.
-CKPT_CHOICES = ["stand_crouch_g12_ema0", "stand_crouch_g21a", "stand_crouch_g12", "stand_crouch_g11a"]
+# 1003 승윤님 결정(배포 시): 교대 진단의 G12 = v2 그대로(1002 실물과 같은 동작) → 기본값(맨 앞) 유지. G21a = 학습 관측 필터 계약(진단 전용, 승격 아님).
+#   stand_crouch_g12_ema0(학습 관측 계약) 은 선택지로만 둔다.
+CKPT_CHOICES = ["stand_crouch_g12", "stand_crouch_g21a", "stand_crouch_g12_ema0", "stand_crouch_g11a"]
 CKPT_DEFAULT = CKPT_CHOICES[0]
 
 

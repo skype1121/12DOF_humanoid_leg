@@ -30,7 +30,7 @@ Isaac env(관측 잡음·자이로 지연 끔, 액션 LPF β 고정)를 정책�
    gyro_ema·joint_vel_ema 의 시작 과도만 다르다(차이 × 0.9ⁿ 로 소멸, 정지 서기 인계에서는 자이로≈0 이라 작음).
    하네스는 `--sim_restart2 1` 로 이 규약만 맞춰 비교했다. 맞추지 않은 원본 결과 = `runner_equiv_g21a_norestart2.txt`.
 2. **G12 v2 = 알려진 계약 불일치(1001)**: G12 는 학습 중 joint_vel_ema 가 0+잡음(구버전 함수)이었고, 배포 `stand_crouch_g12` 는 실제 EMA 를 넣는다.
-   `stand_crouch_g12_ema0` 은 학습과 일치(위 표). → 1003 결정: 교대 시험의 공식 G12 = ema0, v2 는 보조 대조군(아래).
+   `stand_crouch_g12_ema0` 은 학습과 일치(위 표). → 1003 최종: 교대 시험의 G12 = v2 그대로, ema0 은 선택지.
 
 이 비교는 **계약 검증**이다(폐루프 실물 성능의 증명 아님).
 
@@ -39,7 +39,7 @@ Isaac env(관측 잡음·자이로 지연 끔, 액션 LPF β 고정)를 정책�
 G12 → G21a → G12 → G21a 같은 약한 앞 밀기·같은 영상 위치·같은 로거.
 
 ## 1003 결정·추가 준비
-- 공식 G12 기준선 = `stand_crouch_g12_ema0`(승윤님). 콘솔 기본값을 ema0 으로, 선택지 g12_ema0 · g21a · g12(v2 보조) · g11a.
+- G12 = `stand_crouch_g12`(v2 그대로, 배포 시 승윤님 최종 결정). 콘솔 기본값 g12 유지, 선택지 g12 · g21a · g12_ema0 · g11a.
 - G21a 는 env.yaml 없으면 기동 거부(필터가 조용히 빠지는 것 방지). 블랙박스에 `obs_filter` 기록.
 - 콘솔 '밀기 기록' 버튼(op_push, 기록 전용). 배포 스크립트 `deploy/deploy_g21a_1003.sh`(dry-run 기본), 매니페스트 `deploy/g21a_1003.md5`.
 - 실행 카드·분석기: `reports/real_1003/RUN_CARD_1003.md`, `ab_analyze.py`.

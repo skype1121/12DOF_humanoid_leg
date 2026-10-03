@@ -1,20 +1,19 @@
-# 1003 교대 진단 실행 카드 — G12/ema0 ↔ G21a/native EMA (승격 아님)
+# 1003 교대 진단 실행 카드 — G12/v2 ↔ G21a/native EMA (승격 아님)
 
-결정(승윤님 1003): **공식 G12 기준선 = `stand_crouch_g12_ema0`**(학습 관측 계약), G21a = `stand_crouch_g21a`(학습 관측 필터 계약 act β0.27·jvel β0.25).
-`stand_crouch_g12`(v2) = 1002 현상 재현용 보조 대조군 — 필요하면 정식 교대 **전에** 짧게 1회, A/B 데이터에 섞지 않음.
+결정(승윤님 1003, 배포 시 최종): **G12 = `stand_crouch_g12`(v2 그대로, 1002 와 같은 동작)**, G21a = `stand_crouch_g21a`(학습 관측 필터 계약 act β0.27·jvel β0.25).
+`stand_crouch_g12_ema0`(학습 관측 계약) 은 선택지로만 남김. 주의: G12 v2 는 joint_vel_ema 가 학습 계약과 다르다(1001 알려진 불일치) — 비교는 '1002 실물 G12 ↔ G21a'.
 
 ## 0. 배포 (승인 뒤)
 1. `bash deploy/deploy_g21a_1003.sh` (dry-run): 로컬 매니페스트 `deploy/g21a_1003.md5` 10/10, 로컬 selftest 3종, 젯슨 md5·프로세스, 젯슨 맵 읽어 오기.
 2. 제어 프로세스 없음 확인 뒤 `--apply --restart-console`. 젯슨 selftest 의 '관측 필터 계약(1003)' PASS 확인.
-3. 콘솔 드롭다운 = g12_ema0(기본) · g21a · g12 · g11a.
+3. 콘솔 드롭다운 = g12(v2, 기본) · g21a · g12_ema0 · g11a.
 
 ## 1. 순서 (각 시도 = 정책 로드부터 회수까지, 콘솔이 브리지를 새로 띄움 → 관측 이력·EMA·직전 액션 상태 초기화)
 | # | 정책 | 내용 |
 |---|---|---|
-| (선택) | g12 v2 | 1002 3 Hz 재현 확인만, 짧게 |
-| 1 | g12_ema0 | 무외란 서기 → 약한 앞 밀기 |
+| 1 | g12 (v2) | 무외란 서기 → 약한 앞 밀기 |
 | 2 | g21a | 같은 절차 |
-| 3 | g12_ema0 | 같은 절차 |
+| 3 | g12 (v2) | 같은 절차 |
 | 4 | g21a | 같은 절차 |
 
 각 시도: 착지·인계 → 정책 → **무외란 서기 먼저(≥20 s)** → 같은 사람·같은 위치·같은 세기 앞 밀기 1회, 손 닿는 순간 **'밀기 기록'** 버튼 → 회수.
@@ -27,7 +26,7 @@
 ## 3. 분석 (`reports/real_1003/ab_analyze.py`)
 ```
 python3 reports/real_1003/ab_analyze.py <bb1.jsonl> <bb2.jsonl> <bb3.jsonl> <bb4.jsonl> \
-  --label g12e0_1 g21a_1 g12e0_2 g21a_2 --timeline ~/logs/sessions/session_*/timeline.jsonl --out reports/real_1003/ab
+  --label g12_1 g21a_1 g12_2 g21a_2 --timeline ~/logs/sessions/session_*/timeline.jsonl --out reports/real_1003/ab
 ```
 - t0(밀기 시작) 우선순위: 영상 손 접촉 시각(`--push 파일:초`) > 콘솔 '밀기 기록' > 자동(신뢰 낮음 — 1002 에서 오검출 확인).
 - 비교만: ① 3 Hz(피치각속도 2–4.5 Hz) 포락 최대·성장률 λ·우세 주파수 ② 이륙 → 착지 → 하중 수용(접촉 비트 대리, 영상 확인)

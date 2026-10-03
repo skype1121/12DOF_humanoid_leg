@@ -1,8 +1,8 @@
 #!/bin/bash
-# 1003 G21a-11300 진단 배포 — 러너·브리지·콘솔(밀기 기록 버튼·기본값 g12_ema0) + G21a exported·학습 env.yaml(+ G12 env.yaml: ema0 계약 확인용) → 젯슨.
+# 1003 G21a-11300 진단 배포 — 러너·브리지·콘솔(밀기 기록 버튼·G21a 선택지) + G21a exported·학습 env.yaml(+ G12 env.yaml: ema0 계약 확인용) → 젯슨.
 # **승윤님 승인 뒤에만 --apply 로 실행.** 기본은 점검만(dry-run): 로컬 selftest·로컬 매니페스트 대조·젯슨 현재 md5·프로세스·맵 해시.
 #   --apply            : 제어 프로세스(브리지·stage8) 없음 확인 → 백업(.bak_1003) → 복사 → md5 대조 → 젯슨 selftest 3종
-#   --restart-console  : (--apply 와 함께) 콘솔 서비스 재기동 — 드롭다운 기본값 stand_crouch_g12_ema0·stand_crouch_g21a 반영에 필요.
+#   --restart-console  : (--apply 와 함께) 콘솔 서비스 재기동 — 드롭다운 stand_crouch_g21a·밀기 기록 버튼 반영에 필요.
 # 하드웨어맵은 보내지 않는다(젯슨 맵 = 실물 영점의 유일한 원본). dry-run 에서 젯슨 맵을 deploy/hwmap_jetson_1003.json 로 **읽어 오기만** 한다.
 # 되돌리기: 각 파일의 .bak_1003 을 원래 이름으로 복사(콘솔은 재기동). 새로 생긴 G21a 디렉토리는 남아도 무해(선택지에서 빼면 됨).
 set -euo pipefail
@@ -65,4 +65,4 @@ if [ $RESTART -eq 1 ]; then
   $SSH "echo "$JETSON_PW" | sudo -S systemctl restart operator-console && sleep 4 && systemctl is-active operator-console"
   $SSH "curl -s -m 5 http://127.0.0.1:8800/ | grep -o '<option>[a-z0-9_]*</option>' | tr '\n' ' '"; echo
 fi
-echo "== 배포 완료 — 공식 교대: stand_crouch_g12_ema0 ↔ stand_crouch_g21a (stand_crouch_g12 v2 = 보조 대조군, A/B 에 섞지 않음)"
+echo "== 배포 완료 — 교대: stand_crouch_g12(v2, 기본) ↔ stand_crouch_g21a (g12_ema0 은 선택지)"

@@ -2096,3 +2096,37 @@ class Biped12HangStandG22R2EnvCfg(Biped12HangStandG22REnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.disturbance.params = dict(self.events.disturbance.params, stage_set="r2")
+
+
+@configclass
+class Biped12HangStandStepB0EnvCfg(Biped12HangStandG21aEnvCfg):
+    """STEP-B0 (1003 밤, 승윤님): 급속 하중전환 → 짧은 스윙 → 착지 primitive 부트스트랩. 부모 G21a-11300, plant·관측·PPO 동결.
+    모드: vx_cmd 0.05(스텝 모드 신호, 추종 보상 아님) / 0(서기 — G21a 보상 그대로), 서기 50 %, 4–6 s 리샘플. 외란·속도 밀기 없음.
+    스텝 모드: W1 과 같은 서기 전용 항 OFF + 추종 항 OFF, feet_slide −0.15·foot_yaw_slip −0.5·action_rate −0.1(구 게이트 벗긴 원 함수),
+    sb0_step 일정(1.1 Hz 클록 위상) 보상: load_transfer +2.0 · swing_unload +0.5 · swing_clearance +1.0 · swing_progress +0.5 ·
+    touchdown +5 · load_accept +10 · settle +15(이벤트 1틱 ×dt) · premature_swing −2.0. s_com 목표 없음."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev, rw = self.events, self.rewards
+        c = self.commands.base_velocity
+        c.resampling_time_range = (4.0, 6.0); c.ranges.lin_vel_x = (0.05, 0.05); c.ranges.lin_vel_y = (0.0, 0.0); c.ranges.ang_vel_z = (0.0, 0.0)
+        c.rel_standing_envs = 0.5
+        if hasattr(c, "rel_spin_envs"):
+            c.rel_spin_envs = 0.0; c.rel_backward_envs = 0.0
+        d = ev.disturbance
+        d.func = mdp_hang.disturbance_reset_g22r; d.params = dict(d.params, branch="w1")     # W1 S0 = 외란 없음
+        pr = ev.push_robot
+        pr.func = mdp_hang.push_with_arm_g22; pr.params = {"velocity_range": dict(pr.params["velocity_range"]), "arm_s": 2.5, "branch": "w1"}
+        ev.sb0 = EventTerm(func=mdp_hang.sb0_step, mode="interval", interval_range_s=(0.0, 0.0), params={})
+        swap = {"feet_slide": -0.15, "foot_yaw_slip": -0.5, "action_rate_l2": -0.10}
+        for name in _W1_STAND_ONLY + ("track_lin_vel_xy_exp", "track_ang_vel_z_exp") + tuple(swap):
+            t = getattr(rw, name)
+            setattr(rw, name, RewTerm(func=mdp_hang.w1_stand_gated, weight=t.weight, params={"func": t.func, "params": dict(t.params or {})}))
+            if name in swap:
+                f, p = (t.params["func"], dict(t.params.get("params") or {})) if t.func is mdp_hang.state_gated else (t.func, dict(t.params or {}))
+                setattr(rw, name + "_step", RewTerm(func=mdp_hang.w1_walk_gated, weight=swap[name], params={"func": f, "params": p}))
+        for name, wgt, key in (("load_transfer", 2.0, "r_transfer"), ("swing_unload", 0.5, "r_unload"), ("swing_clearance", 1.0, "r_clear"),
+                               ("swing_progress", 0.5, "r_prog"), ("touchdown_event", 5.0, "ev_td"), ("load_accept_event", 10.0, "ev_load"),
+                               ("settle_event", 15.0, "ev_settle"), ("premature_swing", -2.0, "r_prem")):
+            setattr(rw, name, RewTerm(func=mdp_hang.sb0_value, weight=wgt, params={"name": key}))

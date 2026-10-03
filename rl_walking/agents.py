@@ -104,3 +104,12 @@ class Biped12W1PPORunnerCfg(Biped12Stage4PPOHoldPriorRunnerCfg):
     def __post_init__(self):
         super().__post_init__()
         self.experiment_name = "biped12_w1"
+
+
+@configclass
+class Biped12StepB0PPORunnerCfg(Biped12Stage4PPOHoldPriorRunnerCfg):
+    """1003 STEP-B0: G21a 와 같은 PPO(동결), 실험 디렉터리만 분리."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.experiment_name = "biped12_stepb0"

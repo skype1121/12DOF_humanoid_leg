@@ -2225,3 +2225,93 @@ def w1_command_curriculum(env, env_ids, min_episodes: int = 1500, min_iters: int
     term = env.command_manager.get_term("base_velocity")
     term.cfg.rel_standing_envs = float(stand); term.cfg.ranges.lin_vel_x = tuple(vr)
     return {"stage": float(g["stage"]), "fall_walk": fall, "trk_err": err, "fall_stand": fs, "n_walk": W["n_walk"]}
+
+
+# ---------------------------------------------------------------- STEP-B0 (1003 밤: 급속 하중전환 → 짧은 스윙 → 착지 primitive) ----------------------------------------------------------------
+# 근거: diag_pretakeoff3(G22R2) — 성공 스텝은 CoM 횡이동 없이(s_com 0.05) 마지막 50 ms 에 지지 0.5→0.8–0.9 mg·스윙 0.56→0.17 mg 로 전환,
+# 공중 0.14–0.16 s, 앞 실패(C)는 시도 자체 없음. → s_com 목표 없이 그 하중 재배분을 직접 부트스트랩(승윤님 1003).
+# 신호: 관측에 이미 있는 gait_clock(1.1 Hz)과 같은 위상 — 관측 계약 불변. 스텝 모드 = |vx_cmd| ≥ 0.03(속도 추종 아님, 모드 신호).
+# 반주기(0.455 s) 안 구간: 전환 [0,0.16) · 스윙 [0.16,0.50) · 착지/하중 [0.50,0.80) · 정착 [0.80,1.0); 앞 반주기 = 왼발 스윙, 뒤 = 오른발.
+_SB0_WIN = (0.16, 0.50, 0.80)
+
+
+def _sb0(env):
+    st = getattr(env, "_sb0", None)
+    if st is None or st["prev_c"].shape[0] != env.num_envs:
+        N, dev = env.num_envs, env.device
+        z = lambda *s: torch.zeros(*(s or (N,)), device=dev)
+        st = {"prev_c": torch.ones(N, 2, device=dev), "air_t": z(N, 2), "lift_xy": z(N, 2, 2), "lift_z": z(N, 2), "valid": z(N, 2),
+              "half": torch.full((N,), -1.0, device=dev), "td_done": z(), "load_done": z(), "settle_done": z(), "load_t": z(), "settle_t": z(),
+              "r_transfer": z(), "r_unload": z(), "r_clear": z(), "r_prog": z(), "ev_td": z(), "ev_load": z(), "ev_settle": z(), "r_prem": z(),
+              "n_sched": z(), "n_td": z()}
+        env._sb0 = st
+    return st
+
+
+def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: float = 0.5, fz_st_hi: float = 0.85,
+             fz_sw_hi: float = 0.5, fz_sw_lo: float = 0.175, td_air_s: float = 0.06, lift_dz: float = 0.01,
+             clr_lo: float = 0.015, clr_hi: float = 0.04, prog_sat: float = 0.05, disp_lo: float = 0.03, disp_hi: float = 0.10,
+             load_frac: float = 0.25, load_s: float = 0.10, settle_s: float = 0.06, prem_fz: float = 0.6, threshold: float = 5.0, asset_cfg=None):
+    """mode="interval"(0 s): STEP-B0 접촉 일정 추적·보상 값 계산(스텝 모드에서만 0 아님).
+    전환: r = ramp(지지 Fz/mg: 0.5→0.85) × ramp(스윙 Fz/mg: 0.5→0.175) — 성공 스텝의 이륙 순간 0.9/0.17 을 목표로.
+    스윙: 스윙발 비접촉(unload) · 높이 1.5–4 cm(clear) · 앞축 변위/5 cm 포화(prog). 착지 이벤트 = 예정 스윙발이 valid 이륙(≥60 ms·≥1 cm) 뒤
+    앞축 3–10 cm 에 재착지(반주기당 1회). 하중 수용 = 착지 발 Fz > 0.25 mg 100 ms(1회). 정착 = 정착 구간에서 양발·기울기<3°·|ω|<0.5 가 60 ms
+    (그 반주기에 착지·하중 완료 시, 1회). 조기 스윙(벌점 값) = 예정 지지발 비접촉, 또는 전환 구간에서 지지 Fz < 0.6 mg 인데 스윙발이 떠 있음."""
+    st = _sb0(env)
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    sensor = env.scene.sensors["contact_forces"]; fid = _feet_body_ids(env)
+    F = sensor.data.net_forces_w[:, fid, :]; c = (F.norm(dim=-1) > threshold).float()
+    mg = float(G) * asset.data.default_mass.sum(1).to(F.device); fz = F[..., 2] / mg.unsqueeze(1)
+    bid = _g21_bids(env); fp = asset.data.body_pos_w[:, bid, :]; fxy = fp[..., :2]; fzp = fp[..., 2]
+    dt = env.step_dt; N = env.num_envs; ar = torch.arange(N, device=F.device)
+    fresh = env.episode_length_buf <= 1
+    if bool(fresh.any()):
+        for k, val in st.items():
+            val[fresh] = 0.0
+        st["prev_c"][fresh] = 1.0; st["half"][fresh] = -1.0
+    t = env.episode_length_buf.to(torch.float32) * dt
+    u = torch.remainder(freq * t, 1.0)
+    half = (u >= 0.5).float(); v = torch.remainder(2.0 * u, 1.0)
+    sw = half.long(); stc = 1 - sw                                   # 스윙 = 왼(0) 앞 반주기, 오른(1) 뒤 반주기
+    mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
+    new_half = half != st["half"]
+    for k in ("td_done", "load_done", "settle_done", "load_t", "settle_t"):
+        st[k] = torch.where(new_half, torch.zeros_like(st[k]), st[k])
+    st["n_sched"] += (new_half & (st["half"] >= 0)).float() * mode
+    st["half"] = half
+    w_tr = v < _SB0_WIN[0]; w_sw = (v >= _SB0_WIN[0]) & (v < _SB0_WIN[1]); w_st = v >= _SB0_WIN[2]
+    # 발별 이륙/착지
+    lifted = (st["prev_c"] > 0.5) & (c < 0.5); landed = (st["prev_c"] < 0.5) & (c > 0.5); air = c < 0.5
+    st["lift_xy"] = torch.where(lifted.unsqueeze(-1), fxy, st["lift_xy"]); st["lift_z"] = torch.where(lifted, fzp, st["lift_z"])
+    st["valid"] = torch.where(lifted, torch.zeros_like(st["valid"]), st["valid"])
+    st["air_t"] = torch.where(air, st["air_t"] + dt, torch.zeros_like(st["air_t"]))
+    st["valid"] = torch.where(air & (st["air_t"] >= td_air_s) & ((fzp - st["lift_z"]) >= lift_dz), torch.ones_like(st["valid"]), st["valid"])
+    q = asset.data.root_quat_w; ex = torch.zeros(N, 3, device=F.device); ex[:, 0] = 1.0
+    hx = _quat_apply(q, ex)[:, :2]; hx = hx / hx.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+    dfwd = ((fxy - st["lift_xy"]) * hx.unsqueeze(1)).sum(-1)          # (N,2) 이륙 뒤 앞축 변위
+    fz_st, fz_sw = fz[ar, stc], fz[ar, sw]
+    ramp = lambda x, a, b: ((x - a) / (b - a)).clamp(0.0, 1.0)
+    st["r_transfer"] = ramp(fz_st, fz_st_lo, fz_st_hi) * ramp(fz_sw, fz_sw_hi, fz_sw_lo) * w_tr.float() * mode
+    sw_air = air[ar, sw]
+    st["r_unload"] = sw_air.float() * w_sw.float() * mode
+    dz = fzp[ar, sw] - st["lift_z"][ar, sw]
+    st["r_clear"] = (sw_air & (dz >= clr_lo) & (dz <= clr_hi)).float() * w_sw.float() * mode
+    st["r_prog"] = (dfwd[ar, sw] / prog_sat).clamp(0.0, 1.0) * sw_air.float() * w_sw.float() * mode
+    td = landed[ar, sw] & (st["valid"][ar, sw] > 0.5) & (dfwd[ar, sw] >= disp_lo) & (dfwd[ar, sw] <= disp_hi) & (st["td_done"] < 0.5) & (mode > 0.5)
+    st["ev_td"] = td.float(); st["td_done"] = torch.maximum(st["td_done"], st["ev_td"]); st["n_td"] += st["ev_td"]
+    st["valid"] = torch.where(landed, torch.zeros_like(st["valid"]), st["valid"])
+    ld = (st["td_done"] > 0.5) & (st["load_done"] < 0.5) & (fz_sw > load_frac)
+    st["load_t"] = torch.where(ld, st["load_t"] + dt, torch.zeros_like(st["load_t"]))
+    st["ev_load"] = ((st["load_t"] >= load_s) & (st["load_done"] < 0.5)).float(); st["load_done"] = torch.maximum(st["load_done"], st["ev_load"])
+    pg = asset.data.projected_gravity_b; tilt = torch.rad2deg(torch.acos((-pg[:, 2]).clamp(-1.0, 1.0)))
+    w = asset.data.root_ang_vel_b[:, :2].norm(dim=1)
+    ok = w_st & (c.min(1).values > 0.5) & (tilt < 3.0) & (w < 0.5) & (st["load_done"] > 0.5) & (st["settle_done"] < 0.5)
+    st["settle_t"] = torch.where(ok, st["settle_t"] + dt, torch.zeros_like(st["settle_t"]))
+    st["ev_settle"] = (st["settle_t"] >= settle_s).float() * mode; st["settle_done"] = torch.maximum(st["settle_done"], st["ev_settle"])
+    st["r_prem"] = ((c[ar, stc] < 0.5) | (w_tr & sw_air & (fz_st < prem_fz))).float() * mode
+    st["prev_c"] = c
+
+
+def sb0_value(env, name: str) -> torch.Tensor:
+    """STEP-B0 추적기 값(r_transfer·r_unload·r_clear·r_prog·ev_td·ev_load·ev_settle·r_prem)."""
+    return _sb0(env)[name]

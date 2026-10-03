@@ -1,0 +1,5 @@
+STEP fail-fast 평가 · Biped12-HangStand-StepB1-v0 · /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-04_03-26-05_stepb1_seed1_from_g21a11300/model_11900.pt
+지연 1 · LPF 0.27 · seed 1 · env 256(스텝 128/서기 128) · 서기 2.0s → 스텝 8.0s · vx 0.05
+예정 반주기 2232 · 전환 구간 하중 비대칭 평균 +0.003 mg · load_ready(지지>0.65) 0.2 % · unload(스윙<0.35) 0.3 %
+valid 이륙 0.1 % · 착지 0.1 % · 하중 수용 0.1 % (예정 반주기 대비)
+낙상: 스텝 그룹 3.1 % · 서기 그룹 7.8 % · 서기 그룹 무요청 이륙 env 0.0 %

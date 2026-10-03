@@ -150,3 +150,126 @@ isaac_berkeley_humanoid·FALCON·HIMLoco·HugWBC·HoST·booster_gym·rl_sar·LCP
 출처: [LearningHumanoidWalking](https://github.com/rohanpsingh/LearningHumanoidWalking) · [apex](https://github.com/osudrl/apex) · [MimicKit](https://github.com/xbpeng/MimicKit) · [DeepMimic](https://github.com/xbpeng/DeepMimic) ·
 [whole_body_tracking](https://github.com/HybridRobotics/whole_body_tracking) · [ProtoMotions](https://github.com/NVlabs/ProtoMotions) · [AMP_for_hardware](https://github.com/escontra/AMP_for_hardware) · [mjrl/DAPG](https://github.com/aravindr93/mjrl) ·
 [Atalante arXiv 2203.01148](https://arxiv.org/abs/2203.01148) · [JSRL arXiv 2204.02372](https://arxiv.org/abs/2204.02372) · [Siekmann arXiv 2011.01387](https://arxiv.org/abs/2011.01387) · [Reverse Curriculum arXiv 1707.05300](https://arxiv.org/abs/1707.05300) · [arXiv 2411.01000](https://arxiv.org/abs/2411.01000)
+
+## 라운드 2 (2026-10-04 03:55)
+
+전제(코디네이터 전달, 측정 사실): 개루프 진단에서 G21a + α·기준 잔차가 α=1 → 비대칭 +0.18 mg·이륙 0.8 %, α=2 → 비대칭 +0.39 mg·load_ready 74 %·이륙 31 %·착지 14.5 %·하중 수용 12.8 %·낙상 3.9 %.
+STEP-B1 은 200 반복에서도 비대칭 0. 준비 중인 STEP-A0 = 정책 + α·잔차, α 2.0→1.5→1.0→0.5→0.25→0, 블록 하중 수용 ≥ 50 % 로 감쇠 승격.
+
+### 0. STEP-A0 구현에서 확인한 사실 (읽기만, 수정 없음)
+
+- 보조는 `rl_walking/mdp_hang.py:2402-2423` `install_step_assist` 가 액션 항의 `pre_delay_hook` 에 잔차를 더한다. 훅 위치는 `rl_walking/actions.py:133-134` —
+  **지연 버퍼 → 슬루(±4°/틱) → LPF 앞**. 따라서 (i) 보조는 env 쪽 동역학 변경이고 PPO 저장 행동은 정책 샘플 그대로(아래 2-1, on-policy 유지),
+  (ii) 잔차가 **정책 잡음과 같은 슬루 예산을 나눠 쓰고 LPF 로 감쇠**된다. α=1 → 이륙 0.8 %, α=2 → 31 % 의 강한 비선형은 이 포화·감쇠와 정합(가설: 인과 미검증).
+  → α 를 2.0→1.5 로 한 단계 내리는 것만으로도 이륙이 급락할 수 있다(계단 폭이 비선형 구간에 비해 큼).
+- 커리큘럼 `mdp_hang.py:2426-2446` `step_assist_curriculum`: **전 env 공통 α 하나**, 승격 조건 = 블록 하중 수용 ≥ 0.5 & 최소 50 반복, **되돌림(α 증가) 없음**. 개루프 α=2 의 하중 수용은 12.8 % 이므로 첫 감쇠 전에 정책이 약 4배 개선돼야 한다.
+- α 는 actor 관측에 없음(`mdp_hang.py:2404` 주석). 잔차는 **에피소드 시간 기반 위상**(`2416-2420`)의 함수이고 actor 는 같은 위상의 `gait_clock`(`mdp_stage4.py:25-42`)을 관측한다 → 원리적으로 actor 가 잔차를 스스로 표현(내재화)할 수 있는 정보는 있다.
+
+### 1. 출처별 분석
+
+#### 1-1. HoST (Huang et al., RSS 2025) — **성공 조건부 보조력 감쇠의 실제 코드**
+- URL: https://github.com/InternRobotics/HoST · commit **70bb580 (2025-06-17)** [코드 확인] (라운드 0 OSS_REFERENCES 는 지연 DR 만 참고 — 보조 커리큘럼은 이번이 처음)
+- 핵심 줄 (`legged_gym/legged_gym/envs/base/host_ground.py`):
+  - `:107-113` 기저에 **위쪽 당김 힘**(env 별 `self.force`) 인가, 단 **몸통이 거의 수직일 때만**(`projected_gravity_z < −0.8`, `:110-112` 의 `host_ground_prone.py` 동형) 그리고 비구동 초기 시간 이후.
+  - `:505-508` `update_force_curriculum(env_ids)`: **리셋되는 env 묶음의 평균 머리 높이 > 문턱**이면 그 env 들의 힘 −20 N(0 하한), 행동 배율 −0.02(0.25 하한). 증가 경로 없음. `:201` reset 시 호출.
+  - `:589-590` 초기값(G1: `g1/g1_config_ground.py:293-299` force 100 → 실제 200 N 주석, threshold_height 0.9 m), `:290` **행동 배율을 actor 관측에 넣음**(잡음 ±0.025), `:227-228` 힘·배율 로그.
+- 메커니즘: 보조 = **env 쪽 외력**(정책 행동과 분리), **env 별 진폭 감쇠**, 성공(목표 높이 도달) 1회당 한 계단(200 N → 10회 성공이면 0), 보조는 **상태 조건부**(이미 섰을 때만).
+- **우리에게 적용**: (a) STEP-A0 의 전역 α 대신 **env 별 α** 로 바꾸고 "그 env 의 스텝 사이클이 하중 수용까지 성공하면 그 env 의 α −δ" 규칙(HoST 식)을 쓰면 잘하는 env 부터 보조가 빠지고 못하는 env 는 보조 유지 — 전역 α 의 '평균에 끌려 전원 동시 급락' 위험이 없다.
+  (b) HoST 는 보조량(행동 배율)을 actor 관측에 넣었지만 우리는 actor 계약 동결 → **α 를 critic 관측에만** 넣는 것이 대응책(비대칭 actor-critic; 가치 추정의 α 모호성 제거). 위험: Baisero & Amato 2022 의 특권 critic 편향(OSS_REFERENCES §2).
+  (c) HoST 의 '수직일 때만' 같은 상태 조건: 우리 잔차는 시간만 보고 상태를 안 봄 → 이미 넘어지는 중에도 잔차가 들어가 낙상 3.9 % 기여 가능(가설).
+
+#### 1-2. Yu, Turk & Liu 2018 (SIGGRAPH, "Learning Symmetric and Low-energy Locomotion", arXiv 1801.08093) — **에피소드 안에서 보조를 줄이는 env-centered 커리큘럼**
+- 논문 [논문 확인: Sec. 4.1, 4.2.1, 4.2.2, Algorithm 3]. 공식 코드 저장소는 이번 라운드에서 찾지 못함(**미검증**).
+- 내용:
+  - 4.1 보조 = 골반에 붙은 **가상 PD 스프링 힘**(좌우 균형 + 전진 추진), 커리큘럼 변수 x = (kp_횡, kp_전진). env 쪽 힘이므로 PPO 는 그대로.
+  - 4.2.1 learner-centered: 현재 정책이 원 수익의 h=80 % 에 도달하면 5방향 line-search 로 "정책이 수익 60 % 를 유지하는 가장 큰 보조 감소"를 찾아 다음 레슨. ‖x‖<5 이면 무보조로 최종 학습("매우 빨리 배운다").
+  - 4.2.2 environment-centered(논문이 데이터 효율로 선호, Sec 6): **한 롤아웃 안에서 보조를 3 s 마다 25 % 씩 계단 감소**(x_begin → x_end), 진행 조건 = **두 번째 계단(2p s)까지 균형 유지 AND 평균 수익 > 완전보조 정책 수익의 g=70 %**.
+    "한 롤아웃 안에서 여러 보조 수준을 겪게 해 **특정 보조에 과적합하는 것을 막는다**". 수익 조건을 둔 이유: "균형 조건만 쓰면 가만히 서 있는 정책이 될 수 있다".
+- **우리에게 적용**: STEP-A0 의 가장 큰 위험(α→0 에서 행동 소멸)에 대한 원조 처방. 최소 변경: 스텝 모드 에피소드 안에서 α 를 **반주기마다 계단 감소**(예 2.0 → 1.5 → 1.0 → 0.5, 반주기 23틱 기준) 하고, 전역 감쇠는 이 창 [α_begin, α_end] 를 통째로 내리는 방식.
+  같은 에피소드에서 "보조가 빠지는 순간에도 이어서 딛기"가 직접 학습 신호가 된다. 진행 조건은 하중 수용률만이 아니라 **α 가 가장 낮은 반주기의 하중 수용률**(=보조 없이 얼마나 하나)로.
+  위험: 반주기마다 동역학이 바뀌어 critic 이 α 를 모르면 가치 잡음 증가(→ critic 에 α). 이 논문은 scratch 학습·토크 제어라 이어 학습에서도 같은 효과가 날지는 미검증.
+
+#### 1-3. Residual Policy Learning (Silver et al. 2018, arXiv 1812.06298) — 잔차 학습의 기본 규칙 2개
+- URL: https://github.com/k-r-allen/residual-policy-learning · commit **ab330ee (2019-04-08)** [코드 확인] + 논문 [논문 확인: ar5iv]
+- 핵심 줄: `rpl_environments/rpl_environments/envs/residual_fetch_push_env.py:26-34` — **기본 제어기를 env.step 안에서 더함**(`action = residual + get_push_control(obs)`, 이후 clip); `tensorflow/experiment/models/utils.py:27-42` `nn_last_zero` **마지막 층 0 초기화**.
+  논문: 기본 제어기는 **끝까지 제거하지 않음**. 강한 초기 정책 + 미학습 critic 이면 초기 actor 갱신이 성능을 망치므로 **critic 만 먼저 학습하는 burn-in**(critic 손실 < β=1.0 이 될 때까지 정책 고정).
+- **우리에게 적용**: (a) RPL 은 보조를 '영구 부품'으로 둔다 — 실물 배포 계약상 우리는 α=0 이 필수라 RPL 은 "제거 문제"를 풀어주지 않는다(대신 env 쪽에 더하는 구조가 on-policy 를 지킨다는 점은 STEP-A0 와 동일, 확인).
+  (b) **critic burn-in**: α=2 를 켠 순간 G21a 의 critic 은 이 동역학(스텝·착지)을 본 적이 없다. 최소 실험: STEP-A0 시작 후 처음 N 반복(예 50) **actor 학습률 0(또는 actor 고정)·critic 만 갱신**, 대조 = 즉시 공동 갱신. 기대: 초기 actor 붕괴·서기 망각 감소.
+  위험: PPO 하이퍼 동결 원칙과의 관계(학습률 스케줄 변경) — 사용자 판단 필요. rsl_rl 3.1.2 에는 actor 고정 옵션이 없어 러너 래퍼 필요.
+
+#### 1-4. Kickstarting (Schmitt et al. 2018, arXiv 1803.03835) — 보조를 **행동이 아니라 손실로** 넣는 대안
+- 논문 [논문 확인: ar5iv Sec 2.1, 2.3, 5.1.1]. 공식 코드 없음.
+- 내용: 손실 = ℓ_RL + λ_k·H(π_teacher ‖ π_student). λ_k 는 PBT 로 자동 조정하거나 **선형 1→0 감쇠**(Sec 5.1.1: "올바르게 고르면 선형 감쇠도 잘 된다", 상수 λ 는 교사 수준에서 정체). λ→0 이후에도 성능 하락 없이 교사를 넘어섬(보고 수치 +43.4 %, DMLab-30).
+- **우리에게 적용**: STEP-A0 의 "보조가 빠지면 행동이 사라진다" 위험은 보조가 **정책 밖**(env)에 있기 때문. Kickstarting 형으로 바꾸면 보조가 **정책 안으로** 들어간다:
+  교사 = 고정 G21a 평균 + α·r(φ)/0.25(행동 단위), 학생 손실에 λ_k·‖μ_θ(o) − 교사(o)‖² (스텝 모드 env 만), λ_k 선형 감쇠. actor 가 `gait_clock`·명령을 보므로 r(φ) 를 표현할 정보가 있다(§0).
+  최소 실험: STEP-A0(env 보조) vs STEP-K0(손실 보조, 실행 행동은 정책 그대로) — 같은 α 일정·seed. 판정은 둘 다 α/λ=0 에서. 기대: K0 는 보조 제거 절벽이 없음. 위험: 실행 행동에 보조가 없으므로 **초기에는 실제 스텝 상태를 방문 못 함**(탐색 이점 상실) →
+  A0 와 결합(env 보조로 방문 + 손실로 내재화)이 현실적. PPO 손실 변경이므로 SmoothPPO(G18j) 와 같은 서브클래스 방식 필요.
+
+#### 1-5. Jump-Start RL (라운드 1 §1-9 보강) — 롤인 길이 감쇠 규칙
+- [논문 확인: Algorithm 1] h(안내 정책 단계 수)를 H₁ > H₂ > … 로 줄이되 **조합 정책 평가 ≥ β 일 때만** 다음 단계. JSRL-Random(h 균등 무작위)도 최종 성능은 비슷(Sec 5.4). 공식 코드는 찾지 못함(**미검증**).
+- **우리에게 적용**: α(진폭) 대신 **보조 지속 반주기 수 h** 를 줄이는 변형 — 에피소드 처음 h 반주기만 α=2(개루프에서 실제로 스텝이 나는 진폭), 이후 α=0. h 를 env 별 무작위(JSRL-Random)로.
+  장점: 진폭의 비선형 절벽(α 1 vs 2)을 피한다 — 보조가 있는 구간은 항상 '효과 있는' 진폭. 위험: 에피소드 초반에만 스텝이 몰려 이후 서기 국소해로 돌아갈 수 있음 → 판정은 보조 종료 후 반주기의 하중 수용.
+
+#### 1-6. DAgger β-혼합 (Ross et al. 2011, AISTATS) — '확률적으로 보조 켜기'의 고전적 일정
+- 논문만(코드 없음, 원문 재확인 안 함 → 수치 **미검증**): i 번째 반복에서 전문가 행동을 확률 β_i 로 실행, β₁=1, β_i = p^{i−1} 지수 감쇠.
+- **우리에게 적용**: ④ 의 "env 비율 감쇠" 변형 근거. 단 DAgger 는 모방 손실로 학습하므로, PPO 에서 보조를 확률적으로 켜면 보조 없는 env 는 여전히 국소해에 있다(아래 §2-4 논의).
+
+### 2. 질문별 정리
+
+#### 2-1. PPO 의 off-policy 성 — 보조를 동역학으로 둘 때 vs 행동으로 넣을 때
+- **확인된 사실 [코드 확인]**: rsl_rl 3.1.2 `algorithms/ppo.py:147-149` 는 `policy.act(obs)` 샘플을 **env.step 전에** 저장하고 그 log-prob 을 기록, `runners/on_policy_runner.py:104-110` 에서 같은 텐서를 env 에 넘긴다. 갱신 시 `ppo.py:251,295` ratio = exp(logπ_new(a) − logπ_old(a)).
+  STEP-A0 는 잔차를 env 안(액션 항 훅)에서 더하므로 저장된 a 는 정책 샘플 그대로 → **PPO 는 '보조가 포함된 동역학'에 대해 on-policy**. likelihood ratio 보정 불필요.
+- 만약 실행된 행동(정책+보조)을 a 로 저장하거나, 보조를 rsl_rl 쪽에서 행동에 더하면 old log-prob 이 실행 행동과 불일치 → ratio 편향(보조 크기 2·r 은 std 0.08–0.15 rad 보다 큼 → 로그확률이 극단값, 클립이 대부분 표본을 잘라 학습 정지 가능, 계산적 추론·미검증). **지금 구조 유지가 맞다.**
+- 남는 문제는 off-policy 가 아니라 **비정상성·부분관측**: (i) α 가 바뀔 때마다 MDP 가 바뀌어 critic 이 낡음(→ α 를 critic 관측에 / 감쇠 직후 critic 우선 갱신), (ii) actor 가 α 를 모르므로 정책은 "평균 α 에 맞춘 행동"을 학습 — 전역 α 가 계단으로 떨어지면 그 순간 정책은 줄어든 보조를 모른다.
+- 슬루 포화 연관: 정책 샘플이 슬루(4°/틱)로 잘리면 저장된 a 와 실행 목표가 다르다(라운드 1 계산: 포화 46–68 % 틱). 보조가 같은 슬루 예산을 쓰므로 α=2 구간에서 포화는 더 늘 가능성(미측정).
+  Fujita & Maeda 2018(Clipped Action Policy Gradient, arXiv 1802.07564, **미검증**: 원문 미확인)은 잘린 행동에서 미리 자른 값의 log-prob 을 쓰면 분산이 준다고 보고 — 우리 슬루는 시간 의존 클립이라 그대로 적용 불가, 진단 지표(포화율)만 로그 권장.
+
+#### 2-2. α 감쇠 스케줄 실제 사례 요약 (진폭 vs 비율 vs 길이)
+| 출처 | 보조 형태 | 감쇠 단위 | 감쇠 속도·조건 | 제거 후 |
+|---|---|---|---|---|
+| HoST `host_ground.py:505-508` | env 쪽 위 당김 힘(상태 조건부) | env 별 진폭 | 리셋 묶음 평균 머리 높이 > 문턱마다 −20 N (200 N → 10회), 되돌림 없음 | 평가 시 힘 0(`scripts/play.py:26`) |
+| Yu 2018 Alg. 3 | env 쪽 PD 스프링 힘 | 진폭, **에피소드 내 계단(3 s 마다 −25 %)** + 창 전체 이동 | 2p s 균형 & 수익 > 완전보조 수익 70 % | 무보조 최종 학습 별도, "빨리 배운다" |
+| Yu 2018 4.2.1 | 같음 | 진폭, line-search | 수익 80 % 도달 → 수익 60 % 유지하는 최대 감소 | 같음 |
+| Kickstarting | 증류 손실 | λ_k | PBT 또는 선형 1→0 | 성능 유지·초과 |
+| JSRL Alg. 1 | 안내 정책 롤인 | 롤인 길이 h | 평가 ≥ β 일 때 h 감소, 또는 무작위 h | 보고상 유지 |
+| DAgger | 전문가 행동 실행 | 확률 β_i | p^{i−1} 지수 | (모방 손실이라 해당 없음) |
+| RPL | 기본 제어기 + 잔차 | — | 제거 안 함 | — |
+| DAPG `dapg.py:62-70` | 시연 어드밴티지 | λ₀·λ₁^k | λ₁=0.95/반복 | — |
+
+공통점: (1) **성공 조건부**로만 감쇠(HoST·Yu·JSRL), (2) 감쇠 판정에 "보조가 적은 상태에서의 성능"을 포함(Yu: 2p s 이후 계단, 수익 조건), (3) 보조를 **env 별 / 에피소드 내에서 다양화**해 특정 보조 수준에 과적합 방지(Yu·JSRL-Random).
+
+#### 2-3. RSI / 상태 은행의 Isaac Lab 구현 줄 단위
+- **BeyondMimic** `whole_body_tracking/tasks/tracking/mdp/commands.py`: `:207-241` 실패 bin 비례 샘플링, `:243-280` `_resample_command` 에서 기준 상태 + 잡음을 `self.robot.write_joint_state_to_sim(...)`, `self.robot.write_root_state_to_sim(...)` 로 직접 기록(관절은 soft limit 으로 clip), `:282-` `_update_command` 에서 시간 끝나면 재샘플. [코드 확인, 라운드 1]
+- **Isaac Lab 설치본**(`/home/ryu/IsaacLab`, 37ddf62687): `source/isaaclab/isaaclab/envs/mdp/events.py:1074-1115` `reset_root_state_uniform`, `:1278-1315` `reset_joints_by_offset` — 리셋 이벤트에서 `write_root_pose_to_sim`/`write_joint_state_to_sim` 하는 표준 형태. 상태 은행 RSI 는 이 두 함수를 본떠 "은행에서 인덱스 샘플 → 같은 API 로 기록" 하는 reset 이벤트로 충분.
+  리셋 순서 `envs/manager_based_rl_env.py:349-394`: scene.reset → **event(reset)** → observation_manager.reset → action_manager.reset → … → episode_length_buf 0.
+- **RSI 함정 3가지(우리 코드 기준) [코드 확인]**:
+  1. **관측 이력**: `utils/buffers/circular_buffer.py:136-139` — 리셋 뒤 첫 append 값으로 **이력 전체를 채움**. 우리 actor 관측은 5틱 이력이므로 은행 상태(스윙 중, 움직이는 중)에서 시작하면 첫 5틱은 "정지된 이력"이 된다 — 실물·정상 학습에 없는 관측. 대응: 은행에 이력도 저장해 버퍼에 직접 기록하거나, 첫 5틱을 보상·손실에서 제외(미구현 기능, 래퍼 필요).
+  2. **액션 항 상태**: `rl_walking/actions.py:121-131` 리셋 env 의 슬루 기준·지연 버퍼·LPF 상태를 **현재 관절 위치**로 초기화 → RSI 가 관절을 먼저 써 두면 일관(이벤트가 액션 리셋보다 먼저 실행되므로 정합, 위 순서). 단 `last_action_lpf` 관측과 `encoder_joint_vel_lpf`·자이로 지연 버퍼(`mdp_hang`)의 내부 상태도 은행 값으로 맞춰야 함(개별 확인 필요, 미검증).
+  3. **위상**: STEP-B/A 의 위상·보조 잔차·`gait_clock` 이 모두 `episode_length_buf` 기반(`mdp_stage4.py:32`, `mdp_hang.py:2272,2416`)이고 리셋 시 0 → 은행 상태의 위상(예 스윙 중간)과 시계가 어긋난다. 대응: 은행 상태의 위상 k 만큼 `episode_length_buf` 를 k 틱으로 설정(시간 제한·밀기 타이밍 영향 확인 필요) 또는 위상 오프셋 버퍼 도입.
+
+#### 2-4. 감쇠 실패 시 대안: env 비율 감쇠 vs 진폭 감쇠
+- **진폭 감쇠(현 STEP-A0)**: 장점 — α 가 조금 줄면 부족분을 정책이 채워야 보상이 유지되므로 **내재화 기울기**가 연속적으로 생긴다(Yu·HoST 방식). 단점 — 우리 플랜트에서 α 효과가 강한 비선형(α 1 → 이륙 0.8 %, α 2 → 31 %): 한 계단이 절벽이 될 수 있음.
+- **env 비율 감쇠(DAgger·JSRL-Random 식, α ∈ {0, 2} 를 확률 p 로)**: 장점 — 보조 env 는 항상 '효과 있는' 진폭이라 스텝 상태 방문이 보장. 단점 — **보조 없는 env 는 여전히 서기 국소해**이고, 보조 env 에서 정책이 배우는 것은 "α=2 잔차 위에서의 보정"이지 잔차 자체가 아니다. actor 가 어느 env 가 보조인지 모르므로 평균에 맞춘 절충(대략 p·r 만큼 내재화되는 방향, 추론·미검증).
+  즉 비율 감쇠 단독은 '방문'은 주지만 '내재화' 압력이 약하다.
+- **권장 조합(가설)**: env 별 α 를 구간 [α_lo, α_hi] 에서 균등 샘플(예 시작 [1.5, 2.0]) + 에피소드 내 반주기 계단 감소(Yu) + env 별 성공 시 그 env 의 구간 하향(HoST) + 일부 env(예 20 %)는 항상 α=0(현재 성능 감시용, 판정 지표).
+- **감쇠 게이트용 진단 지표(새 제안, 계산 가능)**: 스텝 모드에서 정책 평균의 G21a 대비 변화 Δμ(φ) 를 잔차 r(φ) 에 투영한 **내재화 계수 κ = ⟨Δμ, r⟩ / ⟨r, r⟩**(행동 단위 환산). κ 가 0 근처면 정책은 잔차를 전혀 흡수하지 않은 것 → α 를 내리면 행동이 사라진다고 예측. 성능 게이트(하중 수용 ≥ 50 %)와 함께 **κ ≥ (현재 α − 다음 α) 의 일정 비율**을 감쇠 조건으로. 로그된 액션만으로 학습 중 계산 가능(GPU 추가 실행 불필요).
+
+### 3. 실행 순위 (라운드 2, 상위 3)
+
+**1위 — STEP-A0 를 env 별·에피소드 내 감쇠로 바꾸는 단일 변경 (Yu 2018 Alg. 3 + HoST env 별 감쇠)**
+- 근거: Yu 4.2.2("롤아웃 안 여러 보조 수준 → 특정 보조 과적합 방지", 진행 조건에 무보조에 가까운 구간 성능 포함), HoST `host_ground.py:505-508`(env 별 성공 조건부 −20 N 계단).
+- 최소 실험: 대조 = STEP-A0 원안(전역 α 계단). 변경 = α 를 env 별 [α_lo, α_hi] 샘플 + 스텝 모드 반주기마다 −0.25 계단, 전역은 창을 내림. 두 실험 모두 α=0 고정 env 20 % 를 평가용으로 둠. 판정 = α=0 env 의 하중 수용·이륙(사전 기준).
+- 위험: critic 의 α 모호성(→ critic 관측에 α, 2위와 묶지 말고 별도 변수로), 낙상 증가.
+
+**2위 — 감쇠 게이트에 내재화 계수 κ 추가 + 감쇠 직후 critic 우선 갱신(RPL burn-in)**
+- 근거: §2-4(성능만 보면 "보조 덕에 성공"과 "정책이 배워서 성공"을 구분 못 함), RPL 논문(강한 초기 정책 + 미학습 critic 의 초기 붕괴, critic 손실 < β 까지 정책 고정).
+- 최소 실험: 학습 변경 없이 먼저 **STEP-A0 학습 로그에서 κ 를 사후 계산**(현재 α 계단마다). κ≈0 인데 성능 게이트가 열리면 → 감쇠 실패를 사전에 예측하는 지표로 확정. 이후 게이트에 반영.
+- 위험: κ 는 선형 투영이라 정책이 다른 방식(다른 관절 조합)으로 스텝을 배우면 과소평가 — 보조 지표로만.
+
+**3위 — 감쇠가 절벽에서 실패하면: Kickstarting 형 손실 보조(STEP-K0)를 env 보조와 결합**
+- 근거: Kickstarting Sec 5.1.1(선형 λ 감쇠, λ→0 후 성능 유지), §0(actor 가 위상을 관측하므로 r(φ) 표현 가능), 보조가 정책 밖에 있는 한 제거 시 소멸 위험이 구조적.
+- 최소 실험: STEP-A0 + 스텝 모드 env 에 λ_k‖μ_θ − (μ_G21a + α r/0.25)‖² (λ 선형 감쇠), 대조 = STEP-A0 단독. 판정 α=0.
+- 위험: PPO 손실 변경(동결 원칙과의 관계 — 사용자 승인 필요), 교사가 개루프라 착지·하중 수용 구간에서 정책의 폐루프 보정을 방해할 수 있음 → 손실을 이륙 전·스윙 구간 관절에만 적용 검토.
+
+출처: [HoST](https://github.com/InternRobotics/HoST) · [HoST arXiv 2502.08378](https://arxiv.org/abs/2502.08378) · [Yu et al. 2018 arXiv 1801.08093](https://arxiv.org/abs/1801.08093) · [residual-policy-learning](https://github.com/k-r-allen/residual-policy-learning) · [RPL arXiv 1812.06298](https://arxiv.org/abs/1812.06298) ·
+[Kickstarting arXiv 1803.03835](https://arxiv.org/abs/1803.03835) · [JSRL arXiv 2204.02372](https://arxiv.org/abs/2204.02372) · [whole_body_tracking](https://github.com/HybridRobotics/whole_body_tracking) · [Clipped Action PG arXiv 1802.07564](https://arxiv.org/abs/1802.07564)(미검증) · DAgger(Ross et al. 2011, 미검증)

@@ -1,0 +1,2 @@
+label,ckpt,jvel_ema_mode,obs_filter,push_t0,push_src,quiet_band_rms,quiet_growth_ratio,band_env_max,band_growth_per_s,dom_freq_hz,push_dpitch_05,peak_dpitch,first_foot,takeoff,touchdown,load_accept,steps,settle_from_push,settle_from_touchdown,valid_end,end_reason
+1002_g12_v2,stand_crouch_g12,v2,기록 없음(1003 이전 브리지),44.1,지정(영상 등),0.012852750442361774,1.3282122383831518,4.228687403033201,4.41025487523248,3.1746031746031744,1.3239999999999998,19.185000000000002,왼,0.43997230529785014,1.4399708747863755,,3,,,1.4599792003631578,|Δ피치|>15°

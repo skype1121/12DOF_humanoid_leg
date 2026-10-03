@@ -332,6 +332,8 @@ CKPT_GAIT_FREQ_DEFAULT = 1.4
 #: 'ema0' 은 학습 env.yaml 의 joint_vel_ema 가 구버전(encoder_joint_vel_ema = 학습 중 0+잡음)인 정책에만 허용 —
 #: v2 로 학습한 정책(G16~)에 0 을 넣는 반대 방향 결함은 _jvel_ema_contract 검사가 기동을 거부한다.
 CKPT_JVEL_EMA_MODE = {"stand_crouch_g12_ema0": "ema0"}
+#: 1003: 관측 필터 계약(학습 env.yaml 로 결정)이 필요한 정책 — env.yaml 이 없으면 원시 관측으로 조용히 도는 대신 기동 거부.
+CKPT_REQUIRE_ENV_YAML = {"stand_crouch_g21a"}
 #: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).
 #: 대체는 경고 로그로 드러낸다 (0905 감사 A1: 무언 대체 'stand_v7' = 10.49kg 자산 정책 탑승 경로).
 STAND_DEFAULT = "stand_v18b"
@@ -1295,11 +1297,14 @@ def obs_filter_contract(env_contract):
 
 
 def ckpt_obs_filter(name):
-    """체크포인트의 러너 관측 필터 β. env.yaml 이 없으면 (None, None) — 종전 계약."""
+    """체크포인트의 러너 관측 필터 β. env.yaml 이 없으면 (None, None) — 종전 계약.
+    단 CKPT_REQUIRE_ENV_YAML 의 정책은 env.yaml 없이 기동 거부(필터 계약이 조용히 빠지는 것 방지, 1003)."""
     if name not in CHECKPOINTS:
         return None, None
     yml = _ckpt_env_yaml(name)
     if not os.path.isfile(yml):
+        if name in CKPT_REQUIRE_ENV_YAML:
+            raise ValueError(f"{name}: 관측 필터 계약 정책인데 env.yaml 없음 ({yml}) — 기동 거부")
         return None, None
     return obs_filter_contract(_parse_env_contract(yml))
 
@@ -1326,10 +1331,20 @@ def ckpt_jvel_ema_mode(name):
 def _selftest_obs_filter():
     """(1003) 체크포인트별 관측 필터 계약: G12 = 종전(필터 없음), G21a = actions EMA β0.27·joint_vel EMA β0.25 (env.yaml 기준).
     BridgeCore 가 정책을 바꾸면 러너를 새로 만들어 필터·이력 상태가 비워진다(G21a → G12 전환 후 G12 러너에 필터 없음)."""
-    if "stand_crouch_g21a" not in CHECKPOINTS or not os.path.isfile(_ckpt_env_yaml("stand_crouch_g21a")):
-        return "SKIP (stand_crouch_g21a env.yaml 없음)"
+    # G21a 는 콘솔 선택지 — env.yaml 이 없으면 SKIP 이 아니라 실패(배포 누락 검출, 1003)
+    assert os.path.isfile(_ckpt_env_yaml("stand_crouch_g21a")), f"stand_crouch_g21a env.yaml 없음 ({_ckpt_env_yaml('stand_crouch_g21a')}) — 배포 누락"
     g12 = ckpt_obs_filter("stand_crouch_g12"); g21 = ckpt_obs_filter("stand_crouch_g21a")
     assert g12 == (None, None), f"G12 관측 필터가 생김: {g12} — G12 기준선 오염"
+    assert ckpt_obs_filter("stand_crouch_g12_ema0") == (None, None) and ckpt_jvel_ema_mode("stand_crouch_g12_ema0") == "ema0", "G12 ema0 기준선 계약 이상"
+    _saved = CHECKPOINTS["stand_crouch_g21a"]                 # env.yaml 없는 G21a 는 기동 거부
+    try:
+        CHECKPOINTS["stand_crouch_g21a"] = "/nonexistent/g21a/exported"
+        try:
+            ckpt_obs_filter("stand_crouch_g21a"); raise AssertionError("env.yaml 없는 G21a 가 원시 관측으로 허용됨")
+        except ValueError:
+            pass
+    finally:
+        CHECKPOINTS["stand_crouch_g21a"] = _saved
     assert g21 == (OBS_ACT_EMA_BETA_DEPLOY, 0.25), f"G21a 관측 필터 {g21} ≠ (0.27, 0.25)"
     core = BridgeCore("stand_crouch_g21a")
     assert core.runner.act_obs_ema_beta == 0.27 and core.runner.jvel_obs_ema_beta == 0.25
@@ -1347,7 +1362,7 @@ def _selftest_obs_filter():
             obs_filter_contract(bad); raise AssertionError(f"잘못된 계약 허용: {bad}")
         except ValueError:
             pass
-    return "G12 필터 없음 · G21a act β0.27·jvel β0.25 · 정책 전환 시 러너 재생성(필터·이력 비움) · 미지 함수 거부"
+    return "G12·G12 ema0 필터 없음 · G21a act β0.27·jvel β0.25 · env.yaml 없는 G21a 거부 · 정책 전환 시 러너 재생성(필터·이력 비움) · 미지 함수 거부"
 
 def _selftest_contract(required=()):
     """(0906 — 반복 감사 질문의 코드화) 배포 stand 정책의 학습 env(params/env.yaml)와 러너 상수의 계약:
@@ -2602,6 +2617,7 @@ def main():
                    "raw_action": [round(float(v), 4) for v in self.core.runner.last_action],
                    # 1001: 관측 joint_vel_ema 모드(v2 = 실제 속도 EMA / ema0 = 0, 학습 계약 복원)와 실제 속도 EMA RMS(두 모드 모두 계산)
                    "jvel_ema_mode": getattr(self.core.runner, "jvel_ema_mode", "v2"),
+                   "obs_filter": [getattr(self.core.runner, "act_obs_ema_beta", None), getattr(self.core.runner, "jvel_obs_ema_beta", None)],   # 1003 관측 필터 계약(act β, jvel β)
                    "jvel_ema_rms": (round(math.sqrt(sum(float(v) * float(v) for v in self.core.runner.last_jvel_ema)
                                                     / len(self.core.runner.last_jvel_ema)), 4)
                                     if getattr(self.core.runner, "last_jvel_ema", None) is not None else None),

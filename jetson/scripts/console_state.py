@@ -19,7 +19,7 @@ LABELS = {
     "op_touchdown": "착지 기록", "op_release_start": "방출 시작 기록",
     "op_release_stop": "방출 정지 기록", "op_retension": "재인장 기록",
     "op_slack_done": "모든 줄 느슨·무보조 확인", "op_assist": "외부 보조 기록",
-    "op_note": "메모 기록", "analyze": "이 시험 로그 분석", "estop": "정지 요청",
+    "op_note": "메모 기록", "op_push": "밀기 기록", "analyze": "이 시험 로그 분석", "estop": "정지 요청",
     "configure": "시험 설정", "new_trial": "새 시험 준비", "force_reset": "강제 초기화(무토크 확인)",
     "joint_trim": "개별 관절 조정", "joint_trim_zero": "개별 조정 전부 0",
     "joint_trim_preset": "수평 기준 자세 적용", "hold_kd": "홀드 감쇠 kd",

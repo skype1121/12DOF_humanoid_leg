@@ -69,8 +69,10 @@ BRIDGE_JOINT_FRESH_SEC = 0.2  # rl_bridge_node.SENSOR_STALE_SEC 와 동일 — '
 #   stand_crouch_v6   = 같은 날 대조군(0922 배포본)
 #   브리지 CHECKPOINTS 등록은 그대로 둔다 — 과거 기록 재현·셀프테스트용. 콘솔 선택지만 줄인다.
 # 1001: stand_crouch_g12_ema0 = 같은 G12 정책 파일, 관측 joint_vel_ema 만 0(학습 계약 복원 — 학습 중 이 채널은 0+잡음이었다).
-#   이름 그대로의 stand_crouch_g12 는 0929 과 같은 동작(실제 속도 EMA). 기본값(맨 앞)은 바꾸지 않는다 — 선택은 시험 전 승윤님 결정.
-CKPT_CHOICES = ["stand_crouch_g12", "stand_crouch_g12_ema0", "stand_crouch_g11a"]   # 0929: g12 비교 시험 · g11a 대조
+#   이름 그대로의 stand_crouch_g12 는 0929·1002 실물과 같은 동작(실제 속도 EMA).
+# 1003 승윤님 결정: 교대 진단의 공식 G12 기준선 = ema0(학습 관측 계약) → 기본값(맨 앞). G21a = 학습 관측 필터 계약(진단 전용, 승격 아님).
+#   stand_crouch_g12(v2) 는 1002 실물 현상 재현용 보조 대조군 — A/B 데이터에 섞지 않는다.
+CKPT_CHOICES = ["stand_crouch_g12_ema0", "stand_crouch_g21a", "stand_crouch_g12", "stand_crouch_g11a"]
 CKPT_DEFAULT = CKPT_CHOICES[0]
 
 
@@ -1244,6 +1246,8 @@ ACTIONS = {
     "op_slack_done":    (lambda p: (True, "기록: 줄 완전 슬랙"), "✓ 슬랙 완료"),
     "op_touchdown":     (lambda p: (True, "기록: 착지"), "▼ 착지"),
     "op_note":          (lambda p: (True, f"기록: {str(p.get('note',''))[:80]}"), "메모"),
+    # 1003 교대 진단: 밀기 직전·직후에 누르는 기록 전용 표시 — 분석기(reports/real_1003/ab_analyze.py)가 이 시각 주변에서 신호 기준 밀기 시작을 찾는다.
+    "op_push":          (lambda p: (True, "기록: 밀기"), "⇢ 밀기"),
     # 세션 — 자동 개시/종료가 있지만 사람이 명시로 잡을 수 있어야 한다
     "session_start": (lambda p: (True, f"기록 시작: "
                                  f"{SESSION.ensure('수동 시작', manual=True)}"),

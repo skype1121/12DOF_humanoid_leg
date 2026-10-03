@@ -2180,3 +2180,14 @@ class Biped12HangStandStepA0EnvCfg(Biped12HangStandStepI0EnvCfg):
         self.events.step_assist = EventTerm(func=mdp_hang.install_step_assist, mode="startup",
                                             params={"ref_path": "/home/ryu/humanoid_leg_test1/reports/gen_step/ref_step_primitive.npz"})
         self.curriculum = _StepACurriculumCfg()
+
+
+@configclass
+class Biped12HangStandStepA0bEnvCfg(Biped12HangStandStepA0EnvCfg):
+    """STEP-A0b (1004): STEP-A0 + **착지 이벤트 변위 조건 = 방향 무관 수평 2–10 cm** 단일 변경(sb0_step td_any_dir).
+    근거: A0 학습 중 α=2 에서 착지·하중 수용 이벤트 0 — 이벤트가 '앞 3–10 cm' 만 인정, 보조 잔차는 앞뒤 관절을 고정해 제자리/옆 스텝만 만듦
+    (개루프 α=2 eval_step 의 방향 무관 착지 14.5 %). 보조 스텝이 착지·하중·정착 보상과 α 감쇠 조건에 닿게 한다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.sb0.params = dict(self.events.sb0.params, td_any_dir=True)

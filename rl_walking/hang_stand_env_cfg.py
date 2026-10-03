@@ -2246,3 +2246,17 @@ class Biped12HangStandStepA0gEnvCfg(Biped12HangStandStepA0cEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.step_assist.params = dict(self.events.step_assist.params, lead_ticks=6)
+
+
+@configclass
+class Biped12HangStandStepA0hEnvCfg(Biped12HangStandStepA0gEnvCfg):
+    """STEP-A0h (1004): STEP-A0g + **기준 동작 = 스윙 굽힘 펄스 합성판**(ref_step_primitive_flex.npz: 스윙 8틱 사인 펄스 힙 +12°·무릎 −25°·발목 +13°) 단일 변경.
+    보조 α 는 기준 진폭에 상대적이라 시작 α 를 1.0 으로(감쇠 1.0 → 0.75 → 0.5 → 0.25 → 0). 모방 보상도 같은 기준.
+    근거(개루프 G21a·앞당김 6): 원 기준 α=2 → 진짜 스텝 12 %·발 높이 0.09 cm(끌기); 굽힘판 α=1 → 이륙 75 %·착지 62 %·하중 수용 53 %·공중 0.16 s·낙상 27 %/8 s."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ref = "/home/ryu/humanoid_leg_test1/reports/gen_step/ref_step_primitive_flex.npz"
+        self.events.step_assist.params = dict(self.events.step_assist.params, ref_path=ref, alpha0=1.0)
+        self.events.sbi.params = dict(self.events.sbi.params, ref_path=ref)
+        self.curriculum.assist_anneal.params = {"alphas": (1.0, 0.75, 0.5, 0.25, 0.0)}

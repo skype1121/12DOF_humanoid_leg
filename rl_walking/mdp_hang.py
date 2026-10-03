@@ -2409,7 +2409,7 @@ def sbi_anneal_curriculum(env, env_ids, scales: tuple = (1.0, 0.75, 0.5, 0.25, 0
 def install_step_assist(env, env_ids, ref_path: str = "", freq: float = 1.1, walk_min: float = 0.03, alpha0: float = 2.0, lead_ticks: int = 0):
     """mode="startup": 액션 항의 pre_delay_hook 에 보조 잔차를 건다. 스텝 모드 env 의 관절 목표 += α·(q_ref[반주기, k] − q_ref[반주기, 0]).
     정책 관측(직전 액션)은 정책 자신의 출력 그대로(보조는 관측에 안 들어감). α = env._assist_alpha (커리큘럼이 감쇠, 0 이면 순수 정책)."""
-    R = _sbi_ref(env, ref_path)
+    R = _sbi_ref(env, os.environ.get("ASSIST_REF", ref_path))     # ASSIST_REF = 진단용 기준 파일 교체
     term = env.action_manager.get_term("joint_pos")
     env._assist_alpha = float(os.environ.get("STEP_ASSIST_ALPHA", alpha0))    # 평가·진단용 고정 α(커리큘럼 없을 때)
     prev = term.pre_delay_hook

@@ -25,6 +25,8 @@ r = OnPolicyRunner(v, ac.to_dict(), log_dir=None, device=ac.device); r.load(ck);
 cmd = U.command_manager.get_term("base_velocity"); N = U.num_envs; fid = mdp_hang._feet_body_ids(U)
 obs = v.get_observations(); obs = obs[0] if isinstance(obs, tuple) else obs
 prev_c = torch.ones(N, 2, dtype=torch.bool, device=dev); air = torch.zeros(N, 2, device=dev)
+robot = U.scene["robot"]; bid = mdp_hang._g21_bids(U)
+lz = torch.zeros(N, 2, device=dev); lxy = torch.zeros(N, 2, 2, device=dev); zmax = torch.zeros(N, 2, device=dev); land_stats = []
 to_v, td_v, to_sched, td_sched, td_cnt = [], [], [], [], 0; ev_cnt = 0.0
 for i in range(int(10.0 / dt)):
     on = i * dt >= 2.0
@@ -34,6 +36,13 @@ for i in range(int(10.0 / dt)):
     obs = obs[0] if isinstance(obs, tuple) else obs
     c = U.scene.sensors["contact_forces"].data.net_forces_w[:, fid, :].norm(dim=-1) > 5.0
     t = U.episode_length_buf.to(torch.float32) * dt; u = torch.remainder(1.1 * t, 1.0); half = (u >= 0.5).long(); vv = torch.remainder(2.0 * u, 1.0)
+    fp = robot.data.body_pos_w[:, bid, :]
+    lifted0 = prev_c & ~c
+    lz = torch.where(lifted0, fp[..., 2], lz); lxy = torch.where(lifted0.unsqueeze(-1), fp[..., :2], lxy)
+    zmax = torch.where(lifted0, torch.zeros_like(zmax), torch.where(~c, torch.maximum(zmax, fp[..., 2] - lz), zmax))
+    if on:
+        for e, f in zip(*torch.where((~prev_c) & c)):
+            land_stats.append((float(air[e, f]), float(zmax[e, f]), float((fp[e, f, :2] - lxy[e, f]).norm())))
     air = torch.where(~c, air + dt, torch.zeros_like(air))
     if on:
         lifted = prev_c & ~c; landed = (~prev_c) & c
@@ -49,5 +58,6 @@ L = [f"# 위상별 이륙·착지 (α={a.alpha}, G21a, {N} env × 8 s 스텝 모
      f"이륙 {len(to_v)}건 · 예정 스윙발의 이륙 {100 * to_s.mean() if len(to_s) else 0:.0f} % · 위상 히스토그램(0.1 칸): {H(to_v)}",
      f"착지 {len(td_v)}건 · 착지 순간 그 발이 '현재 반주기 예정 스윙발'인 비율 {100 * td_s.mean() if len(td_s) else 0:.0f} % · 위상 히스토그램: {H(td_v)}",
      f"추적기 ev_td 집계 {ev_cnt:.0f}건 = 실제 착지의 {100 * ev_cnt / max(td_cnt, 1):.1f} %",
+     (lambda A: f"착지별 공중 시간 중앙 {np.median(A[:,0]):.3f} s [p25 {np.percentile(A[:,0],25):.3f}, p75 {np.percentile(A[:,0],75):.3f}] · 최대 발 높이 중앙 {100*np.median(A[:,1]):.2f} cm [p75 {100*np.percentile(A[:,1],75):.2f}] · 수평 이동 중앙 {100*np.median(A[:,2]):.2f} cm [p75 {100*np.percentile(A[:,2],75):.2f}] · 공중≥60 ms {100*(A[:,0]>=0.06).mean():.0f} % · 높이≥1 cm {100*(A[:,1]>=0.01).mean():.0f} % · 이동≥2 cm {100*(A[:,2]>=0.02).mean():.0f} % · 셋 다 {100*((A[:,0]>=0.06)&(A[:,1]>=0.01)&(A[:,2]>=0.02)).mean():.1f} %")(np.array(land_stats)) if land_stats else "착지 없음",
      "창: 전환 v<0.16 · 스윙 <0.50 · 착지/하중 <0.80 · 정착 ≥0.80. 착지 시 '예정 스윙발 아님' 이면 sb0_step 은 그 착지를 이벤트로 세지 않는다(반주기 경계 넘김)."]
 open(f"/home/ryu/humanoid_leg_test1/reports/gen_step/{a.out}.md", "w").write("\n".join(L) + "\n"); os._exit(0)

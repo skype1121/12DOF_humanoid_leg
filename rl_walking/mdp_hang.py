@@ -2242,7 +2242,7 @@ def _sb0(env):
         z = lambda *s: torch.zeros(*(s or (N,)), device=dev)
         st = {"prev_c": torch.ones(N, 2, device=dev), "air_t": z(N, 2), "lift_xy": z(N, 2, 2), "lift_z": z(N, 2), "valid": z(N, 2),
               "half": torch.full((N,), -1.0, device=dev), "td_done": z(), "load_done": z(), "settle_done": z(), "load_t": z(), "settle_t": z(),
-              "r_transfer": z(), "r_unload": z(), "r_clear": z(), "r_prog": z(), "ev_td": z(), "ev_load": z(), "ev_settle": z(), "r_prem": z(),
+              "r_transfer": z(), "r_asym": z(), "r_unload": z(), "r_clear": z(), "r_prog": z(), "ev_td": z(), "ev_load": z(), "ev_settle": z(), "r_prem": z(),
               "n_sched": z(), "n_td": z()}
         env._sb0 = st
     return st
@@ -2292,6 +2292,8 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
     fz_st, fz_sw = fz[ar, stc], fz[ar, sw]
     ramp = lambda x, a, b: ((x - a) / (b - a)).clamp(0.0, 1.0)
     st["r_transfer"] = ramp(fz_st, fz_st_lo, fz_st_hi) * ramp(fz_sw, fz_sw_hi, fz_sw_lo) * w_tr.float() * mode
+    # STEP-B1(1004): 선형 하중 비대칭 (지지 − 스윙)/mg ∈ [0, 0.65] — 대칭 서기에서도 예정 지지 쪽 비대칭에 즉시 양의 기울기
+    st["r_asym"] = (fz_st - fz_sw).clamp(0.0, 0.65) * w_tr.float() * mode
     sw_air = air[ar, sw]
     st["r_unload"] = sw_air.float() * w_sw.float() * mode
     dz = fzp[ar, sw] - st["lift_z"][ar, sw]

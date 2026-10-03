@@ -2130,3 +2130,13 @@ class Biped12HangStandStepB0EnvCfg(Biped12HangStandG21aEnvCfg):
                                ("swing_progress", 0.5, "r_prog"), ("touchdown_event", 5.0, "ev_td"), ("load_accept_event", 10.0, "ev_load"),
                                ("settle_event", 15.0, "ev_settle"), ("premature_swing", -2.0, "r_prem")):
             setattr(rw, name, RewTerm(func=mdp_hang.sb0_value, weight=wgt, params={"name": key}))
+
+
+@configclass
+class Biped12HangStandStepB1EnvCfg(Biped12HangStandStepB0EnvCfg):
+    """STEP-B1 (1004): STEP-B0 + **하중 보상 형태만** 교체 — 곱형 ramp(지지)×ramp(스윙) → 선형 (지지 Fz − 스윙 Fz)/mg clamp [0, 0.65], 가중치 +2.0,
+    전환 구간에서만(같은 창). 나머지 구조 동일(단일 변수). 근거: STEP-B0 load_transfer 1500 반복 평탄(최대치 ~0.4 %) — 대칭 근처 기울기 ≈ 0."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.load_transfer = RewTerm(func=mdp_hang.sb0_value, weight=2.0, params={"name": "r_asym"})

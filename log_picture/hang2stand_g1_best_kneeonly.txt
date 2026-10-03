@@ -1,0 +1,76 @@
+==========================================================================
+Hanging-to-Stand 평가 — Biped12-HangStand-G1-v0
+인자: --headless --task Biped12-HangStand-G1-v0 --num_envs 256 --load_run 2026-09-19_21-47-29_g1 --checkpoint model_161499.pt --nominal --no_push --shared_bias 0,-11,0 --ankle_kp_scale 1.0 --ankle_friction 0.0 --out_tag g1_best_kneeonly
+체크포인트: /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-09-19_21-47-29_g1/model_161499.pt
+배포 경로: h3 chain: 러너 슬루 4.0°/틱 → LPF β0.27 → 블렌딩 1.5s
+env 256 × 20.0s, DR OFF(명목), com_fix=None, 푸시 OFF, 관측노이즈 ON
+지지 스케줄: r0 (0.0, 0.0) 유지 (0.1, 0.1)s 방출 (0.1, 0.2)s, 간격 z (0.0, 0.01)
+==========================================================================
+접지(양발 동시) 도달      : 256/256 (100.0%)  평균 접지 시각 0.06s
+지지 0 도달(살아서)        : 256/256 (100.0%)  평균 방출완료 시각 0.02s  그때 피치 +0.00°
+**지지 0 이후 5s 생존**   : 0/256 (0.0%)   ← 핵심 지표
+램프 롤 토크 at 낙상 [Nm] (낙상 env 256/256): p10 0.00 · 중앙 0.00 · p90 0.00 · 최소 0.00 · 최대 0.00
+**지지 0 이후 5s 생존**(미검증 0: 방출 후 관측창 <5s)
+낙상(조기 종료)            : 256/256 (100.0%)  방향 뒤 0 · 앞 0 · 왼 0 · 오른 0
+   낙상 시 지지비 평균 0.00, 낙상 시각 평균 0.86s, 방출 후 낙상 256 / 방출 전 낙상 0
+env별 최대 |롤| 평균 0.52°  최대 |피치| 평균 26.85°  최대 각속도 평균 2.20 rad/s
+종료 시 접촉: 양발 253 · 왼만 3 · 오른만 0 · 무접촉 0
+종료 시 관절각 평균 [deg] (생존 env):
+   (생존 env 없음)
+물리 실현성 — 지지 0 이후 생존 스텝 (AK 한계 대비): 관절 τ피크 /한계 τRMS 포화%
+   left_hip_f_joint        10.12  25.0   2.89   0.0
+   right_hip_f_joint       10.66  25.0   2.96   0.0
+   left_hip_a_joint        10.62  25.0   1.47   0.0
+   right_hip_a_joint        6.41  25.0   2.70   0.0
+   left_hip_r_joint         4.33  25.0   0.73   0.0
+   right_hip_r_joint        3.90  25.0   1.29   0.0
+   left_knee_joint         25.00  25.0   7.10   2.3
+   right_knee_joint        25.00  25.0   7.09   2.2
+   left_ankle_f_joint      25.00  25.0   4.38   0.1
+   right_ankle_f_joint     21.11  25.0   4.37   0.0
+   left_ankle_r_joint       3.01  24.0   0.80   0.0
+   right_ankle_r_joint      3.06  24.0   1.37   0.0
+   발 간격(좌우, 발목롤 링크) 평균 287 mm · 앞뒤 어긋남 2 mm
+정지도 — 지지 0 이후 생존 스텝 env 평균: |각속도xy| 0.798 rad/s · |수평속도| 0.635 m/s · 관절속도 RMS 1.032 rad/s · 발 들기 0.01회/env (양발 접촉 후)
+시간축 (0.5s 간격): t  지지비  접촉비  base z  피치
+     0.0   0.00   0.00  0.623   +0.00
+     0.5   0.00   1.00  0.651  -14.20
+     1.0   0.00    nan    nan    +nan
+     1.5   0.00    nan    nan    +nan
+     2.0   0.00    nan    nan    +nan
+     2.5   0.00    nan    nan    +nan
+     3.0   0.00    nan    nan    +nan
+     3.5   0.00    nan    nan    +nan
+     4.0   0.00    nan    nan    +nan
+     4.5   0.00    nan    nan    +nan
+     5.0   0.00    nan    nan    +nan
+     5.5   0.00    nan    nan    +nan
+     6.0   0.00    nan    nan    +nan
+     6.5   0.00    nan    nan    +nan
+     7.0   0.00    nan    nan    +nan
+     7.5   0.00    nan    nan    +nan
+     8.0   0.00    nan    nan    +nan
+     8.5   0.00    nan    nan    +nan
+     9.0   0.00    nan    nan    +nan
+     9.5   0.00    nan    nan    +nan
+    10.0   0.00    nan    nan    +nan
+    10.5   0.00    nan    nan    +nan
+    11.0   0.00    nan    nan    +nan
+    11.5   0.00    nan    nan    +nan
+    12.0   0.00    nan    nan    +nan
+    12.5   0.00    nan    nan    +nan
+    13.0   0.00    nan    nan    +nan
+    13.5   0.00    nan    nan    +nan
+    14.0   0.00    nan    nan    +nan
+    14.5   0.00    nan    nan    +nan
+    15.0   0.00    nan    nan    +nan
+    15.5   0.00    nan    nan    +nan
+    16.0   0.00    nan    nan    +nan
+    16.5   0.00    nan    nan    +nan
+    17.0   0.00    nan    nan    +nan
+    17.5   0.00    nan    nan    +nan
+    18.0   0.00    nan    nan    +nan
+    18.5   0.00    nan    nan    +nan
+    19.0   0.00    nan    nan    +nan
+    19.5   0.00    nan    nan    +nan
+소요 21s

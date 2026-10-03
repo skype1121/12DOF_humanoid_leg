@@ -1,0 +1,34 @@
+==========================================================================
+Hanging-to-Stand 평가 — Biped12-HangStand-S8ac4-v0
+인자: --headless --task Biped12-HangStand-S8ac4-v0 --load_run 2026-09-09_19-15-42 --checkpoint model_139987.pt --num_envs 8 --nominal --no_push --seconds 2 --joint_play_deg 1 --play_inside_damping 1 --hold --out_tag diag_dbg
+체크포인트: (hold: 액션 0)
+배포 경로: 없음(env 원생 액션)
+env 8 × 2.0s, DR OFF(명목), com_fix=None, 푸시 OFF, 관측노이즈 ON
+지지 스케줄: r0 (0.5, 1.0) 유지 (0.5, 4.0)s 방출 (2.0, 10.0)s, 간격 z (0.0, 0.15)
+==========================================================================
+접지(양발 동시) 도달      : 7/8 (87.5%)  평균 접지 시각 0.26s
+지지 0 도달(살아서)        : 0/8 (0.0%)  평균 방출완료 시각 nans  그때 피치 +nan°
+**지지 0 이후 5s 생존**   : 0/8 (0.0%)   ← 핵심 지표
+**지지 0 이후 5s 생존**(미검증 0: 방출 후 관측창 <5s)
+낙상(조기 종료)            : 0/8 (0.0%)  방향 뒤 0 · 앞 0 · 왼 0 · 오른 0
+env별 최대 |롤| 평균 9.12°  최대 |피치| 평균 18.33°  최대 각속도 평균 3.12 rad/s
+종료 시 접촉: 양발 1 · 왼만 1 · 오른만 2 · 무접촉 4
+종료 시 관절각 평균 [deg] (생존 env):
+   left_hip_f_joint         -0.05
+   right_hip_f_joint        -0.90
+   left_hip_a_joint         +1.45
+   right_hip_a_joint        -1.37
+   left_hip_r_joint         -3.16
+   right_hip_r_joint        -4.52
+   left_knee_joint          -4.09
+   right_knee_joint         +4.86
+   left_ankle_f_joint       -2.50
+   right_ankle_f_joint      +5.34
+   left_ankle_r_joint       +0.48
+   right_ankle_r_joint      +0.41
+시간축 (0.5s 간격): t  지지비  접촉비  base z  피치
+     0.0   0.66   0.00  0.751   +0.24
+     0.5   0.66   0.25  0.658   +1.48
+     1.0   0.66   0.38  0.658   -1.17
+     1.5   0.65   0.31  0.661   -3.52
+소요 10s

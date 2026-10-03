@@ -2406,7 +2406,7 @@ def sbi_anneal_curriculum(env, env_ids, scales: tuple = (1.0, 0.75, 0.5, 0.25, 0
 
 
 # ---------------------------------------------------------------- STEP-A (1004: NEXT 3 보조 탐색 — 정책 목표 + α·기준 잔차, α 감쇠) ----------------------------------------------------------------
-def install_step_assist(env, env_ids, ref_path: str = "", freq: float = 1.1, walk_min: float = 0.03, alpha0: float = 2.0):
+def install_step_assist(env, env_ids, ref_path: str = "", freq: float = 1.1, walk_min: float = 0.03, alpha0: float = 2.0, lead_ticks: int = 0):
     """mode="startup": 액션 항의 pre_delay_hook 에 보조 잔차를 건다. 스텝 모드 env 의 관절 목표 += α·(q_ref[반주기, k] − q_ref[반주기, 0]).
     정책 관측(직전 액션)은 정책 자신의 출력 그대로(보조는 관측에 안 들어감). α = env._assist_alpha (커리큘럼이 감쇠, 0 이면 순수 정책)."""
     R = _sbi_ref(env, ref_path)
@@ -2423,8 +2423,13 @@ def install_step_assist(env, env_ids, ref_path: str = "", freq: float = 1.1, wal
         t = env.episode_length_buf.to(torch.float32) * env.step_dt
         u = torch.remainder(freq * t, 1.0); half = (u >= 0.5).long(); v = torch.remainder(2.0 * u, 1.0)
         k = (v * 23.0).long().clamp(0, 22)
+        L = int(os.environ.get("ASSIST_LEAD", lead_ticks))      # 1004 A0g: 보조 기준을 L틱 앞당김(관절 추종 지연 보상) — 반주기 경계를 넘으면 다음 반주기(반대 발) 기준
+        if L:
+            idx = torch.remainder(half * 23 + k + L, 46); half_r = idx // 23; k_r = idx % 23
+        else:
+            half_r, k_r = half, k
         mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float().unsqueeze(1)
-        res = R["q"][half, k] - R["q"][half, 0]
+        res = R["q"][half_r, k_r] - R["q"][half_r, 0]
         return target + a * mode * res
 
     term.pre_delay_hook = hook

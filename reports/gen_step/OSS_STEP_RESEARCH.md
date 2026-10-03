@@ -573,3 +573,92 @@ A0b 설정: `logs/rsl_rl/biped12_stepb0/2026-10-04_04-04-57_stepa0b_seed1_from_g
 
 출처: [legged_gym](https://github.com/leggedrobotics/legged_gym) · [apex](https://github.com/osudrl/apex) · [LearningHumanoidWalking](https://github.com/rohanpsingh/LearningHumanoidWalking) · [walk-these-ways](https://github.com/Improbable-AI/walk-these-ways) · [humanoid-gym](https://github.com/roboterax/humanoid-gym) ·
 [unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) · [mujoco_playground](https://github.com/google-deepmind/mujoco_playground) · [CaT (Gepetto/constraints-as-terminations)](https://github.com/Gepetto/constraints-as-terminations) · [CaT arXiv 2403.18765](https://arxiv.org/abs/2403.18765) · Atalante arXiv 2203.01148 · HoST · Yu et al. 2018(라운드 2)
+
+## 라운드 6 (2026-10-04 05:40) — 우리 코드 감사: 이륙을 벌하거나 양발 지지를 보상하는 구조 (읽기 전용)
+
+전제(측정 사실): **A0c(r_asym 제거)도 α=2 이륙 0** → 라운드 5 1위 가설(r_asym 원인) 기각.
+구조 진단 `reports/gen_step/diag_reward_terms_a2.0.md`(G21a-11300, A0c 과제, α=2)에서 한 발 공중 틱 − 양발 접지 틱 차이는 knee_stance_flexion −0.025/틱(최대), foot_position_reference −0.006, contact_phase_reference −0.005, premature_swing −0.002, 스텝 이벤트 합 ≤ +0.0004.
+진행 중: A0e(수직 체중 지지 0.2 mg × α/2), 다음 A0f(knee_stance_flexion 스텝 모드 OFF, `hang_stand_env_cfg.py:2229-2239`).
+근거 설정 파일: G21a `logs/rsl_rl/biped12_stepb0/2026-10-02_21-23-08_g21a/params/env.yaml`(지정 경로 `biped12_stage4/...` 와 같은 런 이름; stepb0 사본에서 읽음). 스텝 모드 게이트는 `hang_stand_env_cfg.py:2033-2036`(_W1_STAND_ONLY·_W1_SWAP), `:2122-2128`(StepB0 의 swap: feet_slide·foot_yaw_slip·action_rate_l2 → *_step).
+
+### 0. 핵심 발견 (먼저)
+
+1. **knee_stance_flexion 의 '공중 손해'는 무릎 각도보다 회복 게이트 열림 때문일 가능성이 높다** (가설, 근거는 코드 + 측정).
+   - 이 항은 `state_gated`(`mdp_hang.py:400-404`: 값 × (1 − rec_open))로 감싸여 있다.
+   - 회복 게이트는 **한 발이 떨어지고 기울기 > 3°**(lift_tilt)이면 열린다(`recovery_gate_step` `mdp_hang.py:312`: `(~both) & (tilt > lift_tilt)`). 게이트가 열린 틱에서는 +4 항이 통째로 0 이 된다.
+   - 무릎 각도 쪽은 원인이 아니라는 측정이 있다. 성공한 뒤 스텝(`ref_steps_g22r2_s1.npz`, 489건, 보조 없음)에서 지지 무릎의 밴드 점수(G21a 밴드 0.6–1.05 rad, 각도 데이터로 계산)는 이중지지 0.999 → **공중 0.976** 으로 거의 같다.
+   - 반면 diag 의 공중/접지 평균은 0.041/0.067(÷0.08 → 점수 0.52/0.84)로 크게 다르다. 차이는 각도가 아니라 '게이트 열림'(또는 α=2 무릎 잔차 과굴곡: primitive 지지 무릎 0.97–1.03 rad + 2·잔차 최대 +0.11 rad → 밴드 상한 1.05 초과 가능, `ref_step_primitive.npz` 계산)에서 온다.
+   - 판별은 diag 에서 rec_open 으로 나눠 보면 된다.
+   - A0f 는 어느 쪽이든 스텝 모드에서 이 항을 없애므로 유효한 시험이다. 다만 **"접지 발마다 굽힘 보상"이라는 A0f 설명(`hang_stand_env_cfg.py:2231`)은 코드와 다르다.** 실제 식은 접촉한 다리들의 **평균**(`mdp_stage4.py:242-245`)이라 발 수 자체로는 손해가 없다.
+2. **보상 창·기준 위상과 실제 이륙 시각이 어긋나는 구조**(가설, 지연 추정 포함, §2-3).
+   - 보조 잔차는 기준 **측정 관절각** 궤적 q_ref[k] − q_ref[0] 을 **목표**로 더한다(`mdp_hang.py:2425-2428`). 실제 관절은 지연 1–3틱 + LPF(β 0.2–0.4, 군지연 ≈ 1.5–4틱) + PD 응답만큼 늦는다. 추정 지연 L ≈ 4–7틱.
+   - 그러면 기준 이륙 k = 4(스윙 창 k 4–11) 대신 실제 이륙이 k ≈ 8–11 이 된다. 공중 8틱의 절반 이상이 스윙 창 밖(r_unload·r_clear·r_prog 0, r_cref 불일치 벌)으로 밀린다. 착지는 k ≈ 16–19, **하중 수용(100 ms)은 반주기 경계(k 23)를 넘기 쉽다.**
+   - 반주기 경계에서 `td_done·load_done·load_t·settle_t` 가 초기화되고(`mdp_hang.py:2281-2284`) 정착 창은 k ≥ 18.4(`_SB0_WIN` `:2235`)라서, **하중 수용·정착 이벤트가 구조적으로 거의 불가능**하다. diag 의 settle 0.00007·load_accept 0.00018 과 정합한다.
+3. **diag 스크립트**: '공중 0.0000'은 버그가 아니라 α=0 에서 공중 틱이 0개(분모 max(0,1))인 결과다. 다만 '공중−접지' 열은 해석에 함정 3가지가 있다(§3).
+
+### 1. ① G21a 활성 보상 중 접지 발 수·접촉 상태·발 높이에 의존하는 항
+
+게이트 의미: `state_gated` = 회복 게이트 닫힘(안정)일 때만(`mdp_hang.py:400-404`), `w1_stand_gated` = |vx_cmd| < 0.03 서기 모드만(`:2094-2097`), `w1_walk_gated` = 스텝 모드만(`:2100-2103`).
+회복 게이트는 '외력 중 | 기울기 > 6.5° | |ω| > 1.5 | |v| > 0.5 | (한 발 떨어짐 & 기울기 > 3°)'에서 열린다(`:312`).
+
+| 항 (가중) | 정의 파일:줄 | 접촉·발 의존 방식 | 이륙에 미치는 부호 | 서기 모드 | 스텝 모드 A0c | A0f |
+|---|---|---|---|---|---|---|
+| knee_stance_flexion (+4) | `mdp_stage4.py:216-245` | 접촉한 다리 무릎이 밴드(G21a 0.6–1.05 rad) 안이면 1, 접촉 다리 **평균**, 공중이면 0.5 | 직접 손해는 없음. 단 state_gated 라 **게이트가 열리면 0**(한 발 + 3° 기울기면 열림) | ON(게이트 닫힘 때) | **ON** | 스텝 모드 OFF |
+| feet_contact_gated (+2) | `mdp_hang.py:641-648` | **양발 모두 접촉**일 때만 1(× (1 − r)) | 이륙 = 손해(−0.04/틱) | ON(게이트 닫힘) | OFF(_W1_STAND_ONLY) | OFF |
+| recovery_quality (+5) | `mdp_hang.py:345-371`(G21a: require_both 기본 True, step_window 0) | 게이트 **열린** 동안 정숙도 × **양발 접촉** | **회복 중 이륙 = 손해(최대 −0.1/틱)** — 앞 밀기 회복의 구조적 손해(OSS_REFERENCES 부록 2 ①, G18q 에서 '외란 창 any-contact'로 시험 → H-q 미지지) | ON | OFF | OFF |
+| recovery_event (+30) | `mdp_hang.py:372-374`, 판정 `:312-325` | 게이트가 '안정 settle_s 0.3 s'로 닫히는 틱 1회. 안정 = 위 열림 조건 전부 거짓 → 한 발이고 기울기 > 3° 면 안정 아님 | 중립(착지 후 양발이면 받음) | ON | OFF | OFF |
+| settle_quiet_bonus (+2) | `mdp_hang.py:1576-1597`, ramp `:943-` | `settled_ramp` 이 **양발 접촉**(`mdp_hang.py:951,954`) 요구 | 이륙 = 손해 | ON(게이트 닫힘) | OFF | OFF |
+| stance_shape (−5) | `mdp_hang.py:700-713` | 발 위치: 좌우 간격 0.22–0.32 m 밖, **앞뒤 어긋남 > 4 cm** 초과분 | **스텝 뒤 엇갈린 발 = 계속 벌**(재정렬 전까지) | ON(게이트 닫힘) | OFF | OFF |
+| pose_symmetry (−3), leg_pose_deviation (−1.5), march_anchor (−1) | `mdp_hang.py:692-697`; Isaac joint_deviation_l1; `mdp_stage4.py:163-183` | 좌우 관절 비대칭·기본자세 편차·**제자리 위치 유지**(명령 0 일 때) | 스텝 동작·이동 = 손해 | ON(게이트 닫힘) | OFF | OFF |
+| feet_gap (−5) | `mdp_rewards.py:47-59` | 좌우 발 간격 < 0.22 m 초과분(발 위치) | 안쪽 착지 = 손해 | ON(게이트 닫힘) | **ON** | ON |
+| torso_pitch_band (−25, 밴드 3°) | `mdp_hang.py:740-752` | 몸통 피치(발 무관) | 스텝 중 기울기 = 손해. 게이트 열리면 0 | ON | **ON** | ON |
+| feet_contact_forces (−0.002, 150 N) | `mdp_rewards.py:41-45`, 발(.*_ankle_r_joint) | 발별 힘 > **150 N** 초과분(이력 최댓값) | **한 발 정하중 17.6 kg×g ≈ 173 N > 150 N → 단일 지지 동안 상시 벌**(작음: ≈ −0.001/틱) | ON | **ON** | ON |
+| feet_impact (−0.01, 259 N) | `mdp_stage4.py:248-266` | 착지 충격 Fz > 259 N 초과분 | 착지 = 소폭 손해 | ON | **ON** | ON |
+| feet_slide (−0.1) / feet_slide_step (−0.15) | Isaac Lab `velocity/mdp/rewards.py:71-` | **접촉 중** 발 속도 | 들면 오히려 이득(셔플 억제) | ON(서기) | _step 으로 ON | ON |
+| foot_yaw_slip (−0.5) / _step (−0.5) | `mdp_stage4.py:186-214` | **접촉 중** 발 요 각속도 합 | 들면 이득 | ON(서기) | _step ON | ON |
+| undesired_contacts (−1) | Isaac Lab `envs/mdp/rewards.py:267-` | 발 외 몸체 접촉 | 중립 | ON | ON | ON |
+| survive_after_release (+1) | `mdp_hang.py:625-630` | 생존 | 넘어짐 위험 = 손해(라운드 5 §0) | ON | ON | ON |
+| sb0/sbi 항 | §2 | 접촉·발 높이·위상 | §2 | 스텝 모드만 | ON(r_asym 제외) | ON |
+
+정리
+- 스텝 모드에서 '양발 접촉'을 직접 요구하는 양(+) 항(feet_contact_gated·recovery_quality·settle_quiet_bonus)은 이미 꺼져 있다.
+- 남은 손해 경로는 세 가지다. (i) **state_gated 양(+) 항이 게이트 열림으로 0 이 되는 것**(A0c 에서는 knee 하나뿐 → A0f 로 제거됨). (ii) sb0/sbi 위상 어긋남(§2). (iii) 단일 지지 상시 벌점 feet_contact_forces(150 N < 정하중 173 N, 작음).
+- **서기 모드(앞 밀기 회복 — 원래 병목)에서는 양발 요구 양(+) 항 3개(+2, +5, +2)와 stance_shape(−5, 엇갈림 4 cm)가 모두 살아 있다.** 스텝 모드의 해법이 나와도 서기 모드 앞 밀기 회복에는 이 구조가 그대로 남는다(G18q 기각 이력 있음 — 같은 처방을 반복하지 말고, 이번에는 '양발 요구 항 전체를 회복 게이트 열림 동안 any-contact 로'처럼 범위를 명시한 단일 변경이 필요).
+
+### 2. ② sb0/sbi 에서 공중 틱이 접지 틱보다 불리해지는 구조
+
+| # | 구조 | 위치 | 왜 공중이 불리해지나 | 크기(가중×dt 기준) |
+|---|---|---|---|---|
+| 2-1 | contact_phase_reference = 두 발 접촉 일치 비율 | `mdp_hang.py:2383`; 기준 `ref_step_primitive.npz` contact_ref: 스윙발 공중 **k 4–11 만**(23틱 중 8), 지지발 항상 접촉 | 기준 창 밖 공중(지연된 이륙 k ≥ 12, 이른 이륙 k ≤ 3, 엉뚱한 발)은 한 발 불일치 → −0.5 × 2.0 = −1.0 → **−0.02/틱** | diag 공중−접지 −0.0046 |
+| 2-2 | foot_position_reference = 반주기 시작(k=0) 발 위치 대비 상대 궤적, 골반 요 프레임, σ 3 cm | `:2375-2382` | 기준 상대 궤적: 앞 +6.7 cm(0.073 → 0.140), 옆 −2.5 cm, **위 +1.8 cm 뿐**(z −0.536 → −0.518). (a) 보조 잔차는 앞뒤 관절(hip_f·ankle_f)을 0 으로 둔다(primitive 최대 2·잔차: hip_f 0°·ankle_f 0°, 나머지 6–19°) → 든 발은 앞 6.7 cm 를 못 따라가 오차가 커진다. (b) 들고 있는 동안 r_clear 는 1.5–4 cm 를 요구하는데 r_foot 기준은 +1.8 cm → 3 cm 들면 r_foot 손해(서로 상충). (c) 반주기 경계에서 기준점이 다시 잡힌다(`:2379-2380`). 늦은 스텝이 경계를 넘으면 공중의 발이 새 기준점이 된다 | diag −0.006 |
+| 2-3 | **위상 창 고정 vs 실제 이륙 지연** | 창 `_SB0_WIN (0.16, 0.50, 0.80)` `:2235` → 전환 k 0–3, 스윙 k 4–11, 정착 k ≥ 19; 경계 초기화 `:2281-2284`; 보조 훅 k = ⌊v·23⌋ `:2425` | 보조가 '측정 관절각'을 목표로 넣으므로 실제는 L틱(추정 4–7) 늦다. 공중이 스윙 창 밖으로 밀려 r_unload·r_clear·r_prog 는 못 받고 2-1 벌만 받는다. 착지가 k ≈ 16–19 면 하중 수용 100 ms 가 경계를 넘어 **초기화돼 미집계**, 정착(k ≥ 19 + 하중 수용 완료)은 거의 불가능 | 이벤트 합 ≤ +0.0004(diag) |
+| 2-4 | premature_swing = 예정 지지발 비접촉, 또는 전환 창(k 0–3)에서 지지 Fz < 0.6 mg 인데 스윙발 공중 | `:2322` | 지연 때문에 직전 반주기 스윙발이 아직 공중인 채 새 반주기(지지발 역할)로 넘어가면 **'예정 지지발 비접촉'으로 −2.0** → −0.04/틱 | diag −0.002 |
+| 2-5 | 착지 이벤트 = 현재 반주기의 스윙발(sw)만 | `:2311` | 경계를 넘어 착지한 직전 스윙발은 sw 가 바뀌어 **착지로 집계 안 됨** | — |
+
+판별용 측정(학습 없음, GPU 평가 1회): G21a·α=2 롤아웃에서 ① 이륙 틱 k 와 착지 틱 k 의 히스토그램, ② 하중 수용이 경계를 넘는 비율, ③ 공중 틱을 rec_open 으로 나눈 knee 항, ④ 공중 틱의 k 분포. 2-3 이 맞으면 ①의 이륙 최빈 k 가 4 가 아니라 8–11 근처에 나온다.
+
+### 3. ③ diag 스크립트(`reports/gen_step/diag_reward_terms.py`) 확인
+
+- '공중 0.0000'(α=0): `acc_air.sum() / max(n_air, 1)`(`:52`)에서 n_air = 0 이라 0 이 찍힌다. α=0 에서는 공중 틱이 실제로 없다(파일 2행 "공중인 env-틱 비율 0.0 %"). **버그 아님**. 표기는 'N/A' 가 맞다.
+- 기여 계산: Isaac Lab `_step_reward = 가중 × 값`(dt 제외, `managers/reward_manager.py:150-157`) × dt(`:41`) → 실효 기여 맞음.
+- **해석 함정(코드 버그는 아니지만 결론에 영향)**
+  1. **이벤트는 정의상 접지 틱에 기록된다.** 착지·하중 수용·정착 틱은 발이 닿아 있으므로(`:42` 분류) touchdown/settle 의 '공중 0.00000'은 당연한 값이다. '공중−접지' 열이 이벤트 이득을 지운다. 스텝의 손익은 **반주기 단위 합**(유효 이륙이 있었던 반주기 vs 없던 반주기, 같은 α)으로 비교해야 한다.
+  2. **위상·게이트 교란**: 공중 틱은 특정 k(보조 위상)와 게이트 열림 상태에 몰린다. 모방 항·state_gated 항의 차이는 '공중이라서'가 아니라 'k 가 달라서/게이트가 열려서'일 수 있다 → k 별·rec_open 별로 나눠 비교.
+  3. 종료 틱 분류: `air` 는 step 이후(리셋된 env 는 리셋 후 상태)의 접촉으로 판정(`:42-43`)하고 alive 는 그 뒤에 갱신(`:47`) → 넘어지는 env 의 마지막 틱이 리셋 자세로 분류됨(낙상 12/256, 영향 작음).
+  4. 평가 체인은 LPF 0.27·지연 1 고정(`:23`)이다. 학습 DR(β 0.2–0.4, 지연 0–3)과 다르고, 지연 L(§2-3)도 학습 분포에서는 더 넓게 퍼진다.
+
+### 4. ④ A0f 가 실패할 경우 다음 단일 변경 후보 (순위)
+
+**선행(학습 없음)**: §2 판별 측정 ①–④ 와 반주기 단위 손익(§3-1). 아래 1·2위 중 무엇을 먼저 할지 이것으로 정한다.
+
+**1위 — 보조 잔차 위상 선행(lead L틱): `q_ref[k] − q_ref[0]` → `q_ref[k+L] − q_ref[L]`(L = 측정한 이륙 지연)**
+- 근거: §2-3·2-4·2-5 — 보상 창·기준·이벤트는 '성공 스텝의 실제 시각'에 맞춰져 있는데, 보조는 측정 관절각을 목표로 넣어 실제가 L틱 늦다. 이 하나가 공중 틱을 창 밖으로 밀고, 하중 수용·정착 이벤트를 경계 초기화로 지운다는 설명이 diag 의 '이벤트 합 ≈ 0'과 맞는다.
+  라운드 2 §0 의 "α 1 → 0.8 %, α 2 → 31 % = PD 추종 지연" 관찰과도 같은 원인이다(진폭이 아니라 위상 문제일 수 있음).
+- 기대: 같은 α 에서 공중 틱이 스윙 창 안으로 들어오고 이벤트가 같은 반주기에 집계된다. 판정은 §3-1 반주기 손익과 이륙·하중 수용률.
+- 위험: L 을 env 별 지연 DR(0–3틱)·β DR 에 대해 하나로 고정하면 일부 env 는 과보상. 측정 분포의 중앙값을 쓰고 지연 DR 별로 이륙 k 를 따로 본다.
+
+**2위 — A0 계보에서 sbi 모방 3항(joint_pose_reference 1.5·foot_position_reference 2.0·contact_phase_reference 2.0) OFF**
+- 근거: I0 단독 FAIL(이륙 0)로 모방 항의 탐색 효과는 이미 부정. diag 상 공중 손해 합 ≈ −0.012/틱(knee 다음으로 큼). r_foot 기준 z(+1.8 cm)와 r_clear(1.5–4 cm)가 상충하고(§2-2), 고정 위상 기준이 지연된 실제 스텝을 벌한다(§2-1).
+- 기대: 공중 틱의 상대 손해 제거. 위험: 모방 항이 주던 '서기 자세 근처 양(+) 보상'(합 ≈ 0.058/틱)이 빠지면 V(살아 있음)도 같이 줄어 라운드 5 §0 의 손익분기가 바뀐다. 이것은 부수 효과이자 장점일 수 있다(해석, 미검증).
+
+(3위, 서기 모드 원래 병목용 — 스텝 모드 해법과 별개) 서기 모드의 양발 요구 양(+) 항 3개(feet_contact_gated·recovery_quality·settle_quiet_bonus)를 **회복 게이트 열림 동안** any-contact 로 바꾸고 stance_shape 엇갈림 한도(4 cm)를 게이트 열림 + 착지 후 일정 시간 동안 해제. G18q(외란 창 한정·recovery_quality 하나)가 미지지였던 이력을 감안해, 대상 항 목록을 명시한 단일 변경으로만 시험한다.

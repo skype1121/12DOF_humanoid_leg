@@ -1,0 +1,10 @@
+pose_json /tmp/claude-1000/-home-ryu-humanoid-leg-test1/e53dc80b-9c62-45a7-a400-3cd12071b2f1/scratchpad/pose_v5_k16.json
+task Biped12-Velocity-Stage4V2-Stand-V14-v0 kd_scale 1.0 settle 12 steps
+총질량(시뮬) 17.635 kg | 골반높이 0.578 m
+몸통 pitch(+앞) -6.83° roll(+왼) +0.19°
+전신 CoM: 발목축 대비 앞 -0.02 cm, 높이 0.490 m
+발 수직력 합 175.2 N (L 89.8 / R 85.4) — 체중 173.0 N
+관절 추종오차(실제−목표, deg): left_hip_f-0.6 right_hip_f+0.9 left_hip_a-0.1 right_hip_a+0.1 left_hip_r+0.1 right_hip_r+0.2 left_knee-4.3 right_knee+4.2 left_ankle_f-1.5 right_ankle_f+1.3 left_ankle_r+0.2 right_ankle_r-0.4
+관절 실제각(deg): left_hip_f+28.9 right_hip_f-28.6 left_hip_a-0.1 right_hip_a+0.1 left_hip_r+0.1 right_hip_r+0.2 left_knee-61.6 right_knee+61.5 left_ankle_f+25.9 right_ankle_f-26.1 left_ankle_r+0.2 right_ankle_r-0.4
+홀드 0 s 결과: 낙상 없음(정적 자립)
+최종 몸통 pitch -21.74° roll +0.01°

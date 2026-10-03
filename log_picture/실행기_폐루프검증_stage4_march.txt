@@ -1,0 +1,10 @@
+PolicyRunnerStage4 폐루프 검증 — 모델 models/stand_hang_v5 (task=Biped12-HangStand-S8ac4-v0, clock=1.1Hz)
+명령 (0.0, 0.0, 0.0), 15s, 관측 320차원(이력5·클록·접촉·raw+EMA)
+전진 거리: 0.00 m (15s, 명령 0.5m/s)
+러너 vs env 관측 320차원 최대 오차: 0.00e+00
+  항별 최대 오차: base_ang_vel=0.00e+00, projected_gravity=0.00e+00, velocity_commands=0.00e+00, joint_pos=0.00e+00, joint_vel=0.00e+00, actions=0.00e+00, gait_clock=5.96e-08, feet_contact=0.00e+00, gyro_ema=1.33e-01, joint_vel_ema=1.35e+00, base_ang_vel@2s+=0.00e+00, projected_gravity@2s+=0.00e+00, velocity_commands@2s+=0.00e+00, joint_pos@2s+=0.00e+00, joint_vel@2s+=0.00e+00, actions@2s+=0.00e+00, gait_clock@2s+=5.96e-08, feet_contact@2s+=0.00e+00, gyro_ema@2s+=5.93e-06, joint_vel_ema@2s+=6.06e-05
+러너 vs env 목표각 최대 오차: 0.00e+00 rad
+낙상: 없음
+집계 대조: obs_err_max(누적)=0.00e+00 vs max(항별)=1.35e+00
+항별 판정: 기본항 OK · EMA(2s+) OK
+판정: PASS

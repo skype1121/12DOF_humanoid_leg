@@ -2235,3 +2235,14 @@ class Biped12HangStandStepA0fEnvCfg(Biped12HangStandStepA0cEnvCfg):
         super().__post_init__()
         t = self.rewards.knee_stance_flexion
         self.rewards.knee_stance_flexion = RewTerm(func=mdp_hang.w1_stand_gated, weight=t.weight, params={"func": t.func, "params": dict(t.params or {})})
+
+
+@configclass
+class Biped12HangStandStepA0gEnvCfg(Biped12HangStandStepA0cEnvCfg):
+    """STEP-A0g (1004): STEP-A0c + **보조 기준 위상 6틱 앞당김** 단일 변경.
+    근거(diag_phase_events, G21a·α=2): 실제 이륙이 위상 0.4–0.6(보상 스윙 창 0.16–0.5 뒤, 접촉 기준=1 인 착지 창)에 몰림 — 관절 추종 지연 ~6틱.
+    앞당김 6틱 개루프: 이륙 0.1–0.3·착지 0.2–0.4 로 창 안. 보조로 생긴 공중이 스윙 보상을 받고 접촉 위상 벌을 피하게 한다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.step_assist.params = dict(self.events.step_assist.params, lead_ticks=6)

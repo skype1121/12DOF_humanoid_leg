@@ -1,0 +1,7 @@
+PolicyRunnerStage4 폐루프 검증 — 모델 models/stand_hang_v5 (task=Biped12-HangStand-S8ac4-v0, clock=1.1Hz)
+명령 (0.5, 0.0, 0.0), 15s, 관측 320차원(이력5·클록·접촉·raw+EMA)
+전진 거리: 0.25 m (15s, 명령 0.5m/s)
+러너 vs env 관측 320차원 최대 오차: 4.92e+00
+러너 vs env 목표각 최대 오차: 4.13e-01 rad
+낙상: 없음
+판정: FAIL

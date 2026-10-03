@@ -1,0 +1,38 @@
+==========================================================================
+Hanging-to-Stand 평가 — Biped12-HangStand-CableS3r-v0
+인자: --headless --task Biped12-HangStand-CableS3r-v0 --load_run 2026-09-09_19-15-42 --checkpoint model_139987.pt --num_envs 8 --nominal --no_push --r0 0.6,0.6 --hold_s 1,1 --release_s 6,6 --anchor_h 1.3 --hook_z 0.35 --anchor_x 0.2 --seconds 4 --dump_envs 2 --out_tag rope_diag
+체크포인트: /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-09-09_19-15-42/model_139987.pt
+배포 경로: h3 chain: 러너 슬루 4.0°/틱 → LPF β0.27 → 블렌딩 1.5s
+env 8 × 4.0s, DR OFF(명목), com_fix=None, 푸시 OFF, 관측노이즈 ON
+지지 스케줄: r0 (0.6, 0.6) 유지 (1.0, 1.0)s 방출 (6.0, 6.0)s, 간격 z (0.05, 0.15)
+==========================================================================
+접지(양발 동시) 도달      : 8/8 (100.0%)  평균 접지 시각 0.14s
+지지 0 도달(살아서)        : 0/8 (0.0%)  평균 방출완료 시각 nans  그때 피치 +nan°
+**지지 0 이후 5s 생존**   : 0/8 (0.0%)   ← 핵심 지표
+**지지 0 이후 5s 생존**(미검증 0: 방출 후 관측창 <5s)
+낙상(조기 종료)            : 0/8 (0.0%)  방향 뒤 0 · 앞 0 · 왼 0 · 오른 0
+env별 최대 |롤| 평균 3.22°  최대 |피치| 평균 8.61°  최대 각속도 평균 1.52 rad/s
+종료 시 접촉: 양발 8 · 왼만 0 · 오른만 0 · 무접촉 0
+종료 시 관절각 평균 [deg] (생존 env):
+   left_hip_f_joint         -7.81
+   right_hip_f_joint        +9.55
+   left_hip_a_joint         +2.65
+   right_hip_a_joint        -1.13
+   left_hip_r_joint         +1.44
+   right_hip_r_joint        +0.69
+   left_knee_joint          -5.54
+   right_knee_joint         +4.80
+   left_ankle_f_joint       +9.89
+   right_ankle_f_joint     -10.62
+   left_ankle_r_joint       +1.95
+   right_ankle_r_joint      +1.22
+시간축 (0.5s 간격): t  지지비  접촉비  base z  피치
+     0.0   0.60   0.00  0.748   +0.00
+     0.5   0.60   1.00  0.654   -6.19
+     1.0   0.60   1.00  0.656   -7.79
+     1.5   0.55   1.00  0.649   -2.61
+     2.0   0.50   0.94  0.649   -2.22
+     2.5   0.45   0.94  0.649   -3.22
+     3.0   0.40   1.00  0.648   -2.90
+     3.5   0.35   1.00  0.648   -3.32
+소요 4s

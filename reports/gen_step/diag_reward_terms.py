@@ -27,7 +27,7 @@ cmd = U.command_manager.get_term("base_velocity"); RM = U.reward_manager
 names = list(RM.active_terms); N = U.num_envs
 obs = v.get_observations(); obs = obs[0] if isinstance(obs, tuple) else obs
 fid = mdp_hang._feet_body_ids(U)
-acc_all = np.zeros(len(names)); acc_air = np.zeros(len(names)); acc_gnd = np.zeros(len(names)); n_all = n_air = n_gnd = 0
+ret = torch.zeros(N, device=dev); acc_all = np.zeros(len(names)); acc_air = np.zeros(len(names)); acc_gnd = np.zeros(len(names)); n_all = n_air = n_gnd = 0
 alive = torch.ones(N, dtype=torch.bool, device=dev); falls = 0
 for i in range(int(10.0 / dt)):
     on = i * dt >= 2.0
@@ -37,6 +37,7 @@ for i in range(int(10.0 / dt)):
     obs = obs[0] if isinstance(obs, tuple) else obs
     if not on:
         continue
+    ret += torch.where(alive, rew.to(dev), torch.zeros_like(ret))
     step_r = RM._step_reward.detach().cpu().numpy() * dt          # (N, terms): 가중치 곱해진 값 × dt = 실효 기여
     c = (U.scene.sensors["contact_forces"].data.net_forces_w[:, fid, :].norm(dim=-1) > 5.0)
     air = (~c).any(1).cpu().numpy(); al = alive.cpu().numpy()
@@ -52,5 +53,6 @@ for j, nm in enumerate(names):
     rows.append((B_ - C_, nm, A_, B_, C_))
 for dlt, nm, A_, B_, C_ in sorted(rows):
     L.append(f"| {nm} | {A_:+.5f} | {B_:+.5f} | {C_:+.5f} | {dlt:+.5f} |")
+L.append(f"env 당 8 s 보상 합(낙상 뒤 0): 평균 {float(ret.mean()):+.3f} · 생존 env {float(ret[alive].mean()) if alive.any() else float('nan'):+.3f} · 낙상 env {float(ret[~alive].mean()) if (~alive).any() else float('nan'):+.3f}")
 L.append(f"합계: 전체 {acc_all.sum() / max(n_all, 1):+.4f} · 공중 {acc_air.sum() / max(n_air, 1):+.4f} · 접지 {acc_gnd.sum() / max(n_gnd, 1):+.4f} (틱당)")
 open(f"/home/ryu/humanoid_leg_test1/reports/gen_step/{a.out}_a{a.alpha}.md", "w").write("\n".join(L) + "\n"); os._exit(0)

@@ -2242,7 +2242,7 @@ def _sb0(env):
         z = lambda *s: torch.zeros(*(s or (N,)), device=dev)
         st = {"prev_c": torch.ones(N, 2, device=dev), "air_t": z(N, 2), "lift_xy": z(N, 2, 2), "lift_z": z(N, 2), "valid": z(N, 2),
               "half": torch.full((N,), -1.0, device=dev), "td_done": z(), "load_done": z(), "settle_done": z(), "load_t": z(), "settle_t": z(),
-              "r_transfer": z(), "r_asym": z(), "r_unload": z(), "r_clear": z(), "r_prog": z(), "ev_td": z(), "ev_load": z(), "ev_settle": z(), "r_prem": z(),
+              "r_transfer": z(), "r_asym": z(), "ev_miss": z(), "r_unload": z(), "r_clear": z(), "r_prog": z(), "ev_td": z(), "ev_load": z(), "ev_settle": z(), "r_prem": z(),
               "n_sched": z(), "n_td": z()}
         env._sb0 = st
     return st
@@ -2279,6 +2279,8 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
     sw = half.long(); stc = 1 - sw                                   # 스윙 = 왼(0) 앞 반주기, 오른(1) 뒤 반주기
     mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
     new_half = half != st["half"]
+    # 1004 A0j: 놓친 스텝 — 스텝 모드에서 끝난 반주기에 유효 착지가 없었으면 1(이벤트). 리셋 전에 계산.
+    st["ev_miss"] = (new_half & (st["half"] >= 0) & (st["td_done"] < 0.5) & (mode > 0.5)).float()
     for k in ("td_done", "load_done", "settle_done", "load_t", "settle_t"):
         st[k] = torch.where(new_half, torch.zeros_like(st[k]), st[k])
     st["n_sched"] += (new_half & (st["half"] >= 0)).float() * mode

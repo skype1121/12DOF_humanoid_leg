@@ -2272,3 +2272,14 @@ class Biped12HangStandStepA0iEnvCfg(Biped12HangStandStepA0hEnvCfg):
         super().__post_init__()
         t = self.rewards.knee_stance_flexion
         self.rewards.knee_stance_flexion = RewTerm(func=mdp_hang.w1_stand_gated, weight=t.weight, params={"func": t.func, "params": dict(t.params or {})})
+
+
+@configclass
+class Biped12HangStandStepA0jEnvCfg(Biped12HangStandStepA0iEnvCfg):
+    """STEP-A0j (1004): STEP-A0i + **놓친 스텝 벌점**(스텝 모드, 반주기에 유효 착지 없음 → 이벤트 실효 −1.0, 가중 −50) 단일 변경.
+    근거(diag_reward_terms 반환 비교, G21a): A0h 구성 8 s 반환 스텝 35.9 vs 서기 61.7, A0i 구성 25.0 vs 30.1 — 스텝 모드에서 안 디뎌도 손해가 없다
+    (서 있어도 contact/pose/foot 기준 보상·survive 를 거의 다 받음). 반주기당 가치 차 ~0.3 + 낙상 위험을 덮도록 −1.0."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.missed_step_event = RewTerm(func=mdp_hang.sb0_value, weight=-50.0, params={"name": "ev_miss"})

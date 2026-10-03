@@ -1822,6 +1822,13 @@ _G22R_STAGES = (   # (무외란, 앞, 뒤 비율), 앞 F 범위, 뒤 F 범위 [N
     ((0.30, 0.50, 0.20), (10.0, 12.0), (12.0, 18.0)),  # R3
     ((0.25, 0.55, 0.20), (12.0, 15.0), (18.0, 18.0)),  # R4 (뒤 = 평가 b18 범위)
 )
+# G22R2 (1003 밤): 같은 비율, 힘만 상향 — 첫 단계부터 발목 전략 한계(앞 ≥10 N, G21a sf10 낙상 22 %)로 스텝 탐색을 강제(단일 변경)
+_G22R2_STAGES = (
+    ((0.40, 0.40, 0.20), (10.0, 12.0), (10.0, 15.0)),
+    ((0.35, 0.45, 0.20), (12.0, 14.0), (12.0, 18.0)),
+    ((0.30, 0.50, 0.20), (13.0, 15.0), (15.0, 18.0)),
+    ((0.25, 0.55, 0.20), (15.0, 15.0), (18.0, 18.0)),
+)
 
 
 def _g22(env):
@@ -1844,7 +1851,7 @@ def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), g
                            F_ramp_range=(3.0, 20.0), rise_range=(1.0, 4.0), hold_range=(1.0, 3.0),
                            F_imp_range=(5.0, 30.0), dur_imp_range=(0.2, 0.4), lateral_prob=0.0, lateral_scale=0.6, p_active=1.0,
                            branch: str = "g22r", w1_p_active: float = 0.125, w1_F: tuple = (5.0, 8.0), imp_scale: float = 1.5,
-                           asset_cfg=None):
+                           stage_set: str = "r", asset_cfg=None):
     """mode="reset": 종전 disturbance_reset 의 횟수·시각·램프/충격 모양을 그대로 쓰고 **방향·힘 분포만** 단계별로 바꾼다.
     G22R: 에피소드 단위로 무외란/앞/뒤 범주를 뽑아(단계 비율), 앞(+몸통 x)·뒤 힘 범위 적용(좌우 외란 없음 — 지시서 R1–R4).
     W1: 단계 S0–S2 는 외란 없음, S3 은 w1_p_active 비율 env 에 앞/뒤 w1_F 의 약한 외란."""
@@ -1857,7 +1864,8 @@ def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), g
     if n == 0:
         return
     if branch == "g22r":
-        (p0, pf, pb), Ff, Fb = _G22R_STAGES[min(g["stage"], len(_G22R_STAGES) - 1)]
+        tbl = _G22R2_STAGES if stage_set == "r2" else _G22R_STAGES
+        (p0, pf, pb), Ff, Fb = tbl[min(g["stage"], len(tbl) - 1)]
         r = torch.rand(n, device=dev)
         cat = torch.where(r < p0, torch.zeros_like(r), torch.where(r < p0 + pf, torch.ones_like(r), 2.0 * torch.ones_like(r)))
     else:

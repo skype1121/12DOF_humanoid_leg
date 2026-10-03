@@ -2074,3 +2074,25 @@ class Biped12HangStandW1EnvCfg(Biped12HangStandG21aEnvCfg):
         rw.excessive_double_support = RewTerm(func=mdp_hang.w1_value, weight=-0.20, params={"name": "ds_pen"})
         rw.excessive_air_time_event = RewTerm(func=mdp_hang.w1_value, weight=-5.0, params={"name": "ev_air"})
         self.curriculum = _W1CurriculumCfg()
+
+
+@configclass
+class Biped12HangStandW1bEnvCfg(Biped12HangStandW1EnvCfg):
+    """W1b (1003 밤): W1 + **걷기 추종 보상 std 0.5 → 0.1 단일 변경**(걷기 게이트 track_lin_vel_xy_exp_walk 만; 서기 항·요 추종 그대로).
+    근거(계산): std 0.5 에서 0.03/0.05/0.08 m/s 명령은 정지만으로 추종 보상 99.6/99.0/97.5 % → W1 착지 0. std 0.1 이면 91.4/77.9/52.7 %."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.track_lin_vel_xy_exp_walk
+        inner = dict(t.params["params"]); assert abs(inner["std"] - 0.5) < 1e-9
+        inner["std"] = 0.1; t.params = {"func": t.params["func"], "params": inner}
+
+
+@configclass
+class Biped12HangStandG22R2EnvCfg(Biped12HangStandG22REnvCfg):
+    """G22R2 (1003 밤): G22R + **외란 힘 범위만 상향** 단일 변경 — R1 앞 10–12/뒤 10–15 · R2 12–14/12–18 · R3 13–15/15–18 · R4 15/18 N (비율 동일).
+    근거: G22R 은 R1(앞 5–8 N, 발목 전략으로 충분)에서 앞 스텝을 한 번도 탐색하지 않음(sf15 이륙 0, 관절 한계·토크 포화 0 % — 기구 제약 증거 없음)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.disturbance.params = dict(self.events.disturbance.params, stage_set="r2")

@@ -1,0 +1,68 @@
+17:49:06 [FrameMap] 하드웨어맵: /home/mama/humanoid_repo/config/robot_12dof_hardware_map.json
+17:49:06 [FrameMap] IMU 장착 편향 보정 lat +1.30° fwd -0.60° (정책 중력벡터에만 적용)
+17:49:06 [FrameMap] ** guard_mode=data ** — 발진 가드·타깃 발진 가드·리프트 가드는 기록만 하고 정책을 멈추지 않는다. 과속(12 rad/s)·센서 스테일·중력 게이트는 그대로 정지한다. 운영자가 줄과 손으로 회수를 책임지는 데이터 수집 모드다.
+17:49:06 [INFO] [1791017346.645851028] [humanoid_rl_bridge]: 블랙박스 기록: /home/mama/logs/rl_bridge_20261003_174906.jsonl
+17:49:06 [INFO] [1791017346.656680092] [humanoid_rl_bridge]: RL 브리지 기동 — LIVE, checkpoint=stand_crouch_g21a jvel_ema=v2
+17:49:22 [INFO] [1791017362.298218874] [humanoid_rl_bridge]: 중력 정합 OK (|g−(0,0,−1)|=0.06)
+17:49:22 [INFO] [1791017362.299222029] [humanoid_rl_bridge]: RL stand 시작 ckpt=stand_crouch_g21a cmd=(0.0, 0.0, 0.0) (인계 워밍업 최대 4s)
+17:49:22 [INFO] [1791017362.317394874] [humanoid_rl_bridge]: 인계 워밍업 완료 — 관절 피드백 신선, 정책 구동 시작
+17:49:25 [INFO] [1791017365.316997088] [humanoid_rl_bridge]: 행잉 가드 상태 → FREE_STAND
+17:53:14 [WARN] [1791017594.058532899] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_hip_f_joint: 0.5s 내 반전 9회, 진폭 7.0° (정지하지 않음)
+17:53:14 [WARN] [1791017594.079229870] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_hip_f_joint: 0.5s 내 반전 10회, 진폭 7.7° (정지하지 않음)
+17:53:19 [WARN] [1791017599.999425912] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_hip_f_joint: 0.5s 내 반전 9회, 진폭 4.8° (정지하지 않음)
+17:53:20 [WARN] [1791017600.441383730] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_ankle_f_joint: 0.5s 내 반전 9회, 진폭 5.1° (정지하지 않음)
+17:53:20 [WARN] [1791017600.522396932] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_ankle_f_joint: 0.5s 내 반전 10회, 진폭 4.8° (정지하지 않음)
+17:53:32 [WARN] [1791017612.377143338] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:33 [WARN] [1791017613.377115059] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:34 [WARN] [1791017614.397157754] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:36 [WARN] [1791017616.677666679] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:37 [WARN] [1791017617.697627711] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:38 [WARN] [1791017618.717135695] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:52 [WARN] [1791017632.877125194] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:53 [WARN] [1791017633.877172365] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:54 [WARN] [1791017634.897139579] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:55 [WARN] [1791017635.917095812] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:56 [WARN] [1791017636.917093913] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:57 [WARN] [1791017637.937087578] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:58 [WARN] [1791017638.937126698] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:53:59 [WARN] [1791017639.937112756] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:54:00 [WARN] [1791017640.957093736] [humanoid_rl_bridge]: [data] lift_guard 감지 — lift_guard: 양발 무접촉 1.0s 지속 (정지하지 않음)
+17:54:08 [WARN] [1791017648.558462536] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_hip_f_joint: 0.5s 내 반전 9회, 진폭 6.2° (정지하지 않음)
+17:54:08 [WARN] [1791017648.598863047] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_hip_f_joint: 0.5s 내 반전 10회, 진폭 6.2° (정지하지 않음)
+17:54:08 [WARN] [1791017648.760606247] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_hip_f_joint: 0.5s 내 반전 9회, 진폭 5.0° (정지하지 않음)
+17:54:08 [WARN] [1791017648.778363516] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_hip_f_joint: 0.5s 내 반전 10회, 진폭 5.0° (정지하지 않음)
+17:54:08 [WARN] [1791017648.798419494] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_hip_f_joint: 0.5s 내 반전 11회, 진폭 5.8° (정지하지 않음)
+17:54:13 [WARN] [1791017653.258424178] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 right_knee_joint: 0.5s 내 반전 9회, 진폭 4.8° (정지하지 않음)
+17:54:13 [WARN] [1791017653.278343348] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 right_knee_joint: 0.5s 내 반전 10회, 진폭 4.8° (정지하지 않음)
+17:54:28 [WARN] [1791017668.296803428] [humanoid_rl_bridge]: STOP_ALL (sensor_stale)
+17:54:28 [ERROR] [1791017668.297920589] [humanoid_rl_bridge]: 센서 공백 → STOP_ALL + 정책 비활성. 원인 확인 후 march 재명령으로만 재개
+17:54:43 Traceback (most recent call last):
+17:54:43   File "/home/mama/humanoid_repo/jetson/scripts/rl_bridge_node.py", line 2797, in main
+17:54:43     rclpy.spin(node)
+17:54:43   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 229, in spin
+17:54:43     executor.spin_once()
+17:54:43   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 776, in spin_once
+17:54:43     self._spin_once_impl(timeout_sec)
+17:54:43   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 765, in _spin_once_impl
+17:54:43     handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+17:54:43   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 748, in wait_for_ready_callbacks
+17:54:43     return next(self._cb_iter)
+17:54:43   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 649, in _wait_for_ready_callbacks
+17:54:43     raise ExternalShutdownException()
+17:54:43 rclpy.executors.ExternalShutdownException
+17:54:43 
+17:54:43 During handling of the above exception, another exception occurred:
+17:54:43 
+17:54:43 Traceback (most recent call last):
+17:54:43   File "/home/mama/humanoid_repo/jetson/scripts/rl_bridge_node.py", line 2809, in <module>
+17:54:43     raise SystemExit(main())
+17:54:43   File "/home/mama/humanoid_repo/jetson/scripts/rl_bridge_node.py", line 2804, in main
+17:54:43     rclpy.shutdown()
+17:54:43   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+17:54:43     _shutdown(context=context)
+17:54:43   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+17:54:43     return context.shutdown()
+17:54:43   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+17:54:43     self.__context.shutdown()
+17:54:43 rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[종료] 반환코드 1

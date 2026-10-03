@@ -86,3 +86,21 @@ class Biped12Stage4PPOHoldPriorRunnerCfg(Biped12Stage4PPORunnerCfg):
         if hasattr(super(), "__post_init__"):
             super().__post_init__()
         self.policy.init_noise_std = 0.25
+
+
+@configclass
+class Biped12G22RPPORunnerCfg(Biped12Stage4PPOHoldPriorRunnerCfg):
+    """1003 G22R: G21a 와 같은 PPO(동결), 실험 디렉터리만 분리."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.experiment_name = "biped12_g22r"
+
+
+@configclass
+class Biped12W1PPORunnerCfg(Biped12Stage4PPOHoldPriorRunnerCfg):
+    """1003 W1: G21a 와 같은 PPO(동결), 실험 디렉터리만 분리."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.experiment_name = "biped12_w1"

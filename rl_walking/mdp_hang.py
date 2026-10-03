@@ -1811,3 +1811,394 @@ def encoder_joint_pos_rel_v2_lagged(env, max_lag: int = 1, asset_cfg=None, actio
     """G21c2: 관절각 관측 env 별 0..max_lag 틱 지연 DR."""
     x = encoder_joint_pos_rel_v2(env, asset_cfg=asset_cfg, action_term=action_term, play_rad=play_rad)
     return _lagged(env, "_g21_jp_lag", x, max_lag)
+
+
+# =====================================================================================================
+# G22R · W1 (1003, 승윤님 설계 지시서) — 부모 G21a-11300 에서 독립 두 분기. plant·관측·PPO 동결, 과제(보상·외란·명령)만 변경.
+# =====================================================================================================
+_G22R_STAGES = (   # (무외란, 앞, 뒤 비율), 앞 F 범위, 뒤 F 범위 [N] — 램프 힘에 적용, 순간 충격은 ×1.5(종전 F_imp 5–30 / F_ramp 3–20 비)
+    ((0.40, 0.40, 0.20), (5.0, 8.0), (8.0, 12.0)),     # R1
+    ((0.35, 0.45, 0.20), (8.0, 10.0), (10.0, 15.0)),   # R2
+    ((0.30, 0.50, 0.20), (10.0, 12.0), (12.0, 18.0)),  # R3
+    ((0.25, 0.55, 0.20), (12.0, 15.0), (18.0, 18.0)),  # R4 (뒤 = 평가 b18 범위)
+)
+
+
+def _g22(env):
+    """G22R/W1 공용 단계·집계 상태 (env._g22)."""
+    st = getattr(env, "_g22", None)
+    if st is None or st["cat"].shape[0] != env.num_envs:
+        N, dev = env.num_envs, env.device
+        z = lambda *s: torch.zeros(*(s or (N,)), device=dev)
+        st = {"stage": 0, "stage_since_it": 0, "cat": z(),          # cat: 0 무외란 1 앞 2 뒤 (에피소드 단위)
+              # 에피소드 누적(리셋 때 커리큘럼이 소비)
+              "ep_td": z(), "ep_load": z(), "ep_takeoff": z(), "ep_unarmed": z(),
+              "ep_trk_err": z(), "ep_trk_n": z(), "ep_walk": z(),
+              # 단계 창 집계
+              "win": {}}
+        env._g22 = st
+    return st
+
+
+def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), gap_range=(3.0, 7.0), ramp_prob=0.6,
+                           F_ramp_range=(3.0, 20.0), rise_range=(1.0, 4.0), hold_range=(1.0, 3.0),
+                           F_imp_range=(5.0, 30.0), dur_imp_range=(0.2, 0.4), lateral_prob=0.0, lateral_scale=0.6, p_active=1.0,
+                           branch: str = "g22r", w1_p_active: float = 0.125, w1_F: tuple = (5.0, 8.0), imp_scale: float = 1.5,
+                           asset_cfg=None):
+    """mode="reset": 종전 disturbance_reset 의 횟수·시각·램프/충격 모양을 그대로 쓰고 **방향·힘 분포만** 단계별로 바꾼다.
+    G22R: 에피소드 단위로 무외란/앞/뒤 범주를 뽑아(단계 비율), 앞(+몸통 x)·뒤 힘 범위 적용(좌우 외란 없음 — 지시서 R1–R4).
+    W1: 단계 S0–S2 는 외란 없음, S3 은 w1_p_active 비율 env 에 앞/뒤 w1_F 의 약한 외란."""
+    # F_ramp/F_imp 범위·lateral·p_active 는 아래에서 단계 값으로 덮는다(인자는 G21a cfg 호환용)
+    disturbance_reset(env, env_ids, n_range=n_range, t0_range=t0_range, gap_range=gap_range, ramp_prob=ramp_prob,
+                      F_ramp_range=F_ramp_range, rise_range=rise_range, hold_range=hold_range, F_imp_range=F_imp_range,
+                      dur_imp_range=dur_imp_range, lateral_prob=0.0, lateral_scale=lateral_scale, p_active=1.0, asset_cfg=asset_cfg)
+    hs = _state(env); g = _g22(env)
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long); n = len(ids); dev = env.device; K = _DST_K
+    if n == 0:
+        return
+    if branch == "g22r":
+        (p0, pf, pb), Ff, Fb = _G22R_STAGES[min(g["stage"], len(_G22R_STAGES) - 1)]
+        r = torch.rand(n, device=dev)
+        cat = torch.where(r < p0, torch.zeros_like(r), torch.where(r < p0 + pf, torch.ones_like(r), 2.0 * torch.ones_like(r)))
+    else:
+        Ff = Fb = tuple(w1_F)
+        on = (g["stage"] >= 3) & (torch.rand(n, device=dev) < float(w1_p_active))
+        cat = torch.where(on, torch.where(torch.rand(n, device=dev) < 0.5, torch.ones(n, device=dev), 2.0 * torch.ones(n, device=dev)),
+                          torch.zeros(n, device=dev))
+    g["cat"][ids] = cat
+    kind = hs["dst_kind"][ids]                                   # 횟수·시각·램프/충격 모양 = 종전 함수 그대로
+    kind = torch.where((cat > 0.5).unsqueeze(1), kind, torch.zeros_like(kind))
+    U = lambda lo, hi: torch.empty(n, K, device=dev).uniform_(float(lo), float(hi))
+    F = torch.where((cat == 1).unsqueeze(1), U(*Ff), U(*Fb))
+    F = torch.where(kind == 2, F * float(imp_scale), F)
+    # 방향 = 스폰 시점 몸통 +x(앞, 평가기 'f' 와 같은 규약) × 범주 부호
+    asset = env.scene["robot"]; ex = torch.zeros(n, 3, device=dev); ex[:, 0] = 1.0
+    bf = _quat_apply(asset.data.root_quat_w[ids], ex)[:, :2]; bf = bf / bf.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+    fw = bf.unsqueeze(1).expand(n, K, 2)
+    sgn = torch.where(cat == 2, -1.0, 1.0).view(n, 1, 1)
+    hs["dst_kind"][ids] = kind; hs["dst_F"][ids] = torch.where(kind > 0, F, torch.zeros_like(F)); hs["dst_dir"][ids] = fw * sgn
+
+
+def push_with_arm_g22(env, env_ids, velocity_range: dict, arm_s: float = 2.5, branch: str = "g22r", asset_cfg=None):
+    """G22R: 종전 push_robot(속도 밀기)과 같되 G21b 처럼 무장 래치를 건다(실제로 민 env 만).
+    W1: 속도 밀기 없음(지시서: S0–S2 무외란, S3 약한 외란은 disturbance_reset_g22r 가 담당)."""
+    if branch == "w1":
+        return
+    push_with_arm(env, env_ids, velocity_range, arm_s=arm_s, asset_cfg=asset_cfg)
+
+
+def recovery_gate_g22r(env, env_ids, tilt_ok: float = 6.5, w_ok: float = 1.5, v_ok: float = 0.5, lift_tilt: float = 3.0,
+                       arm_s: float = 2.5, td_air_s: float = 0.06, lift_dz: float = 0.01, td_disp_m: float = 0.02,
+                       load_frac: float = 0.25, load_s: float = 0.10, pre_tilt: float = 6.5, pre_w: float = 1.0, pre_v: float = 0.30,
+                       pre_s: float = 0.15, ok_tilt: float = 3.0, ok_w: float = 0.5, ok_v: float = 0.15, h_nom: float = 0.60,
+                       ok_h: float = 0.02, ok_s: float = 0.30, timeout_s: float = 4.0, settle_max_s: float = 3.0,
+                       swing_timeout_s: float = 0.60, dir_v_min: float = 0.10, prog_sat_m: float = 0.08,
+                       threshold: float = 5.0, asset_cfg=None):
+    """mode="interval"(0 s): G22R 회복 게이트 = G21b recovery_gate_v2 와 같은 무장 래치·3상(STAND/RECOVERY/SETTLE) 위에
+    지시서 G22R 정의를 얹는다.
+    - 무장: 외란 힘이 실제로 걸린 env(+ 속도 밀기 push_with_arm_g22) 만, 해제 뒤 arm_s 유지. 정책 행동으로는 열 수 없다(G16a 차단).
+    - 회복 방향: 게이트가 열리는 순간 몸통 수평속도 방향을 래치(|v| < dir_v_min 이면 지금 걸린 외력 방향).
+    - valid_takeoff: 게이트 열림 & 접촉 상실 ≥ td_air_s & 발 링크가 이륙 시점보다 lift_dz 이상 높음. **이륙 자체 보상 없음.**
+    - valid_touchdown: valid_takeoff 뒤 재접촉 & 수평 이동 ≥ td_disp_m. load_accept: 착지 발 Fz > load_frac·mg 가 load_s 유지.
+    - settle_success: SETTLE 에서 양발 & 기울기<ok_tilt & |ω|<ok_w & |v|<ok_v & |h−h_nom|<ok_h 가 ok_s 유지 → 1회.
+    - 스텝 방향 진행: 스윙 중 (발 xy − 이륙 xy)·회복방향 / prog_sat_m 을 [0,1] 로 자름(8 cm 포화 — 큰 보폭 경쟁 아님).
+    - 무장 안 된 STAND 에서 valid 이륙 = unarmed_takeoff 이벤트(1회), RECOVERY 에서 공중 > swing_timeout_s 미착지 = swing_timeout(스윙당 1회).
+    rec_open = (phase ≠ STAND) 로 종전 state_gated/open_gated 와 호환."""
+    st = _g2(env); hs = _state(env); g = _g22(env)
+    for k, shape in (("rec_dir", (2,)), ("lift_z", (2,)), ("valid_lift", (2,)), ("to_fired", (2,)), ("prog", ()),
+                     ("ev_unarmed", ()), ("ev_swto", ()), ("ev_takeoff", ())):
+        if k not in st:
+            st[k] = torch.zeros(env.num_envs, *shape, device=env.device)
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    sensor = env.scene.sensors["contact_forces"]; fid = _feet_body_ids(env)
+    F = sensor.data.net_forces_w[:, fid, :]; fz = F[..., 2]; c = (torch.norm(F, dim=-1) > threshold).float()
+    both = c.min(1).values > 0.5
+    bid = _g21_bids(env)
+    fpos = asset.data.body_pos_w[:, bid, :]; fxy = fpos[..., :2]; fzpos = fpos[..., 2]
+    pg = asset.data.projected_gravity_b
+    tilt = torch.rad2deg(torch.acos((-pg[:, 2]).clamp(-1.0, 1.0)))
+    w = asset.data.root_ang_vel_b[:, :2].norm(dim=1); vxy = asset.data.root_lin_vel_w[:, :2]; v = vxy.norm(dim=1)
+    h = asset.data.root_pos_w[:, 2]
+    dt = env.step_dt; t = env.episode_length_buf.to(torch.float32) * dt
+    mg = float(G) * asset.data.default_mass.sum(1).to(fz.device)
+    fresh = env.episode_length_buf <= 1
+    if bool(fresh.any()):
+        for k, val in st.items():
+            val[fresh] = 0.0
+    force = hs["dst_F_now"] > 0.0
+    st["arm_until"] = torch.where(force, torch.maximum(st["arm_until"], t + arm_s), st["arm_until"])
+    armed = t < st["arm_until"]
+    unbal = force | (tilt > tilt_ok) | (w > w_ok) | (v > v_ok) | ((~both) & (tilt > lift_tilt))
+    for k in ("ev_td", "ev_load", "ev_settle", "ev_timeout", "ev_unarmed", "ev_swto", "ev_takeoff"):
+        st[k].zero_()
+    ph = st["phase"]; rec = ph == 1
+    # 발별 스윙: 이륙 xy·z 기록, valid 이륙 = 공중 ≥ td_air_s & 높이 ≥ lift_dz
+    lifted = (st["prev_c"] > 0.5) & (c < 0.5)
+    st["lift_xy"] = torch.where(lifted.unsqueeze(-1), fxy, st["lift_xy"])
+    st["lift_z"] = torch.where(lifted, fzpos, st["lift_z"])
+    st["valid_lift"] = torch.where(lifted, torch.zeros_like(st["valid_lift"]), st["valid_lift"])
+    st["to_fired"] = torch.where(lifted, torch.zeros_like(st["to_fired"]), st["to_fired"])
+    air = c < 0.5
+    st["swing_t"] = torch.where(air, st["swing_t"] + dt, torch.zeros_like(st["swing_t"]))
+    vl_now = air & (st["swing_t"] >= td_air_s) & ((fzpos - st["lift_z"]) >= lift_dz)
+    new_valid = vl_now & (st["valid_lift"] < 0.5)
+    st["valid_lift"] = torch.where(vl_now, torch.ones_like(st["valid_lift"]), st["valid_lift"])
+    stand_unarmed = (ph == 0) & ~armed
+    st["ev_unarmed"] = (new_valid & stand_unarmed.unsqueeze(1)).any(1).float()
+    st["ev_takeoff"] = (new_valid & rec.unsqueeze(1)).any(1).float()
+    st["had_swing"] = torch.where(rec & (air & (st["valid_lift"] > 0.5)).any(1), torch.ones_like(st["had_swing"]), st["had_swing"])
+    landed = (st["prev_c"] < 0.5) & (c > 0.5)
+    disp = (fxy - st["lift_xy"]).norm(dim=-1)
+    td = landed & (st["valid_lift"] > 0.5) & (disp >= td_disp_m) & rec.unsqueeze(1)
+    st["ev_td"] = td.any(1).float()
+    st["td_done"] = torch.maximum(st["td_done"], st["ev_td"])
+    st["td_pend"] = torch.where(td, torch.ones_like(st["td_pend"]), st["td_pend"])
+    st["valid_lift"] = torch.where(landed, torch.zeros_like(st["valid_lift"]), st["valid_lift"])
+    loaded = (st["td_pend"] > 0.5) & (fz > load_frac * mg.unsqueeze(1))
+    st["load_t"] = torch.where(loaded, st["load_t"] + dt, torch.zeros_like(st["load_t"]))
+    acc = st["load_t"] >= load_s
+    st["ev_load"] = (acc.any(1) & rec).float()
+    st["load_done"] = torch.maximum(st["load_done"], st["ev_load"])
+    st["td_pend"] = torch.where(acc, torch.zeros_like(st["td_pend"]), st["td_pend"])
+    # 스윙 타임아웃(스윙당 1회)
+    swto = air & (st["swing_t"] > swing_timeout_s) & (st["to_fired"] < 0.5) & rec.unsqueeze(1)
+    st["ev_swto"] = swto.any(1).float()
+    st["to_fired"] = torch.where(swto, torch.ones_like(st["to_fired"]), st["to_fired"])
+    # 스텝 방향 진행(스윙 중인 발 중 최대)
+    prog = ((fxy - st["lift_xy"]) * st["rec_dir"].unsqueeze(1)).sum(-1) / prog_sat_m
+    prog = torch.where(air & (st["valid_lift"] > 0.5), prog.clamp(0.0, 1.0), torch.zeros_like(prog))
+    st["prog"] = prog.max(1).values * rec.float()
+    st["prev_c"] = c
+    # 상태 전이 (G21b 와 같음)
+    go_rec = (ph == 0) & armed & unbal
+    pre_ok = both & (tilt < pre_tilt) & (w < pre_w) & (v < pre_v)
+    st["pre_t"] = torch.where(rec & pre_ok, st["pre_t"] + dt, torch.zeros_like(st["pre_t"]))
+    step_ok = (st["had_swing"] < 0.5) | ((st["td_done"] > 0.5) & (st["load_done"] > 0.5))
+    go_set = rec & (st["pre_t"] >= pre_s) & step_ok
+    st["rec_t"] = torch.where(rec, st["rec_t"] + dt, torch.zeros_like(st["rec_t"]))
+    tout = rec & (st["rec_t"] > timeout_s) & unbal
+    st["ev_timeout"] = tout.float(); st["rec_t"] = torch.where(tout, torch.zeros_like(st["rec_t"]), st["rec_t"])
+    stl = ph == 2
+    ok = both & (tilt < ok_tilt) & (w < ok_w) & (v < ok_v) & ((h - h_nom).abs() < ok_h)
+    st["settle_t"] = torch.where(stl & ok, st["settle_t"] + dt, torch.zeros_like(st["settle_t"]))
+    st["set_t"] = torch.where(stl, st["set_t"] + dt, torch.zeros_like(st["set_t"]))
+    succ = stl & (st["settle_t"] >= ok_s)
+    back = stl & unbal & ~succ
+    expire = stl & (st["set_t"] > settle_max_s) & ~succ & ~back
+    st["ev_settle"] = succ.float()
+    start = go_rec | back
+    # 회복 방향 래치(열리는 순간): 몸통 수평속도, 느리면 지금 외력 방향
+    if bool(start.any()):
+        fw_now = _dist_force_w(hs, torch.arange(env.num_envs, device=env.device))
+        fdir = fw_now / fw_now.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+        vdir = vxy / v.clamp(min=1e-6).unsqueeze(1)
+        d = torch.where((v > dir_v_min).unsqueeze(1), vdir, fdir)
+        st["rec_dir"] = torch.where(start.unsqueeze(1), d, st["rec_dir"])
+    new = ph.clone()
+    new = torch.where(go_rec, torch.ones_like(new), new)
+    new = torch.where(go_set, torch.full_like(new, 2.0), new)
+    new = torch.where(back, torch.ones_like(new), new)
+    new = torch.where(succ | expire, torch.zeros_like(new), new)
+    for k in ("had_swing", "td_done", "load_done", "rec_t", "pre_t"):
+        st[k] = torch.where(start, torch.zeros_like(st[k]), st[k])
+    st["phase"] = new
+    hs["rec_open"] = (new != 0).float()
+    hs["rec_ev"] = st["ev_settle"]
+    # 에피소드 집계(커리큘럼)
+    g["ep_td"] += st["ev_td"]; g["ep_load"] += st["ev_load"]; g["ep_takeoff"] += st["ev_takeoff"]; g["ep_unarmed"] += st["ev_unarmed"]
+
+
+def g22r_vel_quality(env, s_v: float = 0.30, asset_cfg=None) -> torch.Tensor:
+    """RECOVERY 동안 exp(−(|v_xy|/0.30)²) — 회복되고 있는가(절대 속도 최소화가 아니라 감속 유도)."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    v = asset.data.root_lin_vel_w[:, :2].norm(dim=1)
+    return torch.exp(-(v / s_v) ** 2) * (_g2(env)["phase"] == 1).float()
+
+
+def g22r_ang_quality(env, s_w: float = 0.8, asset_cfg=None) -> torch.Tensor:
+    """RECOVERY 동안 exp(−(|ω_xy|/0.8)²) — 몸통 각운동량 폭주 억제(발 들기 억제 아님)."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    w = asset.data.root_ang_vel_b[:, :2].norm(dim=1)
+    return torch.exp(-(w / s_w) ** 2) * (_g2(env)["phase"] == 1).float()
+
+
+def g22r_step_direction(env) -> torch.Tensor:
+    """RECOVERY 스윙 중 회복방향 진행 clip(Δ/8 cm, 0, 1) (recovery_gate_g22r 가 계산)."""
+    st = _g2(env)
+    return st["prog"] if "prog" in st else torch.zeros(env.num_envs, device=env.device)
+
+
+def g22r_event(env, name: str) -> torch.Tensor:
+    """G22R 이벤트 0/1 (ev_td·ev_load·ev_settle·ev_unarmed·ev_swto) — 보상 관리자 ×dt: 가중치 5 → 실효 0.1."""
+    st = _g2(env)
+    return st[name] if name in st else torch.zeros(env.num_envs, device=env.device)
+
+
+def g22r_force_curriculum(env, env_ids, min_episodes: int = 2000, min_iters: int = 50, max_fall: float = 0.25,
+                          min_load_per_td: float = 0.85, max_spont: float = 0.05, steps_per_iter: int = 24):
+    """커리큘럼 항(리셋 env 마다 호출): 현 단계의 끝난 에피소드를 모아 **반복 수가 아니라 성적으로** 다음 단계로 올린다.
+    승격 = (외란 에피소드 낙상률 < max_fall) & (load_accept/touchdown > min_load_per_td) & (무외란 에피소드 중 무장 안 된 이륙 비율 < max_spont),
+    표본 ≥ min_episodes(외란 에피소드) & 단계 체류 ≥ min_iters 반복. 집계는 학습 env 의 별도 에피소드(독립 검증 실행은 아님 — 보고서 표기).
+    반환 dict 은 로그(Curriculum/...)로 남는다."""
+    g = _g22(env)
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    W = g["win"]
+    for k in ("n_push", "fall_push", "td", "load", "n_quiet", "spont"):
+        W.setdefault(k, 0.0)
+    if len(ids):
+        tm = env.termination_manager
+        fell = (tm.terminated[ids] & ~tm.time_outs[ids]).float()
+        started = env.episode_length_buf[ids] > 1          # 첫 리셋(초기화) 제외
+        push = (g["cat"][ids] > 0.5) & started; quiet = (g["cat"][ids] < 0.5) & started
+        W["n_push"] += float(push.sum()); W["fall_push"] += float((fell * push).sum())
+        W["td"] += float((g["ep_td"][ids] * push).sum()); W["load"] += float((g["ep_load"][ids] * push).sum())
+        W["n_quiet"] += float(quiet.sum()); W["spont"] += float(((g["ep_unarmed"][ids] > 0) & quiet).float().sum())
+        for k in ("ep_td", "ep_load", "ep_takeoff", "ep_unarmed"):
+            g[k][ids] = 0.0
+    it = int(env.common_step_counter) // steps_per_iter
+    fall = W["fall_push"] / max(W["n_push"], 1.0); lpt = W["load"] / max(W["td"], 1.0); spont = W["spont"] / max(W["n_quiet"], 1.0)
+    if (g["stage"] < len(_G22R_STAGES) - 1 and W["n_push"] >= min_episodes and it - g["stage_since_it"] >= min_iters
+            and fall < max_fall and lpt > min_load_per_td and spont < max_spont):
+        print(f"[G22R 커리큘럼] 반복 {it}: R{g['stage'] + 1} → R{g['stage'] + 2} (낙상 {fall:.3f} · 하중/착지 {lpt:.3f} · 무외란 이륙 {spont:.3f} · n {W['n_push']:.0f})", flush=True)
+        g["stage"] += 1; g["stage_since_it"] = it; g["win"] = {}
+    return {"stage": float(g["stage"] + 1), "fall_push": fall, "load_per_td": lpt, "spont_takeoff": spont, "n_push": W["n_push"]}
+
+
+# ---------------------------------------------------------------- W1 (저속 전진 보행) ----------------------------------------------------------------
+_W1_STAGES = ((0.60, (0.03, 0.08)), (0.40, (0.05, 0.12)), (0.30, (0.05, 0.18)), (0.25, (0.05, 0.25)))   # (서기 비율, vx 범위)
+
+
+def _vx_cmd(env):
+    return env.command_manager.get_command("base_velocity")[:, 0]
+
+
+def w1_stand_gated(env, func, params: dict | None = None, walk_min: float = 0.03) -> torch.Tensor:
+    """func 를 서기 명령(|vx_cmd| < walk_min) 동안만 적용 — G21a 서기 보상(자세·대칭·앵커·회복 등)."""
+    val = func(env, **_resolve_nested(env, params))
+    return val * (_vx_cmd(env).abs() < walk_min).to(val.dtype)
+
+
+def w1_walk_gated(env, func, params: dict | None = None, walk_min: float = 0.03) -> torch.Tensor:
+    """func 를 걷기 명령(|vx_cmd| ≥ walk_min) 동안만 적용."""
+    val = func(env, **_resolve_nested(env, params))
+    return val * (_vx_cmd(env).abs() >= walk_min).to(val.dtype)
+
+
+def _w1(env):
+    st = getattr(env, "_w1", None)
+    if st is None or st["prev_c"].shape[0] != env.num_envs:
+        N, dev = env.num_envs, env.device
+        z = lambda *s: torch.zeros(*(s or (N,)), device=dev)
+        st = {"prev_c": torch.ones(N, 2, device=dev), "air_t": z(N, 2), "lift_xy": z(N, 2, 2), "lift_z": z(N, 2), "air_fired": z(N, 2),
+              "last_td": torch.full((N,), -1.0, device=dev), "alt_t": torch.full((N,), 99.0, device=dev), "alt_ok": z(),
+              "ds_t": z(), "cmd_prev": z(), "cmd_t": z(), "ev_step": z(), "ev_air": z(), "clear": z(), "ds_pen": z(),
+              "n_td": z(N, 2)}
+        env._w1 = st
+    return st
+
+
+def w1_gait_step(env, env_ids, walk_min: float = 0.03, alt_min: float = 0.06, ds_min: float = 0.08, ds_s: float = 0.35,
+                 grace_s: float = 0.30, step_lo: float = 0.03, step_hi: float = 0.15, clr_lo: float = 0.015, clr_hi: float = 0.04,
+                 air_max_s: float = 0.50, alt_hold_s: float = 1.0, settle_trk_s: float = 0.5, threshold: float = 5.0, asset_cfg=None):
+    """mode="interval"(0 s): W1 보행 상태 추적 — 접촉·이륙/착지·교대·스텝 변위·발 들림 높이·양발 지지 지속·명령 전환 시각.
+    - step_progress 이벤트: 착지 순간 (착지 xy − 이륙 xy)·명령 방향 ∈ [3, 15] cm 면 1 (15 cm 가 8 cm 보다 더 받지 않음).
+    - 교대: 마지막 착지 발 ≠ 직전 착지 발이면 alt_ok=1, 착지 뒤 alt_hold_s 동안 유지(|vx_cmd| ≥ alt_min 일 때만 보상).
+    - 발 들림: 스윙 발 높이(이륙 시점 대비) ∈ [1.5, 4] cm 면 1.
+    - 양발 지지 과다: |vx_cmd| ≥ ds_min 인데 양발 접촉 > ds_s (명령 전환 뒤 grace_s 제외) 면 1.
+    - 공중 과다: 한 발 공중 > air_max_s 면 1회 이벤트.
+    추종 오차(커리큘럼 집계): 걷기 명령이 settle_trk_s 넘게 유지된 동안 |v_x(요 프레임) − vx_cmd|."""
+    st = _w1(env); g = _g22(env)
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    sensor = env.scene.sensors["contact_forces"]; fid = _feet_body_ids(env)
+    c = (torch.norm(sensor.data.net_forces_w[:, fid, :], dim=-1) > threshold).float()
+    bid = _g21_bids(env); fpos = asset.data.body_pos_w[:, bid, :]; fxy = fpos[..., :2]; fz = fpos[..., 2]
+    dt = env.step_dt
+    fresh = env.episode_length_buf <= 1
+    if bool(fresh.any()):
+        for k, val in st.items():
+            val[fresh] = 0.0
+        st["prev_c"][fresh] = 1.0; st["last_td"][fresh] = -1.0; st["alt_t"][fresh] = 99.0
+    cmd = env.command_manager.get_command("base_velocity")
+    vx = cmd[:, 0]
+    changed = (vx - st["cmd_prev"]).abs() > 1e-4
+    st["cmd_t"] = torch.where(changed, torch.zeros_like(st["cmd_t"]), st["cmd_t"] + dt); st["cmd_prev"] = vx.clone()
+    lifted = (st["prev_c"] > 0.5) & (c < 0.5); landed = (st["prev_c"] < 0.5) & (c > 0.5); air = c < 0.5
+    st["lift_xy"] = torch.where(lifted.unsqueeze(-1), fxy, st["lift_xy"]); st["lift_z"] = torch.where(lifted, fz, st["lift_z"])
+    st["air_fired"] = torch.where(lifted, torch.zeros_like(st["air_fired"]), st["air_fired"])
+    st["air_t"] = torch.where(air, st["air_t"] + dt, torch.zeros_like(st["air_t"]))
+    # 명령 방향(몸통 요 프레임의 +x 를 월드로 — vy·wz 는 0 이라 vx 부호만)
+    q = asset.data.root_quat_w; ex = torch.zeros(env.num_envs, 3, device=env.device); ex[:, 0] = 1.0
+    hx = _quat_apply(q, ex)[:, :2]; hx = hx / hx.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+    cdir = hx * torch.sign(vx).unsqueeze(1)
+    disp = ((fxy - st["lift_xy"]) * cdir.unsqueeze(1)).sum(-1)
+    walk = vx.abs() >= walk_min
+    good = landed & (disp >= step_lo) & (disp <= step_hi) & walk.unsqueeze(1)
+    st["ev_step"] = good.any(1).float()
+    # 교대
+    foot = torch.where(landed[:, 0] & ~landed[:, 1], torch.zeros_like(vx), torch.where(landed[:, 1] & ~landed[:, 0], torch.ones_like(vx), -torch.ones_like(vx)))
+    has = foot >= 0
+    alt_now = has & (st["last_td"] >= 0) & (foot != st["last_td"])
+    st["alt_ok"] = torch.where(has, alt_now.float(), st["alt_ok"])
+    st["alt_t"] = torch.where(has, torch.zeros_like(st["alt_t"]), st["alt_t"] + dt)
+    st["last_td"] = torch.where(has, foot, st["last_td"])
+    st["n_td"] += landed.float()
+    # 발 들림 높이(스윙 발 중 하나라도 범위 안)
+    dz = fz - st["lift_z"]
+    st["clear"] = (air & (dz >= clr_lo) & (dz <= clr_hi)).any(1).float() * walk.float()
+    # 양발 지지 과다
+    both = c.min(1).values > 0.5
+    st["ds_t"] = torch.where(both, st["ds_t"] + dt, torch.zeros_like(st["ds_t"]))
+    st["ds_pen"] = ((vx.abs() >= ds_min) & (st["ds_t"] > ds_s) & (st["cmd_t"] > grace_s)).float()
+    # 공중 과다(스윙당 1회)
+    ao = air & (st["air_t"] > air_max_s) & (st["air_fired"] < 0.5)
+    st["ev_air"] = ao.any(1).float(); st["air_fired"] = torch.where(ao, torch.ones_like(st["air_fired"]), st["air_fired"])
+    st["prev_c"] = c
+    # 추종 오차 집계(커리큘럼): 요 프레임 전진 속도
+    vw = asset.data.root_lin_vel_w[:, :2]
+    v_fwd = (vw * hx).sum(-1)
+    trk = walk & (st["cmd_t"] > settle_trk_s)
+    g["ep_trk_err"] += torch.where(trk, (v_fwd - vx).abs(), torch.zeros_like(vx)); g["ep_trk_n"] += trk.float()
+    g["ep_walk"] = torch.maximum(g["ep_walk"], walk.float())
+
+
+def w1_gait_alternation(env, alt_min: float = 0.06, alt_hold_s: float = 1.0) -> torch.Tensor:
+    """|vx_cmd| ≥ 0.06 이고 최근 착지가 직전 착지와 다른 발이며 그 착지가 alt_hold_s 안이면 1 (같은 발 연속 착지 = 0, 벌점 없음)."""
+    st = _w1(env)
+    return ((_vx_cmd(env).abs() >= alt_min) & (st["alt_ok"] > 0.5) & (st["alt_t"] < alt_hold_s)).float()
+
+
+def w1_value(env, name: str) -> torch.Tensor:
+    """W1 추적기 값(ev_step·clear·ds_pen·ev_air) 0/1."""
+    return _w1(env)[name]
+
+
+def w1_command_curriculum(env, env_ids, min_episodes: int = 1500, min_iters: int = 50, max_fall: float = 0.10,
+                          max_trk_err: float = 0.05, steps_per_iter: int = 24):
+    """명령 커리큘럼 S0→S3 (지시서 단계 비율·속도 범위). 승격 = 걷기 명령이 있었던 에피소드 낙상률 ≤ max_fall
+    & 걷기 추종 평균 오차 ≤ max_trk_err [m/s] & 표본 ≥ min_episodes & 체류 ≥ min_iters 반복 (기준은 1003 구현 결정, 승윤님 검토 대상).
+    단계가 바뀌면 명령 항의 서기 비율·vx 범위를 바꾼다(이미 뽑힌 명령은 다음 리샘플부터)."""
+    g = _g22(env)
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    W = g["win"]
+    for k in ("n_walk", "fall_walk", "err", "err_n", "n_stand", "fall_stand"):
+        W.setdefault(k, 0.0)
+    if len(ids):
+        tm = env.termination_manager
+        fell = (tm.terminated[ids] & ~tm.time_outs[ids]).float()
+        started = env.episode_length_buf[ids] > 1
+        wk = (g["ep_walk"][ids] > 0.5) & started; sd = (g["ep_walk"][ids] < 0.5) & started
+        W["n_walk"] += float(wk.sum()); W["fall_walk"] += float((fell * wk).sum())
+        W["n_stand"] += float(sd.sum()); W["fall_stand"] += float((fell * sd).sum())
+        W["err"] += float(g["ep_trk_err"][ids].sum()); W["err_n"] += float(g["ep_trk_n"][ids].sum())
+        for k in ("ep_trk_err", "ep_trk_n", "ep_walk"):
+            g[k][ids] = 0.0
+    it = int(env.common_step_counter) // steps_per_iter
+    fall = W["fall_walk"] / max(W["n_walk"], 1.0); err = W["err"] / max(W["err_n"], 1.0); fs = W["fall_stand"] / max(W["n_stand"], 1.0)
+    if (g["stage"] < len(_W1_STAGES) - 1 and W["n_walk"] >= min_episodes and it - g["stage_since_it"] >= min_iters
+            and fall <= max_fall and err <= max_trk_err):
+        print(f"[W1 커리큘럼] 반복 {it}: S{g['stage']} → S{g['stage'] + 1} (걷기 낙상 {fall:.3f} · 추종 오차 {err:.3f} · 서기 낙상 {fs:.3f})", flush=True)
+        g["stage"] += 1; g["stage_since_it"] = it; g["win"] = {}
+    stand, vr = _W1_STAGES[g["stage"]]
+    term = env.command_manager.get_term("base_velocity")
+    term.cfg.rel_standing_envs = float(stand); term.cfg.ranges.lin_vel_x = tuple(vr)
+    return {"stage": float(g["stage"]), "fall_walk": fall, "trk_err": err, "fall_stand": fs, "n_walk": W["n_walk"]}

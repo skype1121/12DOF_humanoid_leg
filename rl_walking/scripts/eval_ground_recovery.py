@@ -639,6 +639,7 @@ st_land_t = torch.full((N, 2), -1.0, device=dev)               # 재접촉 시�
 st_load_sum = torch.zeros(N, 2, device=dev); st_load_n = torch.zeros(N, 2, device=dev)
 n_takeoff = torch.zeros(N, device=dev); n_surv_takeoff = torch.zeros(N, device=dev)
 n_land = torch.zeros(N, device=dev); n_load = torch.zeros(N, device=dev)
+n_to_lr = torch.zeros(2, device=dev); sw_sq = torch.zeros(N, device=dev)   # 1003 G22R 리포트: 좌/우 이륙 수·스텝 변위 제곱합(표준편차)
 sw_travel = torch.zeros(N, device=dev); sw_n = torch.zeros(N, device=dev)
 BW = 17.62 * 9.81
 ank_err_sum = torch.zeros(N, device=dev); ank_err_max = torch.zeros(N, device=dev)
@@ -817,10 +818,12 @@ for i in range(STEPS):
             off = a_ & ever_both & ~st_air[:, c] & ~contact[:, c]
             st_air[off, c] = True; st_t0[off, c] = t_rel; st_f0[off, c] = _ffwd[off, c]; st_alive0[off, c] = True
             n_takeoff += off.float()
+            n_to_lr[c] += off.float().sum()
             on = a_ & st_air[:, c] & contact[:, c]
             st_air[on, c] = False; st_land_t[on, c] = t_rel; st_load_sum[on, c] = 0.0; st_load_n[on, c] = 0.0
             n_land += on.float()
             sw_travel[on] += (_ffwd[on, c] - st_f0[on, c]); sw_n += on.float()
+            sw_sq[on] += (_ffwd[on, c] - st_f0[on, c]) ** 2
             # 생존 이륙: 이륙 후 0.3 s 이상 살아 있음(낙상 부수 접촉상실과 구분)
             surv = a_ & st_alive0[:, c] & ((t_rel - st_t0[:, c]) >= 0.3)
             n_surv_takeoff += surv.float(); st_alive0[surv, c] = False
@@ -986,6 +989,10 @@ _tk = int(n_takeoff.sum()); _sv = int(n_surv_takeoff.sum()); _ld = int(n_land.su
 P(f"[스텝 단계 분해] 이륙 {_tk}회 → 생존 이륙(0.3 s 이상 생존) {_sv} → 재접촉 {_ld} → 하중 지지(0.3 s 평균 ≥30 % 체중) {_lo}"
   + (f" · 재접촉한 발의 앞축 이동 평균 {100*float(sw_travel.sum()/sw_n.sum().clamp(min=1)):+.1f} cm" if float(sw_n.sum()) > 0 else "")
   + f" · 실패한 시도(이륙했으나 재접촉 못 함) {_tk - _ld}")
+if float(sw_n.sum()) > 0:
+    _m = float(sw_travel.sum() / sw_n.sum()); _sd = (max(float(sw_sq.sum() / sw_n.sum()) - _m * _m, 0.0)) ** 0.5
+    P(f"[스텝 통계] 재접촉 발 앞축 이동 평균 {100*_m:+.1f} cm · 표준편차 {100*_sd:.1f} cm · 이륙 왼/오 {int(n_to_lr[0])}/{int(n_to_lr[1])}"
+      + (f" (왼 비율 {100*float(n_to_lr[0])/max(float(n_to_lr.sum()),1):.0f} %)" if float(n_to_lr.sum()) > 0 else ""))
 P("시간축 (인계 기준 s | 생존 env 평균 피치 | 생존 비율 | 외란 힘 N | 양발접촉 비율):")
 for t, p_, al, fN, bc in pitch_tl:
     P(f"   {t:6.1f}  {p_:+6.2f}  {al:5.2f}  {fN:5.0f}  {bc:5.2f}")

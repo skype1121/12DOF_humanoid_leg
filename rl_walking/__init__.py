@@ -551,3 +551,16 @@ for _stage in ("G6", "G6Hold", "G7", "G7Hold",    # 0921 G7: 지속 외력·회�
             "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPOHoldPriorRunnerCfg",
         },
     )
+
+
+# 1003 G22R·W1 (승윤님 설계 지시서): 부모 G21a-11300 독립 두 분기 — 로그 실험 디렉터리 분리(biped12_g22r / biped12_w1)
+for _stage, _agent in (("G22R", "Biped12G22RPPORunnerCfg"), ("W1", "Biped12W1PPORunnerCfg")):
+    gym.register(
+        id=f"Biped12-HangStand-{_stage}-v0",
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"rl_walking.hang_stand_env_cfg:Biped12HangStand{_stage}EnvCfg",
+            "rsl_rl_cfg_entry_point": f"rl_walking.agents:{_agent}",
+        },
+    )

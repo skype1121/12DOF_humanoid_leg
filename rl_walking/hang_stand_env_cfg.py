@@ -1972,3 +1972,105 @@ class Biped12HangStandG22wEnvCfg(Biped12HangStandG21aEnvCfg):
         a = self.actions.joint_pos
         assert a.min_delay_steps == 0 and a.max_delay_steps == 3
         a.delay_probs = (0.10, 0.30, 0.25, 0.35)
+
+
+# =====================================================================================================
+# G22R · W1 (1003, 승윤님 설계 지시서) — 부모 G21a-11300 에서 독립 두 분기. plant·관측·액션·DR·PPO 동결, 과제만 변경.
+# 기준 보상 = G21a env.yaml(지시서: yaml 우선). 변경점은 각 클래스 docstring 에 전부 적는다.
+# =====================================================================================================
+from isaaclab.managers import CurriculumTermCfg as _CurrTerm
+
+
+@configclass
+class _G22RCurriculumCfg:
+    force_stage = _CurrTerm(func=mdp_hang.g22r_force_curriculum)
+
+
+@configclass
+class _W1CurriculumCfg:
+    command_stage = _CurrTerm(func=mdp_hang.w1_command_curriculum)
+
+
+@configclass
+class Biped12HangStandG22REnvCfg(Biped12HangStandG21aEnvCfg):
+    """G22R — Bidirectional Recovery (G21a + 회복 과제만).
+    외란: disturbance_reset_g22r — 종전 횟수·시각·램프/충격 모양 유지, 에피소드 범주(무외란/앞/뒤)·힘 범위만 단계 R1–R4(성적 승격),
+          좌우 외란 없음, 순간 충격 힘 = 램프 범위 ×1.5. 속도 밀기(push_robot ±0.25 m/s, 3–6 s)는 G21a 그대로 + 무장 래치.
+    게이트: recovery_gate_g22r(무장 래치·회복 방향 래치·valid 이륙(≥60 ms·≥1 cm)·착지(≥2 cm)·하중(0.25 mg·100 ms)·정착 300 ms).
+    보상: G21a 전부 유지하되 G21a 회복 항(recovery_quality +5·recovery_event +30 — 구 게이트용)은 지시서 회복 항으로 대체,
+          action_rate_window 는 RECOVERY 에서만(−0.06). 추가: vel_quality +1.5·ang_quality +1.0·step_direction +0.5·
+          touchdown +5·load +10·settle +25(이벤트 ×dt → 실효 0.1/0.2/0.5)·recovery_time −0.10·unarmed_takeoff −10·swing_timeout −10."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev, rw = self.events, self.rewards
+        d = ev.disturbance
+        assert d.func is mdp_hang.disturbance_reset
+        d.func = mdp_hang.disturbance_reset_g22r; d.params = dict(d.params, branch="g22r")
+        pr = ev.push_robot
+        pr.func = mdp_hang.push_with_arm_g22; pr.params = {"velocity_range": dict(pr.params["velocity_range"]), "arm_s": 2.5, "branch": "g22r"}
+        g = ev.recovery_gate
+        assert g.func is mdp_hang.recovery_gate_step
+        g.func = mdp_hang.recovery_gate_g22r; g.params = {}
+        rw.recovery_quality = None
+        rw.recovery_event = None
+        arw = rw.action_rate_window
+        rw.action_rate_window = RewTerm(func=mdp_hang.g2_phase_gated, weight=-0.06,
+                                        params={"func": arw.params["func"], "params": dict(arw.params.get("params") or {}), "phases": [1]})
+        rw.recovery_vel_quality = RewTerm(func=mdp_hang.g22r_vel_quality, weight=1.5)
+        rw.recovery_ang_quality = RewTerm(func=mdp_hang.g22r_ang_quality, weight=1.0)
+        rw.recovery_step_direction = RewTerm(func=mdp_hang.g22r_step_direction, weight=0.5)
+        rw.valid_touchdown_event = RewTerm(func=mdp_hang.g22r_event, weight=5.0, params={"name": "ev_td"})
+        rw.load_accept_event = RewTerm(func=mdp_hang.g22r_event, weight=10.0, params={"name": "ev_load"})
+        rw.settle_success_event = RewTerm(func=mdp_hang.g22r_event, weight=25.0, params={"name": "ev_settle"})
+        rw.recovery_time = RewTerm(func=mdp_hang.g2_recovery_time, weight=-0.10)
+        rw.unarmed_takeoff_event = RewTerm(func=mdp_hang.g22r_event, weight=-10.0, params={"name": "ev_unarmed"})
+        rw.swing_timeout_event = RewTerm(func=mdp_hang.g22r_event, weight=-10.0, params={"name": "ev_swto"})
+        self.curriculum = _G22RCurriculumCfg()
+
+
+# W1: 걷기 명령 중 끄는 G21a 서기 항(지시서 14 + 같은 성격의 정숙·회복 항) / 걷기 중 지시서 값으로 바꾸는 항
+_W1_STAND_ONLY = ("stance_shape", "pose_symmetry", "march_anchor", "feet_contact_gated", "leg_pose_deviation",
+                  "settle_quiet_bonus", "recovery_quality", "recovery_event", "action_rate_window")
+_W1_SWAP = {"track_lin_vel_xy_exp": 3.0, "track_ang_vel_z_exp": 1.5, "flat_orientation_l2": -4.0, "base_height_l2": -1.5,
+            "lin_vel_z_l2": -0.3, "ang_vel_xy_l2": -0.15, "feet_slide": -0.20, "foot_yaw_slip": -0.5, "action_rate_l2": -0.15}
+
+
+@configclass
+class Biped12HangStandW1EnvCfg(Biped12HangStandG21aEnvCfg):
+    """W1 — Commanded Walking (G21a + 저속 전진 명령 과제만).
+    명령: vx 만(vy=0, 요 0 — heading 유지 제어는 G21a 그대로), 2–4 s 리샘플, 단계 S0–S3 서기 비율·vx 범위(성적 승격, w1_command_curriculum).
+    게이트: |vx_cmd| < 0.03 = 서기 → G21a 보상 그대로 / ≥ 0.03 = 걷기 → 서기 전용 항 OFF(_W1_STAND_ONLY), _W1_SWAP 항은 지시서 걷기 값,
+          보행 항 추가(교대 +1.0·스텝 진행 이벤트 +5·발 들림 1.5–4 cm +0.2·양발 지지 과다 −0.2·공중 과다 이벤트 −5).
+          토크·가속·한계·충격·비정상 접촉·종료 등 상시 항은 G21a 그대로. 회복 게이트는 G21a 그대로(회복 항은 서기에서만).
+    외란: S0–S2 없음(속도 밀기 포함), S3 에서 12.5 % env 에 앞/뒤 5–8 N (disturbance_reset_g22r branch w1). G22R 회복 보상 복사 안 함."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev, rw = self.events, self.rewards
+        c = self.commands.base_velocity
+        c.resampling_time_range = (2.0, 4.0)
+        c.ranges.lin_vel_x = (0.03, 0.08); c.ranges.lin_vel_y = (0.0, 0.0); c.ranges.ang_vel_z = (0.0, 0.0)
+        c.rel_standing_envs = 0.60
+        if hasattr(c, "rel_spin_envs"):
+            c.rel_spin_envs = 0.0; c.rel_backward_envs = 0.0
+        d = ev.disturbance
+        assert d.func is mdp_hang.disturbance_reset
+        d.func = mdp_hang.disturbance_reset_g22r; d.params = dict(d.params, branch="w1")
+        pr = ev.push_robot
+        pr.func = mdp_hang.push_with_arm_g22; pr.params = {"velocity_range": dict(pr.params["velocity_range"]), "arm_s": 2.5, "branch": "w1"}
+        ev.w1_gait = EventTerm(func=mdp_hang.w1_gait_step, mode="interval", interval_range_s=(0.0, 0.0), params={})
+        for name in _W1_STAND_ONLY + tuple(_W1_SWAP):
+            t = getattr(rw, name)
+            setattr(rw, name, RewTerm(func=mdp_hang.w1_stand_gated, weight=t.weight,
+                                      params={"func": t.func, "params": dict(t.params or {})}))
+            if name in _W1_SWAP:
+                # 걷기 판은 구 회복 게이트(state_gated) 를 벗긴 원 함수 — 걷는 동안 한 발 지지로 게이트가 열려 꺼지는 것 방지
+                f, p = (t.params["func"], dict(t.params.get("params") or {})) if t.func is mdp_hang.state_gated else (t.func, dict(t.params or {}))
+                setattr(rw, name + "_walk", RewTerm(func=mdp_hang.w1_walk_gated, weight=_W1_SWAP[name], params={"func": f, "params": p}))
+        rw.gait_alternation = RewTerm(func=mdp_hang.w1_gait_alternation, weight=1.0)
+        rw.step_progress_event = RewTerm(func=mdp_hang.w1_value, weight=5.0, params={"name": "ev_step"})
+        rw.swing_clearance = RewTerm(func=mdp_hang.w1_value, weight=0.20, params={"name": "clear"})
+        rw.excessive_double_support = RewTerm(func=mdp_hang.w1_value, weight=-0.20, params={"name": "ds_pen"})
+        rw.excessive_air_time_event = RewTerm(func=mdp_hang.w1_value, weight=-5.0, params={"name": "ev_air"})
+        self.curriculum = _W1CurriculumCfg()

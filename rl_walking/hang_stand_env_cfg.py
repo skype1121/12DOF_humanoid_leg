@@ -2344,3 +2344,35 @@ class Biped12HangStandStepA0nEnvCfg(Biped12HangStandStepA0iEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.curriculum = _StepARelCurriculumCfg()
+
+
+@configclass
+class Biped12HangStandW2aEnvCfg(Biped12HangStandStepA0mEnvCfg):
+    """W2-1 (1004): STEP primitive(A0m) 위 저속 전진 보행. 보조 끔(α 0 고정, 감쇠 커리큘럼 제거).
+    변경: ① 스텝 모드 vx ~ U[0.05, 0.15](서기 50 %, 4–6 s 리샘플) ② 걷기 추종 보상 ON(track_lin_vel_xy_exp, std 0.1, 가중 3.0, 스텝 모드)
+    ③ 앞 착지 목표 Δx = 0.91·vx(2·v·T_h; 0.05 → 4.6 cm ≈ 종전 5 cm, 0.15 → 13.7 cm). 상한 0.15 = 슬루 4°/틱 계산(OSS 9).
+    나머지(클록 일정·스텝 이벤트·놓친 스텝 벌점·서기 모드 G21a)는 A0m 그대로."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.step_assist.params = dict(self.events.step_assist.params, alpha0=0.0)
+        self.curriculum = None
+        c = self.commands.base_velocity
+        c.ranges.lin_vel_x = (0.05, 0.15)
+        self.events.sbi.params = dict(self.events.sbi.params, vx_foot_gain=0.91)
+        t = self.rewards.track_lin_vel_xy_exp
+        inner_f = t.params["func"]; inner_p = dict(t.params["params"] or {}); inner_p["std"] = 0.1
+        self.rewards.track_lin_vel_walk = RewTerm(func=mdp_hang.w1_walk_gated, weight=3.0, params={"func": inner_f, "params": inner_p})
+
+
+@configclass
+class Biped12HangStandG23RaEnvCfg(Biped12HangStandStepA0mEnvCfg):
+    """G23R-a (1004): STEP primitive(A0m) + **G22R 외란(앞/뒤 범주, 힘 R3 고정: 앞 10–12·뒤 12–18 N, 무외란 범주 속도 밀기 없음)** 단일 변경. 보조 끔(α 0).
+    질문: 스텝 primitive 를 가진 정책이 기존 보상(서기 모드 G21a 회복 항) 아래에서 앞 밀기에 스텝을 쓰게 되는가. 계약(관측·명령 의미) 불변."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.step_assist.params = dict(self.events.step_assist.params, alpha0=0.0)
+        d = self.events.disturbance; d.params = dict(d.params, branch="g22r", stage_override=2)   # R3 고정(앞 10–12·뒤 12–18 N) — G22R 커리큘럼 통계는 이 env 게이트로 안 모임
+        pr = self.events.push_robot; pr.params = dict(pr.params, branch="g22r")
+        self.curriculum = None

@@ -1851,7 +1851,7 @@ def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), g
                            F_ramp_range=(3.0, 20.0), rise_range=(1.0, 4.0), hold_range=(1.0, 3.0),
                            F_imp_range=(5.0, 30.0), dur_imp_range=(0.2, 0.4), lateral_prob=0.0, lateral_scale=0.6, p_active=1.0,
                            branch: str = "g22r", w1_p_active: float = 0.125, w1_F: tuple = (5.0, 8.0), imp_scale: float = 1.5,
-                           stage_set: str = "r", asset_cfg=None):
+                           stage_set: str = "r", stage_override: int = -1, asset_cfg=None):
     """mode="reset": 종전 disturbance_reset 의 횟수·시각·램프/충격 모양을 그대로 쓰고 **방향·힘 분포만** 단계별로 바꾼다.
     G22R: 에피소드 단위로 무외란/앞/뒤 범주를 뽑아(단계 비율), 앞(+몸통 x)·뒤 힘 범위 적용(좌우 외란 없음 — 지시서 R1–R4).
     W1: 단계 S0–S2 는 외란 없음, S3 은 w1_p_active 비율 env 에 앞/뒤 w1_F 의 약한 외란."""
@@ -1865,7 +1865,8 @@ def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), g
         return
     if branch == "g22r":
         tbl = _G22R2_STAGES if stage_set == "r2" else _G22R_STAGES
-        (p0, pf, pb), Ff, Fb = tbl[min(g["stage"], len(tbl) - 1)]
+        stg = g["stage"] if stage_override < 0 else int(stage_override)
+        (p0, pf, pb), Ff, Fb = tbl[min(stg, len(tbl) - 1)]
         r = torch.rand(n, device=dev)
         cat = torch.where(r < p0, torch.zeros_like(r), torch.where(r < p0 + pf, torch.ones_like(r), 2.0 * torch.ones_like(r)))
     else:
@@ -2354,7 +2355,7 @@ def _sbi_ref(env, path):
 
 
 def sbi_step(env, env_ids, ref_path: str = "", freq: float = 1.1, walk_min: float = 0.03, sig_q: float = 0.10, sig_p: float = 0.03,
-             threshold: float = 5.0, asset_cfg=None):
+             vx_foot_gain: float = 0.0, threshold: float = 5.0, asset_cfg=None):
     """mode="interval"(0 s): 모방 보상 값 계산(스텝 모드만, 감쇠 배율 env._sbi_scale 곱). sb0_step 보다 **뒤** 에 두어 같은 틱 위상 사용.
     r_qref = exp(−Σ w_j (q_j − q_ref,j)² / (Σw·σq²)) · r_foot = exp(−|p_스윙 − p_ref|²/σp²)(골반 기준 요 프레임) · r_cref = 접촉 일치 비율(두 발 평균)."""
     st = _sb0(env); R = _sbi_ref(env, ref_path)
@@ -2381,6 +2382,10 @@ def sbi_step(env, env_ids, ref_path: str = "", freq: float = 1.1, walk_min: floa
     nh = (half.float() != st["sbi_half"]) | (env.episode_length_buf <= 1)
     st["p0_half"] = torch.where(nh.unsqueeze(1), p, st["p0_half"]); st["sbi_half"] = half.float()
     p_ref_rel = p_ref - R["foot"][half, 0]
+    if vx_foot_gain > 0.0:      # W2: 앞 착지 목표 Δx = gain·vx (2·v·T_h, T_h = 0.455 s → gain 0.91) — 기준 x 진행 모양(0→1)은 유지하고 크기만 교체
+        vx = env.command_manager.get_command("base_velocity")[:, 0]
+        shape = (p_ref_rel[:, 0] / 0.05).clamp(0.0, 1.0)
+        p_ref_rel = p_ref_rel.clone(); p_ref_rel[:, 0] = shape * vx_foot_gain * vx
     st["r_foot"] = torch.exp(-(((p - st["p0_half"]) - p_ref_rel) ** 2).sum(1) / sig_p ** 2) * mode * scale
     st["r_cref"] = (c == c_ref).float().mean(1) * mode * scale
     st.setdefault("n_load", torch.zeros(env.num_envs, device=env.device))

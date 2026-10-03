@@ -2260,3 +2260,15 @@ class Biped12HangStandStepA0hEnvCfg(Biped12HangStandStepA0gEnvCfg):
         self.events.step_assist.params = dict(self.events.step_assist.params, ref_path=ref, alpha0=1.0)
         self.events.sbi.params = dict(self.events.sbi.params, ref_path=ref)
         self.curriculum.assist_anneal.params = {"alphas": (1.0, 0.75, 0.5, 0.25, 0.0)}
+
+
+@configclass
+class Biped12HangStandStepA0iEnvCfg(Biped12HangStandStepA0hEnvCfg):
+    """STEP-A0i (1004): STEP-A0h + **knee_stance_flexion 스텝 모드 OFF** 단일 변경(A0f 와 같은 처치를, 굽힘 기준·위상 정렬이 갖춰진 A0h 위에서).
+    근거: A0h 학습 블록 착지 16 %(반복 10) → 1 %(반복 400) 로 정책이 보상에 닿는 보조 스텝까지 억제(같은 실패 5회째).
+    diag_reward_terms: 틱당 총보상 0.16 중 knee_stance_flexion +0.064 가 최대 양(+) 항(서기 보상) — 스텝 이벤트(0.1–0.3/스텝)보다 '가만히 서 있기' 가치를 키운다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.knee_stance_flexion
+        self.rewards.knee_stance_flexion = RewTerm(func=mdp_hang.w1_stand_gated, weight=t.weight, params={"func": t.func, "params": dict(t.params or {})})

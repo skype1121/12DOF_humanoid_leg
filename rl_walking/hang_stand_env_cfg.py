@@ -2405,3 +2405,16 @@ class Biped12HangStandG23RbEnvCfg(Biped12HangStandG23RaEnvCfg):
         super().__post_init__()
         self.events.recovery_hint = EventTerm(func=mdp_hang.recovery_step_hint, mode="interval", interval_range_s=(0.0, 0.0), params={})
         self.curriculum = _G23RbCurriculumCfg()
+
+
+@configclass
+class Biped12HangStandW2cEnvCfg(Biped12HangStandW2bEnvCfg):
+    """W2-3 (1004): W2-2 + **스텝 모드 요 추종 std 0.5 → 0.1** 단일 변경.
+    근거: diag_yaw_drift — 표류 11.3°/7 s(한 발 지지 중 7.9°, 지지발 요 회전 합 14.4°, 방향 무작위). 표류율 ~0.03 rad/s 는 std 0.5 에서 보상 99.6 %(기울기 ≈ 0);
+    평가 HeadingHold(kp 1.0) 명령에도 표류 불변 → 정책이 작은 요 명령을 따르지 않음. std 0.1 이면 0.03 rad/s 에서 91 %."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.track_ang_vel_walk
+        p = dict(t.params["params"]); p["std"] = 0.1
+        t.params = {"func": t.params["func"], "params": p}

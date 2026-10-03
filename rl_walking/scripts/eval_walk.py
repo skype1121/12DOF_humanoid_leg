@@ -25,7 +25,7 @@ p.add_argument("--seed", type=int, default=1)
 p.add_argument("--t_stand", type=float, default=3.0)
 p.add_argument("--t_walk", type=float, default=8.0)
 p.add_argument("--t_after", type=float, default=4.0)
-p.add_argument("--out_tag", default="walk")
+p.add_argument("--out_tag", default="walk"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
@@ -69,8 +69,16 @@ robot = U.scene["robot"]; sensor = U.scene.sensors["contact_forces"]
 fid = mdp_hang._feet_body_ids(U); bid = mdp_hang._g21_bids(U)
 cmd_term = U.command_manager.get_term("base_velocity")
 
+hh_ref = None
 def set_cmd(vx):
+    global hh_ref
     cmd_term.vel_command_b[:, 0] = vx; cmd_term.vel_command_b[:, 1] = 0.0; cmd_term.vel_command_b[:, 2] = 0.0
+    if a.heading_hold > 0.0:
+        yw = yaw_of(robot.data.root_quat_w)
+        if hh_ref is None:
+            hh_ref = yw.clone()
+        err = torch.atan2(torch.sin(hh_ref - yw), torch.cos(hh_ref - yw))
+        cmd_term.vel_command_b[:, 2] = (a.heading_hold * err).clamp(-0.6, 0.6)
     cmd_term.is_standing_env[:] = False
     cmd_term.is_heading_env[:] = False
 
@@ -154,7 +162,7 @@ b_, a_ = butter(2, [2.0 / (0.5 / dt), 4.5 / (0.5 / dt)], btype="band")
 band = filtfilt(b_, a_, WY, axis=0)
 t_axis = 1.0 + np.arange(WY.shape[0]) * dt
 PA = torch.stack(pitch_after).numpy() if pitch_after else None
-L = [f"W1 보행 평가 · {a.task} · {ck}", f"지연 {a.delay}틱 · LPF β 0.27 · seed {a.seed} · env {N} · 서기 {a.t_stand}s → 걷기 {a.t_walk}s → 정지 {a.t_after}s · 외란 없음 · 학습 DR 유지",
+L = [f"W1 보행 평가 · {a.task} · {ck}" + (f" · HeadingHold kp {a.heading_hold}" if a.heading_hold > 0 else ""), f"지연 {a.delay}틱 · LPF β 0.27 · seed {a.seed} · env {N} · 서기 {a.t_stand}s → 걷기 {a.t_walk}s → 정지 {a.t_after}s · 외란 없음 · 학습 DR 유지",
      "| vx 명령 | n | 낙상 % | 추종 오차 m/s | 요 표류 ° | 옆 표류 cm | 착지 수/env | 왼 착지 % | 보폭 cm | 공중 s | 양발지지 s | 미끄럼 m/s | 교대 % | 정지 정착 s (중앙) | 정지 창 3Hz RMS | 정지 뒤 피치 p2p ° |",
      "|" + "---|" * 16]
 gn = grp.cpu().numpy(); al = alive.cpu().numpy()

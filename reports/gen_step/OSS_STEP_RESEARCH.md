@@ -273,3 +273,97 @@ STEP-B1 은 200 반복에서도 비대칭 0. 준비 중인 STEP-A0 = 정책 + α
 
 출처: [HoST](https://github.com/InternRobotics/HoST) · [HoST arXiv 2502.08378](https://arxiv.org/abs/2502.08378) · [Yu et al. 2018 arXiv 1801.08093](https://arxiv.org/abs/1801.08093) · [residual-policy-learning](https://github.com/k-r-allen/residual-policy-learning) · [RPL arXiv 1812.06298](https://arxiv.org/abs/1812.06298) ·
 [Kickstarting arXiv 1803.03835](https://arxiv.org/abs/1803.03835) · [JSRL arXiv 2204.02372](https://arxiv.org/abs/2204.02372) · [whole_body_tracking](https://github.com/HybridRobotics/whole_body_tracking) · [Clipped Action PG arXiv 1802.07564](https://arxiv.org/abs/1802.07564)(미검증) · DAgger(Ross et al. 2011, 미검증)
+
+## 라운드 3 (2026-10-04 04:20)
+
+전제(코디네이터 전달, 측정 사실): **STEP-B1 FAIL** — 600 반복에서 비대칭 +0.003 mg·ready 0.2 %. 진행 중 STEP-I0(모방, 기준 = 뒤 스텝 489건 공통 primitive, 앞뒤 방향은 "이륙 위치 + 5 cm" 목표), 다음 STEP-A0(전역 계단 감쇠). 라운드 2 의 env 별·에피소드 내 감쇠는 A1 후보로 기록됨.
+
+### 0. 이번 라운드에서 직접 계산·측정한 것
+
+**(a) 성공 스텝은 이미 슬루 한계 근처에서 움직인다 [측정: `reports/gen_step/ref_steps_g22r2_s1.npz`, 509건(뒤 489 + 앞그룹 20), dt 0.02]**
+- 스텝 창(45틱)에서 측정 관절 위치의 틱당 변화: **가장 빠른 관절의 최대 |Δq| 중앙값 0.066 rad/틱(3.8°), 상위 10 % 0.089 rad/틱(5.1°)** — 슬루 한계 0.0698 rad/틱(4°)과 같은 수준.
+  관절별 최대 속도 중앙값 1.9–2.9°/틱, 관절별 스텝 중 가동 범위 중앙값 9–14°. 4°/틱 초과 틱 비율은 관절별 0–0.4 %(측정치는 PD 응답이라 목표보다 늦고 작을 수 있음 — 목표 기준 포화율은 미측정).
+- 해석: (i) 슬루·LPF 체인 **안에서도 스텝은 가능**하다(G21a 계열이 실제로 뒤 스텝을 함 — 가장 강한 내부 증거). (ii) 그러나 스텝은 **가장 빠른 관절에서 슬루 예산을 거의 다 쓴다** → 탐색 잡음·보조 잔차가 같은 예산을 나눠 쓰면(라운드 1: 잡음만으로 46–68 % 틱 포화) 스텝 궤적을 낼 여유가 줄어든다(가설, 대조 실험 없음).
+
+**(b) 앞 스텝 착지 거리의 LIPM/캡처 포인트 계산 [계산; CoM 높이 h_c 는 가정 — 골반고 ≈0.60 m 를 상한으로 0.50–0.60 m]**
+- ω = √(g/h_c) = 4.04–4.43 s⁻¹ (1/ω = 0.23–0.25 s). 순간 캡처 포인트 ξ = x_CoM + v/ω → v/ω = **0.1 m/s → 2.3–2.5 cm, 0.2 → 4.5–4.9, 0.3 → 6.8–7.4, 0.5 → 11.3–12.4 cm**.
+- 발 기하(발목축 앞 85 mm / 뒤 65 mm, CLAUDE.md): CoM 이 발목 위에 있을 때 **앞 밀기로 스텝이 '필요'해지는 경계는 ξ > 발끝(+8.5 cm), 즉 v ≳ 0.35–0.38 m/s**. 그보다 약하면 발목 전략으로 충분(이론상) — 학습 앞 밀기 세기가 이 경계 아래면 스텝을 배울 이유가 없다(가설: 앞 밀기 후 실제 CoM 속도는 미측정).
+- CoP 를 발끝에 둔 채 하중 소거+공중 T 동안 ξ 는 발끝 기준으로 e^{ωT} 배 발산: T = 0.06+0.15 ≈ 0.21 s(측정 서명: 소거 0.06 s·공중 0.14–0.16 s) → **×2.3–2.5**.
+  착지 발목 위치 목표 ≈ ξ(T) − 1 cm(발 중심 = 발목 +1 cm), ξ(T) = 8.5 + (ξ₀ − 8.5)·e^{ωT} (cm, 발목 원점).
+  예: ξ₀ = 10 cm → 착지 ≈ **11–12 cm 앞**, ξ₀ = 12 cm → ≈ **16 cm 앞**. 성공한 뒤 스텝 수평 변위 중앙값 18.8 cm 와 같은 규모.
+- → **STEP-I0 의 "이륙 + 5 cm" 앞 목표는 스텝이 필요한 상황(ξ₀ > 8.5 cm)에서 LIPM 기준 착지 거리의 1/2–1/3** — 착지해도 ξ 가 새 발끝(5+8.5 = 13.5 cm)보다 앞에 남아 두 번째 스텝·낙상이 필요할 수 있다(계산, h_c·CoP 위치 가정, 미검증).
+
+### 1. 출처별 분석
+
+#### 1-1. ① 착지 목표 휴리스틱을 RL 에 쓴 코드
+**(a) walk-these-ways (Margolis & Agrawal, Go1) — Raibert 휴리스틱 보상의 대표 구현**
+- URL: https://github.com/Improbable-AI/walk-these-ways · commit **0e7236b (2024-06-16)** [코드 확인]
+- `go1_gym/envs/rewards/corl_rewards.py:161-200` `_reward_raibert_heuristic`: 몸 좌표 발 위치 vs 목표 = 공칭 자세(폭 0.3·길이 0.45 m, 명령 13/14번으로 가변) + **phase·v_des·(0.5/f)** (`:184-191`, phase ∈ [−0.5, 0.5]), 오차 제곱합. 가중 **−10**(`scripts/train.py:126`; 기본 0, `legged_robot_config.py:332`).
+- 메커니즘: 명령 속도·보행 주파수로 정해지는 발 목표(피드포워드 v·T/2 항만, Raibert 의 속도 오차 피드백 항 k(v−v_des) 는 없음). 사족·명령 추종용 — **밀기 회복 용도가 아님**.
+- **우리에게 적용**: W2(클록 보행) 분기에서 착지 목표가 필요하면 그대로 이식 가능한 형태(이족: 폭 고정, 길이 = v·T_st/2). 밀기 회복에는 속도 오차 피드백이 없어서 부적합 → (b)·(c) 의 CP 형을 권장.
+  위험: 발 목표 오차 벌점은 **발이 떠야만 줄일 수 있어서** 서기 국소해에서는 기울기가 없다(이륙 탐색 문제를 풀어주지 않음).
+
+**(b) apex `cassie_standing_env.py` — CP 기반 서기 보상(밀기 없음)**
+- [코드 확인] `apex/cassie/cassie_standing_env.py:170-191`: "capture_point_vel = 발 사이 거리 × √(9.8/h)" 를 CoM 속도와 맞추는 항, 양발 접촉 시에만(`:183-186`), 전부 공중이면 −0.5.
+  CP 정의를 변형해 서기 안정에 쓴 예로, **스텝 유도 효과는 없음**(서기 전용 env). 참고 가치 낮음 — 'CP 를 썼다는 것'만으로 스텝을 기대하면 안 된다는 반례.
+
+**(c) "Embedding Classical Balance Control Principles in RL for Humanoid Recovery" (arXiv 2603.08619, H1-2, Isaac Lab)** — [논문 요약 확인(HTML), 코드 공개 링크 없음]
+- r_CP = exp(−d_CP²/σ²), d_CP = **CP 와 발 지지 볼록껍질 사이 부호 거리**, ξ = p_c + ṗ_c/√(g/h_c). CoM 지지 보상과 함께 그룹 가중. **critic 에만** CoM 위치·속도·가속도·운동량·CP(actor 는 고유감각만).
+  스텝 보상 없이 발목·고관절·**교정 스텝**·낙상·일어서기가 하나의 정책에서 출현. 밀기 50–300 N × 0.1–0.2 s. 3단계 커리큘럼 **1단계: 토크 한계 10배 → 3단계: 1배로 어닐링**. 50 000 반복.
+- **우리에게 적용**: 
+  - 착지 목표 대신 **"CP–지지다각형 부호 거리" 보상**(우리 발 기하: 앞 85·뒤 65 mm, 폭은 양발 볼록껍질)을 critic 특권 정보와 함께 쓰는 것이 우리 관측 계약(actor 불변)과 맞는다. 앞 밀기에서 ξ 가 발끝 밖이면 서 있는 한 보상이 계속 낮고, 앞으로 디뎌 다각형을 넓히는 순간 회복 — **착지 결과를 직접 채점**(시연 불필요).
+  - 최소 실험: STEP-I0 와 같은 출발점에서 r_CP 하나만 추가(앞 밀기 env), 대조 = 무변경. 판정 = 앞 밀기 이륙률·회복률.
+  - 위험: B0/B1 이 보여준 것처럼 **결과 보상만으로는 첫 이륙이 탐색되지 않을 수 있다**(r_CP 는 이륙 전엔 '몸을 뒤로 젖히기'로만 개선 가능 → 발목·고관절 전략 강화 쪽으로 기울 수 있음). 그래서 A0(보조로 방문) + r_CP(앞 착지 채점) 결합이 현실적. h_c 는 시뮬 CoM 에서 직접 계산(가정 불필요).
+  - 1단계 "토크 한계 10배" 어닐링은 ③ 의 근거로 아래 3-1 에서 다룸.
+
+**(d) STEP-I0 앞 목표에 대한 적용(①의 결론)**: 시연이 없으므로 착지 목표를 **상태 의존 공식**으로 만든다 — 이륙 순간의 CoM 위치·속도로 x_land = x_ankle0 + 8.5 + (ξ₀ − 8.5)·e^{ω·T_air} − 1 (cm), [최소 6, 최대 20] cm 로 clip(최대는 뒤 스텝 측정 상위값 25 cm 이하에서 선택).
+  "+5 cm 고정" 대비 단일 변수 실험. 위험: LIPM 은 발목 토크·상체 회전을 무시 → 시뮬에서 공식 착지점과 실제 회복 착지점(G22R2 의 뒤 스텝 489건, 이륙 순간 CoM 속도 로그가 있으면)을 먼저 비교해 **ω·오프셋을 데이터로 맞추는 검증**이 선행돼야 함(뒤 방향으로는 지금 데이터로 바로 가능 — 뒤꿈치 6.5 cm 로 바꿔 같은 식).
+
+#### 1-2. ② 접촉 클록 보행 구현 수치 (W2 분기)
+| 저장소 (commit) | 위상·주기 | 접촉/발 보상 | 서기(명령 0) 처리 | 파일:줄 |
+|---|---|---|---|---|
+| humanoid-gym (ae46e20) | t/0.64 s, sin≥0 왼발 지지, **\|sin\|<0.1 이중지지** | `feet_contact_number` 일치 +1 / 불일치 −0.3 (가중 1.2), **`joint_pos` 기준 관절 사인 궤적 추종**(진폭 0.17 rad, 무릎 2배, 가중 1.6), feet_air_time 1.0, clearance 1.0 | 명령 노름 < 0.2 → 0, **클록은 계속(제자리걸음)** | `humanoid/envs/custom/humanoid_env.py:100-142,272-279,336-344`; `humanoid_config.py:174-207`; 명령 0 처리 `envs/base/legged_robot.py:336` |
+| unitree_rl_gym G1 (276801e) | 주기 0.8 s, 반대발 0.5 오프셋, **지지 = 위상 < 0.55** | `_reward_contact` = 발별 XNOR(접촉, 지지) 합 (가중 0.18), `feet_swing_height` = (z−0.08)²·비접촉 (−20) | 명령 0 이어도 클록·보상 그대로 | `legged_gym/envs/g1/g1_env.py:58-63,98-109`; `g1_config.py:85-89`; 명령 0 `envs/base/legged_robot.py:306` |
+| MuJoCo Playground Berkeley Humanoid (ef4fefc) | 주파수 **U(1.25, 1.5) Hz 무작위**, 위상 [0, π] | `feet_phase` = exp(−Σ(z−r_z(φ))²/0.01), r_z = 3차 베지어 발 높이(최대 0.1 m) — **명령으로 게이트 안 함(TODO 주석)** | stand_still 가중 0.0 | `_src/locomotion/berkeley_humanoid/joystick.py:73-85,228-229,329-330,648-665`; `_src/gait.py:32-43` |
+| isaac_berkeley_humanoid (ffc7b26) | 클록 없음 | `feet_air_time`(**공중 0.2–0.5 s** 만 보상, 가중 2.0) | `rel_standing_envs=0.02` | `velocity_env_cfg.py:96-106,273-280`; 명령 커리큘럼 `:331-333` + `mdp/curriculums.py`(추적 보상 > 최대의 80 % 면 범위 +0.5 m/s, 200 반복마다, 5000 반복 이후) |
+| Isaac Lab G1 (설치본 37ddf62687) | 클록 없음 | `feet_air_time_positive_biped`(단일지지 중 min(지지·공중 시간), 상한 0.4 s, 가중 0.25), 명령 노름 ≤ 0.1 이면 0 | `rel_standing_envs=0.02` | `isaaclab_tasks/.../velocity/mdp/rewards.py:49-68`; `config/g1/rough_env_cfg.py:32-38`; `velocity_env_cfg.py:97` |
+| LearningHumanoidWalking (cd8c655) | 라운드 1 §1-1 | 발별 부호 선형 힘·속도 | STANDING 모드 5 %(clock 상수) | 라운드 1 참조 |
+
+관찰 및 **우리에게 적용**:
+- **서기 정책에서 출발해 클록 보행을 만든 공개 사례는 이번 조사에서 찾지 못했다**(전부 scratch 학습). 클록 감쇠 사례도 apex `early_clock_reward`(라운드 1) 외엔 없음. → W2 의 "서기에서 출발" 자체가 검증되지 않은 경로.
+- 공통 설계: (i) 클록은 명령 0 에서도 돌거나(humanoid-gym·unitree·Playground) 서기 env 비율을 2–5 % 로 낮게 둠 → 우리 '정지 서기 우선' 목표와 충돌(OSS_REFERENCES §3 에서 위상 시계 상시는 이미 기각). W2 는 B0 처럼 **명령 게이트된 클록** 유지가 맞다.
+  (ii) 발 접촉 일치 보상은 **불일치에도 −0.3(humanoid-gym)·XNOR 합(unitree)** 처럼 "지금 한 발이라도 맞으면 부분 점수" — 곱이 아니라 합. (iii) humanoid-gym 은 **기준 관절 사인 궤적 추종(joint_pos 1.6)을 가장 큰 항 중 하나**로 둔다 → 사실상 모방 부트스트랩(STEP-I0 와 같은 계열).
+- **주의(코드 확인, 함정)**: humanoid-gym `use_ref_actions=True` 옵션(`humanoid_config.py:49`, 기본 False)은 `humanoid_env.py:190-191` 에서 `actions += self.ref_action` 을 **제자리(in-place)** 로 수행하는데, 이 텐서는 러너가 넘긴 `transition.actions` 와 같은 객체(`algo/ppo/ppo.py:93-101` 이 그것을 반환, `on_policy_runner.py:129-130`, 저장은 step 이후 `rollout_storage.py:92` copy) → **저장된 행동 = 정책 샘플 + 기준인데 log-prob 은 샘플 기준**(라운드 2 §2-1 의 ratio 편향 그대로). 우리 STEP-A0 훅은 새 텐서를 반환(`mdp_hang.py:2421`)하므로 해당 없음 — 구현을 바꿀 때 in-place 금지 확인 항목.
+- **공중 시간 문턱 주의**: Berkeley `feet_air_time` 은 0.2 s 미만 공중을 보상 0(또는 음) 처리. 우리 성공 스텝 공중 0.14–0.16 s 는 **이 문턱이면 벌을 받는다**. W2 에서 air-time 항을 쓰면 문턱 ≤ 0.1 s(또는 Isaac Lab biped 형 min(지지,공중))로.
+- 속도 커리큘럼(Berkeley): 추적 보상 > 80 % 일 때만 범위 +0.5 m/s. W2 에서 vx 를 0.05 부근에서 시작해 같은 규칙으로 키우는 근거.
+
+#### 1-3. ③ 슬루 제한·LPF 체인에서의 스텝 학습
+- **DeepMind OP3 축구 (Haarnoja et al., Science Robotics 2024, arXiv 2304.13653)** [논문 요약 확인(HTML)]: 40 Hz 관절 위치 목표에 **지수 필터 u_t = 0.8·u_{t−1} + 0.2·a_t**(= 우리 β 0.2 와 같음) 를 걸고도 걷기·회전·차기·일어서기를 학습. 필터가 학습·탐색에 준 영향은 논문이 논하지 않음. 슬루 제한 언급 없음. → **LPF 단독은 스텝 학습을 막지 않는다**는 외부 근거(단 scratch 학습·다른 알고리즘(MPO 계열)·소형 로봇).
+- **motion_imitation (Peng et al. 2020, Laikago)** [코드 확인, commit d0e7b96]: 4 Hz 2차 Butterworth 행동 필터 구현(`motion_imitation/robots/action_filter.py:42-44`), 명령을 **현재 관절각 ±0.2 rad 로 클립**(`robots/laikago.py:363-380`, 슬루가 아니라 위치 오차 제한). 그러나 공개 env 빌더 기본값은 둘 다 **꺼짐**(`envs/env_builder.py:54-55,144-145`). 근거로 약함.
+- **arXiv 2603.08619(위 1-1c)**: 학습 1단계에서 **토크 한계 10배 → 1배 어닐링** — 구동 제약이 초기 탐색을 막는다는 판단을 커리큘럼으로 반영한 사례(제약 완화 자체의 대조 실험은 요약에서 확인 못 함 → 미검증).
+- 슬루 제한이 PPO 탐색을 막는다는 **직접 실험 근거는 찾지 못했다**. 우리 쪽 근거는 라운드 1(포화율 46–68 %) + 위 0(a)(성공 스텝이 한계 근처) 두 계산·측정뿐.
+- **우리에게 적용**: 
+  - 배포 계약은 슬루 4°/틱이므로 최종 정책은 같은 체인에서 판정해야 한다(CLAUDE.md 3번). 그 안에서 할 수 있는 단일 변수 실험: **학습 초기에만 슬루를 완화(예 8°/틱)했다가 4°/틱으로 어닐링**(2603.08619 의 토크 10배→1배와 같은 구조). 대조 = 슬루 4°/틱 고정, 같은 STEP 설정·seed. 판정은 슬루 4°/틱 평가에서만.
+  - 그 전에 싸게 확인할 진단: STEP-A0 α=2 롤아웃의 **목표 기준 슬루 포화율**(관절별, 스텝 창 vs 서기 창)을 로그. 스텝 창에서 포화가 거의 100 % 면 "보조 잔차 + 정책이 예산을 다 씀" 이 측정으로 확인됨.
+  - 위험: 슬루 완화 중 배운 빠른 동작이 4°/틱 로 돌아오면 사라지는 '보조 제거' 와 같은 문제(라운드 2), 실물 지연·떨림 특성 변화. 실물 안전 가드와 무관한 학습 전용 변경임을 명시해야 함.
+
+### 2. 실행 순위 (라운드 3, 상위 3)
+
+**1위 — 앞 착지 목표를 상태 의존 CP 공식으로 (STEP-I0 의 "+5 cm 고정" 대체, 단일 변수)**
+- 근거: §0(b) 계산 — 스텝이 필요한 앞 밀기에서 LIPM 착지 거리 ≈ 11–16 cm, 고정 +5 cm 는 1/2–1/3. arXiv 2603.08619 의 CP 부호거리 보상(시연 없이 교정 스텝 출현). 뒤 스텝 18.8 cm 와 규모 일치.
+- 선행 검증(학습 없음): G22R2 뒤 스텝 489건에서 이륙 순간 CoM 속도로 공식 착지점을 계산해 실측 착지점과 비교(뒤꿈치 6.5 cm 로 바꿔). 오차가 크면 ω·오프셋을 데이터로 맞춤. 그 뒤 STEP-I1 = I0 + 공식 목표.
+- 위험: LIPM 단순화, h_c·CoP 가정, 첫 이륙 탐색 문제는 그대로(→ A0 와 결합).
+
+**2위 — 앞 밀기 세기 점검: 학습 앞 밀기가 "스텝 필요 경계"(ξ > 발끝, v ≳ 0.35 m/s 추정)를 넘는가**
+- 근거: §0(b). 경계 아래 밀기에서는 발목 전략이 최적이라 스텝을 배울 이유가 없다. 라운드 1 Atalante("점진 증가 → 조기 수렴"). 측정 사실: 앞 실패 = 시도 없음.
+- 최소 진단(평가 로그만, 학습 없음): 앞 밀기 평가·학습 표본의 밀기 직후 최대 CoM 속도 분포와 ξ − 발끝 분포를 기록. 대부분이 경계 아래면, 앞 밀기 표본의 일부(예 30 %)를 경계 위 고정 세기로 바꾸는 단일 변수 실험.
+- 위험: 경계 위 밀기는 G21a 에겐 낙상만 늘릴 수 있음 → 보조(A0)나 RSI 와 함께여야 학습 신호가 생김.
+
+**3위 — 슬루 포화 진단 → (필요 시) 학습 초기 슬루 완화 어닐링**
+- 근거: §0(a) 성공 스텝이 슬루 한계 근처(가장 빠른 관절 3.8°/틱 중앙값), 라운드 1 잡음 포화 46–68 %, arXiv 2603.08619 토크 한계 10배→1배 어닐링, OP3 는 LPF 만으로 스텝 학습(→ 병목은 LPF 보다 슬루일 가능성, 가설).
+- 최소 실험: 먼저 A0 α=2 롤아웃의 목표 기준 포화율 로그(학습 없음). 포화가 스텝 창에서 지배적이면 슬루 8→4°/틱 어닐링 vs 4°/틱 고정 대조.
+- 위험: 배포 계약과 다른 체인에서의 학습 — 최종 판정은 반드시 4°/틱 체인, 어닐링 끝 성능이 고정 대조보다 나을 때만 채택.
+
+출처: [walk-these-ways](https://github.com/Improbable-AI/walk-these-ways) · [apex](https://github.com/osudrl/apex) · [arXiv 2603.08619](https://arxiv.org/abs/2603.08619) · [humanoid-gym](https://github.com/roboterax/humanoid-gym) · [unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) ·
+[mujoco_playground](https://github.com/google-deepmind/mujoco_playground) · [isaac_berkeley_humanoid](https://github.com/HybridRobotics/isaac_berkeley_humanoid) · [OP3 soccer arXiv 2304.13653](https://arxiv.org/abs/2304.13653) · [motion_imitation](https://github.com/google-research/motion_imitation) ·
+[A2CF arXiv 2506.23125](https://arxiv.org/abs/2506.23125)(학습형 보조력 에이전트, 초록만 확인 — 라운드 2 보조 감쇠의 추가 사례, 세부 미검증) · Pratt et al. 2006 Capture Point(이론, 원문 미재확인)

@@ -7,7 +7,7 @@ cd /home/ryu/humanoid_leg_test1; export OMNI_KIT_ACCEPT_EULA=YES PYTHONPATH=$PWD
 RUN=$1; CK=$2; PFX=$3; shift 3
 declare -A X=( [nd]="" [ndg2]="--gyro_delay 2" [f8]="--dist push:f:2:8:0.3" [b8]="--dist push:b:2:8:0.3"
   [sl8]="--dist ramp:l:2:8:0.5:1.0" [sf10]="--dist ramp:f:2:10:0.5:1.0" [sb10]="--dist ramp:b:2:10:0.5:1.0"
-  [sf15]="--dist ramp:f:2:15:0.5:1.0" [b18]="--dist push:b:2:18:0.3" [sf10g2]="--gyro_delay 2 --dist ramp:f:2:10:0.5:1.0"
+  [sf15]="--dist ramp:f:2:15:0.5:1.0" [sf5]="--dist ramp:f:2:5:0.5:1.0" [sf8]="--dist ramp:f:2:8:0.5:1.0" [sf12]="--dist ramp:f:2:12:0.5:1.0" [b18]="--dist push:b:2:18:0.3" [sf10g2]="--gyro_delay 2 --dist ramp:f:2:10:0.5:1.0"
   [ndg3]="--gyro_delay 3" [d0nd]="" [d3nd]="" [d5nd]="" [d5b8]="--dist push:b:2:8:0.3" )
 declare -A DL=( [d0nd]=0 [d3nd]=3 [d5nd]=5 [d5b8]=5 )
 CONDS=${EVAL_CONDS:-"nd ndg2 ndg3 d0nd d3nd f8 b8 sl8 sf10 sb10 sf15 b18 sf10g2"}   # d5nd d5b8 = 보고 전용, 정식에서 EVAL_CONDS 로 추가

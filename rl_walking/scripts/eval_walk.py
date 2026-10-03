@@ -86,7 +86,7 @@ alive = torch.ones(N, dtype=torch.bool, device=dev); t_fall = torch.full((N,), f
 z = lambda: torch.zeros(N, device=dev)
 err_s, err_n = z(), z(); n_td = torch.zeros(N, 2, device=dev); step_len_s, step_n = z(), z()
 air_s, air_n = z(), z(); ds_s, ds_n = z(), z(); slip_s, slip_n = z(), z(); alt_n = z()
-prev_c = torch.ones(N, 2, device=dev); air_t = torch.zeros(N, 2, device=dev); ds_t = z(); lift_x = torch.zeros(N, 2, device=dev)
+had_lift = torch.zeros(N, 2, dtype=torch.bool, device=dev); prev_c = torch.ones(N, 2, device=dev); air_t = torch.zeros(N, 2, device=dev); ds_t = z(); lift_x = torch.zeros(N, 2, device=dev)
 last_td = torch.full((N,), -1.0, device=dev)
 yaw0 = None; pos0 = None; yaw_w = z(); lat_w = z()
 settle_t = torch.full((N,), float("nan"), device=dev); quiet_run = z()
@@ -120,7 +120,9 @@ for i in range(steps):
     if walking:
         m = alive
         lifted = (prev_c > 0.5) & (cc < 0.5); landed = (prev_c < 0.5) & (cc > 0.5)
-        lift_x = torch.where(lifted, fx, lift_x)
+        lift_x = torch.where(lifted, fx, lift_x); had_lift |= lifted
+        landed = landed & had_lift                      # 걷기 창 안에서 든 발의 착지만(창 전 이륙 제외)
+        had_lift &= ~landed
         n_td += (landed & m.unsqueeze(1)).float()
         step_len_s += ((fx - lift_x) * (landed & m.unsqueeze(1)).float()).sum(1); step_n += (landed & m.unsqueeze(1)).float().sum(1)
         ended_air = landed & m.unsqueeze(1)
@@ -141,7 +143,7 @@ for i in range(steps):
         ok = alive & (vw.norm(dim=1) < 0.05) & (w < 0.3)
         quiet_run = torch.where(ok, quiet_run + dt, torch.zeros_like(quiet_run))
         hit = torch.isnan(settle_t) & (quiet_run >= 0.5)
-        settle_t[hit] = t - 0.5 - t_we
+        settle_t[hit] = max(t + dt - 0.5 - t_we, 0.0)
         pg = robot.data.projected_gravity_b
         pitch_after.append(torch.rad2deg(torch.atan2(pg[:, 0], -pg[:, 2])).cpu())
     if t >= 1.0:

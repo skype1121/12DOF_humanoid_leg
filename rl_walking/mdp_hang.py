@@ -2588,3 +2588,57 @@ def step_assist_curriculum_rel(env, env_ids, step: float = 0.1, keep_ratio: floa
         print(f"[STEP-A 미세 블록] 반복 {it} α={a:.2f}: 하중 수용 {r:.3f} (r0 {g['r0'] if g['r0'] is not None else float('nan'):.3f}){msg}", flush=True)
         g["base"] = (n_s, n_l)
     return {"alpha": float(env._assist_alpha), "block_load": g["last"]}
+
+
+
+# ---------------------------------------------------------------- G23R-b (1004: 밀림 → 스텝 모드 힌트 주입·감쇠, 지시서 G22R3 위상 힌트) ----------------------------------------------------------------
+def recovery_step_hint(env, env_ids, vx_hint: float = 0.05, win_s: float = 1.0, tilt_deg: float = 4.0, v_min: float = 0.15, asset_cfg=None):
+    """mode="interval"(0 s): **학습 전용** 힌트 — 서기 명령(|vx|<0.03) env 에 외력이 걸려 있고 (기울기 > tilt_deg 또는 |v_xy| > v_min) 이면,
+    확률 env._hint_p 로 win_s 동안 명령 vx 를 vx_hint(스텝 모드)로 덮어쓴다. 창이 끝나면 0 으로 되돌린다. 배포 정책은 힌트 0 에서 판정."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]; hs = _state(env)
+    N, dev = env.num_envs, env.device
+    if not hasattr(env, "_hint_until"):
+        env._hint_until = torch.zeros(N, device=dev); env._hint_on = torch.zeros(N, dtype=torch.bool, device=dev)
+        env._hint_p = float(getattr(env, "_hint_p", 1.0)); env._hint_count = 0.0
+    t = env.episode_length_buf.to(torch.float32) * env.step_dt
+    fresh = env.episode_length_buf <= 1
+    env._hint_until[fresh] = 0.0; env._hint_on[fresh] = False
+    term = env.command_manager.get_term("base_velocity")
+    vx = term.vel_command_b[:, 0]
+    pg = asset.data.projected_gravity_b; tilt = torch.rad2deg(torch.acos((-pg[:, 2]).clamp(-1.0, 1.0)))
+    v = asset.data.root_lin_vel_w[:, :2].norm(dim=1)
+    trig = (~env._hint_on) & (vx.abs() < 0.03) & (hs["dst_F_now"] > 0.0) & ((tilt > tilt_deg) | (v > v_min))
+    trig = trig & (torch.rand(N, device=dev) < float(env._hint_p))
+    env._hint_until = torch.where(trig, t + win_s, env._hint_until); env._hint_on = env._hint_on | trig
+    env._hint_count += float(trig.sum())
+    on = env._hint_on & (t < env._hint_until)
+    end = env._hint_on & (t >= env._hint_until)
+    term.vel_command_b[on, 0] = vx_hint; term.vel_command_b[on, 1:] = 0.0
+    term.is_standing_env[on] = False
+    term.vel_command_b[end, :] = 0.0
+    env._hint_on = env._hint_on & ~end
+
+
+def recovery_hint_curriculum(env, env_ids, ps: tuple = (1.0, 0.75, 0.5, 0.25, 0.0), min_episodes: int = 2000, min_iters: int = 50,
+                             worse_tol: float = 1.10, steps_per_iter: int = 24):
+    """힌트 확률 감쇠: 블록(외란 에피소드 ≥ min_episodes)마다 외란 에피소드 낙상률 f 가 이 단계 첫 블록 f0 의 worse_tol 배 이하면 다음 p. (블록 독립)"""
+    g = _g22(env); c = getattr(env, "_hint_cur", None)
+    if c is None:
+        c = {"stage": 0, "since": 0, "f0": None, "n": 0.0, "fall": 0.0, "last": float("nan")}; env._hint_cur = c; env._hint_p = ps[0]
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    if len(ids):
+        tm = env.termination_manager
+        fell = (tm.terminated[ids] & ~tm.time_outs[ids]).float()
+        push = (g["cat"][ids] > 0.5) & (env.episode_length_buf[ids] > int(2.0 / env.step_dt))
+        c["n"] += float(push.sum()); c["fall"] += float((fell * push).sum())
+    it = int(env.common_step_counter) // steps_per_iter
+    if c["n"] >= min_episodes:
+        f = c["fall"] / c["n"]; c["last"] = f
+        if c["f0"] is None:
+            c["f0"] = f
+        ok = f <= worse_tol * c["f0"] and it - c["since"] >= min_iters and c["stage"] < len(ps) - 1
+        print(f"[G23R 힌트 블록] 반복 {it} p={ps[c['stage']]}: 외란 에피소드 낙상 {f:.3f} (f0 {c['f0']:.3f})" + (" → 감쇠" if ok else ""), flush=True)
+        if ok:
+            c["stage"] += 1; c["since"] = it; c["f0"] = None; env._hint_p = ps[c["stage"]]
+        c["n"] = 0.0; c["fall"] = 0.0
+    return {"stage": float(c["stage"]), "hint_p": float(env._hint_p), "block_fall": c["last"]}

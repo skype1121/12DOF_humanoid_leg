@@ -2388,3 +2388,20 @@ class Biped12HangStandW2bEnvCfg(Biped12HangStandW2aEnvCfg):
         t = self.rewards.track_ang_vel_z_exp
         self.rewards.track_ang_vel_walk = RewTerm(func=mdp_hang.w1_walk_gated, weight=1.5,
                                                   params={"func": t.params["func"], "params": dict(t.params["params"] or {})})
+
+
+@configclass
+class _G23RbCurriculumCfg:
+    hint_anneal = _CurrTerm(func=mdp_hang.recovery_hint_curriculum)
+
+
+@configclass
+class Biped12HangStandG23RbEnvCfg(Biped12HangStandG23RaEnvCfg):
+    """G23R-b (1004): G23R-a + **학습 전용 밀림 → 스텝 모드 힌트**(서기 env 외력 & 기울기>4° 또는 |v|>0.15 → 1 s 동안 vx 0.05) 와
+    힌트 확률 감쇠 1.0 → 0.75 → 0.5 → 0.25 → 0 (외란 에피소드 낙상 비악화 ×1.1 조건). 최종 판정은 힌트 0(배포 계약 불변).
+    근거: G23R-a 서기 밀림에서 primitive 미사용(sf15 스텝 0 %), 스텝은 명령+클록 조건에 묶여 있음. 지시서 G22R3 위상 힌트 감쇠 설계."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.recovery_hint = EventTerm(func=mdp_hang.recovery_step_hint, mode="interval", interval_range_s=(0.0, 0.0), params={})
+        self.curriculum = _G23RbCurriculumCfg()

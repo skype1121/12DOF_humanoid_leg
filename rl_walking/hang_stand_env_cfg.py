@@ -2191,3 +2191,14 @@ class Biped12HangStandStepA0bEnvCfg(Biped12HangStandStepA0EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.sb0.params = dict(self.events.sb0.params, td_any_dir=True)
+
+
+@configclass
+class Biped12HangStandStepA0cEnvCfg(Biped12HangStandStepA0bEnvCfg):
+    """STEP-A0c (1004): STEP-A0b + **선형 하중 비대칭 보상(r_asym) 제거** 단일 변경.
+    근거: A0·A0b 모두 α=2 보조 아래 '발 붙인 채 하중만 빼기'로 수렴(A0 α=2 평가: ready 87 %·unload 89 %·이륙 0 %). 그 행동에 직접 값을 주는 항은
+    r_asym 하나(접촉 무관, 스윙 0.175 mg 포화 — OSS 라운드 5). 제거하면 하중 전환은 보조·착지/하중/정착 이벤트로만 보상된다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.load_transfer = None

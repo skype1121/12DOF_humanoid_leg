@@ -487,3 +487,89 @@ bin 은 5개로 나눈다: B1 소거 전(−80~−40 ms) / B2 소거(−40~0) / 
 3. **경로 A: 스냅샷 은행** — 재추출(§1 표) → 재현 검사(§6) 합격 → 학습. 변경 범위가 가장 크고(약 15곳), 앞 스텝 상태는 여전히 없다(뒤 스텝·미러만). B·C 가 '스윙 중간 상태 방문 부족'으로 실패했다는 진단이 있을 때만 착수한다.
 
 공통 위험: RSI env 가 커리큘럼·통계를 오염(§4)시키는 것, 온셋 블렌드(#11), 위상 오프셋을 `episode_length_buf` 로 구현하는 것(#12) — 세 가지 모두 **구현 전에 테스트로 막아야 할 항목**이다.
+
+## 라운드 5 (2026-10-04 05:10) — 이륙·스윙 보상의 공개 구현, 셔플링 국소해, 종료 벌점
+
+전제(측정 사실, 코디네이터 전달): STEP-A0(α=2 고정, 600 반복) 정책을 α=2 로 평가 → load_ready 87 %·스윙발 Fz < 0.35 mg 89 % 인데 **이륙 0 %**(학습 전 G21a 는 같은 α=2 에서 31 %). 정책이 보조에 맞서 '발을 붙인 채 하중만 빼는' 법을 학습(이하 Case B).
+착지 이벤트가 앞 3–10 cm 만 인정해 보조 스텝이 착지·하중·정착 보상을 못 받던 결함 → A0b(방향 무관 2–10 cm) 학습 중.
+
+### 0. A0b 보상표로 본 Case B 의 손익 [코드·설정 확인 + 계산(가정 명시)]
+
+A0b 설정: `logs/rsl_rl/biped12_stepb0/2026-10-04_04-04-57_stepa0b_seed1_from_g21a11300/params/env.yaml`(rewards·terminations), PPO γ = 0.99·λ = 0.95(agent.yaml). Isaac Lab 보상 = 가중 × 값 × dt(0.02).
+
+- **발을 붙인 채 하중을 빼는 행동에 직접 값을 주는 항은 `load_transfer`(r_asym, 가중 1.0) 하나다.**
+  - 정의: `mdp_hang.py:2297-2298` r_asym = (지지 Fz − 스윙 Fz)/mg, [0, 0.65] 로 자르고 전환 창(v < 0.16)에서만.
+  - 이 항은 접촉 여부를 보지 않는다. 대칭 서기(0) → 스윙 Fz 0.175 mg(지지 0.825)까지 선형으로 오르다가 **포화**(0.65).
+  - 측정된 '스윙 Fz < 0.35 mg 89 %·load_ready 87 %'는 이 항이 최대 또는 거의 최대인 상태와 맞는다.
+- **이륙해야만 받는 항**: `swing_unload`(r_unload 0.5, 스윙발 비접촉, `:2299`), `swing_clearance`(r_clear 1.0, 이륙 높이 **1.5–4 cm 밴드**, `:2301-2302`), `swing_progress`(r_prog 0.5), 이벤트 `touchdown 5 / load_accept 10 / settle 15`(A0b 에서 방향 무관 2–10 cm 로 수정), 접촉 위상 모방 `contact_phase_reference`(r_cref 2.0, 두 발 접촉 일치 비율).
+- **기울기 공백(설계 사실)**: 스윙 Fz 0.175 mg → 접촉 꺼짐(5 N 문턱 ≈ 0.03 mg) 구간에는 r_asym 이 이미 포화돼 **보상 변화가 0**이다. 꺼지는 순간에만 r_unload·r_cref 가 계단식으로 생긴다. 들어 올린 뒤에도 r_clear 는 **1.5 cm 미만이면 0**(밴드)이다. 즉 '조금 들기'에는 기울기가 없다.
+- **이득 대 위험 [계산; 가정: 스텝 모드 서기 중 양(+) 항 평균 = survive 1.0 + knee_stance_flexion 4.0×≈1 + 모방 3항(로그 0.53·0.23·0.79) ≈ 7.9/틱]**
+  - V(살아 있음) ≈ 7.9 × 0.02 / (1 − 0.99) ≈ **16**. 종료 벌점 −75 × 0.02 = −1.5 는 그중 일부일 뿐이고, **넘어질 때 잃는 것은 대부분 미래 양(+) 보상**이다.
+  - 성공한 반주기 스텝 1회의 추가 이득(A0b, 이벤트 포함) ≈ (r_unload 4 + r_clear 5 + r_prog 2.5 + r_cref 8 + 이벤트 30) × 0.02 ≈ **1.0**.
+  - → **시도 1회당 낙상 확률이 대략 5–6 %를 넘으면 '들지 않기'가 이득**이다. G21a 의 α=2 개루프 낙상 3.9 %(코디네이터 측정)는 이 손익분기 근처다.
+  - 이 계산은 가중치·평균값 가정에 민감하다(미검증). **critic 의 V(s) 를 스텝 모드에서 직접 로그해 확인**하는 것이 싸다(아래 3-2).
+
+### 1. ① 이륙·스윙 보상의 공개 구현 — 정확한 형태와 수치
+
+| 출처 (commit) | 항 | 정확한 식 | 계수·문턱 | 파일:줄 | Case B 관점 |
+|---|---|---|---|---|---|
+| legged_gym (8fa29ac) | feet_air_time | 착지 첫 틱에 Σ(air_time − **0.5**), 명령 노름 ≤ 0.1 이면 0, 접촉 = Fz > 1 N, 직전 틱 OR 필터 | 가중 1.0, termination 가중 **−0.0** | `legged_gym/envs/base/legged_robot.py:882-893`; `legged_robot_config.py:131-148` | 희소(착지 때만). **0.5 s 미만 공중은 음수** → 우리 0.14–0.16 s 스텝은 −0.35 씩 벌을 받음. 셔플은 공중 0 이라 보상 0(벌도 없음) |
+| legged_gym | only_positive_rewards | 틱 총보상 < 0 이면 0 으로 클립(종료 벌점은 클립 후 더함). 주석 "avoids early termination problems" | True | `legged_robot_config.py:148`; `legged_robot.py:201-203` | 종료 회피 문제에 대한 고전적 처방(③) |
+| apex Cassie (82c44af) | clock 힘·속도 | 발별 tan(π/4·clock·정규화), 힘 = min(F, 250 N)/250, 속도 = min(‖v‖, 2)/2, clock 지지 +1/스윙 −1 | 힘 0.2·속도 0.2 | `cassie/rewards/clock_rewards.py:13-22,52-68,80-87` | 선형이라 **부분 하중 빼기도 부분 점수**(Case B 를 막지 못함). 속도 항이 스윙 중 발 움직임에 직접 값을 줌 |
+| LearningHumanoidWalking (cd8c655) | foot_frc / foot_vel clock | 힘 정규화 = min(F, **0.5 mg**)/(0.5 mg)·2 − 1, 속도 = min(‖v‖, **0.2 m/s**)/0.2·2 − 1, tan(π/4·clock·x) | 각 0.15 | `tasks/rewards.py:107-140,143-175`(속도 정규화 `:162-171`); `tasks/stepping_task.py:110-117` | 힘: 0.5 mg 에서 포화 = 지지 쪽만 포화, 스윙 쪽은 F→0 까지 선형 기울기. **속도 항이 0.2 m/s 에서 포화** → 스윙발이 '움직이기만 하면' 바로 만점 = 셔플(미끄러지며 움직임)에도 점수 |
+| walk-these-ways (0e7236b) | tracking_contacts_shaped_force / _vel | 힘: −(1 − c_des)·(1 − exp(−F²/σ_F)), 속도: −c_des·(1 − exp(−‖v‖²/σ_v)) | σ_F = **50 (N²)**, σ_v = 0.5, 가중 0.8/0.8(기본 0), 커리큘럼 문턱 0.9 | `go1_gym/envs/rewards/corl_rewards.py:67-84`; `envs/base/legged_robot_config.py:198-199,292-294`; `scripts/train.py:25-26,139` | 스윙 중 힘 벌점이 **F ≈ 7 N 이상에서 포화**(1 − e⁻¹ = 0.63 @ 7 N) → 60 N(0.35 mg)에서 10 N 으로 줄여도 벌점 변화가 거의 없음 = 우리 Case B 구간에서 기울기 없음 |
+| humanoid-gym (ae46e20) | feet_contact_number | 발별 일치 +1 / 불일치 −0.3 의 평균 | 1.2 | `humanoid/envs/custom/humanoid_env.py:336-344`; `humanoid_config.py:192` | 이진 접촉 기준이라 **접촉 유지 = 불일치 −0.3** — 하중 크기와 무관하게 '발 붙이기'를 벌함 |
+| humanoid-gym | feet_clearance | 스윙 마스크에서 마지막 접촉 이후 누적 발 높이가 목표 **6 cm ± 1 cm** 안이면 1 | 1.0 | `humanoid_env.py:446-468`; `humanoid_config.py:180,191` | 밴드형(우리 r_clear 와 같은 계열, 낮은 높이에 기울기 없음) |
+| humanoid-gym | feet_air_time | 착지 시 min(air, 0.5), 접촉 필터에 **stance_mask OR** | 1.0 | `humanoid_env.py:320-334` | 오프셋 없음(legged_gym 과 달리 짧은 스텝도 양수) |
+| unitree_rl_gym G1 (276801e) | contact, feet_swing_height | 발별 XNOR(접촉(Fz > 1 N), 위상 < 0.55) 합 / (z − **0.08**)² × 비접촉 | +0.18 / **−20** | `legged_gym/envs/g1/g1_env.py:98-109`; `g1_config.py:85-89` | XNOR 은 이진 → 접촉 유지 = 0 점(셔플 벌). 스윙 높이는 비접촉일 때만 계산 → 접촉 유지면 높이 벌점도 없음(셔플에 유리한 허점) |
+| MuJoCo Playground Berkeley (ef4fefc) | feet_phase, feet_air_time, feet_slip | feet_phase = exp(−Σ(z − r_z(φ))²/0.01), r_z = 3차 베지어(최고 0.1 m); air_time = clip(air − 0.2, ≤ 0.3)(착지 시); slip = ‖v_body‖·접촉 | +1.0 / +2.0 / −0.25, termination −1.0, alive 0 | `_src/locomotion/berkeley_humanoid/joystick.py:60-86,602-646,648-665`; `_src/gait.py:32-43` | **feet_phase 는 접촉 중에도 높이 0 → r_z 오차에 연속 기울기**(1 cm 들면 바로 이득, 밴드 아님). Case B 에 가장 직접적인 연속 신호 |
+| CaT (Gepetto, 5fc729b) | air_time 제약 | 착지 시 (0.25 − last_air)·명령 > 0.1 → 위반 크기 비례 **종료 확률**(max_p 0.25) | — | `exts/cat_envs/cat_envs/tasks/utils/cat/constraints.py:122-141`; `config/solo12/cat_flat_env_cfg.py:330-337` | 짧은 스텝·셔플을 확률적 종료로 막음(사족, scratch) |
+
+### 2. ② 셔플·스커핑(발 붙인 채 하중 빼기) 국소해를 막는 기법과 부작용
+
+| 기법 | 대표 구현 | 막는 원리 | 부작용·우리 상황 |
+|---|---|---|---|
+| (a) 스윙 구간 접촉 **이진** 벌점/불일치 | humanoid-gym −0.3, unitree XNOR, 우리 r_cref | 하중과 무관하게 '닿아 있음'을 벌함 | 문턱(5 N) 바로 아래로 발끝을 끄는 **토 드래그**가 '비접촉'으로 집계될 수 있음 → 발 높이·미끄럼 항과 짝이어야 함. 우리 r_cref 는 이미 있고(2.0) Case B 를 못 막음 → 크기 부족이거나 위험이 더 큼(§0) |
+| (b) 스윙 구간 접촉 **힘** 벌점 | Siekmann/apex(선형), walk-these-ways(exp, σ 50) | 힘을 줄이도록 유도 | 선형은 **부분 하중 빼기에 부분 점수 = Case B 를 강화**. exp 는 큰 힘에서 포화돼 Case B 구간(60 N)에 기울기 없음. 우리 r_asym 은 (b) 의 선형형이고 Case B 와 정합 |
+| (c) 이륙/공중시간 보상(착지 시) | legged_gym(−0.5 오프셋), humanoid-gym, Playground(−0.2 오프셋), CaT(제약) | 실제 이륙→착지 완주에만 값 | 희소: 첫 성공 전엔 기울기 없음. **오프셋 0.2–0.5 s 는 우리 0.15 s 스텝을 벌함**. 착지 판정 결함이 있으면 0(A0 에서 실제로 발생) |
+| (d) 발 높이 **연속** 추적 | Playground feet_phase(exp, σ² 0.01) | 접촉 중에도 r_z 오차가 있어 '조금 들기'에 즉시 이득 | 클록이 actor 관측에 있어야 함(우리 `gait_clock` 있음). 명령 0 에서도 걸면 제자리걸음(Playground 는 TODO 로 방치) → 우리는 스텝 모드 게이트 필수. 너무 강하면 지지 발까지 들려 함 → 스윙발에만 |
+| (e) 밴드형 발 높이 | 우리 r_clear(1.5–4 cm), humanoid-gym(6±1 cm) | 목표 높이에서만 점수 | **밴드 아래 기울기 0**(Case B 탈출에 기여 없음) |
+| (f) 스윙발 미끄럼 벌점 | Isaac Lab/Berkeley feet_slide, Playground feet_slip, 우리 feet_slide_step −0.15 | 접촉 중 발 이동을 벌함 → 끌며 움직이기 억제 | 셔플이 '정지 상태로 하중만 빼기'면 미끄럼이 없어 효과 없음(우리 Case B 가 그 경우로 보임, 미측정) |
+| (g) 확률적 종료로 짧은 스텝 금지 | CaT air_time | 하드 제약 | scratch 학습용. 이어 학습에서 종료를 늘리면 §0 의 위험 비대칭을 더 키움 |
+
+### 3. ③ 종료 벌점과 탐색
+
+- **수치로 본 우리 상황**(§0): 종료 벌점 실효 −1.5 보다 '살아 있을 때의 미래 보상' 상실(≈ 16, 가정)이 10배쯤 크다. 그래서 종료 벌점만 줄여도 위험 회피는 크게 바뀌지 않을 가능성이 높다(가설). 바꿔야 할 것은 **넘어짐 자체의 확률**(보조로 받쳐 주기) 또는 **시도의 기대 이득**이다.
+- 공개 사례
+  1. legged_gym: termination 가중 **0**, `only_positive_rewards=True`(음의 총보상 클립; 주석 "early termination problems", `legged_robot_config.py:132,148`). 음의 틱 보상이 많은 설계에서 '일찍 죽기'가 이득이 되는 것을 막는 쪽이다(우리 문제의 반대 방향 — 우리는 살아 있기 가치가 커서 시도를 피함).
+  2. CaT: 제약 위반 → 보상 × (1 − p) 와 done = p 의 **연속(소프트) 종료**(`utils/cat/cat_env.py:99-107`), p = max_p·clip(위반/위반 이동최댓값)(`constraint_manager.py:54-75`). max_p 를 **1/20 에서 시작해 목표값으로 선형 증가하는 커리큘럼**(`curriculums.py:21-42`, `cat_flat_env_cfg.py:383-`) — 학습 초기에는 제약을 약하게(=종료를 드물게) 하는 사례.
+  3. MuJoCo Playground: termination −1.0, alive 0(`joystick.py:77-78`) — 살아 있기 보상을 따로 주지 않아 V(살아 있음)를 작게 유지하는 설계.
+  4. Atalante(라운드 1 §1-8, 원문 Sec. IV-C): "보상이 항상 양수라고 가정하면 종료가 수익을 잘라 버리는 효과… 음수면 에이전트가 일부러 죽는다" — 종료를 벌점 대신 **조건**으로 설계해야 한다는 논의. 그리고 큰 외란을 고정 세기로 주어 회복 스텝을 강제.
+  5. HoST(라운드 2 §1-1): 넘어질 수 있는 단계에서 **당김 힘(보조)으로 낙상 자체를 줄이고** 성공 시 감쇠. Yu 2018(라운드 2 §1-2): **좌우 균형 보조 스프링 + 추진 보조**, 균형 조건(2p s 유지)을 감쇠 승격 조건으로 사용.
+- **우리에게 적용**
+  - 3-1. 종료 완화보다 **'넘어지지 않게 받쳐 주는' 보조**(균형 하네스)가 §0 의 손익분기를 직접 바꾼다. 스텝 모드 env 에서 골반에 약한 PD 스프링(롤·피치·수평 위치)이나 부분 체중 지지를 준다. 우리 `hang_support` 인프라(`mdp_hang.py:515-`, A0b 는 r0 = 0 으로 꺼져 있음)가 이미 있다.
+  - 3-2. **진단(학습 없음)**: A0b 체크포인트로 스텝 모드 롤아웃에서 critic V(s) 평균, 반주기당 실제 스텝 이득 합, '들기 시도' 뒤 1 s 안의 낙상률을 기록한다. §0 의 손익분기 가설(V ≈ 16, 이득 ≈ 1, 손익분기 낙상률 ≈ 5–6 %)을 측정으로 바꾸는 단계다.
+
+### 4. Case B 탈출용 단일 변경 후보 (순위)
+
+**1위 — `load_transfer`(r_asym)를 '이륙 조건부'로 바꾸기(또는 가중 1.0 → 0)**
+- 근거
+  - (i) §0: Case B(발 붙인 채 하중 빼기)에 직접 값을 주는 항은 이것 하나다. 측정치(스윙 Fz < 0.35 mg 89 %·load_ready 87 %·이륙 0)가 이 항의 포화 구간과 맞는다.
+  - (ii) §2(b): 선형 힘 보상은 부분 하중 빼기에 부분 점수를 줘 셔플을 강화한다는 것이 공개 구현들의 공통 성질이다. 그 구현들은 scratch 학습이라 다른 항(발판 목표 0.45, LHW)이 지배했다.
+  - (iii) r_asym 은 B1 단독(보조 없음)에서는 비대칭을 만들지 못했다(측정). 즉 '탐색 유도'로는 실패했고 보조가 있을 때 '안전한 대안'으로만 작동하고 있다(해석, 대조 미실시).
+- 형태: 단일 변수로 둘 중 하나만. (a) 가중 0(가장 단순), (b) 전환 창에서 쌓은 r_asym 을 **실제 이륙(스윙발 비접촉 ≥ 60 ms)이 일어난 반주기에만 지급**(지연 지급).
+- 기대: '들지 않고 하중만 빼기'의 보상 우위 제거. 학습 전 G21a 의 α=2 이륙 31 % 수준으로 복귀하는지가 첫 신호.
+- 위험: 하중 이동 자체가 사라질 수 있음. 판정 지표에 load_ready 와 이륙을 함께 둔다. A0b(이벤트 결함 수정)의 결과를 먼저 보고 Case B 가 남을 때 적용한다(A0b 와 섞지 않음).
+
+**2위 — 스텝 모드 env 에 균형 하네스(낙상 방지 보조, 감쇠형) 추가**
+- 근거
+  - (i) §0 계산: 들기 시도의 위험(미래 보상 상실 ≈ 16)이 이득(≈ 1)보다 10배 이상 크다. 손익분기 낙상률 ≈ 5–6 % 에 G21a 개루프 3.9 % 가 걸쳐 있다(가정 포함). 진단 3-2 로 먼저 확인한다.
+  - (ii) Yu 2018 의 균형 보조 스프링과 HoST 의 상태 조건부 당김 힘은 '넘어짐 위험을 보조로 없애고 성공 조건부로 감쇠'한 실제 사례다.
+  - (iii) 종료 벌점 완화(CaT·legged_gym 식)는 미래 보상 상실을 없애지 못한다.
+- 형태: 스텝 모드 env 에서만 골반 롤·피치에 약한 PD 토크(또는 부분 체중 지지 10–20 %)를 기존 hang_support 경로로 준다. 기울기 > 문턱일 때만 켜는 상태 조건부(HoST 식)가 의존을 덜 만든다. 감쇠는 env 별 성공 조건부(라운드 2).
+- 기대: 들기 시도의 실패 비용 감소 → 이륙 탐색 재개. 위험: 정책이 하네스에 기대는 새 의존(보조 제거 문제 재발). 하네스와 α 잔차를 동시에 감쇠하면 원인 분리가 안 됨 → α 고정 상태에서 하네스만 단일 변수로.
+
+(차순위, 참고) 발 높이 연속 추적 보상(Playground `feet_phase` 형, exp(−(z − r_z(φ))²/0.01), 스윙발·스텝 모드만)으로 r_clear 밴드의 기울기 공백을 메우는 안. 그러나 '조금 들기'의 이득이 위험보다 작다는 §0 구조는 그대로라 1·2위보다 아래로 둔다.
+
+출처: [legged_gym](https://github.com/leggedrobotics/legged_gym) · [apex](https://github.com/osudrl/apex) · [LearningHumanoidWalking](https://github.com/rohanpsingh/LearningHumanoidWalking) · [walk-these-ways](https://github.com/Improbable-AI/walk-these-ways) · [humanoid-gym](https://github.com/roboterax/humanoid-gym) ·
+[unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) · [mujoco_playground](https://github.com/google-deepmind/mujoco_playground) · [CaT (Gepetto/constraints-as-terminations)](https://github.com/Gepetto/constraints-as-terminations) · [CaT arXiv 2403.18765](https://arxiv.org/abs/2403.18765) · Atalante arXiv 2203.01148 · HoST · Yu et al. 2018(라운드 2)

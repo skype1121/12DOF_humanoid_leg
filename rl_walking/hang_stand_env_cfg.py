@@ -2223,3 +2223,15 @@ class Biped12HangStandStepA0eEnvCfg(Biped12HangStandStepA0cEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.step_lift = EventTerm(func=mdp_hang.step_lift_support, mode="interval", interval_range_s=(0.0, 0.0), params={})
+
+
+@configclass
+class Biped12HangStandStepA0fEnvCfg(Biped12HangStandStepA0cEnvCfg):
+    """STEP-A0f (1004): STEP-A0c + **knee_stance_flexion(+4, 접지 발마다 무릎 굽힘 보상)을 스텝 모드에서 OFF** 단일 변경(서기 모드 그대로).
+    근거(diag_reward_terms, G21a·α=2): 한 발 공중 틱 − 양발 접지 틱 보상 차의 최대 항 = knee_stance_flexion −0.025/틱(전체 0.16/틱의 ~16 %),
+    스텝 이벤트 합 +0.0004 이하 — 사실상 '양발 접지' 보상이 이륙을 벌한다. A0·A0b·A0c 모두 보조 아래 이륙 억제로 수렴한 구조적 원인 후보."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.knee_stance_flexion
+        self.rewards.knee_stance_flexion = RewTerm(func=mdp_hang.w1_stand_gated, weight=t.weight, params={"func": t.func, "params": dict(t.params or {})})

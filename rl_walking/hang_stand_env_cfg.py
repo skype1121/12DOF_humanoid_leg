@@ -2418,3 +2418,20 @@ class Biped12HangStandW2cEnvCfg(Biped12HangStandW2bEnvCfg):
         t = self.rewards.track_ang_vel_walk
         p = dict(t.params["params"]); p["std"] = 0.1
         t.params = {"func": t.params["func"], "params": p}
+
+
+@configclass
+class Biped12HangStandW2dEnvCfg(Biped12HangStandW2cEnvCfg):
+    """W2-4 (1004, 대기): W2-3 + **G21a 원래 외란 복원**(disturbance_reset: 1–3 회·램프 3–20 N/충격 5–30 N·좌우 30 %, push_robot ±0.25 m/s 3–6 s) 단일 변경.
+    근거(Case E): STEP·W2 계열은 외란 전부 OFF 로 학습 — A0m sb10 낙상 27.7 %(G21a 9.8), W2-2 sb10 26.8·b18 28.6·sf10 47.3 %(G21a 9.8·4.5·22.3).
+    스텝 모드 env 에도 같은 외란(실물 보행 중 외란 대비). 보상·명령·클록 그대로."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        d = self.events.disturbance
+        d.func = mdp_hang.disturbance_reset
+        p = dict(d.params); [p.pop(k, None) for k in ("branch", "w1_p_active", "w1_F", "imp_scale", "stage_set", "stage_override")]
+        d.params = p
+        pr = self.events.push_robot
+        from isaaclab.envs.mdp.events import push_by_setting_velocity
+        pr.func = push_by_setting_velocity; pr.params = {"velocity_range": dict(pr.params["velocity_range"])}

@@ -2309,3 +2309,13 @@ class Biped12HangStandStepA0kEnvCfg(Biped12HangStandStepA0iEnvCfg):
         super().__post_init__()
         self.events.assist_alpha_env = EventTerm(func=mdp_hang.sample_assist_alpha, mode="reset", params={})
         self.curriculum = _StepAEnvCurriculumCfg()
+
+
+@configclass
+class Biped12HangStandStepA0lEnvCfg(Biped12HangStandStepA0kEnvCfg):
+    """STEP-A0l (1004, 대기): STEP-A0k + **놓친 스텝 벌점 실효 −0.4/반주기**(가중 −20) 단일 변경.
+    근거(OSS 7·8): 스텝 모드에서 서 있어도 contact_phase_ref 일치 0.826 — 스텝 전부 빼먹어도 손해 0.007/틱(양 보상 합의 9 %). 크기는 서기 반주기 양 합(~1.8)보다 충분히 작게."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.missed_step_event = RewTerm(func=mdp_hang.sb0_value, weight=-20.0, params={"name": "ev_miss"})

@@ -762,3 +762,59 @@ A0b 설정: `logs/rsl_rl/biped12_stepb0/2026-10-04_04-04-57_stepa0b_seed1_from_g
 
 출처: [HoST](https://github.com/InternRobotics/HoST) · [HugWBC](https://github.com/InternRobotics/HugWBC) · [walk-these-ways](https://github.com/Improbable-AI/walk-these-ways) · [humanoid-gym](https://github.com/roboterax/humanoid-gym) · [unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) ·
 [isaac_berkeley_humanoid](https://github.com/HybridRobotics/isaac_berkeley_humanoid) · [CaT](https://github.com/Gepetto/constraints-as-terminations) · [mjrl/DAPG](https://github.com/aravindr93/mjrl) · [residual-policy-learning](https://github.com/k-r-allen/residual-policy-learning) · [van Marum 2024 arXiv 2404.19173](https://arxiv.org/abs/2404.19173) · Yu et al. 2018 arXiv 1801.08093 · Kickstarting arXiv 1803.03835 · JSRL arXiv 2204.02372
+
+## 라운드 8 (2026-10-04 06:35) — 비대칭 critic 의 현재 상태와 α 추가 시 체크포인트 호환, env 별 α 섞기의 실패 원인 (읽기 전용)
+
+전제(측정 사실): A0i-c(전역 계단) α 1.0→0.75 첫 감쇠 직후 블록 하중 수용 0.25→0.11, 190 반복 동안 회복 없음(라운드 7 예측과 같음). 12500 에서 중단 예정. 다음은 A0k(env 별 α ~ U[0, α_max]·감시 env 20 % α=0·되돌림 상대 감쇠, A0i-11900 출발).
+조사 대상(읽기만): rsl_rl 3.1.2 설치본 `/home/ryu/isaacsim/isaac-sim-5.1.0/kit/python/lib/python3.11/site-packages/rsl_rl`, `rl_walking/agents.py`, `rl_walking/stage4_env_cfg.py`, `rl_walking/symmetry.py`, `rl_walking/scripts/train.py`, A0i 체크포인트 `logs/rsl_rl/biped12_stepb0/2026-10-04_05-06-37_stepa0i_seed1_from_g21a11300/model_11900.pt`(CPU 로드로 형상만 확인), A0i-c `params/agent.yaml`·`env.yaml`.
+
+### 1. ① 비대칭 actor-critic — 지금 켜져 있나, α 를 넣으면 무엇이 깨지나
+
+**현재 상태 [코드·체크포인트 확인]: 이미 켜져 있다(최소형).**
+- `rl_walking/agents.py:17-18` `obs_groups = {"policy": ["policy"], "critic": ["policy", "critic"]}`, `:24-25` actor/critic 관측 정규화 **꺼짐**, `:26-27` 은닉층 [512, 256, 128] 동일. A0i-c `params/agent.yaml:6-10,28-29` 도 같다.
+- critic 그룹 내용은 `rl_walking/stage4_env_cfg.py:114-127` `CriticCfg` 의 **base_lin_vel 3 × 이력 5 = 15** 하나뿐이다(A0i-c env.yaml 확인). 그 외 특권 정보(접촉력·외력·DR 표본·보조 상태)는 없다.
+- 체크포인트 형상(A0i-11900): `actor.0.weight (512, 320)`, `critic.0.weight (512, 335)` = 정책 320 + critic 15. `log_std (12,)`. 최적화기 상태 17개.
+  `rl_walking/symmetry.py:21-22,53-54` 주석·상수는 아직 245/260(구 레이아웃)으로 적혀 있는데, `_POLICY_KIND_BY_DIM` 이 차원으로 레이아웃을 고르므로(`:153-156`) 동작은 한다. critic 쪽은 `CRITIC_GROUP_DIM = 15` 로 고정이다.
+- critic 입력 조립: rsl_rl `modules/actor_critic.py:47-50`(그룹 차원 합으로 critic 입력 크기 결정), `:162-173`(obs_groups 순서대로 concat). 따라서 critic 그룹 **끝에 항을 추가하면 새 열은 335 다음(끝)에 붙는다**.
+
+**critic 그룹에 α(·보조 상태)를 추가하면 깨지는 곳 3개** [코드 확인]
+1. **체크포인트 로드**: `rl_walking/scripts/train.py:226-229` → `runner.load(resume_path)` → rsl_rl `runners/on_policy_runner.py:309-312` `policy.load_state_dict(...)` → `modules/actor_critic.py:186-199`(strict=True).
+   `critic.0.weight` (512, 335) vs 새 모델 (512, 335 + k) 는 **형상 불일치로 RuntimeError**(PyTorch 는 strict=False 라도 형상 불일치는 오류).
+   이어서 `:316-319` 최적화기 로드도 Adam 상태(exp_avg/exp_avg_sq)의 형상이 맞지 않아 실패한다. actor 는 그대로라 actor 계약은 영향 없음.
+2. **미러 손실**: A0 계보는 `use_mirror_loss=True`(`agents.py:70-75`). rsl_rl `algorithms/ppo.py:316-321` 이 `data_augmentation_func(obs=obs_batch)` 를 **TensorDict 전체**(policy·critic 키 모두)에 부른다.
+   우리 `mirror_biped12` 는 키마다 `_mirror` 를 적용하고(`symmetry.py:189-193`), 차원이 `CRITIC_GROUP_DIM`(15)과 다르면 **ValueError**(`:157-162`)를 낸다. 새 그룹 키를 따로 만들면 `_obs_kind` 가 **ValueError**(`:166-171`)를 낸다.
+   → `_CRITIC_TERMS`(`:83`)·`CRITIC_GROUP_DIM` 갱신이 필수다. α 는 좌우 미러 불변(부호 +1)이고, 발별 보조 상태를 넣으면 좌우 교환 규칙도 추가해야 한다.
+3. **학습률 복원**: `train.py:230-232` `--restore_lr` 는 `optimizer.param_groups[0]["lr"]` 를 읽는다. 최적화기를 새로 만들면 적응 lr 이 cfg 초기값으로 돌아간다(이어 학습 거동 변화).
+
+**우회 방법 — '체크포인트 수술' (오프라인, 구현 안 함; 설계만)**
+- (a) `critic.0.weight` 에 **새 입력 k 열을 0 으로 붙임**: W' = [W (512×335) | 0 (512×k)].
+  - 첫 출력은 기존 critic 과 **완전히 같다**(새 입력 무시 상태에서 출발). 기울기는 즉시 새 열로 흐른다.
+  - critic 관측 정규화가 꺼져 있어(`agents.py:25`) 정규화기 통계 확장은 필요 없다.
+- (b) 최적화기: Adam 상태에서 형상 (512, 335) 인 항목(유일 — actor.0 은 (512, 320))의 exp_avg·exp_avg_sq 에 0 열 k 개를 붙인다. lr(`param_groups[0]["lr"]`)·step 은 보존.
+  대안으로 `runner.load(path, load_optimizer=False)`(`on_policy_runner.py:309`)도 가능하지만 actor 쪽 Adam 모멘트까지 초기화돼 이어 학습 거동이 바뀐다 → (b) 권장.
+- (c) 수술 직후 검증(학습 없음): 같은 관측 배치에서 수술 전후 critic 출력 차 = 0, actor 출력 차 = 0, `mirror_biped12` 왕복(미러 2회 = 원본) 단위 테스트(`rl_walking/tests_symmetry.py` 확장).
+- 승인 필요 여부: actor 관측 계약은 불변이지만 **critic 입력(네트워크) 변경**이다. 사용자 사전 지시의 동결 목록(네트워크·PPO 하이퍼파라미터)에 걸리므로 **사전 승인 대상**이다.
+
+### 2. ② A0k(env 별 α 섞기)에서 감시 env(α=0)의 하중 수용이 0 에 머무를 때 — 원인 후보와 대처
+
+| # | 원인 후보 | 근거 | 확인 방법(학습 중 로그, 추가 실행 없음) | 대처 |
+|---|---|---|---|---|
+| 1 | **α=0 에서 '서 있기'가 스텝과 거의 같은 보상** | 라운드 7 §0a: 안 들기 손해 ≈ 양(+) 합의 9 %(반주기 0.16) | α 구간별 반주기 반환(서기 반주기 vs 이륙 반주기) | 놓친 스텝 벌점(A0j) 결합 — §3 1위 |
+| 2 | **α 를 모르는 정책 = 섞인 α 에 맞춘 평균 행동** | actor 는 α 비관측(라운드 7 §0b). U[0, α_max] 에서 학습 기울기 대부분은 보조가 있어 스텝이 실제로 나는 env 에서 오고, 그 기울기는 '잔차를 보완하는 출력'을 강화 | κ(라운드 2 §2-4)를 α 구간별로 계산. κ 가 α_max 를 따라 내려가지 않고 0 근처면 내재화 없음 | α 분포를 낮은 쪽에 몰기(예 α ~ α_max·Beta(1, 2)), 감시 env 비율을 학습에는 넣지 않는 '평가 전용'으로 분리(아래 #5) |
+| 3 | **critic 이 α 를 몰라 생기는 가치 오차** | critic 입력에 α 없음(§1). 같은 관측에서 α 에 따라 수익이 크게 다르다(A0i: α=1 이륙 88 % vs α=0 0 %) → V 는 α 평균 → α=0 env 는 V 과대(음의 어드밴티지), 보조 env 는 V 과소(양의 어드밴티지) | α 구간별 (V − 실현 반환) 평균. 0 에서 멀면 가치 오차 확정 | 비대칭 critic 에 α 추가(§1 수술, 승인 필요) |
+| 4 | **GAE 부트스트랩 편향** | λ = 0.95·γ = 0.99(A0i-c agent.yaml)라 #3 의 V 오차가 어드밴티지에 그대로 섞인다. 상태만의 함수인 기준선은 정책 기울기의 기댓값을 바꾸지 않지만, **부트스트랩에 쓰이는 V 의 오차는 편향**을 만든다. α 가 숨은 상태이므로 '관측만의 V' 는 진짜 가치가 아니다 | #3 과 같음 | #3 과 같음 |
+| 5 | **감시 env 가 학습 표본에도 들어가 서기 쪽으로 당김** | 감시 env 20 % α=0 은 거의 서기만 하므로(#1) 그 표본은 '서기 강화' 기울기를 준다 | 감시 env 의 행동 log-prob 변화 | 감시 env 를 별도 평가 프로세스로(학습 배치 제외) — 단 rsl_rl 은 env 별 손실 마스크가 없어 구현 비용이 있음(미검증). 또는 감시 비율을 5–10 % 로 |
+| 6 | **되돌림 상대 감쇠가 α_max 를 높게 묶음** | 감시 env 가 0 이면 상대 조건이 '보조 env 성능'만 보게 돼 α_max 가 내려가도 감시 env 는 변화 없음 | α_max 궤적 vs 감시 env 하중 수용 | 감쇠 조건에 'α 하위 구간(예 α < 0.25) env 의 하중 수용'을 포함 |
+
+추가 관찰: 보조는 지연 6틱 선행·펄스 기준이 '보조가 있을 때'만 정합된다. α 가 작아지면 정책이 내야 할 '선행된 굽힘 펄스'를 스스로 만들어야 하는데, 이 펄스는 슬루 4°/틱 예산의 큰 몫을 쓴다(라운드 3 §0a: 성공 스텝이 이미 슬루 한계 근처). 정책 잡음·보정 출력과 예산을 나눠 쓰므로 α=0 에서 펄스 진폭이 부족할 수 있다(가설, 슬루 포화율 로그로 확인).
+
+### 3. ③ A0k 실패 시 다음 단일 변경 순위 (승인 필요 여부 포함)
+
+| 순위 | 변경 | 근거 | 동결 지시와의 관계 | 위험 |
+|---|---|---|---|---|
+| **1** | **A0k + 놓친 스텝 벌점(A0j)** — 반주기 끝에 유효 이륙 없으면 1회 벌점(라운드 7 §4 1위 크기: 반주기 −0.3 ~ −0.5, 서기 반주기 양(+) 합 ≈ 1.8 보다 충분히 작게) | 원인 #1(서기 ≈ 스텝 보상)을 직접 제거. 공개 구현 비교: humanoid-gym 비대칭 불일치 벌(안 들기 손해 33 %) vs 우리 9 % | **보상 변경 — 기존 STEP 실험과 같은 범주, 별도 승인 불요**(보상 설계는 이번 연구 범위에서 계속 바꿔 왔음). PPO·네트워크 불변 | 아직 못 드는 env 에도 벌이 쌓여 무리한 이륙·낙상 증가 가능 → 낙상률·종료 비율을 판정에 포함. 보상 합이 음이 되면 '일찍 죽기' 유인(legged_gym `only_positive_rewards` 문제) → 크기 상한 준수 |
+| 2 | **비대칭 critic 에 α(·보조 잔차 크기) 추가** — §1 체크포인트 수술(0 열 확장 + Adam 상태 확장) + `symmetry.py` critic 규칙 갱신 | 원인 #3·#4(α 숨은 상태 → 가치 오차·GAE 편향). HoST 는 보조량을 **actor** 에까지 넣는다(`host_ground.py:290`) — 우리는 계약상 critic 까지만 | **네트워크(critic 입력) 변경 → 사전 승인 필요**. actor 계약 불변 | critic 만 α 를 알면 '보조 덕의 성공'을 가치로 설명해 버려 actor 의 내재화 압력이 오히려 줄 수 있음(어드밴티지에서 α 효과가 빠짐 — 장점이자 위험, 미검증). 수술 오류 위험 → §1(c) 검증 필수 |
+| 3 | **Kickstarting 형 손실 보조** — 감쇠 시작 시점 정책의 고정 사본 + α·r(φ) 를 교사로 한 λ_k MSE, λ 선형 감쇠 | 보조를 actor 안으로 직접 넣는 유일한 경로(Kickstarting Sec 5.1.1, DAPG 0.95/반복). rsl_rl `algorithms/distillation.py:28,116-153` 의 행동 손실 형태 참고, SmoothPPO(`rl_walking/smooth_ppo.py`) 처럼 서브클래스 | **PPO 손실 변경 → 사전 승인 필요** | 교사가 개루프(위상 고정)라 착지·하중 수용의 폐루프 보정과 충돌 가능 → 손실을 이륙 전·스윙 구간 관절에만 |
+
+순서 근거: 1위는 승인 없이 가능하고, 원인 #1 은 라운드 7 계산으로 이미 수치화돼 있다. 2·3위는 둘 다 동결 대상 변경이므로, A0k + A0j 결과(감시 env 하중 수용이 움직이는지)를 보고 사용자에게 함께 올리는 것이 효율적이다.
+A0k 학습 중에 §2 의 α 구간별 로그(반환·κ·V 오차)를 남기면 2위(가치 오차)와 3위(내재화 부족) 중 어느 쪽이 병목인지 승인 요청 전에 근거로 쓸 수 있다.

@@ -2319,3 +2319,13 @@ class Biped12HangStandStepA0lEnvCfg(Biped12HangStandStepA0kEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.missed_step_event = RewTerm(func=mdp_hang.sb0_value, weight=-20.0, params={"name": "ev_miss"})
+
+
+@configclass
+class Biped12HangStandStepA0mEnvCfg(Biped12HangStandStepA0icEnvCfg):
+    """STEP-A0m (1004): STEP-A0i-c(전역 α 계단, 문턱 0.25) + **놓친 스텝 벌점 실효 −0.4/반주기** 단일 변경. A0i-11900 출발.
+    근거: A0k(env 별 α 혼합)는 보조 스텝까지 붕괴 → 보조가 성립하는 전역 α 위에서 '안 디디기' 비용(OSS 7: 서기 접촉 일치 0.826)만 추가."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.missed_step_event = RewTerm(func=mdp_hang.sb0_value, weight=-20.0, params={"name": "ev_miss"})

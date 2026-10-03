@@ -2202,3 +2202,24 @@ class Biped12HangStandStepA0cEnvCfg(Biped12HangStandStepA0bEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.load_transfer = None
+
+
+@configclass
+class Biped12HangStandStepA0dEnvCfg(Biped12HangStandStepA0cEnvCfg):
+    """STEP-A0d (1004): STEP-A0c + **스텝 모드 env 균형 하네스**(골반 롤·피치 복원 토크 k 60 Nm/rad·c 5, 일정 강도) 단일 변경.
+    근거(OSS 라운드 5 손익 계산, 가정 포함): 살아 있는 가치 V≈16 ≫ 스텝 이득 ≈1 → 시도당 낙상 5–6 % 이상이면 '안 드는' 쪽이 이득. 하네스로 낙상 위험을 낮춘다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.step_harness = EventTerm(func=mdp_hang.step_balance_harness, mode="interval", interval_range_s=(0.0, 0.0), params={})
+
+
+@configclass
+class Biped12HangStandStepA0eEnvCfg(Biped12HangStandStepA0cEnvCfg):
+    """STEP-A0e (1004): STEP-A0c + **스텝 모드 env 부분 체중 지지**(골반 수직 위 힘 0.2 mg × α/2 — 보조 α 와 함께 0 까지 감쇠) 단일 변경.
+    개루프(G21a, α=2): 지지 0 → 이륙 30 %·낙상 7.8 %, 0.2 mg → 이륙 72 %·낙상 4.7 %, 0.4 mg → 이륙 92 %·낙상 49 %.
+    근거: 자세 하네스(A0d)는 개루프에서 낙상과 함께 이륙도 줄임(k60 이륙 30→13 %, k200 3.8 %) — 몸통 운동이 이륙에 쓰인다. 수직 지지는 발 하중만 줄인다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.step_lift = EventTerm(func=mdp_hang.step_lift_support, mode="interval", interval_range_s=(0.0, 0.0), params={})

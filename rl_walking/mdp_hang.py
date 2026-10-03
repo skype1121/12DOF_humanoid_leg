@@ -2447,3 +2447,51 @@ def step_assist_curriculum(env, env_ids, alphas: tuple = (2.0, 1.5, 1.0, 0.5, 0.
             g["stage"] += 1; g["since"] = it; env._assist_alpha = alphas[g["stage"]]
         g["base_sched"], g["base_td"], g["base_ld"] = n_s, n_td, n_ld
     return {"stage": float(g["stage"]), "alpha": float(env._assist_alpha), "block_td": g["last"][0], "block_load": g["last"][1]}
+
+
+def step_lift_support(env, env_ids, frac: float = 0.2, walk_min: float = 0.03, asset_cfg=None):
+    """mode="interval"(0 s), hang_support_step 뒤: 스텝 모드 env 골반에 **수직 위 힘 frac·mg**(월드 z, base 로컬로 변환)을 더하는 부분 체중 지지.
+    자세 하네스(롤·피치 PD)는 낙상과 함께 이륙도 줄였다(1004 개루프: k60 이륙 30→13 %) — 몸통 운동을 막지 않고 발 하중만 줄이는 대안.
+    frac = env var LIFT_FRAC 로 진단 고정 가능, × env._harness_scale."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
+    if "LIFT_FRAC" in os.environ:
+        fr = float(os.environ["LIFT_FRAC"])                                   # 진단 고정
+    else:
+        fr = float(frac) * float(getattr(env, "_assist_alpha", 2.0)) / 2.0   # 학습: 보조 α 와 함께 감쇠(α 2 → 0.2 mg, α 0 → 0)
+    if fr <= 0.0 or float(mode.sum()) == 0.0:
+        return
+    mg = float(G) * asset.data.default_mass.sum(1).to(mode.device)
+    Fw = torch.zeros(env.num_envs, 3, device=mode.device); Fw[:, 2] = fr * mg * mode
+    Fb = _quat_inv(asset.data.root_quat_w, Fw)
+    asset.permanent_wrench_composer.add_forces_and_torques(forces=Fb.unsqueeze(1), torques=None, positions=None,
+                                                           body_ids=_base_cfg_body_ids(env, asset), env_ids=None, is_global=False)
+
+
+def step_balance_harness(env, env_ids, k_nm: float = 60.0, c_nms: float = 5.0, walk_min: float = 0.03, asset_cfg=None):
+    """mode="interval"(0 s), hang_support_step **뒤**: 스텝 모드 env 의 골반에 롤·피치 복원 토크 τ = −k·(롤, 피치) − c·(ω_x, ω_y) [Nm, base 로컬]를 더한다.
+    낙상 위험을 줄여 '이륙 → 착지' 를 시도할 손익을 바꾸는 균형 보조(OSS 라운드 5 #2, Yu 2018). k = k_nm × env._harness_scale(기본 1).
+    참고: 쓰러짐 중력 토크 ≈ m·g·h·θ ≈ 17.6·9.81·0.55 ≈ 95 Nm/rad — k 60 은 그 ~60 %."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
+    k = float(os.environ.get("HARNESS_K", k_nm)) * float(getattr(env, "_harness_scale", 1.0))   # HARNESS_K = 진단용 고정
+    if k <= 0.0 or float(mode.sum()) == 0.0:
+        return
+    pg = asset.data.projected_gravity_b
+    # body 축 회전각(오른손): g_b = R^T(0,0,−1) → 롤 φ: g_y = −sin φ, 피치 θ: g_x = +sin θ (1004 정정: 첫 구현은 부호 반대 → k200 에서 100 % 낙상)
+    roll = torch.atan2(-pg[:, 1], -pg[:, 2]); pitch = torch.atan2(pg[:, 0], -pg[:, 2])
+    w = asset.data.root_ang_vel_b
+    tx = -k * roll - c_nms * w[:, 0]; ty = -k * pitch - c_nms * w[:, 1]
+    tau = torch.stack([tx, ty, torch.zeros_like(tx)], -1) * mode.unsqueeze(1)
+    asset.permanent_wrench_composer.add_forces_and_torques(forces=None, torques=tau.unsqueeze(1), positions=None,
+                                                           body_ids=_base_cfg_body_ids(env, asset), env_ids=None, is_global=False)
+
+
+def _base_cfg_body_ids(env, asset):
+    ids = getattr(env, "_harness_bid", None)
+    if ids is None:
+        cfg = _base_cfg(); cfg.resolve(env.scene); ids = cfg.body_ids
+        if isinstance(ids, slice):
+            ids = [0]
+        env._harness_bid = ids
+    return ids

@@ -1880,11 +1880,16 @@ def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), g
 
 
 def push_with_arm_g22(env, env_ids, velocity_range: dict, arm_s: float = 2.5, branch: str = "g22r", asset_cfg=None):
-    """G22R: 종전 push_robot(속도 밀기)과 같되 G21b 처럼 무장 래치를 건다(실제로 민 env 만).
+    """G22R: 종전 push_robot(속도 밀기)과 같되 G21b 처럼 무장 래치를 건다(실제로 민 env 만) — **외란 범주(앞/뒤) env 에만**.
+    무외란 범주 env 는 속도 밀기도 받지 않는다(1003 수정: 지시서 'no disturbance' 비율을 실제 무외란으로; 첫 실행에서
+    무외란 env 의 속도 밀기 회복 스텝이 '자발 이륙' 45 % 로 집계돼 커리큘럼이 막힘).
     W1: 속도 밀기 없음(지시서: S0–S2 무외란, S3 약한 외란은 disturbance_reset_g22r 가 담당)."""
     if branch == "w1":
         return
-    push_with_arm(env, env_ids, velocity_range, arm_s=arm_s, asset_cfg=asset_cfg)
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    ids = ids[_g22(env)["cat"][ids] > 0.5]
+    if len(ids):
+        push_with_arm(env, ids, velocity_range, arm_s=arm_s, asset_cfg=asset_cfg)
 
 
 def recovery_gate_g22r(env, env_ids, tilt_ok: float = 6.5, w_ok: float = 1.5, v_ok: float = 0.5, lift_tilt: float = 3.0,
@@ -1893,7 +1898,7 @@ def recovery_gate_g22r(env, env_ids, tilt_ok: float = 6.5, w_ok: float = 1.5, v_
                        pre_s: float = 0.15, ok_tilt: float = 3.0, ok_w: float = 0.5, ok_v: float = 0.15, h_nom: float = 0.60,
                        ok_h: float = 0.02, ok_s: float = 0.30, timeout_s: float = 4.0, settle_max_s: float = 3.0,
                        swing_timeout_s: float = 0.60, dir_v_min: float = 0.10, prog_sat_m: float = 0.08,
-                       threshold: float = 5.0, asset_cfg=None):
+                       spawn_s: float = 2.0, threshold: float = 5.0, asset_cfg=None):
     """mode="interval"(0 s): G22R 회복 게이트 = G21b recovery_gate_v2 와 같은 무장 래치·3상(STAND/RECOVERY/SETTLE) 위에
     지시서 G22R 정의를 얹는다.
     - 무장: 외란 힘이 실제로 걸린 env(+ 속도 밀기 push_with_arm_g22) 만, 해제 뒤 arm_s 유지. 정책 행동으로는 열 수 없다(G16a 차단).
@@ -1943,7 +1948,7 @@ def recovery_gate_g22r(env, env_ids, tilt_ok: float = 6.5, w_ok: float = 1.5, v_
     vl_now = air & (st["swing_t"] >= td_air_s) & ((fzpos - st["lift_z"]) >= lift_dz)
     new_valid = vl_now & (st["valid_lift"] < 0.5)
     st["valid_lift"] = torch.where(vl_now, torch.ones_like(st["valid_lift"]), st["valid_lift"])
-    stand_unarmed = (ph == 0) & ~armed
+    stand_unarmed = (ph == 0) & ~armed & (t >= spawn_s)   # 1003: 스폰 착지 과도(시작 1.5 s 안 튕김) 제외 — diag_spont: 무외란 '자발 이륙' 102/214 가 전부 여기
     st["ev_unarmed"] = (new_valid & stand_unarmed.unsqueeze(1)).any(1).float()
     st["ev_takeoff"] = (new_valid & rec.unsqueeze(1)).any(1).float()
     st["had_swing"] = torch.where(rec & (air & (st["valid_lift"] > 0.5)).any(1), torch.ones_like(st["had_swing"]), st["had_swing"])
@@ -2048,7 +2053,7 @@ def g22r_force_curriculum(env, env_ids, min_episodes: int = 2000, min_iters: int
     if len(ids):
         tm = env.termination_manager
         fell = (tm.terminated[ids] & ~tm.time_outs[ids]).float()
-        started = env.episode_length_buf[ids] > 1          # 첫 리셋(초기화) 제외
+        started = env.episode_length_buf[ids] > int(2.0 / env.step_dt)   # 초기화·스폰 착지 낙상(시작 2 s 안) 제외 — 1003 diag_spont
         push = (g["cat"][ids] > 0.5) & started; quiet = (g["cat"][ids] < 0.5) & started
         W["n_push"] += float(push.sum()); W["fall_push"] += float((fell * push).sum())
         W["td"] += float((g["ep_td"][ids] * push).sum()); W["load"] += float((g["ep_load"][ids] * push).sum())
@@ -2057,11 +2062,17 @@ def g22r_force_curriculum(env, env_ids, min_episodes: int = 2000, min_iters: int
             g[k][ids] = 0.0
     it = int(env.common_step_counter) // steps_per_iter
     fall = W["fall_push"] / max(W["n_push"], 1.0); lpt = W["load"] / max(W["td"], 1.0); spont = W["spont"] / max(W["n_quiet"], 1.0)
-    if (g["stage"] < len(_G22R_STAGES) - 1 and W["n_push"] >= min_episodes and it - g["stage_since_it"] >= min_iters
-            and fall < max_fall and lpt > min_load_per_td and spont < max_spont):
-        print(f"[G22R 커리큘럼] 반복 {it}: R{g['stage'] + 1} → R{g['stage'] + 2} (낙상 {fall:.3f} · 하중/착지 {lpt:.3f} · 무외란 이륙 {spont:.3f} · n {W['n_push']:.0f})", flush=True)
-        g["stage"] += 1; g["stage_since_it"] = it; g["win"] = {}
-    return {"stage": float(g["stage"] + 1), "fall_push": fall, "load_per_td": lpt, "spont_takeoff": spont, "n_push": W["n_push"]}
+    # 1003 수정: 단계 시작부터 누적하지 않고 min_episodes 블록마다 독립 판정 — 통과면 승격, 아니면 블록을 비우고 다시 모은다
+    if W["n_push"] >= min_episodes:
+        g["last_block"] = {"fall_push": fall, "load_per_td": lpt, "spont_takeoff": spont}
+        ok = it - g["stage_since_it"] >= min_iters and fall < max_fall and lpt > min_load_per_td and spont < max_spont
+        print(f"[G22R 커리큘럼 블록] 반복 {it} R{g['stage'] + 1}: 낙상 {fall:.3f} · 하중/착지 {lpt:.3f} · 무외란 이륙 {spont:.3f} · n {W['n_push']:.0f}/{W['n_quiet']:.0f}"
+              + (" → 승격" if ok and g["stage"] < len(_G22R_STAGES) - 1 else ""), flush=True)
+        if ok and g["stage"] < len(_G22R_STAGES) - 1:
+            g["stage"] += 1; g["stage_since_it"] = it
+        g["win"] = {}
+    lb = g.get("last_block", {"fall_push": float("nan"), "load_per_td": float("nan"), "spont_takeoff": float("nan")})
+    return {"stage": float(g["stage"] + 1), **{f"block_{k}": v for k, v in lb.items()}, "cur_fall_push": fall, "cur_spont": spont}
 
 
 # ---------------------------------------------------------------- W1 (저속 전진 보행) ----------------------------------------------------------------
@@ -2185,7 +2196,7 @@ def w1_command_curriculum(env, env_ids, min_episodes: int = 1500, min_iters: int
     if len(ids):
         tm = env.termination_manager
         fell = (tm.terminated[ids] & ~tm.time_outs[ids]).float()
-        started = env.episode_length_buf[ids] > 1
+        started = env.episode_length_buf[ids] > int(2.0 / env.step_dt)   # 스폰 착지 낙상 제외(G22R 와 같음)
         wk = (g["ep_walk"][ids] > 0.5) & started; sd = (g["ep_walk"][ids] < 0.5) & started
         W["n_walk"] += float(wk.sum()); W["fall_walk"] += float((fell * wk).sum())
         W["n_stand"] += float(sd.sum()); W["fall_stand"] += float((fell * sd).sum())
@@ -2194,10 +2205,14 @@ def w1_command_curriculum(env, env_ids, min_episodes: int = 1500, min_iters: int
             g[k][ids] = 0.0
     it = int(env.common_step_counter) // steps_per_iter
     fall = W["fall_walk"] / max(W["n_walk"], 1.0); err = W["err"] / max(W["err_n"], 1.0); fs = W["fall_stand"] / max(W["n_stand"], 1.0)
-    if (g["stage"] < len(_W1_STAGES) - 1 and W["n_walk"] >= min_episodes and it - g["stage_since_it"] >= min_iters
-            and fall <= max_fall and err <= max_trk_err):
-        print(f"[W1 커리큘럼] 반복 {it}: S{g['stage']} → S{g['stage'] + 1} (걷기 낙상 {fall:.3f} · 추종 오차 {err:.3f} · 서기 낙상 {fs:.3f})", flush=True)
-        g["stage"] += 1; g["stage_since_it"] = it; g["win"] = {}
+    if W["n_walk"] >= min_episodes:                       # 블록 독립 판정(G22R 와 같은 1003 수정)
+        g["last_block"] = {"fall_walk": fall, "trk_err": err, "fall_stand": fs}
+        ok = it - g["stage_since_it"] >= min_iters and fall <= max_fall and err <= max_trk_err
+        print(f"[W1 커리큘럼 블록] 반복 {it} S{g['stage']}: 걷기 낙상 {fall:.3f} · 추종 오차 {err:.3f} · 서기 낙상 {fs:.3f}"
+              + (" → 승격" if ok and g["stage"] < len(_W1_STAGES) - 1 else ""), flush=True)
+        if ok and g["stage"] < len(_W1_STAGES) - 1:
+            g["stage"] += 1; g["stage_since_it"] = it
+        g["win"] = {}
     stand, vr = _W1_STAGES[g["stage"]]
     term = env.command_manager.get_term("base_velocity")
     term.cfg.rel_standing_envs = float(stand); term.cfg.ranges.lin_vel_x = tuple(vr)

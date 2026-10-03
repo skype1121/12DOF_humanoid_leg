@@ -2163,3 +2163,20 @@ class Biped12HangStandStepI0EnvCfg(Biped12HangStandStepB1EnvCfg):
         rw.foot_position_reference = RewTerm(func=mdp_hang.sb0_value, weight=2.0, params={"name": "r_foot"})
         rw.contact_phase_reference = RewTerm(func=mdp_hang.sb0_value, weight=2.0, params={"name": "r_cref"})
         self.curriculum = _StepICurriculumCfg()
+
+
+@configclass
+class _StepACurriculumCfg:
+    assist_anneal = _CurrTerm(func=mdp_hang.step_assist_curriculum)
+
+
+@configclass
+class Biped12HangStandStepA0EnvCfg(Biped12HangStandStepI0EnvCfg):
+    """STEP-A0 (1004, NEXT 3): STEP-I0 + **보조 탐색** — 스텝 모드 관절 목표 += α·(기준 관절 궤적 − 반주기 시작 값), α 2.0 → 1.5 → 1.0 → 0.5 → 0.25 → 0
+    (블록 하중 수용 ≥ 0.5 로 감쇠; 1004 개루프: α 2 = 이륙 31 %·하중 수용 12.8 %). 모방 보상 배율은 1.0 고정(감쇠는 α 가 0 된 뒤 별도 세대). 합격은 α = 0 에서의 스텝 성공."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.step_assist = EventTerm(func=mdp_hang.install_step_assist, mode="startup",
+                                            params={"ref_path": "/home/ryu/humanoid_leg_test1/reports/gen_step/ref_step_primitive.npz"})
+        self.curriculum = _StepACurriculumCfg()

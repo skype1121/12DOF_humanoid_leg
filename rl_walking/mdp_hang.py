@@ -2396,3 +2396,47 @@ def sbi_anneal_curriculum(env, env_ids, scales: tuple = (1.0, 0.75, 0.5, 0.25, 0
             g["stage"] += 1; g["since"] = it; env._sbi_scale = scales[g["stage"]]
         g["base_sched"], g["base_td"], g["base_ld"] = n_s, n_td, n_ld
     return {"stage": float(g["stage"]), "scale": float(env._sbi_scale), "block_td": g["last"][0], "block_load": g["last"][1]}
+
+
+# ---------------------------------------------------------------- STEP-A (1004: NEXT 3 보조 탐색 — 정책 목표 + α·기준 잔차, α 감쇠) ----------------------------------------------------------------
+def install_step_assist(env, env_ids, ref_path: str = "", freq: float = 1.1, walk_min: float = 0.03, alpha0: float = 2.0):
+    """mode="startup": 액션 항의 pre_delay_hook 에 보조 잔차를 건다. 스텝 모드 env 의 관절 목표 += α·(q_ref[반주기, k] − q_ref[반주기, 0]).
+    정책 관측(직전 액션)은 정책 자신의 출력 그대로(보조는 관측에 안 들어감). α = env._assist_alpha (커리큘럼이 감쇠, 0 이면 순수 정책)."""
+    R = _sbi_ref(env, ref_path)
+    term = env.action_manager.get_term("joint_pos")
+    env._assist_alpha = float(os.environ.get("STEP_ASSIST_ALPHA", alpha0))    # 평가·진단용 고정 α(커리큘럼 없을 때)
+    prev = term.pre_delay_hook
+
+    def hook(target):
+        if prev is not None:
+            target = prev(target)
+        a = float(getattr(env, "_assist_alpha", 0.0))
+        if a <= 0.0:
+            return target
+        t = env.episode_length_buf.to(torch.float32) * env.step_dt
+        u = torch.remainder(freq * t, 1.0); half = (u >= 0.5).long(); v = torch.remainder(2.0 * u, 1.0)
+        k = (v * 23.0).long().clamp(0, 22)
+        mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float().unsqueeze(1)
+        res = R["q"][half, k] - R["q"][half, 0]
+        return target + a * mode * res
+
+    term.pre_delay_hook = hook
+
+
+def step_assist_curriculum(env, env_ids, alphas: tuple = (2.0, 1.5, 1.0, 0.5, 0.25, 0.0), min_sched: float = 20000.0, min_iters: int = 50,
+                           min_full: float = 0.5, steps_per_iter: int = 24):
+    """보조 α 감쇠 2.0 → 1.5 → 1.0 → 0.5 → 0.25 → 0 (1004 개루프 진단: α 1 은 이륙 0.8 %, α 2 는 31 % — PD 추종 지연으로 기준 진폭의 ~2배 필요): 스텝 모드 예정 반주기 블록마다 하중 수용 비율 ≥ min_full 이면 다음 α (블록 독립 판정)."""
+    st = _sb0(env); g = getattr(env, "_assist_cur", None)
+    if g is None:
+        g = {"stage": 0, "since": 0, "base_sched": 0.0, "base_td": 0.0, "base_ld": 0.0, "last": (float("nan"), float("nan"))}; env._assist_cur = g
+        env._assist_alpha = alphas[0]
+    n_s = float(st["n_sched"].sum()); n_td = float(st["n_td"].sum()); n_ld = float(st["n_load"].sum()) if "n_load" in st else 0.0
+    ds = n_s - g["base_sched"]; it = int(env.common_step_counter) // steps_per_iter
+    if ds >= min_sched:
+        td = (n_td - g["base_td"]) / ds; ld = (n_ld - g["base_ld"]) / ds; g["last"] = (td, ld)
+        ok = ld >= min_full and it - g["since"] >= min_iters and g["stage"] < len(alphas) - 1
+        print(f"[STEP-A 보조 블록] 반복 {it} α={alphas[g['stage']]}: 착지 {td:.3f} · 하중 수용 {ld:.3f}" + (" → 감쇠" if ok else ""), flush=True)
+        if ok:
+            g["stage"] += 1; g["since"] = it; env._assist_alpha = alphas[g["stage"]]
+        g["base_sched"], g["base_td"], g["base_ld"] = n_s, n_td, n_ld
+    return {"stage": float(g["stage"]), "alpha": float(env._assist_alpha), "block_td": g["last"][0], "block_load": g["last"][1]}

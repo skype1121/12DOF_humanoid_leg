@@ -2140,3 +2140,26 @@ class Biped12HangStandStepB1EnvCfg(Biped12HangStandStepB0EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.load_transfer = RewTerm(func=mdp_hang.sb0_value, weight=2.0, params={"name": "r_asym"})
+
+
+@configclass
+class _StepICurriculumCfg:
+    imit_anneal = _CurrTerm(func=mdp_hang.sbi_anneal_curriculum)
+
+
+@configclass
+class Biped12HangStandStepI0EnvCfg(Biped12HangStandStepB1EnvCfg):
+    """STEP-I0 (1004, NEXT 2): STEP-B1 + **시연 primitive 모방 보상** — joint_pose_reference +1.5 · foot_position_reference +2.0 ·
+    contact_phase_reference +2.0 (스텝 모드만, 감쇠 배율 곱), load_asymmetry(선형) 가중 2.0 → 1.0. 감쇠 I0 1.0 → 0.75 → 0.5 → 0.25 → 0.05
+    (스텝 모드 예정 반주기 블록의 하중 수용 비율 ≥ 0.5 로 승격). 기준 = reports/gen_step/ref_step_primitive.npz."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        rw = self.rewards
+        self.events.sbi = EventTerm(func=mdp_hang.sbi_step, mode="interval", interval_range_s=(0.0, 0.0),
+                                    params={"ref_path": "/home/ryu/humanoid_leg_test1/reports/gen_step/ref_step_primitive.npz"})
+        rw.load_transfer = RewTerm(func=mdp_hang.sb0_value, weight=1.0, params={"name": "r_asym"})
+        rw.joint_pose_reference = RewTerm(func=mdp_hang.sb0_value, weight=1.5, params={"name": "r_qref"})
+        rw.foot_position_reference = RewTerm(func=mdp_hang.sb0_value, weight=2.0, params={"name": "r_foot"})
+        rw.contact_phase_reference = RewTerm(func=mdp_hang.sb0_value, weight=2.0, params={"name": "r_cref"})
+        self.curriculum = _StepICurriculumCfg()

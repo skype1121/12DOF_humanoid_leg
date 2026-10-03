@@ -2267,6 +2267,8 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
     fresh = env.episode_length_buf <= 1
     if bool(fresh.any()):
         for k, val in st.items():
+            if k in ("n_sched", "n_td", "n_load"):
+                continue                                                  # 감쇠 커리큘럼 전역 누적(리셋 무관)
             val[fresh] = 0.0
         st["prev_c"][fresh] = 1.0; st["half"][fresh] = -1.0
     t = env.episode_length_buf.to(torch.float32) * dt
@@ -2315,5 +2317,82 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
 
 
 def sb0_value(env, name: str) -> torch.Tensor:
-    """STEP-B0 추적기 값(r_transfer·r_unload·r_clear·r_prog·ev_td·ev_load·ev_settle·r_prem)."""
-    return _sb0(env)[name]
+    """STEP-B0 추적기 값(r_transfer·r_unload·r_clear·r_prog·ev_td·ev_load·ev_settle·r_prem; STEP-I: r_qref·r_foot·r_cref)."""
+    st = _sb0(env)
+    return st[name] if name in st else torch.zeros(env.num_envs, device=env.device)
+
+
+# ---------------------------------------------------------------- STEP-I (1004: 시연 기반 primitive 모방, 감쇠) ----------------------------------------------------------------
+# 기준 = reports/gen_step/ref_step_primitive.npz (뒤 유효 스텝 489건의 공통 primitive: 접촉·하중 타이밍·발 높이/횡·좌우 방향 관절·무릎,
+# 앞뒤 방향은 이륙 위치 + 5 cm 목표로 대체 — 뒤 궤적을 앞으로 뒤집지 않음). 반주기 23틱 = sb0 일정과 같은 위상.
+_SBI_REF = {}
+
+
+def _sbi_ref(env, path):
+    key = (path, str(env.device))
+    if key not in _SBI_REF:
+        import numpy as _np
+        from .symmetry import _JOINT_PERM, _JOINT_SIGN
+        z = _np.load(path)
+        T = lambda x: torch.as_tensor(x, dtype=torch.float32, device=env.device)
+        qL = T(z["q_ref"]); perm = torch.as_tensor(_JOINT_PERM, device=env.device); sgn = T(_JOINT_SIGN)
+        qR = qL[:, perm] * sgn                                            # 오른발 스윙 = 미러
+        fL = T(z["foot_ref"]); fR = fL.clone(); fR[:, 1] = -fR[:, 1]
+        cL = T(z["contact_ref"])                                           # [스윙, 지지]
+        _SBI_REF[key] = {"q": torch.stack([qL, qR]), "w": T(z["w_q"]), "foot": torch.stack([fL, fR]),
+                         "c": torch.stack([cL, cL.flip(1)])}               # (2 반주기, 23, ...): c 는 [왼, 오] 순서
+    return _SBI_REF[key]
+
+
+def sbi_step(env, env_ids, ref_path: str = "", freq: float = 1.1, walk_min: float = 0.03, sig_q: float = 0.10, sig_p: float = 0.03,
+             threshold: float = 5.0, asset_cfg=None):
+    """mode="interval"(0 s): 모방 보상 값 계산(스텝 모드만, 감쇠 배율 env._sbi_scale 곱). sb0_step 보다 **뒤** 에 두어 같은 틱 위상 사용.
+    r_qref = exp(−Σ w_j (q_j − q_ref,j)² / (Σw·σq²)) · r_foot = exp(−|p_스윙 − p_ref|²/σp²)(골반 기준 요 프레임) · r_cref = 접촉 일치 비율(두 발 평균)."""
+    st = _sb0(env); R = _sbi_ref(env, ref_path)
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    sensor = env.scene.sensors["contact_forces"]; fid = _feet_body_ids(env)
+    c = (sensor.data.net_forces_w[:, fid, :].norm(dim=-1) > threshold).float()
+    t = env.episode_length_buf.to(torch.float32) * env.step_dt
+    u = torch.remainder(freq * t, 1.0); half = (u >= 0.5).long(); v = torch.remainder(2.0 * u, 1.0)
+    k = (v * 23.0).long().clamp(0, 22)
+    mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
+    scale = float(getattr(env, "_sbi_scale", 1.0))
+    q_ref = R["q"][half, k]; c_ref = R["c"][half, k]; p_ref = R["foot"][half, k]
+    dq = asset.data.joint_pos - q_ref
+    st["r_qref"] = torch.exp(-(R["w"] * dq * dq).sum(1) / (R["w"].sum() * sig_q ** 2)) * mode * scale
+    qw = asset.data.root_quat_w
+    yaw = torch.atan2(2 * (qw[:, 0] * qw[:, 3] + qw[:, 1] * qw[:, 2]), 1 - 2 * (qw[:, 2] ** 2 + qw[:, 3] ** 2))
+    hx = torch.stack([torch.cos(yaw), torch.sin(yaw)], -1); hy = torch.stack([-torch.sin(yaw), torch.cos(yaw)], -1)
+    ar = torch.arange(env.num_envs, device=env.device)
+    rel = asset.data.body_pos_w[ar, torch.as_tensor(_g21_bids(env), device=env.device)[half], :] - asset.data.root_pos_w
+    p = torch.stack([(rel[:, :2] * hx).sum(-1), (rel[:, :2] * hy).sum(-1), rel[:, 2]], -1)
+    # 1004 수정: 절대 골반 기준 위치는 정지 자세와 수 cm 어긋남(시연 = 밀리는 중) → 반주기 시작 시 발 위치 대비 **상대 궤적**으로 비교
+    if "p0_half" not in st:
+        st["p0_half"] = p.clone(); st["sbi_half"] = half.float().clone()
+    nh = (half.float() != st["sbi_half"]) | (env.episode_length_buf <= 1)
+    st["p0_half"] = torch.where(nh.unsqueeze(1), p, st["p0_half"]); st["sbi_half"] = half.float()
+    p_ref_rel = p_ref - R["foot"][half, 0]
+    st["r_foot"] = torch.exp(-(((p - st["p0_half"]) - p_ref_rel) ** 2).sum(1) / sig_p ** 2) * mode * scale
+    st["r_cref"] = (c == c_ref).float().mean(1) * mode * scale
+    st.setdefault("n_load", torch.zeros(env.num_envs, device=env.device))
+    st["n_load"] += st["ev_load"] * mode
+
+
+def sbi_anneal_curriculum(env, env_ids, scales: tuple = (1.0, 0.75, 0.5, 0.25, 0.05), min_sched: float = 20000.0, min_iters: int = 50,
+                          min_full: float = 0.5, steps_per_iter: int = 24):
+    """모방 보상 감쇠 I0→I4: 스텝 모드 예정 반주기 블록(≥ min_sched)마다 완전 스텝(하중 수용) 비율 ≥ min_full 이면 다음 배율.
+    블록 독립 판정(G22R 와 같은 방식). 반환 = 단계·배율·블록 착지/하중 비율."""
+    st = _sb0(env); g = getattr(env, "_sbi_cur", None)
+    if g is None:
+        g = {"stage": 0, "since": 0, "base_sched": 0.0, "base_td": 0.0, "base_ld": 0.0, "last": (float("nan"), float("nan"))}; env._sbi_cur = g
+        env._sbi_scale = scales[0]
+    n_s = float(st["n_sched"].sum()); n_td = float(st["n_td"].sum()); n_ld = float(st["n_load"].sum()) if "n_load" in st else 0.0
+    ds = n_s - g["base_sched"]; it = int(env.common_step_counter) // steps_per_iter
+    if ds >= min_sched:
+        td = (n_td - g["base_td"]) / ds; ld = (n_ld - g["base_ld"]) / ds; g["last"] = (td, ld)
+        ok = ld >= min_full and it - g["since"] >= min_iters and g["stage"] < len(scales) - 1
+        print(f"[STEP-I 감쇠 블록] 반복 {it} I{g['stage']}(배율 {scales[g['stage']]}): 착지 {td:.3f} · 하중 수용 {ld:.3f}" + (" → 승격" if ok else ""), flush=True)
+        if ok:
+            g["stage"] += 1; g["since"] = it; env._sbi_scale = scales[g["stage"]]
+        g["base_sched"], g["base_td"], g["base_ld"] = n_s, n_td, n_ld
+    return {"stage": float(g["stage"]), "scale": float(env._sbi_scale), "block_td": g["last"][0], "block_load": g["last"][1]}

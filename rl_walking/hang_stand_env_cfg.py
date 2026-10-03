@@ -2329,3 +2329,18 @@ class Biped12HangStandStepA0mEnvCfg(Biped12HangStandStepA0icEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.missed_step_event = RewTerm(func=mdp_hang.sb0_value, weight=-20.0, params={"name": "ev_miss"})
+
+
+@configclass
+class _StepARelCurriculumCfg:
+    assist_anneal = _CurrTerm(func=mdp_hang.step_assist_curriculum_rel)
+
+
+@configclass
+class Biped12HangStandStepA0nEnvCfg(Biped12HangStandStepA0iEnvCfg):
+    """STEP-A0n (1004, 대기): A0i + **전역 α 미세 감쇠(0.1 단위)·상대 유지 기준(70 %)·되돌림(40 %)** — 감쇠 방식 1개 변경. A0i-11900 출발.
+    근거: A0i-c 의 −0.25 계단은 블록 하중 수용을 0.25 → 0.11 로 반 이하로 떨어뜨림."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.curriculum = _StepARelCurriculumCfg()

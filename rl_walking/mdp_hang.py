@@ -2557,3 +2557,29 @@ def step_assist_curriculum_env(env, env_ids, step: float = 0.25, keep_ratio: flo
         print(f"[STEP-A env α 블록] 반복 {it} α_max={amax:.2f}: 보조 env 하중 수용 {r:.3f} · 감시(α=0) env {rm:.3f}{msg}", flush=True)
         g["base"] = cur
     return {"alpha_max": float(env._assist_alpha_max), "block_load": g["last"][0], "monitor_load": g["last"][1]}
+
+
+def step_assist_curriculum_rel(env, env_ids, step: float = 0.1, keep_ratio: float = 0.7, revert_ratio: float = 0.4, alpha_start: float = 1.0,
+                               min_sched: float = 20000.0, min_iters: int = 30, steps_per_iter: int = 24):
+    """전역 α 미세 감쇠(1004 A0n): 블록 하중 수용 r 이 그 α 단계 첫 블록 r0 의 keep_ratio 이상 & 체류 ≥ min_iters 면 α −= step,
+    r < revert_ratio·r0 면 α += step(되돌림, alpha_start 상한). 절대 문턱 대신 상대 기준(OSS 7: Yu 2018 60–80 % 유지)."""
+    st = _sb0(env); g = getattr(env, "_assist_cur3", None)
+    if g is None:
+        g = {"since": 0, "r0": None, "base": None, "last": float("nan")}; env._assist_cur3 = g
+        env._assist_alpha = float(alpha_start)
+    n_s = float(st["n_sched"].sum()); n_l = float(st["n_load"].sum()) if "n_load" in st else 0.0
+    if g["base"] is None:
+        g["base"] = (n_s, n_l)
+    ds = n_s - g["base"][0]; it = int(env.common_step_counter) // steps_per_iter
+    if ds >= min_sched:
+        r = (n_l - g["base"][1]) / ds; g["last"] = r
+        if g["r0"] is None:
+            g["r0"] = r
+        a = env._assist_alpha; msg = ""
+        if r >= keep_ratio * g["r0"] and it - g["since"] >= min_iters and a > 0.0:
+            env._assist_alpha = max(0.0, round(a - step, 3)); g["since"] = it; g["r0"] = None; msg = " → 감쇠"
+        elif r < revert_ratio * g["r0"] and a < alpha_start:
+            env._assist_alpha = min(alpha_start, round(a + step, 3)); g["since"] = it; g["r0"] = None; msg = " → 되돌림"
+        print(f"[STEP-A 미세 블록] 반복 {it} α={a:.2f}: 하중 수용 {r:.3f} (r0 {g['r0'] if g['r0'] is not None else float('nan'):.3f}){msg}", flush=True)
+        g["base"] = (n_s, n_l)
+    return {"alpha": float(env._assist_alpha), "block_load": g["last"]}

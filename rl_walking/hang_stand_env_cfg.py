@@ -2376,3 +2376,15 @@ class Biped12HangStandG23RaEnvCfg(Biped12HangStandStepA0mEnvCfg):
         d = self.events.disturbance; d.params = dict(d.params, branch="g22r", stage_override=2)   # R3 고정(앞 10–12·뒤 12–18 N) — G22R 커리큘럼 통계는 이 env 게이트로 안 모임
         pr = self.events.push_robot; pr.params = dict(pr.params, branch="g22r")
         self.curriculum = None
+
+
+@configclass
+class Biped12HangStandW2bEnvCfg(Biped12HangStandW2aEnvCfg):
+    """W2-2 (1004): W2-1 + **스텝 모드 요 추종 보상**(track_ang_vel_z_exp, 가중 1.5 — W1 지시서 값) 단일 변경.
+    근거: W2-1 요 표류 13–18°/8 s — StepB0 계보는 track_ang_vel_z 를 서기 전용으로 게이트(걷기 판 없음)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.track_ang_vel_z_exp
+        self.rewards.track_ang_vel_walk = RewTerm(func=mdp_hang.w1_walk_gated, weight=1.5,
+                                                  params={"func": t.params["func"], "params": dict(t.params["params"] or {})})

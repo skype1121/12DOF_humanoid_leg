@@ -662,3 +662,103 @@ A0b 설정: `logs/rsl_rl/biped12_stepb0/2026-10-04_04-04-57_stepa0b_seed1_from_g
 - 기대: 공중 틱의 상대 손해 제거. 위험: 모방 항이 주던 '서기 자세 근처 양(+) 보상'(합 ≈ 0.058/틱)이 빠지면 V(살아 있음)도 같이 줄어 라운드 5 §0 의 손익분기가 바뀐다. 이것은 부수 효과이자 장점일 수 있다(해석, 미검증).
 
 (3위, 서기 모드 원래 병목용 — 스텝 모드 해법과 별개) 서기 모드의 양발 요구 양(+) 항 3개(feet_contact_gated·recovery_quality·settle_quiet_bonus)를 **회복 게이트 열림 동안** any-contact 로 바꾸고 stance_shape 엇갈림 한도(4 cm)를 게이트 열림 + 착지 후 일정 시간 동안 해제. G18q(외란 창 한정·recovery_quality 하나)가 미지지였던 이력을 감안해, 대상 항 목록을 명시한 단일 변경으로만 시험한다.
+
+## 라운드 7 (2026-10-04 06:10) — 보조 제거 후 행동 유지, 접촉 일정 강제의 크기, 클록 힌트의 이전
+
+전제(측정 사실, 코디네이터 전달): 보조 아래 이륙 억제의 구조 원인 3개를 고친 A0i — (1) 보조 6틱 선행, (2) 스윙 굽힘 펄스 합성 기준(힙 +12·무릎 −25·발목 +13° 사인, 개루프 진짜 스텝 50 %), (3) 스텝 모드 knee_stance_flexion OFF.
+학습 블록 착지 0.17→0.30·하중 0.12→0.26. 평가: **α=1 이륙 88 %, α=0 이륙 0**. 감쇠 문턱 0.5 미달로 사전 규칙 FAIL. 이어서 A0i-c(문턱 0.25, α 1.0→0.75→0.5→0.25→0 전역 계단) 진행 중.
+스텝 모드에서 서 있어도 받는 양(+) 보상: contact_phase_ref +0.033·pose_ref +0.016·foot_ref +0.009·survive +0.020/틱.
+
+### 0. 이번 라운드의 판단 근거 (계산, 가정 명시)
+
+**(a) 스텝 모드에서 '서 있기'와 '스텝하기'의 보상 차가 작다.**
+- contact_phase_reference 는 두 발 접촉 일치 비율 × 2.0 이다(`mdp_hang.py:2385`). 기준(`ref_step_primitive.npz`)은 지지발 23/23틱 접촉, 스윙발 15/23틱 접촉(공중 8틱)이다.
+- 서 있기만 해도 일치율 = (1 + 15/23)/2 = **0.826** → 0.826 × 2.0 × 0.02 = **0.033/틱**. 코디네이터가 측정한 +0.033 과 정확히 같다.
+- 완벽한 스텝은 1.0 → 0.040/틱. 따라서 **스텝을 전부 빼먹어도 손해는 0.007/틱**이다(서 있을 때 양(+) 합 ≈ 0.078/틱의 약 9 %, 반주기 22.7틱이면 0.16).
+- 공개 구현과 비교(같은 방식으로 '클록은 돌고 발은 안 드는' 경우의 손해를 추적 보상 가중에 대한 비율로 계산, 표 §2):
+  - humanoid-gym: 접촉 일치 +1 / 불일치 −0.3 의 비대칭이라 손해 ≈ 0.39/틱 = 선속도 추적 가중(1.2)의 **33 %**.
+  - unitree G1: XNOR 이라 0.08 = 추적(1.0)의 **8 %**.
+  - 우리는 서 있을 때 양(+) 합의 **9 %**이고 비대칭 불일치 벌점이 없다.
+- 결론(가설): **α→0 에서 '서 있기'는 스텝과 거의 같은 보상을 받는 끌개**다. 보조가 빠지는 순간 정책이 그쪽으로 돌아가는 것은 보상 구조상 자연스럽다. A0i α=0 이륙 0 과 정합한다.
+
+**(b) actor 는 α 를 모른다.**
+- 보조 잔차는 (클록 위상, 명령) 의 결정 함수(`mdp_hang.py:2432-2435` 근처, A0i 수정 후)이고 actor 는 둘 다 관측한다(`gait_clock`, 명령). 그래서 잔차를 '스스로 내는' 표현은 가능하다(라운드 2 §0).
+- 그러나 α 자체는 관측에 없어서, 정책은 '현재 α 에서 잔차를 보완하는 출력'만 학습한다. α=1 → 88 %, α=0 → 0 은 내재화 계수 κ(라운드 2 §2-4)가 0 에 가깝다는 신호다(미측정, κ 를 계산하면 확정 가능).
+
+### 1. ① 보조를 걷어낼 때 행동을 유지한 기법 — 코드·문헌 근거
+
+| 출처 | 보조 형태 / α 관측 | 감쇠 속도·문턱 | 감쇠 후 급락·critic 대책 | 파일:줄 / 절 |
+|---|---|---|---|---|
+| HoST (70bb580) | env 쪽 위 당김 힘(상태 조건부) + 행동 배율. **배율을 actor 관측에 넣음**(잡음 ±0.025) | env 별, 리셋 묶음의 평균 머리 높이 > 문턱일 때마다 −20 N(시작 200 N → 성공 10회면 0), 배율 −0.02(하한 0.25). 되돌림 없음 | 없음(단조 감쇠). 평가 때 힘 0 | `legged_gym/envs/base/host_ground.py:107-113,201,290,505-508,589-590`; `scripts/play.py:26` |
+| Yu et al. 2018 (논문, 코드 미확인) | env 쪽 PD 스프링 힘. **관측 안 함** | learner-centered: 원 수익의 h=80 % 도달 → 수익 l=60 % 를 유지하는 최대 감소(line search 5방향). env-centered: 한 롤아웃 안에서 3 s 마다 −25 %, 진행 조건 = 2p s 균형 & 수익 > 완전 보조 수익의 g=70 % | **보조 수준을 롤아웃 안에서 섞어 특정 수준 과적합 방지**. ‖x‖ < 5 이면 무보조 최종 학습("매우 빨리 배운다") | Sec. 4.2.1–4.2.2, Alg. 3 (라운드 2 §1-2) |
+| Kickstarting (Schmitt 2018) | 손실(교사 증류). 실행 행동에는 보조 없음 | λ_k: PBT 또는 **선형 1→0**(상수 λ 는 교사 수준에서 정체) | λ→0 후 하락 없음(교사 +43 %) | Sec. 2.1, 5.1.1 (라운드 2 §1-4) |
+| DAPG (mjrl 3871d93) | 시연 전이에 상수 어드밴티지 λ0·λ1^k | λ1 = **0.95/반복**(100 반복 후 0.6 %) | — | `mjrl/algos/dapg.py:34-35,62-70` |
+| RPL (Silver 2018) | 기본 제어기 + 잔차, **끝까지 제거 안 함** | — | **critic burn-in**: critic 손실 < β(1.0)까지 정책 고정 | `residual_fetch_push_env.py:26-34`; 논문 (라운드 2 §1-3) |
+| JSRL | 안내 정책 롤인 길이 h | 평가 ≥ β 일 때 h 감소. Random-h 도 최종 성능 비슷 | 이점의 대부분 = 좋은 방문 상태 | Alg. 1, Sec 5.4 (라운드 1·2) |
+| Berkeley Humanoid push 커리큘럼 (ffc7b26) | (보조 아님, 난이도) | **양방향**: 낙상 < 2×타임아웃이면 ×1.5, 낙상 > 타임아웃/2 이면 −0.2 | 되돌림 경로가 있음 | `exts/.../velocity/mdp/curriculums.py:76-130` |
+| Isaac Lab terrain 커리큘럼 (설치본) | (난이도) | env 별 양방향 move_up/move_down | 되돌림 | `isaaclab_tasks/.../velocity/mdp/curriculums.py:49-54` |
+| rsl_rl 3.1.2 Distillation (설치본) | 학생–교사 행동 손실(MSE 등) | — | PPO 와 결합은 별도 구현 필요 | `rsl_rl/algorithms/distillation.py:28,69-72,116-153` |
+
+관찰
+- **α 를 단조·전역으로 내리면서 '관측에 α 없음'인 사례**는 Yu 2018 하나뿐이다. 그마저 (i) 롤아웃 안에서 여러 수준을 섞고, (ii) 진행 조건이 '원래 수익의 60–80 % 유지'처럼 **상대값**이다.
+- HoST 는 보조량을 actor 에 보여 준다(우리 계약상 불가). RPL 은 보조를 제거하지 않는다. Kickstarting·DAPG 는 보조를 실행이 아니라 손실에 둔다.
+- **되돌림(α 재상승) 경로**는 HoST·A0i-c 에 없고, 난이도 커리큘럼(Berkeley push, Isaac Lab terrain)에는 있다. 단조 감쇠에서 한 계단 뒤 성능이 무너지면 회복 수단이 없다.
+- 감쇠 문턱의 근거로 쓸 수 있는 수치: Yu 의 "현재 수준에서 h=80 % 도달 후, 다음 수준에서 l=60 % 유지가 가능한 최대 감소"와 env-centered "g=70 %".
+  우리 문턱 0.25(절대값)는 α=1 블록 하중 0.26 의 96 % 라 '다음 계단에서 성능이 약간만 떨어져도 영구 정지'가 될 수 있다. 상대 문턱(직전 α 블록 대비 60–70 %)이 문헌과 맞다.
+
+**우리에게 적용 (A0i-c 진행 중 바로 할 수 있는 진단 — 학습 없음)**
+1. 체크포인트마다 **α 곡선**(α = 1, 0.75, 0.5, 0.25, 0 평가의 이륙·하중 수용률)을 그린다. 절벽이 어느 α 에 있는지 보이면 계단 크기를 그 구간에서만 줄일 근거가 된다.
+2. **κ(내재화 계수)** = ⟨Δμ(φ), r(φ)⟩/⟨r, r⟩: 스텝 모드에서 정책 평균의 G21a 대비 변화를 잔차에 투영한다. 학습 진행에 따라 κ 가 오르지 않으면 감쇠는 소멸로 끝난다고 예측할 수 있다.
+3. **감쇠 직후 value loss 스파이크**(rsl_rl 로그)를 계단마다 기록한다. RPL 식 'critic 손실이 기준선으로 돌아올 때까지 다음 계단 금지' 조건의 근거 자료가 된다.
+
+### 2. ② 접촉 일정 강제(missed step / phase penalty) 사례와 크기
+
+| 출처 | 항 | 강제 방식 | 크기(같은 파일의 선속도 추적 가중 대비) | 파일:줄 |
+|---|---|---|---|---|
+| humanoid-gym | feet_contact_number | 일치 +1 / **불일치 −0.3**(발 평균) | 1.2 vs 추적 1.2 → **100 %**. '안 들기' 손해 ≈ 33 % | `humanoid_env.py:336-344`; `humanoid_config.py:192,201` |
+| unitree G1 | contact (XNOR) | 일치 1 / 불일치 0 | 0.18 vs 1.0 → 18 %. '안 들기' 손해 ≈ 8 % | `g1_env.py:98-104`; `g1_config.py:73,89` |
+| walk-these-ways | tracking_contacts_shaped_force/vel | 스윙 중 힘·지지 중 속도 벌(가우스 형, σ_F 50·σ_v 0.5) | 4.0/4.0 vs 1.0 → **800 %**. 커리큘럼 진행 조건에 접촉 추적 ≥ 0.9 | `corl_rewards.py:67-84`; `scripts/train.py:24-26,142-143` |
+| HugWBC (eb831af) | tracking_contacts_shaped_force/vel, feet_clearance_cmd_linear | 같은 형(σ_F 50·σ_v 5) + 스윙 중 발 높이 목표 제곱 오차 | 2 / 4 / **−30** vs 추적 2.0 → 300 % | `legged_gym/envs/h1/h1.py:1670-1697`; `h1_config.py:160-162,193,222-224` |
+| LearningHumanoidWalking / apex | 발별 부호 클록(힘·속도) | 지지 +1·스윙 −1 의 선형 | 각 0.15/0.2 (발판 목표 0.45 / 속도 0.15) | 라운드 1·5 |
+| CaT (Gepetto) | air_time 제약 | 착지 시 공중 < 0.25 s 면 위반 크기 비례 **종료 확률**(최대 0.25) | 확률적 종료 | `constraints.py:122-141`; `cat_flat_env_cfg.py:330-337` |
+| **우리 A0i** | contact_phase_reference + premature_swing | 일치 비율(대칭, 불일치 벌 없음) + 예정 지지발 비접촉 −2 | '안 들기' 손해 = 양(+) 합의 **≈ 9 %**(§0a), 반주기당 0.16 | `mdp_hang.py:2385,2324` |
+
+**우리에게 적용**: 공개 구현 중 일정 강제가 약한 쪽(unitree 8 %)과 비슷하다. humanoid-gym(33 %)·walk-these-ways(가우스 벌점 4.0)·HugWBC 처럼 '빼먹은 스윙'에 비대칭 벌을 주는 구성이 아니다. §4 1위의 근거다.
+
+### 3. ③ primitive 를 W2(클록 보행)·G22R-next(외란 사건 구동)로 옮길 때 클록 힌트 처리 사례
+
+- **HugWBC — 서기 env 는 클록을 지지 위상에 고정**
+  - `h1.py:776-778`: standing_envs_mask 인 env 는 foot_indices = 0 → 원하는 접촉 = 양발 지지. 서기 env 비율 1/10(`:631-637`).
+  - 서기 보상: 양발 접촉 +1(`standing`, `:1519-1523`), 양발 공중 −1(`standing_air`, `:1525-1529`).
+  - 보행 주파수 1.5–3.5 Hz 를 명령으로 관측(`h1_config.py:22,138`).
+  - → **클록을 없애지 않고 '서기 = 고정 위상'으로 정의**한다. W2 에서 쓸 수 있는 가장 직접적인 패턴이다.
+  - 우리에게: 우리 `gait_clock`(`mdp_stage4.py:25-42`)은 서기에서도 1.1 Hz 로 돈다(G21a 는 이를 무시하도록 학습됨). 서기 모드에서 위상을 고정하면 **관측 값의 의미가 바뀌는 계약 변경**(차원 불변)이므로 러너 수정·사용자 승인이 필요하다.
+- **LearningHumanoidWalking**: STANDING 모드(5 %)에서 클록 함수를 상수(지지 +1, 속도 −1)로 바꿈(`tasks/stepping_task.py:105-108`). 관측 클록 처리는 이번에 확인 안 함(미검증).
+- **van Marum 2024(Digit)**: 클록을 쓰지 않는다. 원문: "the nontrivial question of what to do with the required clock inputs during standing and transitions remains a challenge", "the clock framework incentivizes low foot velocities in standing mode, which directly impedes disturbance rejection".
+  대신 서기 = 접촉 항 상수 1, 보행 = 한 발 접촉 틱마다 +1(0.2 s 유예). → **G22R-next(외란 사건 구동)는 클록 없는 설계가 문헌상 자연스럽다.**
+- **Isaac Lab G1·Berkeley Humanoid**: 클록 없음, 공중시간 보상(명령 게이트). MuJoCo Playground: 클록 상시(명령 0 처리 TODO).
+- **클록 힌트를 '감쇠'시켜 제거한 공개 코드는 이번 조사에서 찾지 못했다.** walk-these-ways 는 반대로 접촉 추적 ≥ 0.9 를 명령 범위 확장의 조건으로 쓴다(일정을 유지한 채 난이도만 올림).
+- **우리에게 적용**
+  - W2: 클록 유지 + 스텝 모드 일정 강제 강화(§2) + 속도 명령 커리큘럼(Berkeley 식, 추적 > 80 % 일 때 확장)이 사례와 맞는다. 서기에서 클록 고정은 계약 변경이라 별도 승인 항목이다.
+  - G22R-next: 외란은 클록과 무관한 시각에 오므로 현재 위상 고정 primitive(보조·창 모두 에피소드 시간 기반)는 그대로 옮길 수 없다.
+    대안은 (i) van Marum 식 클록 없는 한 발 접촉 보상을 외란 창(외생 신호)에서만, (ii) 외란 시작 시 보조 primitive 를 '사건 시각 기준'으로 재생(보조 타이머는 env 내부, 관측 안 함 — 실물 밀기도 관측되지 않으므로 계약과 정합)이다.
+    (ii) 는 A0i 의 펄스 기준을 그대로 재사용할 수 있다(가설).
+
+### 4. A0i-c 가 α 감쇠 중 소멸할 경우 단일 변경 후보 (순위)
+
+**1위 — 스텝 모드 '빼먹은 스텝' 벌점(반주기 단위 사건)**
+- 형태: 스텝 모드에서 예정 반주기가 끝날 때 그 반주기에 유효 이륙(≥ 60 ms)이 없었으면 1회 벌점.
+- 크기: 지금 '안 들기' 손해(반주기 0.16)를 humanoid-gym 수준(서 있을 때 양(+) 합의 ≈ 30 %, 반주기 ≈ 0.5)까지 올리는 −0.3 ~ −0.5/반주기(가중 15–25 × dt).
+  상한 조건: 서 있을 때 반주기 양(+) 합(≈ 0.078 × 22.7 ≈ 1.8)보다 충분히 작게 → '넘어지는 게 낫다'(legged_gym `only_positive_rewards` 가 막으려던 문제)를 만들지 않도록.
+- 근거: §0a(서 있기 = 스텝 대비 9 % 손해뿐이라 α→0 의 끌개), §2(공개 구현의 비대칭 불일치 벌·가우스 일정 벌·CaT 제약), A0i α=0 이륙 0.
+- 위험: 아직 스스로 못 드는 env 에도 벌이 쌓여 V 가 낮아진다 → 위험 회피가 줄어드는 쪽(의도)일 수도, 무리한 이륙·낙상 증가일 수도 있다. 낙상률·종료 비율을 같이 판정한다. A0i-c 가 소멸한 지점(α)에서 그 α 를 고정하고 이 벌점만 추가하는 것이 단일 변수다.
+
+**2위 — 전역 계단 대신 env 별 α 표본(보조 DR): α ~ U[0, α_max], α_max 를 성공 조건부로 하향, α=0 env 20 % 상시 감시**
+- 근거: Yu 2018 env-centered(롤아웃 안 여러 수준 → 과적합 방지), JSRL-Random, §0b(α 비관측 → 전역 계단은 매번 동역학 충격). Berkeley·Isaac Lab 의 양방향 커리큘럼처럼 α_max 되돌림 경로도 둔다.
+- 위험: 1위 없이 쓰면 α≈0 env 는 여전히 서기 끌개라 내재화 기울기가 약하다(§0a). 그래서 2위로 둔다.
+
+**3위 — 보조를 손실로 옮기기(Kickstarting 형): 감쇠 시작 시점 정책의 고정 사본 + α·r(φ) 를 교사로 하는 λ_k MSE, λ 선형 감쇠** — PPO 손실 변경(승인 필요). rsl_rl 3.1.2 `distillation.py` 의 손실 형태를 참고해 SmoothPPO(G18j)처럼 서브클래스로 구현.
+- (대안, 계약 변경) RPL 처럼 스텝 모드 피드포워드 primitive 를 **배포 체인에 영구 포함**: 러너가 클록·명령으로 같은 잔차를 더한다. 제거 문제는 사라지지만 액션 처리 계약이 바뀐다. 사용자 결정 사항이며 실물 이식 위험(실물 지연이 시뮬과 달라 6틱 선행이 안 맞을 수 있음)을 함께 평가해야 한다.
+
+출처: [HoST](https://github.com/InternRobotics/HoST) · [HugWBC](https://github.com/InternRobotics/HugWBC) · [walk-these-ways](https://github.com/Improbable-AI/walk-these-ways) · [humanoid-gym](https://github.com/roboterax/humanoid-gym) · [unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) ·
+[isaac_berkeley_humanoid](https://github.com/HybridRobotics/isaac_berkeley_humanoid) · [CaT](https://github.com/Gepetto/constraints-as-terminations) · [mjrl/DAPG](https://github.com/aravindr93/mjrl) · [residual-policy-learning](https://github.com/k-r-allen/residual-policy-learning) · [van Marum 2024 arXiv 2404.19173](https://arxiv.org/abs/2404.19173) · Yu et al. 2018 arXiv 1801.08093 · Kickstarting arXiv 1803.03835 · JSRL arXiv 2204.02372

@@ -2419,9 +2419,12 @@ def install_step_assist(env, env_ids, ref_path: str = "", freq: float = 1.1, wal
     def hook(target):
         if prev is not None:
             target = prev(target)
-        a = float(getattr(env, "_assist_alpha", 0.0))
-        if a <= 0.0:
-            return target
+        if hasattr(env, "_assist_alpha_env") and "STEP_ASSIST_ALPHA" not in os.environ:
+            a = env._assist_alpha_env.unsqueeze(1)                      # env 별 α (A0k)
+        else:
+            a = float(getattr(env, "_assist_alpha", 0.0))
+            if a <= 0.0:
+                return target
         t = env.episode_length_buf.to(torch.float32) * env.step_dt
         u = torch.remainder(freq * t, 1.0); half = (u >= 0.5).long(); v = torch.remainder(2.0 * u, 1.0)
         k = (v * 23.0).long().clamp(0, 22)
@@ -2502,3 +2505,55 @@ def _base_cfg_body_ids(env, asset):
             ids = [0]
         env._harness_bid = ids
     return ids
+
+
+# ---------------------------------------------------------------- STEP-A 확장 (1004: env 별 α 표본 + 되돌림 있는 상대 감쇠 — OSS 라운드 2·7, Yu 2018) ----------------------------------------------------------------
+def sample_assist_alpha(env, env_ids, monitor_frac: float = 0.2):
+    """mode="reset": env 별 보조 α ~ U[0, α_max] (monitor_frac 비율 env 는 α=0 고정 감시용). α_max = env._assist_alpha_max(커리큘럼)."""
+    N, dev = env.num_envs, env.device
+    if not hasattr(env, "_assist_alpha_env"):
+        env._assist_alpha_env = torch.zeros(N, device=dev); env._assist_monitor = torch.zeros(N, dtype=torch.bool, device=dev)
+        env._assist_alpha_max = float(getattr(env, "_assist_alpha", 1.0))
+    ids = torch.as_tensor(env_ids, device=dev, dtype=torch.long)
+    mon = torch.rand(len(ids), device=dev) < monitor_frac
+    env._assist_monitor[ids] = mon
+    env._assist_alpha_env[ids] = torch.where(mon, torch.zeros(len(ids), device=dev), torch.rand(len(ids), device=dev) * env._assist_alpha_max)
+
+
+def step_assist_curriculum_env(env, env_ids, step: float = 0.25, keep_ratio: float = 0.7, revert_ratio: float = 0.4,
+                               min_sched: float = 20000.0, min_iters: int = 50, steps_per_iter: int = 24):
+    """α_max 감쇠(되돌림 포함): 블록(예정 반주기 ≥ min_sched)마다 하중 수용 비율 r 을 그 α_max 단계 첫 블록 r0 와 비교.
+    r ≥ keep_ratio·r0 & 체류 ≥ min_iters → α_max −= step(0 하한). r < revert_ratio·r0 → α_max += step(되돌림, 단계 시작값 상한).
+    감시 env(α=0) 의 블록 하중 수용도 따로 집계해 반환(α=0 성능의 직접 지표)."""
+    st = _sb0(env); g = getattr(env, "_assist_cur2", None)
+    if g is None:
+        g = {"since": 0, "r0": None, "base": None, "last": (float("nan"), float("nan")), "amax0": float(getattr(env, "_assist_alpha_max", 1.0))}
+        env._assist_cur2 = g
+    mon = getattr(env, "_assist_monitor", None)
+    if mon is None:
+        return {"alpha_max": float(getattr(env, "_assist_alpha_max", 1.0))}
+    # env 별 증분을 '그 시점 역할'(보조/감시)로 나눠 누적 — 역할은 리셋 때만 바뀌고 이 함수는 리셋마다 불린다
+    ns = st["n_sched"].clone(); nl = st["n_load"].clone() if "n_load" in st else torch.zeros_like(ns)
+    if "prev" not in g:
+        g["prev"] = (ns, nl); g["acc"] = [[0.0, 0.0], [0.0, 0.0]]
+    dsx, dlx = ns - g["prev"][0], nl - g["prev"][1]; g["prev"] = (ns, nl)
+    for k, m in ((0, ~mon), (1, mon)):
+        g["acc"][k][0] += float(dsx[m].sum()); g["acc"][k][1] += float(dlx[m].sum())
+    cur = (tuple(g["acc"][0]), tuple(g["acc"][1]))
+    if g["base"] is None:
+        g["base"] = cur
+    ds = cur[0][0] - g["base"][0][0]; it = int(env.common_step_counter) // steps_per_iter
+    if ds >= min_sched:
+        r = (cur[0][1] - g["base"][0][1]) / max(ds, 1.0)
+        dsm = cur[1][0] - g["base"][1][0]; rm = (cur[1][1] - g["base"][1][1]) / max(dsm, 1.0)
+        g["last"] = (r, rm)
+        if g["r0"] is None:
+            g["r0"] = r
+        amax = env._assist_alpha_max; msg = ""
+        if r >= keep_ratio * g["r0"] and it - g["since"] >= min_iters and amax > 0.0:
+            env._assist_alpha_max = max(0.0, amax - step); g["since"] = it; g["r0"] = None; msg = " → 감쇠"
+        elif r < revert_ratio * g["r0"] and amax < g["amax0"]:
+            env._assist_alpha_max = min(g["amax0"], amax + step); g["since"] = it; g["r0"] = None; msg = " → 되돌림"
+        print(f"[STEP-A env α 블록] 반복 {it} α_max={amax:.2f}: 보조 env 하중 수용 {r:.3f} · 감시(α=0) env {rm:.3f}{msg}", flush=True)
+        g["base"] = cur
+    return {"alpha_max": float(env._assist_alpha_max), "block_load": g["last"][0], "monitor_load": g["last"][1]}

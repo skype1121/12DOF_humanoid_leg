@@ -2293,3 +2293,19 @@ class Biped12HangStandStepA0icEnvCfg(Biped12HangStandStepA0iEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.curriculum.assist_anneal.params = dict(self.curriculum.assist_anneal.params, min_full=0.25)
+
+
+@configclass
+class _StepAEnvCurriculumCfg:
+    assist_anneal = _CurrTerm(func=mdp_hang.step_assist_curriculum_env)
+
+
+@configclass
+class Biped12HangStandStepA0kEnvCfg(Biped12HangStandStepA0iEnvCfg):
+    """STEP-A0k (1004, 대기 후보): A0i + **env 별 α ~ U[0, α_max]·감시 env 20 % α=0·되돌림 있는 상대 감쇠**(α_max 1.0 → −0.25 씩) 단일 구조 변경(감쇠 방식).
+    근거: OSS 라운드 2·7 — 전역 계단 감쇠는 특정 α 과적합·영구 정지 위험(A0i-c 문턱 0.25 는 α=1 블록 0.26 의 96 %), Yu 2018 롤아웃 내 보조 혼합·상대 진행 조건."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.assist_alpha_env = EventTerm(func=mdp_hang.sample_assist_alpha, mode="reset", params={})
+        self.curriculum = _StepAEnvCurriculumCfg()

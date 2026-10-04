@@ -2721,3 +2721,13 @@ class Biped12HangStandW2v2EnvCfg(Biped12HangStandW2hEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.sb0.params = dict(self.events.sb0.params, stride_scale="up")
+
+
+@configclass
+class Biped12HangStandW2wEnvCfg(Biped12HangStandW2hEnvCfg):
+    """W2w (1005, 보행 트랙): W2-8 + **sb0 유효 착지 창 상한 10 → 35 cm (항상)** 단일 구조 변경. 진행 포화·놓친 스텝·클록 불변.
+    근거(WPUSH·WVEL): 걷기 정책이 보폭을 못 바꿈 — 속도 추종 0, 앞 램프 8 N 에도 25–50 % 낙상. 10 cm 넘는 걸음 = 착지 이벤트 상실 + 놓친 스텝 벌점."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.sb0.params = dict(self.events.sb0.params, disp_hi=0.35)

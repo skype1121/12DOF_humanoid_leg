@@ -55,6 +55,7 @@ parser.add_argument("--pb_fixed", type=str, default="",
                     help="관절별 고정 편향 '관절=deg;관절=deg' (관절 프레임 원값, 0929 좌우 비대칭 시험)")
 parser.add_argument("--level_s", type=float, default=0.0,
                     help="사전검사 앞에 자동수평 단계 [s] (0928: 실물 절차 착지→자동수평→인계 재현). 0=끔")
+parser.add_argument("--level_fade_s", type=float, default=0.0, help="1004: 인계(사전검사 끝) 뒤 자동수평 트림을 이 시간 동안 선형으로 0 까지 소멸 — 실물 브리지 온셋 블렌딩(1.5 s)과 같음. 0 = 트림 유지(종전)")
 parser.add_argument("--level_rate", type=float, default=2.0, help="자동수평 힙 트림 최대 속도 [deg/s] (실물 0.5)")
 parser.add_argument("--level_gain", type=float, default=0.5, help="자동수평 비례 이득 [deg 트림 / deg 편차 / 틱]")
 parser.add_argument("--pb_set", type=str, default="",
@@ -861,6 +862,10 @@ for i in range(STEPS):
                   f"{float(_pa.mean()) if alive.any() else float('nan'):+.2f}° (표준편차 {float(_pa.std()) if alive.sum()>1 else 0:.2f}) · "
                   f"트림 평균 {float(_lvl[alive].mean()) if alive.any() else 0:+.2f}° 범위 "
                   f"{float(_lvl[alive].min()) if alive.any() else 0:+.1f}~{float(_lvl[alive].max()) if alive.any() else 0:+.1f}°", flush=True)
+    if LEVEL_STEPS > 0 and float(args_cli.level_fade_s) > 0.0 and i >= STEPS_PRE and _lvl_base is not None:
+        _fk = max(0.0, 1.0 - (i - STEPS_PRE) / (float(args_cli.level_fade_s) * 50.0))
+        _lvl_term._offset[:, _LH] = _lvl_base[:, 0] + torch.deg2rad(_lvl) * _fk
+        _lvl_term._offset[:, _RH] = _lvl_base[:, 1] - torch.deg2rad(_lvl) * _fk
     cmd = _LAST_CMD[0] if _LAST_CMD[0] is not None else _DEF
     a_ = alive.clone()
     newly = a_ & term

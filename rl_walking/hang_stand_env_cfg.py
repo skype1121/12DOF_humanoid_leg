@@ -2648,3 +2648,13 @@ class Biped12HangStandG25EnvCfg(Biped12HangStandG24RaEnvCfg):
 @configclass
 class Biped12HangStandG24RaSafeEnvCfg(Biped12HangStandG24RaEnvCfg):
     """T1 대조군(1004 밤): G24R-a 환경 그대로 — 안전 PPO(고정 lr 1e-4·엔트로피 0)로 이어 학습 표류만 측정."""
+
+
+@configclass
+class Biped12HangStandG25DEnvCfg(Biped12HangStandG24RaEnvCfg):
+    """T3 / G25D (1005 새벽, C5 회복 정책 후보): G24R-a + **행동 지연 DR 0–3 → 0–5 틱** 단일 변경.
+    근거: 지연 민감도(sf12 1/3/4/6 틱 5.5/15/21/43 %), 실물 루프 ≈ 시뮬 2–3.4 틱(상관·위상 추정), G16d(지연 0–6 학습 → 18 N 낙상 54 → 9–24 %, 당시 기각 사유 '서기 흔들림'은 C5 에서 G21a 몫), OSS 20 순위 1."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.max_delay_steps = 5

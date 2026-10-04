@@ -657,6 +657,8 @@ _TERM_CNT = {}
 # ── 기록 ──
 alive = torch.ones(N, dtype=torch.bool, device=dev)
 death_step = torch.full((N,), -1, dtype=torch.long, device=dev)
+_OSC_RING = []; osc_rev_max = torch.zeros(N, device=dev); osc_flag_any = torch.zeros(N, dtype=torch.bool, device=dev); osc_flag_rec = torch.zeros(N, dtype=torch.bool, device=dev); osc_flag_hipf = torch.zeros(N, dtype=torch.bool, device=dev)
+_HIPF = [list(robot.data.joint_names).index(n) for n in ('left_hip_f_joint', 'right_hip_f_joint')]
 fall_pitch_prev = torch.zeros(N, device=dev); fall_roll_prev = torch.zeros(N, device=dev)
 term_reason = torch.full((N,), -1, dtype=torch.long, device=dev); fall_h_prev = torch.zeros(N, device=dev)
 lat_sep0 = torch.zeros(N, device=dev); lat_sep_min = torch.full((N,), 9.0, device=dev); lat_roll_max = torch.zeros(N, device=dev); lat_v_max = torch.zeros(N, device=dev); lat_ss_t = torch.zeros(N, device=dev)
@@ -892,6 +894,29 @@ for i in range(STEPS):
         _lvl_term._offset[:, _LH] = _lvl_base[:, 0] + torch.deg2rad(_lvl) * _fk
         _lvl_term._offset[:, _RH] = _lvl_base[:, 1] - torch.deg2rad(_lvl) * _fk
     cmd = _LAST_CMD[0] if _LAST_CMD[0] is not None else _DEF
+    # 1004 밤: 브리지 발진 가드 중주파 규칙(0.5 s 창, |Δ목표|>0.7° 스텝의 방향 반전 ≥9 & 진폭 ≥2.5°)을 명령 목표각에 적용 — 실물 9 Hz 힙 진동 재현 여부
+    if i >= STEPS_PRE:
+        _OSC_RING.append(cmd.clone())
+        if len(_OSC_RING) > 25:
+            _OSC_RING.pop(0)
+        if len(_OSC_RING) >= 6:
+            _W = torch.stack(_OSC_RING, 0)                      # (T, N, J)
+            _dq = _W[1:] - _W[:-1]
+            _big = _dq.abs() > math.radians(0.7)
+            _sg = torch.sign(_dq) * _big
+            # 연속한 '큰 스텝' 간 부호 반전 수(작은 스텝은 건너뜀 — 부호 이벤트 근사)
+            _prev = torch.zeros_like(_sg[0]); _rev = torch.zeros_like(_sg[0])
+            for _k in range(_sg.shape[0]):
+                _s = _sg[_k]
+                _rev += ((_s != 0) & (_prev != 0) & (_s != _prev)).float()
+                _prev = torch.where(_s != 0, _s, _prev)
+            _p2p = _W.max(0).values - _W.min(0).values
+            _flag = (_rev >= 9) & (_p2p >= math.radians(2.5))      # (N, J)
+            osc_rev_max = torch.maximum(osc_rev_max, _rev.max(1).values * alive.float())
+            osc_flag_any = osc_flag_any | (_flag.any(1) & alive)
+            if policy2 is not None:
+                osc_flag_rec = osc_flag_rec | (_flag.any(1) & alive & sw_mode)
+            osc_flag_hipf = osc_flag_hipf | (_flag[:, _HIPF].any(1) & alive)
     a_ = alive.clone()
     newly = a_ & term
     death_step[newly] = i; pitch_death[newly] = pitch[newly]; roll_death[newly] = roll[newly]
@@ -1162,7 +1187,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s"] if policy2 is not None else []))
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s"] if policy2 is not None else []))
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -1182,7 +1207,8 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
                 (list(uenv.termination_manager.active_terms)[int(term_reason[e])] if int(term_reason[e]) >= 0 else ""), (round(float(fall_h_prev[e]), 3) if fell[e] else ""),
                 *[("" if math.isnan(float(x[e])) else round(float(x[e]), 2)) for x in (t_sep_min, t_sep18, t_roll8)], round(float(h_min_post[e]), 3),
                 (round(100 * float(td_sep_s[e] / td_sep_n[e]), 1) if float(td_sep_n[e]) > 0 else ""), (round(100 * float(td_sep_min[e]), 1) if float(td_sep_min[e]) < 8 else ""),
-                round(float(_RAMP[0][e]), 3), round(float(_RAMP[1][e]), 2), round(float(_RAMP[2][e]), 2)]
+                round(float(_RAMP[0][e]), 3), round(float(_RAMP[1][e]), 2), round(float(_RAMP[2][e]), 2),
+                int(osc_rev_max[e]), int(osc_flag_any[e]), int(osc_flag_rec[e]), int(osc_flag_hipf[e])]
         if policy2 is not None:
             row += [float(swc_n[e]), (round(float(swc_first[e]), 2) if not math.isnan(float(swc_first[e])) else ""), float(swc_pre[e]), round(float(sw_ticks[e]) / 50.0, 2)]
         wcsv.writerow(row)

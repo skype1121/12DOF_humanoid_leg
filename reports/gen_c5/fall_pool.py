@@ -14,6 +14,13 @@ for c in CONDS:
         ra, rb = rows(f"{A}_{c}_s{sd}"), rows(f"{B}_{c}_s{sd}")
         if ra is None or rb is None: continue
         fa_ = fb_ = nn = 0
+        _keys = [k for k in ra[0] if k.startswith("bias_") or k.startswith("com_")]
+        _bad = sum(1 for x, y in zip(ra, rb) if any(x[k] != y[k] for k in _keys if not k.startswith("bias_left_hip_f") and not k.startswith("bias_right_hip_f")))
+        _badh = sum(1 for x, y in zip(ra, rb) if any(x[k] != y[k] for k in _keys))
+        if _bad:
+            print(f"  ⚠ DR 표본 불일치 seed {sd}: {_bad}/{len(ra)} env (힙 앞뒤 외 열) — 짝 비교 무효", flush=True)
+        elif _badh:
+            per.append(f"[s{sd} 힙 편향만 다름 {_badh}]")
         for x, y in zip(ra, rb):
             if x["pre_pass"] != "1" or y["pre_pass"] != "1": continue
             fa, fb = x["fell"] == "1", y["fell"] == "1"; nn += 1; fa_ += fa; fb_ += fb; oa += fa and not fb; ob += fb and not fa

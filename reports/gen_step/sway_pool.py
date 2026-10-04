@@ -19,6 +19,14 @@ for c in ('nd', 'd3nd'):
     for sd in (1, 2, 3, 4):
         bp = 'g21_g21a_11300' if sd == 1 else 'g18_g21a_11300'
         b = counts(f'{bp}_{c}_s{sd}', *B, sd, c); k = counts(f'{CP}_{c}_s{sd}', *C, sd, c)
+        import csv as _csv
+        _fa = f'/home/ryu/humanoid_leg_test1/log_picture/ground_recovery_{bp}_{c}_s{sd}_envs.csv'; _fb = f'/home/ryu/humanoid_leg_test1/log_picture/ground_recovery_{CP}_{c}_s{sd}_envs.csv'
+        try:
+            _A = list(_csv.DictReader(open(_fa))); _B = list(_csv.DictReader(open(_fb))); _ks = [x for x in _A[0] if x.startswith('bias_') or x.startswith('com_')]
+            _nb = sum(1 for x, y in zip(_A, _B) if any(x[q] != y[q] for q in _ks))
+            if _nb: print(f'  ⚠ DR 표본 불일치 {c} s{sd}: {_nb} env — 짝 비교 무효')
+        except Exception:
+            pass
         if b is None or k is None: print(c, sd, '없음', b is None, k is None); continue
         tb[0] += b[0]; tb[1] += b[1]; tc[0] += k[0]; tc[1] += k[1]
         for x, y in zip(b[2], k[2]):

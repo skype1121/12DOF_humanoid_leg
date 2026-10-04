@@ -1088,7 +1088,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s"] if policy2 is not None else []))
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s"] if policy2 is not None else []))
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -1101,7 +1101,8 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
         row += [(round(v, 2) if math.isfinite(v) else "") for v in _pp]
         # 1001: 스텝 계측(인계 뒤, 양발 접지 이후 이륙 수·0.3 s 생존 이륙 수·착지당 발 전후 이동 평균[cm, − = 뒤로])
         row += [float(n_takeoff[e]), float(n_surv_takeoff[e]),
-                (round(float(sw_travel[e] / sw_n[e]) * 100.0, 2) if float(sw_n[e]) > 0 else "")]
+                (round(float(sw_travel[e] / sw_n[e]) * 100.0, 2) if float(sw_n[e]) > 0 else ""),
+                (round(float(pitch_death[e]), 1) if fell[e] else ""), (round(float(roll_death[e]), 1) if fell[e] else "")]
         if policy2 is not None:
             row += [float(swc_n[e]), (round(float(swc_first[e]), 2) if not math.isnan(float(swc_first[e])) else ""), float(swc_pre[e]), round(float(sw_ticks[e]) / 50.0, 2)]
         wcsv.writerow(row)

@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import math
+import os
 
 import torch
 
@@ -30,6 +31,8 @@ def _gait_phase(env, freq: float) -> torch.Tensor:
     (위상 정의가 어긋나면 클록이 무의미해진다).
     """
     t = env.episode_length_buf.to(torch.float32) * env.step_dt
+    if os.environ.get("FREEZE_GAIT_CLOCK"):          # 진단 전용(1004): 클록 위상 고정 — 학습·배포 계약 무관
+        return torch.zeros_like(t)
     return 2.0 * math.pi * freq * t
 
 

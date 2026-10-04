@@ -1851,7 +1851,7 @@ def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), g
                            F_ramp_range=(3.0, 20.0), rise_range=(1.0, 4.0), hold_range=(1.0, 3.0),
                            F_imp_range=(5.0, 30.0), dur_imp_range=(0.2, 0.4), lateral_prob=0.0, lateral_scale=0.6, p_active=1.0,
                            branch: str = "g22r", w1_p_active: float = 0.125, w1_F: tuple = (5.0, 8.0), imp_scale: float = 1.5,
-                           stage_set: str = "r", stage_override: int = -1, asset_cfg=None):
+                           stage_set: str = "r", stage_override: int = -1, p_none_override: float = -1.0, asset_cfg=None):
     """mode="reset": 종전 disturbance_reset 의 횟수·시각·램프/충격 모양을 그대로 쓰고 **방향·힘 분포만** 단계별로 바꾼다.
     G22R: 에피소드 단위로 무외란/앞/뒤 범주를 뽑아(단계 비율), 앞(+몸통 x)·뒤 힘 범위 적용(좌우 외란 없음 — 지시서 R1–R4).
     W1: 단계 S0–S2 는 외란 없음, S3 은 w1_p_active 비율 env 에 앞/뒤 w1_F 의 약한 외란."""
@@ -1867,6 +1867,8 @@ def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), g
         tbl = _G22R2_STAGES if stage_set == "r2" else _G22R_STAGES
         stg = g["stage"] if stage_override < 0 else int(stage_override)
         (p0, pf, pb), Ff, Fb = tbl[min(stg, len(tbl) - 1)]
+        if p_none_override >= 0.0:      # 1004 G24R-b: 무외란 범주 비율 덮기(앞:뒤 비는 유지)
+            sc = (1.0 - p_none_override) / max(pf + pb, 1e-6); p0, pf, pb = p_none_override, pf * sc, pb * sc
         r = torch.rand(n, device=dev)
         cat = torch.where(r < p0, torch.zeros_like(r), torch.where(r < p0 + pf, torch.ones_like(r), 2.0 * torch.ones_like(r)))
     else:

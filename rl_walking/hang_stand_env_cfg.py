@@ -2472,3 +2472,14 @@ class Biped12HangStandW2fEnvCfg(Biped12HangStandW2eEnvCfg):
         c.ranges.ang_vel_z = (-0.3, 0.3); c.heading_command = False
         if hasattr(c, "rel_heading_envs"):
             c.rel_heading_envs = 0.0
+
+
+@configclass
+class Biped12HangStandG24RbEnvCfg(Biped12HangStandG24RaEnvCfg):
+    """G24R-b (1004): G24R-a + **조용한 서기 연습량 증가**(서기 명령 비율 0.5 → 0.7, 외란 무외란 범주 0.3 → 0.5; 앞:뒤 비 유지) 단일 개념 변경(Case E 처방).
+    근거: G24R-a 앞 회복 대폭 개선(sf15 낙상 32 %) 대신 서기 흔들림 nd 7.1·d3nd 11.6 % — 피치 1–1.5 Hz 느린 흔들림, 클록 고정으로 7.1→5.4 % 만."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.base_velocity.rel_standing_envs = 0.7
+        self.events.disturbance.params = dict(self.events.disturbance.params, p_none_override=0.5)

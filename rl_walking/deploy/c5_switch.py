@@ -158,6 +158,21 @@ class C5Runner:
         self.last_switch = ""
         self.cue_active = False; self.cue_t = 0.0
 
+    def cue_update(self, mode: int, prev: int, gyro_rad_s) -> bool:
+        """cue 상태기(로그 재생 대조에서도 단독 호출). 켜짐 틱에 ω_y>0 이면 시작, cue_s 지나면 종료, 서기 모드면 해제."""
+        if mode == 1 and prev == 0:          # 이번 틱 켜짐 → 방향 조건 만족 시 cue 시작(활성화당 1회)
+            fwd = (float(np.asarray(gyro_rad_s, dtype=np.float64).reshape(3)[1]) > 0.0) if self.cue_dir_imu else True
+            self.cue_active = bool(fwd); self.cue_t = 0.0
+            if fwd:
+                self.n_cue += 1
+        elif mode == 1 and self.cue_active:
+            self.cue_t += self.det.dt
+            if self.cue_t >= self.cue_s - 1e-9:
+                self.cue_active = False
+        if mode == 0:
+            self.cue_active = False
+        return self.cue_active
+
     def _vx_slices(self):
         """관측에서 velocity_commands 각 프레임의 vx 위치(이력 L 프레임, 프레임당 3) — 코어 항 목록에서 계산."""
         if self._vc_slices is None:
@@ -183,17 +198,7 @@ class C5Runner:
         raw_s = np.asarray(core._net(obs), dtype=np.float32).reshape(-1)
         obs_r = obs
         if self.cue_vx is not None:
-            if mode == 1 and prev == 0:          # 이번 틱 켜짐 → 방향 조건 만족 시 cue 시작(활성화당 1회)
-                fwd = (float(np.asarray(gyro_rad_s, dtype=np.float64).reshape(3)[1]) > 0.0) if self.cue_dir_imu else True
-                self.cue_active = bool(fwd); self.cue_t = 0.0
-                if fwd:
-                    self.n_cue += 1
-            elif mode == 1 and self.cue_active:
-                self.cue_t += self.det.dt
-                if self.cue_t >= self.cue_s - 1e-9:
-                    self.cue_active = False
-            if mode == 0:
-                self.cue_active = False
+            self.cue_update(mode, prev, gyro_rad_s)
             if self.cue_active:
                 obs_r = obs.copy()
                 for i0 in self._vx_slices():

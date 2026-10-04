@@ -922,6 +922,9 @@ for i in range(STEPS):
                 _obs2["policy"] = _p2o
                 cue_ticks = (cue_ticks if "cue_ticks" in dir() else torch.zeros(N, device=dev)) + (_vxm_ & alive).float()
                 _a2 = policy2(_obs2); _a1 = a
+                if _DUMP:      # 1005 배포 모듈 재생 대조용: 이번 틱 감지기 입력·출력
+                    _PAR = {"par_g": robot.data.projected_gravity_b[:len(_DUMP)].tolist(), "par_w": robot.data.root_ang_vel_b[:len(_DUMP)].tolist(),
+                            "par_c": _cf[:len(_DUMP)].int().tolist(), "par_mode": sw_mode[:len(_DUMP)].int().tolist(), "par_cue": _vxm_[:len(_DUMP)].int().tolist()}
             else:
                 _a2 = policy2(obs); _a1 = a
             if args_cli.sw_monitor:
@@ -1197,6 +1200,10 @@ for i in range(STEPS):
             if _LAST_RAW[0] is not None:
                 _ft["raw_deg"] = [round(math.degrees(float(_LAST_RAW[0][k, j])), 2) for j in range(J)]
             _ft["eff"] = [round(float(v), 1) for v in _eff[k]]
+            _parx = {}
+            if "_PAR" in dir() and i >= STEPS_PRE:
+                _parx = {"par_g": [round(v, 6) for v in _PAR["par_g"][k]], "par_w": [round(v, 6) for v in _PAR["par_w"][k]], "par_c": _PAR["par_c"][k], "par_mode": _PAR["par_mode"][k], "par_cue": _PAR["par_cue"][k]}
+            _ft.update(_parx)
             fh.write(json.dumps({"t": round(i / 50.0, 3), "t_rel": round(t_rel, 3), "phase": "hold" if i < STEPS_PRE else ("policy" if policy is not None else "hold_cont"), "force_N": f_now, **_ft,
                                  "force_w": [round(float(v), 2) for v in fvec[k, 0]], "fwd_w": [round(float(v), 3) for v in _fwd_k[:2]], "root_xy": [round(float(v), 4) for v in robot.data.root_pos_w[k, :2]],
                                  "pitch": round(float(pitch[k]), 3), "roll": round(float(roll[k]), 3),

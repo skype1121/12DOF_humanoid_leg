@@ -155,7 +155,8 @@ if hasattr(env_cfg.actions.joint_pos, "lpf_beta_range") and not args_cli.no_chai
     env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)         # 필터는 배포 체인 1개만
 _hp = env_cfg.events.hang_support_reset.params
 if args_cli.ramp_off:
-    _hp["ramp_rate_range"] = None; print("[ramp_off] 준정적 롤 토크 램프 끔(진단)", flush=True)
+    # 1004 정정: None 으로 지우면 난수 호출 수가 줄어 이후 DR 표본(편향·CoM)이 전부 바뀐다(짝 비교 붕괴) → 범위를 0 으로 두어 같은 수의 난수를 소비
+    _hp["ramp_rate_range"] = (0.0, 0.0); _hp["ramp_cap_range"] = (0.0, 0.0); print("[ramp_off] 준정적 롤 토크 램프 0 (RNG 소비 유지, 진단)", flush=True)
 assert float(_hp["r0_range"][1]) <= 1e-6, f"지면 절차 평가는 지지 0 태스크에서만 (r0_range={_hp['r0_range']})"
 _DR_AXES = ("pose", "gains", "delay", "com", "posebias", "play", "mass", "friction", "calib", "asym")
 _OFF = {x.strip() for x in (args_cli.dr_off or "").split(",") if x.strip()}

@@ -2605,3 +2605,24 @@ class Biped12HangStandG24RfEnvCfg(Biped12HangStandG24RaEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.disturbance.params = dict(self.events.disturbance.params, lateral_override=0.3)
+
+
+@configclass
+class Biped12HangStandG24RgEnvCfg(Biped12HangStandG24RaEnvCfg):
+    """G24R-g (1004 밤, C5 회복 정책 후보): G24R-a + **공통 힙 앞뒤 편향 DR 신전 꼬리 확장 −3~−1° → −4.5~−1°** 단일 변경.
+    근거: DX3(인과 개입) 숨은 힙 신전 +1.5° 가 C5 앞 밀기 낙상 2–3배(sf12 10→27 %), 자동수평 트림으로 상쇄 안 됨(DX5·DX5f); OSS 16 순위 1."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.default_pose_bias.params["shared_hip_f_rad"] = (-0.0785, -0.018)
+
+
+@configclass
+class Biped12HangStandG24RhEnvCfg(Biped12HangStandG24RaEnvCfg):
+    """G24R-h (1004 밤, 병렬 분기): G24R-a + **joint_deviation_hip(힙 외전·회전 편차 −0.5) 을 회복 게이트 열림 중 끔(state_gated)** 단일 변경.
+    근거: C5 앞 밀기 낙상 = 롤 진동에서 회복 실패(dx2: 롤>8° 는 생존에도 흔함), OSS 15 순위 1 — 롤 회복 수단(힙 외전) 해방."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.joint_deviation_hip
+        self.rewards.joint_deviation_hip = RewTerm(func=mdp_hang.state_gated, weight=t.weight, params={"func": t.func, "params": dict(t.params or {})})

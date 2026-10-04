@@ -117,6 +117,8 @@ parser.add_argument("--cue_state", type=str, default="", help="1005 활성화 �
 parser.add_argument("--cue_dir", type=float, default=None, help="1005 ACT2: 방향 조건 cue — cue 시작 순간 몸통 전진속도(base x, m/s) > 이 값일 때만 cue(아니면 이번 활성화는 cue 없음). 정책은 전진 스텝만 학습")
 parser.add_argument("--sw_early", type=str, default="", help="1005 ④ 정착: 상태 기반 조기 복귀 'v,tilt,hold' — 첫 외란 뒤 첫 하중 수용이 있었고 |v_xy|<v m/s·감지기 기울기<tilt° 가 hold s 지속되면 회복 모드 강제 해제(G21a 복귀)")
 parser.add_argument("--cue_align", type=str, default="", help="1005 (B) 정착: cue 종료를 '발 앞뒤 정렬'로 — 'tmin,dx_cm,tmax': 켜진 뒤 tmin s 지나고 양발 접촉·두 발 앞축 거리 < dx_cm 이면 종료, tmax 넘으면 다음 양발 지지에서 종료")
+parser.add_argument("--cue_dir_imu", action="store_true", help="1005 배포 가능 신호: cue 방향 = 켜짐 순간 IMU 피치 각속도 ω_y > 0(앞으로 기우는 중) — 참 몸통 속도 대신")
+parser.add_argument("--sw_early_imu", type=str, default="", help="1005 배포 가능 조기 복귀 'tmin,tilt,w,hold': 켜진 뒤 tmin s, 감지기 기울기<tilt°·|ω_xy|<w·양발 접촉(0/1) 이 hold s 유지 → 회복 해제(참 속도·접촉 힘 미사용)")
 parser.add_argument("--cue_clock", type=str, default="", choices=("", "reset"), help="1005 D: cue 시작 시 회복 정책 관측 gait_clock 을 '하중 적은 발이 바로 스윙' 위상에서 재시작(cue 동안만; 이후 환경 클록)")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
@@ -830,6 +832,11 @@ for i in range(STEPS):
             sw_calm = torch.where(sw_mode & _quiet, sw_calm + 0.02, torch.zeros_like(sw_calm))
             sw_t_on = torch.where(sw_mode, sw_t_on + 0.02, torch.zeros_like(sw_t_on))
             _swoff = sw_mode & (sw_calm >= _SW_OFF[2]) & (sw_t_on >= _SW_OFF[3])
+            if args_cli.sw_early_imu:
+                _im, _it, _iw, _ih = [float(x) for x in args_cli.sw_early_imu.split(',')]
+                _ec2 = sw_mode & (sw_t_on >= _im) & (_tilt < _it) & (_w < _iw) & _cf[:, 0] & _cf[:, 1]
+                early_hold = torch.where(_ec2, early_hold + 0.02, torch.zeros_like(early_hold))
+                _swoff = _swoff | (sw_mode & (early_hold >= _ih))
             if args_cli.sw_early:
                 _ev, _et, _eh = [float(x) for x in args_cli.sw_early.split(',')]
                 _ec = sw_mode & ~torch.isnan(load_first_t) & (robot.data.root_lin_vel_w[:, :2].norm(dim=-1) < _ev) & (_tilt < _et)
@@ -866,7 +873,10 @@ for i in range(STEPS):
                     print(f"[sw_rec_vx] velocity_commands 열 {_VC_OFF} → vx {args_cli.sw_rec_vx} · 상태 종료 '{args_cli.cue_state}' · 클록 '{args_cli.cue_clock}' (gait_clock {_GC_OFF}, {_GC_F} Hz)", flush=True)
                 # cue 상태기: 감지기 새로 켜짐 → 활성, 종료 조건 → 래치 해제(감지기 꺼지면 리셋)
                 _st_on = _new_on & ~cue_act & ~cue_done
-                if args_cli.cue_dir is not None:
+                if args_cli.cue_dir_imu:
+                    _fwd_ = robot.data.root_ang_vel_b[:, 1] > 0.0
+                    cue_done = cue_done | (_st_on & ~_fwd_); _st_on = _st_on & _fwd_
+                elif args_cli.cue_dir is not None:
                     _fwd_ = robot.data.root_lin_vel_b[:, 0] > float(args_cli.cue_dir)
                     cue_done = cue_done | (_st_on & ~_fwd_); _st_on = _st_on & _fwd_
                 cue_act = cue_act | _st_on; cue_t0 = torch.where(_st_on, torch.full_like(cue_t0, t_rel), cue_t0)

@@ -2572,3 +2572,36 @@ class Biped12HangStandG24RdEnvCfg(Biped12HangStandG24RaEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.disturbance.params = dict(self.events.disturbance.params, stage_override=3)
+
+
+def _strip_rec_gate(term):
+    """보상 항 래퍼 체인에서 회복 게이트 층(state_gated·rest_gated)만 제거(모드 게이트 w1_stand/walk_gated 등은 유지)."""
+    f, p = term.func, dict(term.params or {})
+    if f in (mdp_hang.state_gated, mdp_hang.rest_gated):
+        inner = RewTerm(func=p["func"], weight=term.weight, params=dict(p.get("params") or {}))
+        return _strip_rec_gate(inner)
+    if "func" in p and isinstance(p.get("params", None), (dict, type(None))) and callable(p["func"]):
+        inner = _strip_rec_gate(RewTerm(func=p["func"], weight=term.weight, params=dict(p.get("params") or {})))
+        p["func"] = inner.func; p["params"] = dict(inner.params or {})
+        return RewTerm(func=f, weight=term.weight, params=p)
+    return term
+
+
+@configclass
+class Biped12HangStandG24ReEnvCfg(Biped12HangStandG24RaEnvCfg):
+    """G24R-e (1004, C5 회복 정책 후보): G24R-a + **feet_gap(발 간격 벌점)을 회복 게이트 열림 중에도 적용**(회복 게이트 층만 제거) 단일 변경.
+    근거: C5 앞 밀기 낙상 대부분 앞+옆 대각(|roll|>|pitch| 63/89, fd2_c5b), OSS 13: 발 간격 항이 회복 중 꺼짐(state/rest_gated)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.feet_gap = _strip_rec_gate(self.rewards.feet_gap)
+
+
+@configclass
+class Biped12HangStandG24RfEnvCfg(Biped12HangStandG24RaEnvCfg):
+    """G24R-f (1004, 병렬 분기): G24R-a + **학습 외란에 옆 램프·충격 섞기**(외란 env 의 30 %, 크기 ×0.6 — G21a 원설정 값) 단일 변경.
+    근거: disturbance_reset_g22r 가 lateral_prob 0 고정(OSS 13), C5 앞 밀기 낙상의 롤 지배."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.disturbance.params = dict(self.events.disturbance.params, lateral_override=0.3)

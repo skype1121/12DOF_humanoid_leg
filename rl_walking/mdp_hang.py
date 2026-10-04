@@ -1850,7 +1850,7 @@ def _g22(env):
 def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), gap_range=(3.0, 7.0), ramp_prob=0.6,
                            F_ramp_range=(3.0, 20.0), rise_range=(1.0, 4.0), hold_range=(1.0, 3.0),
                            F_imp_range=(5.0, 30.0), dur_imp_range=(0.2, 0.4), lateral_prob=0.0, lateral_scale=0.6, p_active=1.0,
-                           branch: str = "g22r", w1_p_active: float = 0.125, w1_F: tuple = (5.0, 8.0), imp_scale: float = 1.5,
+                           branch: str = "g22r", w1_p_active: float = 0.125, w1_F: tuple = (5.0, 8.0), imp_scale: float = 1.5, lateral_override: float = 0.0,
                            stage_set: str = "r", stage_override: int = -1, p_none_override: float = -1.0, asset_cfg=None):
     """mode="reset": 종전 disturbance_reset 의 횟수·시각·램프/충격 모양을 그대로 쓰고 **방향·힘 분포만** 단계별로 바꾼다.
     G22R: 에피소드 단위로 무외란/앞/뒤 범주를 뽑아(단계 비율), 앞(+몸통 x)·뒤 힘 범위 적용(좌우 외란 없음 — 지시서 R1–R4).
@@ -1887,7 +1887,14 @@ def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), g
     bf = _quat_apply(asset.data.root_quat_w[ids], ex)[:, :2]; bf = bf / bf.norm(dim=-1, keepdim=True).clamp(min=1e-6)
     fw = bf.unsqueeze(1).expand(n, K, 2)
     sgn = torch.where(cat == 2, -1.0, 1.0).view(n, 1, 1)
-    hs["dst_kind"][ids] = kind; hs["dst_F"][ids] = torch.where(kind > 0, F, torch.zeros_like(F)); hs["dst_dir"][ids] = fw * sgn
+    d = fw * sgn
+    if float(lateral_override) > 0.0:      # G24R-f(1004): 외란 개별 사건의 lateral_override 비율을 좌/우(몸통 ±y)로 바꾸고 크기 × lateral_scale
+        lat = (torch.rand(n, K, device=dev) < float(lateral_override)) & (cat > 0.5).unsqueeze(1)
+        ly = torch.stack([-bf[:, 1], bf[:, 0]], -1).unsqueeze(1).expand(n, K, 2)
+        lsg = torch.where(torch.rand(n, K, 1, device=dev) < 0.5, -1.0, 1.0)
+        d = torch.where(lat.unsqueeze(-1), ly * lsg, d)
+        F = torch.where(lat, F * float(lateral_scale), F)
+    hs["dst_kind"][ids] = kind; hs["dst_F"][ids] = torch.where(kind > 0, F, torch.zeros_like(F)); hs["dst_dir"][ids] = d
 
 
 def push_with_arm_g22(env, env_ids, velocity_range: dict, arm_s: float = 2.5, branch: str = "g22r", asset_cfg=None):

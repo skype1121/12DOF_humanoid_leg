@@ -640,6 +640,9 @@ _TERM_CNT = {}
 # ── 기록 ──
 alive = torch.ones(N, dtype=torch.bool, device=dev)
 death_step = torch.full((N,), -1, dtype=torch.long, device=dev)
+fall_pitch_prev = torch.zeros(N, device=dev); fall_roll_prev = torch.zeros(N, device=dev)
+term_reason = torch.full((N,), -1, dtype=torch.long, device=dev); fall_h_prev = torch.zeros(N, device=dev)
+lat_sep0 = torch.zeros(N, device=dev); lat_sep_min = torch.full((N,), 9.0, device=dev); lat_roll_max = torch.zeros(N, device=dev); lat_v_max = torch.zeros(N, device=dev); lat_ss_t = torch.zeros(N, device=dev)
 pitch_death = torch.full((N,), float("nan"), device=dev); roll_death = torch.full((N,), float("nan"), device=dev)
 pre_both = torch.ones(N, dtype=torch.bool, device=dev); pre_pmax = torch.zeros(N, device=dev); pre_rmax = torch.zeros(N, device=dev)
 pre_w = torch.zeros(N, device=dev); pre_v = torch.zeros(N, device=dev); pre_pitch_sum = torch.zeros(N, device=dev); pre_n = 0
@@ -774,7 +777,7 @@ for i in range(STEPS):
             sw_t_on = torch.where(sw_mode, sw_t_on + 0.02, torch.zeros_like(sw_t_on))
             _swoff = sw_mode & (sw_calm >= _SW_OFF[2]) & (sw_t_on >= _SW_OFF[3])
             _new_on = (~sw_mode) & _on
-            swc_n += _new_on.float(); sw_mode = (sw_mode | _new_on) & ~_swoff
+            swc_n += (_new_on & alive).float(); sw_mode = (sw_mode | _new_on) & ~_swoff
             swc_first = torch.where(_new_on & torch.isnan(swc_first), torch.full_like(swc_first, t_rel), swc_first)
             if dists and t_rel < min(d.t0 for d in dists):
                 swc_pre += _new_on.float()
@@ -854,6 +857,10 @@ for i in range(STEPS):
     a_ = alive.clone()
     newly = a_ & term
     death_step[newly] = i; pitch_death[newly] = pitch[newly]; roll_death[newly] = roll[newly]
+    # 1004: 종료 틱은 이미 자동 리셋된 상태(피치≈0) — 낙상 방향은 직전 틱 값으로
+    if "_pp_prev" in dir():
+        fall_pitch_prev[newly] = _pp_prev[newly]; fall_roll_prev[newly] = _rr_prev[newly]; fall_h_prev[newly] = _hh_prev[newly]
+    _pp_prev = pitch.clone(); _rr_prev = roll.clone(); _hh_prev = robot.data.root_pos_w[:, 2].clone()
     if bool(newly.any()):     # 0928: 어떤 종료 조건이 걸렸는지 집계 (낙상 판정 검증용)
         _tm = uenv.termination_manager
         for _nm in _tm.active_terms:
@@ -861,6 +868,8 @@ for i in range(STEPS):
             _c = int((_v & newly).sum())
             if _c:
                 _TERM_CNT[_nm] = _TERM_CNT.get(_nm, 0) + _c
+                _sel = _v & newly
+                term_reason[_sel & (term_reason < 0)] = list(_tm.active_terms).index(_nm)
     ever_both |= (a_ & both)
     lift = (a_ & ever_both & prev_both & ~both).float()
     lift_total += lift
@@ -882,6 +891,20 @@ for i in range(STEPS):
     if i >= STEPS_PRE:      # ── 스텝 단계 집계 ──
         _fw = _dir_vec("f"); _fp = robot.data.body_pos_w[:, _FT, :2] - robot.data.root_pos_w[:, None, :2]
         _ffwd = (_fp * _fw[:, None, :2]).sum(-1)               # (N,2) 발-골반 앞축 거리
+        # 1004 좌우 진단: 발 횡간격(몸통 좌우축 투영, 왼−오, + = 정상 배치)·롤·골반 횡속도 — 첫 외란 시작 뒤
+        _fl_ = _dir_vec("l"); _fy = (_fp * _fl_[:, None, :2]).sum(-1)
+        _sep = _fy[:, 0] - _fy[:, 1]
+        if i == STEPS_PRE:
+            lat_sep0[:] = _sep
+        if (not dists) or t_rel >= min(d.t0 for d in dists):
+            _bothc = contact[:, 0] & contact[:, 1]
+            _ok_ = a_ & ~term
+            lat_sep_min = torch.where(_ok_ & _bothc, torch.minimum(lat_sep_min, _sep), lat_sep_min)
+            lat_roll_max = torch.where(_ok_, torch.maximum(lat_roll_max, roll.abs()), lat_roll_max)
+            _vl = (robot.data.root_lin_vel_w[:, :2] * _fl_[:, :2]).sum(-1).abs()
+            lat_v_max = torch.where(_ok_, torch.maximum(lat_v_max, _vl), lat_v_max)
+            _ss = _ok_ & (contact[:, 0] ^ contact[:, 1])
+            lat_ss_t += _ss.float() * 0.02
         for c in (0, 1):
             off = a_ & ever_both & ~st_air[:, c] & ~contact[:, c]
             _rl = off & (st_land_t[:, c] >= 0) & ((t_rel - st_land_t[:, c]) <= 0.3)
@@ -1072,12 +1095,12 @@ if float(sw_n.sum()) > 0:
 P("시간축 (인계 기준 s | 생존 env 평균 피치 | 생존 비율 | 외란 힘 N | 양발접촉 비율):")
 for t, p_, al, fN, bc in pitch_tl:
     P(f"   {t:6.1f}  {p_:+6.2f}  {al:5.2f}  {fN:5.0f}  {bc:5.2f}")
+P(f"[종료 조건] {_TERM_CNT if _TERM_CNT else '없음'}")
 txt = "\n".join(L)
 print(txt)
 os.makedirs(os.path.join(REPO, "log_picture"), exist_ok=True)
 with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}.txt"), "w", encoding="utf-8") as fh:
     fh.write(txt + "\n")
-P(f"[종료 조건] {_TERM_CNT if _TERM_CNT else '없음'}")
 import csv  # noqa: E402
 if policy2 is not None and HOF:
     import numpy as _np
@@ -1088,7 +1111,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s"] if policy2 is not None else []))
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s"] if policy2 is not None else []))
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -1102,7 +1125,10 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
         # 1001: 스텝 계측(인계 뒤, 양발 접지 이후 이륙 수·0.3 s 생존 이륙 수·착지당 발 전후 이동 평균[cm, − = 뒤로])
         row += [float(n_takeoff[e]), float(n_surv_takeoff[e]),
                 (round(float(sw_travel[e] / sw_n[e]) * 100.0, 2) if float(sw_n[e]) > 0 else ""),
-                (round(float(pitch_death[e]), 1) if fell[e] else ""), (round(float(roll_death[e]), 1) if fell[e] else "")]
+                (round(float(fall_pitch_prev[e]), 1) if fell[e] else ""), (round(float(fall_roll_prev[e]), 1) if fell[e] else ""),
+                round(100 * float(lat_sep0[e]), 1), (round(100 * float(lat_sep_min[e]), 1) if float(lat_sep_min[e]) < 8.0 else ""),
+                round(float(lat_roll_max[e]), 1), round(float(lat_v_max[e]), 3), round(float(lat_ss_t[e]), 2),
+                (list(uenv.termination_manager.active_terms)[int(term_reason[e])] if int(term_reason[e]) >= 0 else ""), (round(float(fall_h_prev[e]), 3) if fell[e] else "")]
         if policy2 is not None:
             row += [float(swc_n[e]), (round(float(swc_first[e]), 2) if not math.isnan(float(swc_first[e])) else ""), float(swc_pre[e]), round(float(sw_ticks[e]) / 50.0, 2)]
         wcsv.writerow(row)

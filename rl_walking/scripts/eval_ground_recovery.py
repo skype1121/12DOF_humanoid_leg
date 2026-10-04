@@ -113,6 +113,9 @@ parser.add_argument("--sw_off_contact", type=str, default="both", choices=("both
 parser.add_argument("--sw_oracle", action="store_true", help="1004 밤 진단: 외란 시작 틱에 즉시 회복 정책으로 전환(오라클 감지기) — 감지·인계 지연의 상한 효과 측정")
 parser.add_argument("--sw_rec_vx", type=float, default=None, help="1005 진단: 회복 정책에만 관측 명령 vx 를 이 값으로(스텝 모드 신호 0.05) — 서기 정책 관측·환경 명령 불변. velocity_commands 5 프레임 전부 덮어씀")
 parser.add_argument("--sw_rec_vx_s", type=float, default=0.0, help="1005: --sw_rec_vx 를 회복 모드 켜진 뒤 이 시간[s] 동안만(0 = 회복 모드 내내) — 반사 스텝 창, 이후 cmd 0 으로 정착")
+parser.add_argument("--cue_state", type=str, default="", help="1005 활성화 구조: vx cue 상태 기반 종료 'tmin,hold,w,tmax' — 켜진 뒤 tmin s 지나고 양발 접촉·|ω_xy|<w 가 hold s 지속되면 종료, tmax 넘으면 다음 양발 지지에서 종료(래치, 감지기 꺼질 때까지 재점화 없음)")
+parser.add_argument("--cue_dir", type=float, default=None, help="1005 ACT2: 방향 조건 cue — cue 시작 순간 몸통 전진속도(base x, m/s) > 이 값일 때만 cue(아니면 이번 활성화는 cue 없음). 정책은 전진 스텝만 학습")
+parser.add_argument("--cue_clock", type=str, default="", choices=("", "reset"), help="1005 D: cue 시작 시 회복 정책 관측 gait_clock 을 '하중 적은 발이 바로 스윙' 위상에서 재시작(cue 동안만; 이후 환경 클록)")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
 parser.add_argument("--sw_off", type=str, default="2.5,0.25,1.0,1.5", help="전환 끄기: 기울기 deg, |ω| rad/s 둘 다 미만 & 양발 접촉이 calm s 연속 & 켜진 뒤 최소 hold s")
@@ -685,6 +688,11 @@ st_alive0 = torch.zeros(N, 2, dtype=torch.bool, device=dev)
 st_land_t = torch.full((N, 2), -1.0, device=dev)               # 재접촉 시각(하중 관측용)
 st_load_sum = torch.zeros(N, 2, device=dev); st_load_n = torch.zeros(N, 2, device=dev)
 n_takeoff = torch.zeros(N, device=dev); n_surv_takeoff = torch.zeros(N, device=dev)
+# 1005 실패 5분류 계측(첫 외란 기준): 첫 이륙·첫 착지·첫 하중 수용 시각, cue 종료 뒤 이륙 수·이동, 회복 모드 해제 시각, 서기 복귀 뒤 진동
+_NAN_ = lambda: torch.full((N,), float('nan'), device=dev)
+to_first_t = _NAN_(); td_first_t = _NAN_(); load_first_t = _NAN_(); rec_off_t = _NAN_(); cue_end_rec = _NAN_()
+to_after_cue = torch.zeros(N, device=dev); cue_xy0 = torch.full((N, 2), float('nan'), device=dev); xy_last = torch.zeros(N, 2, device=dev)
+osc_flag_post = torch.zeros(N, dtype=torch.bool, device=dev)
 n_land = torch.zeros(N, device=dev); n_load = torch.zeros(N, device=dev)
 st_rl = torch.zeros(N, 2, dtype=torch.bool, device=dev); n_relift = torch.zeros(N, device=dev); n_loadfail_stay = torch.zeros(N, device=dev)   # 1004: 하중 실패 분해 — 0.3 s 창 안 재이륙 / 붙어 있었는데 하중 미달
 n_to_lr = torch.zeros(2, device=dev); sw_sq = torch.zeros(N, device=dev)   # 1003 G22R 리포트: 좌/우 이륙 수·스텝 변위 제곱합(표준편차)
@@ -819,6 +827,8 @@ for i in range(STEPS):
                 _on = _on | torch.full_like(_on, any(d.t0 <= t_rel < d.t0 + 0.02 for d in dists))
             _new_on = (~sw_mode) & _on
             swc_n += (_new_on & alive).float(); sw_mode = (sw_mode | _new_on) & ~_swoff
+            if dists and t_rel >= min(d.t0 for d in dists):
+                rec_off_t = torch.where(_swoff & torch.isnan(rec_off_t), torch.full_like(rec_off_t, t_rel), rec_off_t)
             swc_first = torch.where(_new_on & torch.isnan(swc_first), torch.full_like(swc_first, t_rel), swc_first)
             if dists and t_rel < min(d.t0 for d in dists):
                 swc_pre += _new_on.float()
@@ -828,15 +838,52 @@ for i in range(STEPS):
             if args_cli.sw_rec_vx is not None:
                 if "_VC_OFF" not in dir():
                     _nm_ = list(uenv.observation_manager.active_terms["policy"]); _dm_ = uenv.observation_manager.group_obs_term_dim["policy"]
-                    _o_ = 0
+                    _o_ = 0; _LAY_ = {}
                     for _n_, _d_ in zip(_nm_, _dm_):
                         _sz_ = 1
                         for _v_ in (_d_ if isinstance(_d_, (tuple, list)) else (_d_,)): _sz_ *= int(_v_)
-                        if _n_ == "velocity_commands": _VC_OFF = (_o_, _o_ + _sz_)
-                        _o_ += _sz_
-                    print(f"[sw_rec_vx] velocity_commands 열 {_VC_OFF} → vx {args_cli.sw_rec_vx}", flush=True)
-                _obs2 = obs.clone(); _p2o = _obs2["policy"].clone(); _vxm_ = (sw_t_on < float(args_cli.sw_rec_vx_s)) if float(args_cli.sw_rec_vx_s) > 0.0 else torch.ones_like(sw_mode)
-                _p2o[:, _VC_OFF[0]:_VC_OFF[1]:3] = torch.where(_vxm_.unsqueeze(1), torch.full_like(_p2o[:, _VC_OFF[0]:_VC_OFF[1]:3], float(args_cli.sw_rec_vx)), _p2o[:, _VC_OFF[0]:_VC_OFF[1]:3]); _obs2["policy"] = _p2o
+                        _LAY_[_n_] = (_o_, _o_ + _sz_); _o_ += _sz_
+                    _VC_OFF = _LAY_["velocity_commands"]; _GC_OFF = _LAY_.get("gait_clock")
+                    _GC_F = 1.1
+                    try:
+                        _GC_F = float(uenv.observation_manager._group_obs_term_cfgs["policy"][_nm_.index("gait_clock")].params.get("freq", 1.1))
+                    except Exception:
+                        pass
+                    cue_act = torch.zeros(N, dtype=torch.bool, device=dev); cue_done = torch.zeros(N, dtype=torch.bool, device=dev)
+                    cue_hold = torch.zeros(N, device=dev); cue_t0 = torch.zeros(N, device=dev); cue_phi0 = torch.zeros(N, device=dev)
+                    print(f"[sw_rec_vx] velocity_commands 열 {_VC_OFF} → vx {args_cli.sw_rec_vx} · 상태 종료 '{args_cli.cue_state}' · 클록 '{args_cli.cue_clock}' (gait_clock {_GC_OFF}, {_GC_F} Hz)", flush=True)
+                # cue 상태기: 감지기 새로 켜짐 → 활성, 종료 조건 → 래치 해제(감지기 꺼지면 리셋)
+                _st_on = _new_on & ~cue_act & ~cue_done
+                if args_cli.cue_dir is not None:
+                    _fwd_ = robot.data.root_lin_vel_b[:, 0] > float(args_cli.cue_dir)
+                    cue_done = cue_done | (_st_on & ~_fwd_); _st_on = _st_on & _fwd_
+                cue_act = cue_act | _st_on; cue_t0 = torch.where(_st_on, torch.full_like(cue_t0, t_rel), cue_t0)
+                _Lf = _cs.data.net_forces_w[:, _fl, :].norm(dim=-1); _Rf = _cs.data.net_forces_w[:, _fr, :].norm(dim=-1)
+                cue_phi0 = torch.where(_st_on, torch.where(_Lf < _Rf, torch.full_like(cue_phi0, math.pi + 0.05), torch.full_like(cue_phi0, 0.05)), cue_phi0)
+                if args_cli.cue_state:
+                    _tmin, _hold, _wq, _tmax = [float(x) for x in args_cli.cue_state.split(",")]
+                    _el = t_rel - cue_t0; _bc = _cf[:, 0] & _cf[:, 1]
+                    cue_hold = torch.where(cue_act & _bc & (_w < _wq), cue_hold + 0.02, torch.zeros_like(cue_hold))
+                    _end = cue_act & (((_el >= _tmin) & (cue_hold >= _hold)) | ((_el >= _tmax) & _bc))
+                elif float(args_cli.sw_rec_vx_s) > 0.0:
+                    _end = cue_act & ((t_rel - cue_t0) >= float(args_cli.sw_rec_vx_s))
+                else:
+                    _end = torch.zeros_like(cue_act)
+                cue_end_rec = torch.where(_end & torch.isnan(cue_end_rec), torch.full_like(cue_end_rec, t_rel), cue_end_rec) if "cue_end_rec" in dir() else torch.where(_end, torch.full((N,), t_rel, device=dev), torch.full((N,), float('nan'), device=dev))
+                cue_act = cue_act & ~_end; cue_done = (cue_done | _end) & sw_mode
+                _vxm_ = cue_act & sw_mode
+                _obs2 = obs.clone(); _p2o = _obs2["policy"].clone()
+                _vc_ = _p2o[:, _VC_OFF[0]:_VC_OFF[1]:3]
+                _p2o[:, _VC_OFF[0]:_VC_OFF[1]:3] = torch.where(_vxm_.unsqueeze(1), torch.full_like(_vc_, float(args_cli.sw_rec_vx)), _vc_)
+                if args_cli.cue_clock == "reset" and _GC_OFF is not None:
+                    _ph = cue_phi0 + 2.0 * math.pi * _GC_F * (t_rel - cue_t0)
+                    _gc_ = _p2o[:, _GC_OFF[0]:_GC_OFF[1]].view(N, 5, 2)
+                    _k_ = torch.arange(5, device=dev, dtype=torch.float32) - 4.0
+                    _phk = _ph.unsqueeze(1) + _k_.unsqueeze(0) * (2.0 * math.pi * _GC_F * 0.02)
+                    _new_gc = torch.stack([torch.sin(_phk), torch.cos(_phk)], -1)
+                    _p2o[:, _GC_OFF[0]:_GC_OFF[1]] = torch.where(_vxm_.view(N, 1, 1), _new_gc, _gc_).reshape(N, 10)
+                _obs2["policy"] = _p2o
+                cue_ticks = (cue_ticks if "cue_ticks" in dir() else torch.zeros(N, device=dev)) + (_vxm_ & alive).float()
                 _a2 = policy2(_obs2); _a1 = a
             else:
                 _a2 = policy2(obs); _a1 = a
@@ -936,6 +983,8 @@ for i in range(STEPS):
             if policy2 is not None:
                 osc_flag_rec = osc_flag_rec | (_flag.any(1) & alive & sw_mode)
             osc_flag_hipf = osc_flag_hipf | (_flag[:, _HIPF].any(1) & alive)
+            if policy2 is not None:
+                osc_flag_post = osc_flag_post | (_flag.any(1) & alive & ~sw_mode & ~torch.isnan(rec_off_t))
     a_ = alive.clone()
     newly = a_ & term
     death_step[newly] = i; pitch_death[newly] = pitch[newly]; roll_death[newly] = roll[newly]
@@ -1007,6 +1056,10 @@ for i in range(STEPS):
             on = a_ & st_air[:, c] & contact[:, c]
             st_air[on, c] = False; st_land_t[on, c] = t_rel; st_rl[on, c] = False; st_load_sum[on, c] = 0.0; st_load_n[on, c] = 0.0
             n_land += on.float()
+            if dists and t_rel >= min(d.t0 for d in dists):
+                to_first_t = torch.where(off & torch.isnan(to_first_t), torch.full_like(to_first_t, t_rel), to_first_t)
+                td_first_t = torch.where(on & ~torch.isnan(to_first_t) & torch.isnan(td_first_t), torch.full_like(td_first_t, t_rel), td_first_t)
+                to_after_cue += (off & ~torch.isnan(cue_end_rec)).float()
             if "_sep" in dir():
                 td_sep_s += torch.where(on, _sep, torch.zeros_like(_sep)); td_sep_n += on.float()
                 td_sep_min = torch.where(on, torch.minimum(td_sep_min, _sep), td_sep_min)
@@ -1020,6 +1073,7 @@ for i in range(STEPS):
             st_load_sum[win, c] += f[win, c]; st_load_n[win, c] += 1.0
             done = a_ & (st_land_t[:, c] >= 0) & ((t_rel - st_land_t[:, c]) > 0.3) & (st_load_n[:, c] > 0)
             ok = done & ((st_load_sum[:, c] / st_load_n[:, c].clamp(min=1)) >= 0.3 * BW)
+            load_first_t = torch.where(ok & ~torch.isnan(td_first_t) & torch.isnan(load_first_t), torch.full_like(load_first_t, t_rel), load_first_t)
             n_load += ok.float(); n_relift += (done & ~ok & st_rl[:, c]).float(); n_loadfail_stay += (done & ~ok & ~st_rl[:, c]).float()
             st_land_t[done, c] = -1.0; st_rl[done, c] = False
     if i < STEPS_PRE:
@@ -1098,6 +1152,8 @@ for i in range(STEPS):
                                  "cmd_deg": [round(math.degrees(float(cmd[k, j])), 2) for j in range(J)],
                                  "q_deg": [round(math.degrees(float(robot.data.joint_pos[k, j])), 2) for j in range(J)],
                                  "contact": [int(contact[k, 0]), int(contact[k, 1])], "w_xy": round(float(w_xy[k]), 3), "v_xy": round(float(v_xy[k]), 3)}) + "\n")
+    xy_last = torch.where((alive & ~term).unsqueeze(1), robot.data.root_pos_w[:, :2], xy_last)
+    cue_xy0 = torch.where((~torch.isnan(cue_end_rec) & torch.isnan(cue_xy0[:, 0])).unsqueeze(1), xy_last, cue_xy0)
     alive &= ~term
     if i % 25 == 0:
         pitch_tl.append((round(t_rel, 2), float(pitch[alive].mean()) if alive.any() else float("nan"), float(alive.float().mean()), f_now,
@@ -1206,7 +1262,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s"] if policy2 is not None else []))
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s", "cue_end_t", "cue_time_s", "to_first_t", "td_first_t", "load_first_t", "to_after_cue", "drift_after_cue_cm", "rec_off_t", "osc_flag_post"] if policy2 is not None else []))
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -1230,6 +1286,10 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
                 int(osc_rev_max[e]), int(osc_flag_any[e]), int(osc_flag_rec[e]), int(osc_flag_hipf[e])]
         if policy2 is not None:
             row += [float(swc_n[e]), (round(float(swc_first[e]), 2) if not math.isnan(float(swc_first[e])) else ""), float(swc_pre[e]), round(float(sw_ticks[e]) / 50.0, 2)]
+            _fx_ = lambda v: "" if math.isnan(float(v)) else round(float(v), 2)
+            _ct_ = (float(cue_ticks[e]) / 50.0) if "cue_ticks" in dir() else 0.0
+            _dr_ = (100.0 * float((xy_last[e] - cue_xy0[e]).norm())) if not math.isnan(float(cue_xy0[e, 0])) else ""
+            row += [_fx_(cue_end_rec[e]), round(_ct_, 2), _fx_(to_first_t[e]), _fx_(td_first_t[e]), _fx_(load_first_t[e]), float(to_after_cue[e]), (round(_dr_, 1) if _dr_ != "" else ""), _fx_(rec_off_t[e]), int(osc_flag_post[e])]
         wcsv.writerow(row)
 if _VID is not None and _VID["n"] > 0:
     import subprocess  # noqa: E402

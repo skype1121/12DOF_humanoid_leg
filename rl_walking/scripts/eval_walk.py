@@ -25,7 +25,7 @@ p.add_argument("--seed", type=int, default=1)
 p.add_argument("--t_stand", type=float, default=3.0)
 p.add_argument("--t_walk", type=float, default=8.0)
 p.add_argument("--t_after", type=float, default=4.0)
-p.add_argument("--out_tag", default="walk"); p.add_argument("--friction_scale", type=float, default=1.0, help="진단(T4): 발 마찰 범위 배율(학습 설정 불변)"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)"); p.add_argument("--wz_groups", default="", help="진단: 걷기 중 상수 요 명령을 env 묶음별로(예 -0.3,0,0.3) — 회전 명령 추종 확인")
+p.add_argument("--torsion_r", type=float, default=None, help="1005 진단: 로봇 충돌 형상 비틀림 마찰 패치 반경[m](PhysX torsional_patch_radius) — ⚠1005 WTOR: 이 자산·GPU 경로에서 결과 비트 동일 = 효과 없음 확인, 쓰지 말 것"); p.add_argument("--out_tag", default="walk"); p.add_argument("--friction_scale", type=float, default=1.0, help="진단(T4): 발 마찰 범위 배율(학습 설정 불변)"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)"); p.add_argument("--wz_groups", default="", help="진단: 걷기 중 상수 요 명령을 env 묶음별로(예 -0.3,0,0.3) — 회전 명령 추종 확인")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
@@ -51,6 +51,10 @@ if a.friction_scale != 1.0 and getattr(env_cfg.events, "physics_material", None)
     pm = env_cfg.events.physics_material.params
     pm["static_friction_range"] = tuple(x * a.friction_scale for x in pm["static_friction_range"])
     pm["dynamic_friction_range"] = tuple(x * a.friction_scale for x in pm["dynamic_friction_range"])
+if a.torsion_r is not None:
+    import isaaclab.sim as _su
+    env_cfg.scene.robot.spawn.collision_props = _su.CollisionPropertiesCfg(torsional_patch_radius=a.torsion_r, min_torsional_patch_radius=a.torsion_r)
+    print(f"[torsion] 비틀림 패치 반경 {a.torsion_r} m", flush=True)
 if getattr(env_cfg.events, "push_robot", None) is not None:
     env_cfg.events.push_robot = None
 act = env_cfg.actions.joint_pos
@@ -172,7 +176,7 @@ b_, a_ = butter(2, [2.0 / (0.5 / dt), 4.5 / (0.5 / dt)], btype="band")
 band = filtfilt(b_, a_, WY, axis=0)
 t_axis = 1.0 + np.arange(WY.shape[0]) * dt
 PA = torch.stack(pitch_after).numpy() if pitch_after else None
-L = [f"W1 보행 평가 · {a.task} · {ck}" + (f" · HeadingHold kp {a.heading_hold}" if a.heading_hold > 0 else "") + (f" · 마찰 ×{a.friction_scale}" if a.friction_scale != 1.0 else ""), f"지연 {a.delay}틱 · LPF β 0.27 · seed {a.seed} · env {N} · 서기 {a.t_stand}s → 걷기 {a.t_walk}s → 정지 {a.t_after}s · 외란 없음 · 학습 DR 유지",
+L = [f"W1 보행 평가 · {a.task} · {ck}" + (f" · HeadingHold kp {a.heading_hold}" if a.heading_hold > 0 else "") + (f" · 마찰 ×{a.friction_scale}" if a.friction_scale != 1.0 else "") + (f" · 비틀림 r {a.torsion_r} m" if a.torsion_r is not None else ""), f"지연 {a.delay}틱 · LPF β 0.27 · seed {a.seed} · env {N} · 서기 {a.t_stand}s → 걷기 {a.t_walk}s → 정지 {a.t_after}s · 외란 없음 · 학습 DR 유지",
      "| vx 명령 | n | 낙상 % | 추종 오차 m/s | 요 표류 ° | 옆 표류 cm | 착지 수/env | 왼 착지 % | 보폭 cm | 공중 s | 양발지지 s | 미끄럼 m/s | 교대 % | 정지 정착 s (중앙) | 정지 창 3Hz RMS | 정지 뒤 피치 p2p ° |",
      "|" + "---|" * 16]
 gn = grp.cpu().numpy(); al = alive.cpu().numpy()
@@ -188,9 +192,10 @@ for k, v in enumerate(speeds):
     walk = v > 0
     L.append(f"| {v:.2f} | {nn} | {fall:.1f} | " + (f"{f(err_s, err_n):.3f}" if walk else "—") +
              f" | {float(yaw_w[mt][alive[mt]].abs().mean()) if alive[mt].any() else float('nan'):.1f} | {100*float(lat_w[mt][alive[mt]].abs().mean()) if alive[mt].any() else float('nan'):.1f}"
-             f" | {tdn / max(nn, 1):.1f} | {100 * float(td[:, 0].sum()) / max(tdn, 1):.0f} | {100 * f(step_len_s, step_n):.1f} | {f(air_s, air_n):.2f} | {f(ds_s, ds_n):.2f}"
+             f" | {tdn / max(nn, 1):.1f} | " + (f"{100 * float(td[:, 0].sum()) / max(tdn, 1):.0f} | {100 * f(step_len_s, step_n):.1f}" if tdn >= 10 else "— | —") + f" | {f(air_s, air_n):.2f} | {f(ds_s, ds_n):.2f}"
              f" | {f(slip_s, slip_n):.3f} | {100 * float(alt_n[mt].sum()) / max(tdn, 1):.0f} | " + (f"{float(st.median()):.2f} ({len(st)}/{int(alive[mt].sum())})" if len(st) else "—") +
              f" | {rms:.4f} | {p2p:.2f} |")
+L.append("착지 총 10 회 미만 그룹은 왼 착지 %·보폭을 — 로 표시(표본 과소).")
 L.append("추종 오차 = 걷기 시작 2 s 뒤부터 생존 env 의 |요 프레임 전진속도 − 명령|. 서기 그룹(0.00)은 '걷기' 창에도 명령 0 — 무명령 서기 대조.")
 if WZ is not None:
     L.append("| 요 명령 rad/s | n(걷기·생존) | 실제 요 변화 ° (부호, 평균) | 기대 ° (명령×걷기시간) | 추종비 |")

@@ -2791,3 +2791,24 @@ def imp_level_curriculum(env, env_ids, min_eps: int = 400, up: float = 0.85, dow
         print(f"[G25 충격 커리큘럼] 반복 {it} 단계 {lv} {_IMP_LEVELS[lv]} N·s: 성공 {r:.3f} (n {int(g['n'])}) → 단계 {env._imp_level}", flush=True)
         g["n"] = 0.0; g["ok"] = 0.0
     return {"level": float(env._imp_level), "succ": g["last"]}
+
+
+def heading_hold_train(env, env_ids, kp: float = 1.0, wz_max: float = 0.6, walk_min: float = 0.03):
+    """mode="interval"(0 s) — 1005 WT1(보행 트랙): 배포 HeadingHold 를 학습 루프 안에 둔다.
+    걷기 env: 목표 요 ψ* 를 명령 wz(리샘플 때 저장한 원래 값)로 적분하고, 관측·보조 훅이 보는 명령 wz = clip(wz₀ + kp·wrap(ψ* − ψ), ±wz_max).
+    서기 env·리셋·리샘플 때 ψ* = 현재 요. 평가 eval_walk --heading_hold(wz₀ = 0, ψ* = 걷기 시작 요)와 같은 제어칙."""
+    term = env.command_manager.get_term("base_velocity")
+    asset = env.scene[_base_cfg().name]
+    N, dev = env.num_envs, env.device
+    q = asset.data.root_quat_w
+    yaw = torch.atan2(2.0 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]), 1.0 - 2.0 * (q[:, 2] ** 2 + q[:, 3] ** 2))
+    if not hasattr(env, "_hh_tgt"):
+        env._hh_tgt = yaw.clone(); env._hh_wz0 = term.vel_command_b[:, 2].clone(); env._hh_tl = term.time_left.clone()
+    resampled = (term.time_left > env._hh_tl + 1e-6) | (env.episode_length_buf <= 1)
+    env._hh_wz0 = torch.where(resampled, term.vel_command_b[:, 2], env._hh_wz0)
+    walk = (term.vel_command_b[:, 0].abs() >= walk_min) & ~term.is_standing_env
+    env._hh_tgt = torch.where(resampled | ~walk, yaw, env._hh_tgt + env._hh_wz0 * env.step_dt)
+    err = torch.atan2(torch.sin(env._hh_tgt - yaw), torch.cos(env._hh_tgt - yaw))
+    wz = (env._hh_wz0 + kp * err).clamp(-wz_max, wz_max)
+    term.vel_command_b[:, 2] = torch.where(walk, wz, term.vel_command_b[:, 2])
+    env._hh_tl = term.time_left.clone()

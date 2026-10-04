@@ -2658,3 +2658,21 @@ class Biped12HangStandG25DEnvCfg(Biped12HangStandG24RaEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.actions.joint_pos.max_delay_steps = 5
+
+
+@configclass
+class Biped12HangStandW2kEnvCfg(Biped12HangStandW2iEnvCfg):
+    """WT1 (1005, 보행 트랙): W2-8 + **배포 측 요 제어를 학습 루프에**: HeadingHold(kp 1.0, 명령 wz 적분 목표) → 명령 wz → 회전 보조 훅 α 1.0 고정(커리큘럼 없음).
+    근거(YAWA, 평가 전용): W2-8 + HeadingHold + 보조 α1 은 요 표류 14–18° → 5–9°(−57 %)·낙상 +1.3 %p, 옆 표류 +5 cm. 정책이 보조 잔차에 적응하면 낙상·옆 표류 회복 기대.
+    배포 계약 변경 후보(보조 훅 = 브리지 잔차, 승인 대상). 대조 = W2h 같은 반복 이어 학습(WT0)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={"alpha0": 1.0})
+        self.events.heading_hold = EventTerm(func=mdp_hang.heading_hold_train, mode="interval", interval_range_s=(0.0, 0.0), params={"kp": 1.0})
+        self.curriculum = None
+
+
+@configclass
+class Biped12HangStandW2hSafeEnvCfg(Biped12HangStandW2hEnvCfg):
+    """WT0 대조(1005, 보행 트랙): W2-8 환경 그대로 — 안전 PPO 이어 학습 표류만 측정."""

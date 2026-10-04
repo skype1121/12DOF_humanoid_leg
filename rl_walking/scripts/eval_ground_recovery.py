@@ -489,7 +489,8 @@ if args_cli.switch_to and policy is not None:
     runner2.load(_p2); policy2 = runner2.get_inference_policy(device=dev)
     _SW_ON = [float(x) for x in args_cli.sw_on.split(",")]; _SW_OFF = [float(x) for x in args_cli.sw_off.split(",")]
     sw_mode = torch.zeros(N, dtype=torch.bool, device=dev); sw_t_on = torch.zeros(N, device=dev); sw_calm = torch.zeros(N, device=dev)
-    sw_ticks = torch.zeros(N, device=dev); sw_n = torch.zeros(N, device=dev); sw_ticks_pre_dist = torch.zeros(N, device=dev)
+    sw_ticks = torch.zeros(N, device=dev); swc_n = torch.zeros(N, device=dev); sw_ticks_pre_dist = torch.zeros(N, device=dev)
+    swc_first = torch.full((N,), float('nan'), device=dev); swc_pre = torch.zeros(N, device=dev)   # 1004 SW-1b: 첫 켜짐 시각(인계 기준)·외란 전 켜짐 수 (sw_n 은 스윙 계측과 이름 충돌 — 분리)
     print(f"[switch] 주 정책 {resume_path} ↔ 회복 정책 {_p2} · 켜기 {_SW_ON} · 끄기 {_SW_OFF}", flush=True)
 
 obs = env.get_observations()
@@ -767,7 +768,10 @@ for i in range(STEPS):
             sw_t_on = torch.where(sw_mode, sw_t_on + 0.02, torch.zeros_like(sw_t_on))
             _off = sw_mode & (sw_calm >= _SW_OFF[2]) & (sw_t_on >= _SW_OFF[3])
             _new_on = (~sw_mode) & _on
-            sw_n += _new_on.float(); sw_mode = (sw_mode | _new_on) & ~_off
+            swc_n += _new_on.float(); sw_mode = (sw_mode | _new_on) & ~_off
+            swc_first = torch.where(_new_on & torch.isnan(swc_first), torch.full_like(swc_first, t_rel), swc_first)
+            if dists and t_rel < min(d.t0 for d in dists):
+                swc_pre += _new_on.float()
             sw_ticks += (sw_mode & alive).float()
             if dists and t_rel < min(d.t0 for d in dists):
                 sw_ticks_pre_dist += (sw_mode & alive).float()
@@ -966,7 +970,7 @@ P(f"지면 절차 평가 — {args_cli.task} | {'홀드(비교 기준)' if polic
 P("인자: " + " ".join(sys.argv[1:]))
 if policy2 is not None:
     _m = pre_pass
-    P(f"[전환] 회복 정책 사용 시간 비율 {100*float(sw_ticks[_m].sum())/max(1.0, float(_m.sum())*T_after*50):.1f} % · 켜짐 횟수 env 평균 {float(sw_n[_m].mean()):.2f} · 한 번이라도 켜진 env {100*float((sw_n[_m]>0).float().mean()):.1f} %"
+    P(f"[전환] 회복 정책 사용 시간 비율 {100*float(sw_ticks[_m].sum())/max(1.0, float(_m.sum())*T_after*50):.1f} % · 켜짐 횟수 env 평균 {float(swc_n[_m].mean()):.2f} · 한 번이라도 켜진 env {100*float((swc_n[_m]>0).float().mean()):.1f} % · 첫 켜짐 시각 중앙 {float(swc_first[_m & ~torch.isnan(swc_first)].median()) if bool((_m & ~torch.isnan(swc_first)).any()) else float('nan'):.2f} s"
       + (f" · 외란 전 켜짐(오탐) env {100*float((sw_ticks_pre_dist[_m]>0).float().mean()):.1f} %" if dists else ""))
 P(f"env {N} · 사전 검사(홀드) {T_pre:.1f}s → 인계 → {T_after:.1f}s | DR {'OFF(명목·식별 플랜트 중심)' if args_cli.nominal else 'ON'} com_fix={args_cli.com_fix} seed={env_cfg.seed} | 배포 경로: {chain_desc}")
 P(f"스폰 기울기: 피치 {args_cli.tilt_pitch_deg:+.1f}° 롤 {args_cli.tilt_roll_deg:+.1f}° | 외란: " + ("; ".join(d.label() for d in dists) if dists else "없음") + f" | 회복 창 {args_cli.recover_s:.0f}s (정지 = 양발접촉·|ω|<{QUIET_W}·|v|<{QUIET_V}·관절속도RMS<{QUIET_QD}, {QUIET_TICKS}틱 연속)")
@@ -1040,7 +1044,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm"])
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s"] if policy2 is not None else []))
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -1054,6 +1058,8 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
         # 1001: 스텝 계측(인계 뒤, 양발 접지 이후 이륙 수·0.3 s 생존 이륙 수·착지당 발 전후 이동 평균[cm, − = 뒤로])
         row += [float(n_takeoff[e]), float(n_surv_takeoff[e]),
                 (round(float(sw_travel[e] / sw_n[e]) * 100.0, 2) if float(sw_n[e]) > 0 else "")]
+        if policy2 is not None:
+            row += [float(swc_n[e]), (round(float(swc_first[e]), 2) if not math.isnan(float(swc_first[e])) else ""), float(swc_pre[e]), round(float(sw_ticks[e]) / 50.0, 2)]
         wcsv.writerow(row)
 if _VID is not None and _VID["n"] > 0:
     import subprocess  # noqa: E402

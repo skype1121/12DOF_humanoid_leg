@@ -2446,3 +2446,16 @@ class Biped12HangStandW2eEnvCfg(Biped12HangStandW2dEnvCfg):
         super().__post_init__()
         t = self.rewards.hip_r_deviation
         self.rewards.hip_r_deviation = RewTerm(func=mdp_hang.w1_stand_gated, weight=t.weight, params={"func": t.func, "params": dict(t.params or {})})
+
+
+@configclass
+class Biped12HangStandG24RaEnvCfg(Biped12HangStandW2eEnvCfg):
+    """G24R-a (1004): W2-5 + **외란 분포 = G22R R3 앞 편향 고정**(무외란 30 %·앞 50 %·뒤 20 %, 앞 10–12 N·뒤 12–18 N, 충격 ×1.5, 무외란 범주 속도 밀기 없음) 단일 변경.
+    근거: W2-4 에서 앞 회복 스텝이 자발 출현(sf15 스텝 86.7 %)했으나 하중 수용 62 %·낙상 74 % — 앞 밀기 연습량을 늘린다(좌우 외란 제외 → sl8 감시)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        d = self.events.disturbance
+        d.func = mdp_hang.disturbance_reset_g22r; d.params = dict(d.params, branch="g22r", stage_override=2)
+        pr = self.events.push_robot
+        pr.func = mdp_hang.push_with_arm_g22; pr.params = {"velocity_range": dict(pr.params["velocity_range"]), "arm_s": 2.5, "branch": "g22r"}

@@ -194,7 +194,7 @@
       "kd": 5.0,
       "enabled": true,
       "dry_run": false,
-      "stand_zero_deg": -4.08
+      "stand_zero_deg": 31.92
     },
     "right_knee_joint": {
       "joint_name": "right_knee_joint",
@@ -1795,6 +1795,18 @@
           }
         ],
         "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20261003_180343.json"
+      },
+      {
+        "at": "20261003_230130",
+        "mode": "multiple",
+        "changed": [
+          {
+            "joint": "right_hip_r_joint",
+            "from": -4.08,
+            "to": 31.92
+          }
+        ],
+        "backup": "/home/mama/rl_calib/hw_map_backups/hw_map_20261003_230130.json"
       }
     ],
     "direction_history": [

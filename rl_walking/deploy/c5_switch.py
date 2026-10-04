@@ -39,7 +39,7 @@ class SwitchDetector:
 
     def __init__(self, on_tilt_deg: float = 4.0, on_w: float = 0.5, off_tilt_deg: float = 2.5, off_w: float = 0.3,
                  calm_s: float = 1.0, dwell_s: float = 0.4, dt: float = 1.0 / RATE_HZ, ref_tau_s: float = 0.0, ref_cap_deg: float = 8.0, ref_init_s: float = 0.0, off_contact: str = "both",
-                 early=None):
+                 early=None, refrac=None):
         """ref_tau_s > 0: 기울기를 **기준 자세 대비 편차**로(1004 실물 로그 재생: 실물 서기 기울기 3–4° → 절대 기준이면 회복 모드 70–99 % 체류).
         기준 = 첫 update 의 (롤, 피치), 서기 모드·|ω|<0.1·양발일 때 EMA(τ) 갱신, |ref| ≤ ref_cap_deg. 0 = 절대 기울기(시뮬 SW-1 정의)."""
         self.on_tilt, self.on_w, self.off_tilt, self.off_w = float(on_tilt_deg), float(on_w), float(off_tilt_deg), float(off_w)
@@ -50,6 +50,8 @@ class SwitchDetector:
         # 1005 ki: 상태 기반 조기 복귀 (tmin, tilt, w, hold) — 켜진 뒤 tmin s 지나고 기울기<tilt·|ω_xy|<w·양발 접촉(0/1)이 hold s 유지 → 끄기.
         # 시뮬 eval_ground_recovery --sw_early_imu 와 같은 정의(IMU·접촉 0/1 만, 참 속도·접촉 힘 미사용).
         self.early = None if early is None else tuple(float(x) for x in early)
+        # 1005 kr: 조기 복귀 뒤 불응기 (s, tilt, w) — s 초 동안은 기울기>tilt 또는 |ω_xy|>w 일 때만 재진입(모드 왕복 46 % → 10–18 %). 시뮬 --sw_refrac 와 같은 정의.
+        self.refrac = None if refrac is None else tuple(float(x) for x in refrac)
         self.off_contact = off_contact   # 1004 밤: 끄기 조건 접촉 요구 — 실물 패드 0(무응답·무부하)로 회복 모드 고착(시험 4, 검토 7회차)
         self.reset()
 
@@ -62,6 +64,7 @@ class SwitchDetector:
         self.t_since = 0.0
         self.early_hold = 0.0
         self.n_early = 0
+        self.t_since_early = 1e9
 
     @staticmethod
     def tilt_deg(gravity_unit) -> float:
@@ -96,8 +99,11 @@ class SwitchDetector:
             ec = self.mode == 1 and self.t_on >= _tm and tilt < _tt and w < _tw and bool(c[0] and c[1])
             self.early_hold = self.early_hold + self.dt if ec else 0.0
             if self.mode == 1 and self.early_hold >= _th and not off:
-                off = True; self.n_early += 1
+                off = True; self.n_early += 1; self.t_since_early = -self.dt   # 아래에서 +dt → 이번 틱 0
+        self.t_since_early += self.dt
         on = self.mode == 0 and ((tilt > self.on_tilt) or (w > self.on_w))
+        if on and self.refrac is not None and self.t_since_early < self.refrac[0]:
+            on = (tilt > self.refrac[1]) or (w > self.refrac[2])
         self.t_since += self.dt
         if on:
             self.n_on += 1
@@ -333,7 +339,24 @@ def _selftest_cue_early() -> str:
     m = [e.update(_inputs(0, 2.0)["gravity_unit"], [0, 0, 0], [1, 1]) for _ in range(60)]
     first_off = m.index(0) + 1
     assert 39 <= first_off <= 41 and e.n_early == 1, f"조기 복귀 시점 {first_off} 틱(기대 ~40 = tmin 0.6 s + hold 0.2 s)"
-    return "cue·early OK"
+    # (5) 불응기: 조기 복귀 직후 1 s 동안 4° 기울기로는 재진입하지 않고 7° 면 재진입
+    f = SwitchDetector(on_tilt_deg=3.0, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, early=(0.6, 6.0, 0.4, 0.2), refrac=(1.0, 6.0, 1.0))
+    f.update(_inputs(0, 5.0)["gravity_unit"], [0, 0, 0], [1, 1])
+    for _ in range(60):
+        if f.update(_inputs(0, 2.0)["gravity_unit"], [0, 0, 0], [1, 1]) == 0:
+            break
+    assert f.mode == 0 and f.n_early == 1
+    m = [f.update(_inputs(0, 4.0)["gravity_unit"], [0, 0, 0], [1, 1]) for _ in range(10)]
+    assert max(m) == 0, "불응기 중 4° 로 재진입"
+    assert f.update(_inputs(0, 7.0)["gravity_unit"], [0, 0, 0], [1, 1]) == 1, "불응기 중 7° 로 재진입 안 됨"
+    g = SwitchDetector(on_tilt_deg=3.0, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, early=(0.6, 6.0, 0.4, 0.2), refrac=(1.0, 6.0, 1.0))
+    g.update(_inputs(0, 5.0)["gravity_unit"], [0, 0, 0], [1, 1])
+    for _ in range(60):
+        if g.update(_inputs(0, 2.0)["gravity_unit"], [0, 0, 0], [1, 1]) == 0:
+            break
+    m = [g.update(_inputs(0, 2.0)["gravity_unit"], [0, 0, 0], [1, 1]) for _ in range(55)]
+    assert g.update(_inputs(0, 4.0)["gravity_unit"], [0, 0, 0], [1, 1]) == 1, "불응기(1 s) 뒤 4° 로 재진입 안 됨"
+    return "cue·early·refrac OK"
 
 
 if __name__ == "__main__":

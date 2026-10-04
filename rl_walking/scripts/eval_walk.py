@@ -195,6 +195,12 @@ for k, v in enumerate(speeds):
              f" | {tdn / max(nn, 1):.1f} | " + (f"{100 * float(td[:, 0].sum()) / max(tdn, 1):.0f} | {100 * f(step_len_s, step_n):.1f}" if tdn >= 10 else "— | —") + f" | {f(air_s, air_n):.2f} | {f(ds_s, ds_n):.2f}"
              f" | {f(slip_s, slip_n):.3f} | {100 * float(alt_n[mt].sum()) / max(tdn, 1):.0f} | " + (f"{float(st.median()):.2f} ({len(st)}/{int(alive[mt].sum())})" if len(st) else "—") +
              f" | {rms:.4f} | {p2p:.2f} |")
+_tf = t_fall.cpu().numpy()
+L.append("낙상 시점(1005): 그룹별 [서기 중 / 걷기 시작 0–1.5 s / 정상 걷기 / 정지 뒤] 건수 · 걷기 시작 기준 낙상 시각 목록")
+for k, v in enumerate(speeds):
+    m = gn == k; tf = _tf[m]; tf = tf[~np.isnan(tf)]
+    ph = [int(((tf < t_ws)).sum()), int(((tf >= t_ws) & (tf < t_ws + 1.5)).sum()), int(((tf >= t_ws + 1.5) & (tf < t_we)).sum()), int((tf >= t_we).sum())]
+    L.append(f"- vx {v:.2f}: {ph} · " + ", ".join(f"{x - t_ws:+.1f}" for x in sorted(tf)))
 L.append("착지 총 10 회 미만 그룹은 왼 착지 %·보폭을 — 로 표시(표본 과소).")
 L.append("추종 오차 = 걷기 시작 2 s 뒤부터 생존 env 의 |요 프레임 전진속도 − 명령|. 서기 그룹(0.00)은 '걷기' 창에도 명령 0 — 무명령 서기 대조.")
 if WZ is not None:

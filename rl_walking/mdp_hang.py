@@ -2306,7 +2306,7 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
              fz_sw_hi: float = 0.5, fz_sw_lo: float = 0.175, td_air_s: float = 0.06, lift_dz: float = 0.01,
              clr_lo: float = 0.015, clr_hi: float = 0.04, prog_sat: float = 0.05, disp_lo: float = 0.03, disp_hi: float = 0.10,
              load_frac: float = 0.25, load_s: float = 0.10, settle_s: float = 0.06, prem_fz: float = 0.6, td_any_dir: bool = False,
-             threshold: float = 5.0, asset_cfg=None, disp_hi_rec: float | None = None, cap_on: bool = False):
+             threshold: float = 5.0, asset_cfg=None, disp_hi_rec: float | None = None, cap_on: bool = False, stride_scale: bool = False):
     """mode="interval"(0 s): STEP-B0 접촉 일정 추적·보상 값 계산(스텝 모드에서만 0 아님).
     td_any_dir(1004 A0b): 착지 이벤트 변위 조건을 앞축 [disp_lo, disp_hi] 대신 **방향 무관 수평** [0.02, disp_hi] 로 — primitive 단계에서 제자리·옆 스텝 허용.
     전환: r = ramp(지지 Fz/mg: 0.5→0.85) × ramp(스윙 Fz/mg: 0.5→0.175) — 성공 스텝의 이륙 순간 0.9/0.17 을 목표로.
@@ -2358,6 +2358,10 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
     st["r_unload"] = sw_air.float() * w_sw.float() * mode
     dz = fzp[ar, sw] - st["lift_z"][ar, sw]
     st["r_clear"] = (sw_air & (dz >= clr_lo) & (dz <= clr_hi)).float() * w_sw.float() * mode
+    if stride_scale:     # 1005 WV1: 보폭 기준을 명령 속도에 비례 — stride = |vx|/(2f) (0.05→2.3 cm, 0.10→4.5, 0.15→6.8, 0.20→9.1)
+        _vx = env.command_manager.get_command("base_velocity")[:, 0].abs()
+        _stride = (_vx / (2.0 * freq)).clamp(0.015, 0.12)
+        prog_sat = _stride; disp_lo = 0.4 * _stride; disp_hi = (1.8 * _stride).clamp(min=0.04)
     st["r_prog"] = (dfwd[ar, sw] / prog_sat).clamp(0.0, 1.0) * sw_air.float() * w_sw.float() * mode
     if td_any_dir:
         dh = (fxy[ar, sw] - st["lift_xy"][ar, sw]).norm(dim=-1)

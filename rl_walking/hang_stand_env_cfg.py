@@ -2701,3 +2701,13 @@ class Biped12HangStandG24RcapEnvCfg(Biped12HangStandG24RcueEnvCfg):
         self.rewards.capture_margin_event = RewTerm(func=mdp_hang.sb0_value, weight=10.0, params={"name": "ev_cap"})
         self.events.sb0.params = dict(self.events.sb0.params, cap_on=True)
         # 1005 정정: G24R-a 의 착지 이벤트는 sb0_step(스텝 모드) 출처 — 게이트(recovery_gate_step)에는 착지 계산이 없어 처음 R2 는 보상 0 이었다.
+
+
+@configclass
+class Biped12HangStandW2vEnvCfg(Biped12HangStandW2hEnvCfg):
+    """WV1 (1005, 보행 트랙): W2-8 + **sb0 보폭 기준을 명령 속도에 비례**(진행 포화·유효 착지 창 = |vx|/(2·1.1 Hz) 기준, 종전 고정 5 cm·3–10 cm) 단일 구조 변경.
+    근거(WVEL): W2-8 실제 전진속도 명령 0.05/0.10/0.15/0.20 → 0.089/0.094/0.096/0.097 — 속도 추종 0. 고정 보폭 기준이 한 가지 걸음만 정의한다(가설)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.sb0.params = dict(self.events.sb0.params, stride_scale=True)

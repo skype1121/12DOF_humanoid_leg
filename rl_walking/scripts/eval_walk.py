@@ -146,6 +146,7 @@ for i in range(steps):
     if win:
         m = alive & (vgrp > 0)
         err_s += torch.where(m, (v_fwd - vgrp).abs(), torch.zeros_like(v_fwd)); err_n += m.float()
+        vf_s = (vf_s if 'vf_s' in dir() else torch.zeros_like(v_fwd)) + torch.where(m, v_fwd, torch.zeros_like(v_fwd))
     if walking:
         m = alive
         lifted = (prev_c > 0.5) & (cc < 0.5); landed = (prev_c < 0.5) & (cc > 0.5)
@@ -208,6 +209,7 @@ for k, v in enumerate(speeds):
     m = gn == k; tf = _tf[m]; tf = tf[~np.isnan(tf)]
     ph = [int(((tf < t_ws)).sum()), int(((tf >= t_ws) & (tf < t_ws + 1.5)).sum()), int(((tf >= t_ws + 1.5) & (tf < t_we)).sum()), int((tf >= t_we).sum())]
     L.append(f"- vx {v:.2f}: {ph} · " + ", ".join(f"{x - t_ws:+.1f}" for x in sorted(tf)))
+L.append("평균 전진속도(걷기 2 s 뒤, 생존 env-틱 평균, 1005): " + " · ".join(f"명령 {v:.2f} → {float(vf_s[torch.as_tensor(gn == k, device=dev)].sum() / err_n[torch.as_tensor(gn == k, device=dev)].sum().clamp(min=1)):.3f}" for k, v in enumerate(speeds) if v > 0) if "vf_s" in dir() else "평균 전진속도: —")
 L.append("착지 총 10 회 미만 그룹은 왼 착지 %·보폭을 — 로 표시(표본 과소).")
 L.append("추종 오차 = 걷기 시작 2 s 뒤부터 생존 env 의 |요 프레임 전진속도 − 명령|. 서기 그룹(0.00)은 '걷기' 창에도 명령 0 — 무명령 서기 대조.")
 if WZ is not None:

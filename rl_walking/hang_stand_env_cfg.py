@@ -2550,3 +2550,14 @@ class Biped12HangStandW2iEnvCfg(Biped12HangStandW2hEnvCfg):
         super().__post_init__()
         self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={})
         self.curriculum = _W2iCurriculumCfg()
+
+
+@configclass
+class Biped12HangStandW2jEnvCfg(Biped12HangStandW2iEnvCfg):
+    """W2-10 (1004): W2-9 + **요 추종 보상을 반주기 이동평균 ω_z 로 교체**(가중 1.5·std 0.5 유지, 걷기 모드 게이트 동일) 단일 변경.
+    근거(diag_turn_terms, W2-8 정책 + 보조 α 0/2): 회전(추종비 0.62)해도 순간 ω_z 추종 보상 이득 0(0.0181→0.0179) — 스텝형 회전은 순간 각속도가 출렁.
+    반면 스텝 누락·지지발 요 미끄럼·힙 편차·이벤트 항이 회전을 벌함(합 −0.031/틱) → W2-9 학습 중 정책이 보조를 상쇄(추종비 0.49→0.32)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.track_ang_vel_walk = RewTerm(func=mdp_hang.track_yaw_rate_halfcycle, weight=1.5, params={"std": 0.25})

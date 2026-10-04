@@ -2707,3 +2707,22 @@ def turn_assist_curriculum(env, env_ids, alphas: tuple = (2.0, 1.5, 1.0, 0.5, 0.
             g["stage"] += 1; g["since"] = it; env._turn_alpha = alphas[g["stage"]]
         env._turn_stat = [0.0, 0.0]
     return {"stage": float(g["stage"]), "alpha": float(env._turn_alpha), "ratio": g["last"]}
+
+
+def track_yaw_rate_halfcycle(env, std: float = 0.5, window_ticks: int = 23, walk_min: float = 0.03, command_name: str = "base_velocity", asset_cfg=None):
+    """W2-10 (1004): 걷기 모드 요 추종을 **반주기(23 틱 = 0.455 s) 이동평균 world ω_z** 로 채점.
+    근거(diag_turn_terms): 보행 회전은 스텝마다 몰아서 일어나 순간 ω_z 가 출렁 — 순간값 추종 보상은 회전(추종비 0.62)과 무회전(0.03)을 구분 못 함(0.0179 vs 0.0181)."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    wr = asset.data.root_ang_vel_w[:, 2]
+    buf = getattr(env, "_yaw_hc_buf", None)
+    if buf is None or buf.shape[1] != window_ticks:
+        buf = wr.unsqueeze(1).repeat(1, window_ticks).clone(); env._yaw_hc_buf = buf; env._yaw_hc_i = 0
+    fresh = env.episode_length_buf <= 1
+    if bool(fresh.any()):
+        buf[fresh] = wr[fresh].unsqueeze(1)
+    buf[:, env._yaw_hc_i % window_ticks] = wr; env._yaw_hc_i += 1
+    cmd = env.command_manager.get_command(command_name)
+    mode = (cmd[:, 0].abs() >= walk_min).float()
+    err = cmd[:, 2] - buf.mean(1)
+    std = float(os.environ.get("YAW_HC_STD", std))      # 진단 전용 덮어쓰기(학습 설정은 cfg 값)
+    return torch.exp(-err * err / (std * std)) * mode

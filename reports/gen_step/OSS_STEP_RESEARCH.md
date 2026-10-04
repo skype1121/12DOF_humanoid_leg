@@ -1070,3 +1070,73 @@ diag 수치(지지발 요 회전 합 14°/7 s, 한 발 지지 중 7.9°)는 **�
 2. **서기 흔들림 판별 평가 2종**(§2: 1.1 Hz 하중 스펙트럼, 지연 민감도) — G24R-b 결과와 같이 해석한 뒤 서기 단일 변경을 고른다.
 
 출처: [walk-these-ways](https://github.com/Improbable-AI/walk-these-ways) · [HugWBC](https://github.com/InternRobotics/HugWBC) · [LearningHumanoidWalking](https://github.com/rohanpsingh/LearningHumanoidWalking) · [humanoid-gym](https://github.com/roboterax/humanoid-gym) · [unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) · [isaac_berkeley_humanoid](https://github.com/HybridRobotics/isaac_berkeley_humanoid) · [mujoco_playground](https://github.com/google-deepmind/mujoco_playground) · [legged_gym](https://github.com/leggedrobotics/legged_gym) · [CaT](https://github.com/Gepetto/constraints-as-terminations) · Isaac Lab 설치본 · van Marum 2024 arXiv 2404.19173
+
+## 라운드 12 (2026-10-04 12:00) — 서기와 보행·회복을 한 정책에 간섭 없이 두는 방법, 직진 기준 모방에서 회전을 가능하게 하는 방법
+
+전제(측정 사실, 코디네이터 전달)
+- **W2-7(요 추종 std 0.5) FAIL**: vx 0.10 에서 일정 요 명령 ±0.3 rad/s 에 대한 실제 회전 비율 −0.05 – 0.24, 회전하지 않음. 학습 보상 상승은 넓은 커널의 산물이었다.
+- 구조 의심: 스텝 모방 보상이 보행 계보 내내 전체 크기로 켜져 있다. r_qref(힙 요 관절 가중 1.0·σ 0.10 rad), r_foot(스윙발 상대 궤적, 옆 0·σ 3 cm), r_cref(접촉 위상)이고, 기준은 직진 스텝이다. 다음은 W2-8(스텝 모드 모방 OFF).
+- 회복 정책(G24R-a)의 서기 흔들림(피치 1–1.5 Hz)이 배포의 주 장애다. 서기 표본 비율을 올리면 흔들림은 해결되지만 회복이 무너졌다(G24R-b). 사용자 판단: 한 연속 정책 안에서 서기와 보행·회복 표현이 간섭한다 → 다음은 모드별 게이팅 또는 조건부 행동.
+
+### 0. 계산 — 직진 모방 3항이 회전을 얼마나 벌하나 (우리 기준 `ref_step_primitive.npz`, 가중 `w_q` 합 9.2, 보상 = 가중 × 값 × dt 0.02)
+
+- 필요한 동작: 0.3 rad/s × 반주기 0.455 s = 반주기당 7.8°(라운드 11). 힙 요를 한 다리 또는 두 다리에서 6–8° 쓴다.
+- **r_qref**(가중 1.5, σ 0.10, 힙 요 w 1.0): exp(−Σ w·Δq²/(Σw·σ²)).
+  - 힙 요 6° 한 다리 → 0.90(손해 0.0031/틱).
+  - 8° 한 다리 → 0.81(0.0058).
+  - **8° 두 다리 → 0.65(0.0104/틱)**.
+- **r_foot**(가중 2.0, σ 3 cm): 반주기 시작 대비 상대 궤적을 골반 요 프레임으로 비교한다(`mdp_hang.py:2375-2382`). 골반이 7.8° 돌면 앞 7–14 cm 의 발 위치가 옆으로 1–2 cm 어긋난다(기하 추정).
+  - 1.5 cm 오차 → 0.78(손해 0.0088/틱), 2 cm → 0.64(0.0144/틱).
+- **요 추종 이득**(W2-7: std 0.5, 가중 1.5): 오차 0.3 → 0 으로 줄이면 +0.30 × 1.5 × 0.02 = **0.0091/틱**.
+- → **모방 2항의 회전 손해(합 ≈ 0.01–0.025/틱)가 요 추종 이득(0.009/틱)과 같거나 크다.** 회전하지 않는 것이 보상상 이득이고, W2-7 결과와 정합한다(계산, 기하 추정 포함; W2-8 이 직접 시험).
+
+### 1. Q1 — 서기와 보행·회복을 한 정책에 간섭 없이 두는 공개 방법
+
+| 방식 | 출처 (commit) · 파일:줄 | 구체 메커니즘 | 관측/행동 계약 영향 |
+|---|---|---|---|
+| **명시 서기 플래그(이진 명령)** | FALCON (a967a6d) `humanoidverse/envs/decoupled_locomotion/decoupled_locomotion_stand_ma.py:294`; 관측 설정 `config/obs/dec_loco/g1_29dof_obs_diff_force_history_wolinvel_ma.yaml:13,31`(command_stand); `config/env/decoupled_locomotion_stand_height_waist_wbc_ma_diff_force.yaml:24`(stand_prob 0.4) | commands[:,4] = 1(걷기·제자리 디딤) / 0(서기)를 actor 관측에 넣는다. 서기면 속도 명령 0. 접촉 보상은 서기에서 '항상 지지'로 바꾼다(`:504-512`). **서기 중 한 발이라도 들면 벌점 −4**(`:515-528`, 보상 yaml `:59`). 서기 관절속도 −1e-3·뿌리 이동 −5(`:550-582`, yaml `:46,49`), 힙 위치 벌점은 걷기에서만(`:530-534`). 위상(클록)은 서기에도 계속 돈다(`envs/locomotion/locomotion_ma.py:109-115`) | **관측 차원 +1**(우리 계약 위반). 서기 중 발 들기를 금지하므로 **서기 상태에서의 회복 스텝과 충돌** |
+| **모드 원-핫 + 서기 중 무작위 명령** | LearningHumanoidWalking (cd8c655) `tasks/walking_task.py:21-41`(STANDING/INPLACE/FORWARD 인코딩, **STANDING 에서 mode_ref 를 U(−1,1)³ 잡음으로 줌**), `:115-128`(서기면 클록 보상 상수·추종 목표 0); 관측 `envs/jvrc/jvrc_walk.py:43,66-67`, `envs/h1/h1_walk.py:115-123`(clock 2 + 원-핫 3 + ref 3) | 모드를 원-핫으로 알려 주고, 서기에서는 속도 기준값을 일부러 잡음으로 줘 '서기 플래그가 우선'임을 학습시킨다. 관측 클록은 서기에도 돈다 | 관측 +3(위반) |
+| **보행 파라미터 명령** | walk-these-ways `go1_gym/envs/base/legged_robot.py`(관측에 주파수·위상·지속비·발높이 등 gait 명령), 명령 커리큘럼 `curriculum.py:113-150` | 보행 형태를 명령으로 조건화(서기 모드는 없음) | 관측 추가(위반) |
+| **서기에서 클록 고정** | HugWBC (eb831af) `legged_gym/envs/h1/h1.py:776-778`(standing env 의 foot_indices = 0 → 사인 클록 = 0, 원하는 접촉 = 양발), 서기 보상 `:1519-1535`, 서기 비율 1/10 `:631-637` | 클록 값이 사실상 서기 플래그 역할 | **차원 불변**. 다만 클록 값의 의미가 바뀌어 배포 러너가 서기에서 클록을 고정해야 함(계약 의미 변경 → 승인) |
+| **명령 크기로 보상 게이트** | legged_gym `legged_robot.py:882-893`(feet_air_time × (‖cmd‖ > 0.1)); Isaac Lab `velocity/mdp/rewards.py:49-68`(biped 공중시간 × (‖cmd‖ > 0.1)); MuJoCo Playground `_src/locomotion/g1/joystick.py:75` + `t1/joystick.py:627-633`(stand_still × (‖cmd‖ < 0.1), G1 −1.0); humanoid-gym `envs/base/legged_robot.py:336`(‖cmd‖ < 0.2 → 0) | 보상만 모드별로 다르게, 관측은 명령 그대로 | 불변(우리 w1_stand_gated/w1_walk_gated 가 이것) |
+| **두 정책 + 전환(학습된 판정)** | ABS (LeCAR-Lab, 9b95329): 민첩 정책 + 회복 정책, 배포 시 reach-avoid 가치망 RA 값이 문턱(−ε)을 넘으면 회복 정책으로 전환 — `deployment/src/abs_src/depth_obstacle_depth_goal_ros.py:483-496` | 별도 정책 2개, 전환 판정기(학습된 RA 망) | 정책별 계약은 그대로. 러너에 전환 로직 추가 |
+| **두 정책 묶음(서기·보행 actor 분리)** | FALCON `humanoidverse/agents/ppo_locomanip.py:84-96,189-192`(서기 체크포인트와 보행 체크포인트를 actor[0]/actor[1] 로 각각 로드, 추론 함수 2개 반환 — 선택 로직은 호출 측, 세부 미확인) | 모드별 별도 네트워크 | 계약은 정책별 |
+| **전문가 혼합(MoE) actor** | MoE-Loco(arXiv 2503.08564, IROS 2025): 다중 과제 기울기 충돌을 MoE 로 완화. 공식 저장소 `hrh6666/MoE-Loco`(78696e9)는 **README 만 있고 코드 없음**(확인). Yang 2020 'multi-expert learning'(Science Robotics)도 논문만 | 게이트망이 전문가 출력을 섞음 | 네트워크 구조 변경(우리 동결 대상) |
+
+**우리에게 적용** (actor 관측 계약 불변 조건)
+- 공개 구현에서 서기·보행을 한 정책에 둔 것들은 대부분 **관측에 모드 정보를 추가**한다(FALCON +1, LHW +3, WTW gait 명령). 우리 계약에서는 불가하다.
+  계약 안에서 가능한 것은 (i) 기존 명령 채널 의미(vx < 0.03 = 서기 — 이미 사용), (ii) HugWBC 식 서기 클록 고정(차원 불변·의미 변경), (iii) 정책 분리 + 러너 전환이다.
+- 공개 '서기 플래그' 설계(FALCON)는 **서기에서 발 들기를 −4 로 금지**한다. 즉 그들의 서기 모드에는 회복 스텝이 없다. 우리 목표(서기 중 밀리면 디딤)와 정면으로 다르다.
+  사용자 판단(서기·회복 간섭)이 맞다면, 공개 사례 중 그대로 맞는 것은 **ABS 형 '두 정책 + 관측 기반 전환'**이다.
+  - 조용한 서기 정책: G21a 계열, 흔들림 nd 0.9 %.
+  - 회복 정책: G24R-a 계열(sf15 낙상 32 %).
+  - 전환 판정기: 라운드 9·10 의 관측 신호 감지기(추정 캡처 포인트 ξ̂, 지연 IMU)나 ABS 처럼 학습된 위험 가치. 히스테리시스를 둔다(회복 정책이 '회복 완료'(라운드 6 게이트 닫힘 조건)를 내면 서기 정책으로 복귀).
+- 정책 분리안의 위험(우리 기록 근거)
+  - **전환 순간의 목표 불연속**: 우리 배포 블렌딩 경험상 블렌딩이 거동을 바꾼다(메모리: deployment-wrapper-blending). 전환 경로 자체를 시뮬 평가에 넣어야 한다.
+  - 두 정책의 관측 이력·LPF 상태 공유(라운드 4 §2 의 내부 상태들 — 두 정책이 같은 관측 파이프라인을 쓰면 이력은 연속).
+  - 감지기 오탐(서기 정책 → 회복 정책으로의 잘못된 전환은 흔들림을 다시 부름).
+  - 판정은 '전환 포함 시스템'으로, 서기 흔들림(nd·d3nd)과 sf15·b18 을 동시에.
+- 단일 정책을 유지하는 차선: HugWBC 식 **학습 중 서기 클록 고정**(차원 불변, 러너 의미 변경 승인 필요). 라운드 11 반사실(평가만 고정 −24 %)보다 클 가능성이 있지만, 회복 스텝이 클록 위상에 의존한다면(G23R-b 교훈) 서기 중 회복 스텝의 위상 정보를 잃는 상충이 있다(가설).
+
+### 2. Q2 — 직진 기준 모방·참조 기반 보행에서 회전을 가능하게 하는 방법
+
+| 방법 | 출처 · 파일:줄 | 메커니즘 | 우리에게 |
+|---|---|---|---|
+| **요 정렬(heading-invariant) 추적** | BeyondMimic `tasks/tracking/mdp/commands.py:283-293`(delta_ori_w = **yaw_quat**(로봇 앵커 × 기준 앵커⁻¹)로 기준 몸체 위치·자세를 매 틱 로봇 요에 맞춰 재정렬) | 기준이 로봇 방향을 따라 돌므로 '회전 중'이어도 자세·발 궤적 오차가 생기지 않음 | 우리 r_foot 은 골반 요 프레임 상대 궤적이지만 기준점(반주기 시작 발 위치)이 회전 전 프레임이라 회전하면 오차(§0). 기준점도 같은 요로 재정렬하면 회전 중립 |
+| **국소 프레임 보상(track_root=False)** | MimicKit `mimickit/envs/deepmimic_env.py:802-818`(not track_root 이면 뿌리 요·위치를 제거한 국소 프레임으로 오차 계산), `:603`(convert_to_local) | 같은 효과 | 같음 |
+| **모방에서 힙 요 제외(부분)** | humanoid-gym `humanoid_env.py:121-142`: 사인 기준은 **피치 관절(힙 피치·무릎·발목, idx 2·3·4 / 8·9·10)에만**, 요·롤 기준은 0. 요·롤 편차는 default_joint_pos 의 **0.1 rad 데드밴드** 밖에서만 벌(`:362-372`). 단 joint_pos 보상(`:272-279`)은 전 관절 노름이라 요 편차도 약하게 들어감 | 회전에 필요한 힙 요(±0.1 rad 이내)를 모방이 거의 벌하지 않음 | 우리 w_q 의 힙 요 가중 1.0 을 0 으로(또는 데드밴드) |
+| **회전 전용 참조 추가** | AMP_for_hardware `datasets/mocap_motions/`(leftturn0·rightturn0·trot·pace + hopturn 폴더), `legged_gym/envs/a1/a1_amp_config.py:34,46,143`(요 명령 ±1.57), AMP 관측은 **몸 좌표**(관절·몸 기준 발 위치·몸 속도·높이, `legged_gym/envs/base/legged_robot.py:285-292`) | 스타일 판별기가 회전 동작도 '자연스럽다'고 보고, 과제 보상이 회전 명령을 추종 | 우리 기준은 뒤 스텝 primitive 하나 — 회전형 primitive(골반 대비 발 요 ±ω·T_h) 추가는 기준 확장 |
+| **회전 전용 모드** | LHW `tasks/walking_task.py:21-41` INPLACE(요 각속도 ±0.5, 전진 0), 발판 과제 CURVED 15 %·몸통 요 목표(`tasks/stepping_task.py:81,117,128-136`) | 회전만 따로 표본화 | 우리 W2 에서 '제자리 회전' 명령 비율을 별도로 |
+| **모방 가중 감쇠** | 우리 `mdp_hang.py` `sbi_anneal_curriculum`(배율 1.0→0.75→0.5→0.25→0.05, 블록 하중 수용 조건) — 현재 보행 계보에서는 미사용(코디네이터 전달); AMP 는 감쇠 대신 과제 보상 혼합 고정(`amp_task_reward_lerp 0.3`, `a1_amp_config.py:164`); Kickstarting 선형 감쇠(라운드 2) | 모방은 탐색용으로만, 이후 과제 보상 위주 | W2-8(OFF)이 극단형. 서기·스텝 품질이 무너지면 감쇠형(배율 0.25)이 차선 |
+
+**요 추종 폭·가중의 전형값**: Isaac Lab G1 std 0.5·가중 2.0(명령 ±1.0), Berkeley std 0.5·0.5, unitree σ² 0.25(std 0.5)·0.5, humanoid-gym std ≈ 0.45·1.1(명령 ±0.3), legged_gym/AMP_for_hardware σ² 0.25·0.5(AMP 는 1/(dt·decimation) 배율: `a1_amp_config.py:118-119`), HugWBC 요 3.0·선속도 2.0, LHW exp(−10·|e|³)·0.15. **std 0.5 가 표준**이다. 우리 W2-7 의 실패는 폭이 아니라 §0 의 모방 상충이 원인일 가능성이 높다.
+
+### 3. 다음 단일 실험 제안
+
+1. **W2-8(스텝 모드 모방 OFF)** — 계획대로. §0 계산상 가장 직접적인 원인이다. 판정에 회전 비율과 함께 교대·착지·놓친 스텝 비율을 둔다(모방이 primitive 형태를 지탱하던 몫이 빠질 수 있음).
+   대안 단일 변경(OFF 가 스텝을 무너뜨릴 때): r_qref 힙 요 가중 0 + r_foot 기준점 요 재정렬(BeyondMimic 식)만 — 직진 스텝 형태는 유지하고 회전 벌만 제거.
+2. **서기–회복 간섭**: 단일 정책 내 게이팅은 공개 사례상 관측 추가가 필요해 계약과 충돌한다. 계약 안에서는 **ABS 형 두 정책 전환(G21a 서기 + G24R 회복, 관측 기반 감지기·히스테리시스)을 시뮬에서 '전환 포함 시스템'으로 평가**하는 것이 먼저다(학습 불필요, 평가 하네스만).
+   이 평가로 흔들림·sf15·b18 을 동시에 만족하면, 단일 정책 게이팅(네트워크 변경·승인 필요)보다 위험이 낮은 경로다. 러너 전환 로직은 배포 계약 변경이므로 실물 전에 승인이 필요하다.
+
+출처: [FALCON](https://github.com/LeCAR-Lab/FALCON) · [ABS](https://github.com/LeCAR-Lab/ABS) · [LearningHumanoidWalking](https://github.com/rohanpsingh/LearningHumanoidWalking) · [HugWBC](https://github.com/InternRobotics/HugWBC) · [walk-these-ways](https://github.com/Improbable-AI/walk-these-ways) · [MoE-Loco (코드 없음)](https://github.com/hrh6666/MoE-Loco) · [MoE-Loco arXiv 2503.08564](https://arxiv.org/abs/2503.08564) ·
+[whole_body_tracking (BeyondMimic)](https://github.com/HybridRobotics/whole_body_tracking) · [MimicKit](https://github.com/xbpeng/MimicKit) · [humanoid-gym](https://github.com/roboterax/humanoid-gym) · [AMP_for_hardware](https://github.com/escontra/AMP_for_hardware) · [legged_gym](https://github.com/leggedrobotics/legged_gym) · [mujoco_playground](https://github.com/google-deepmind/mujoco_playground) · Isaac Lab 설치본

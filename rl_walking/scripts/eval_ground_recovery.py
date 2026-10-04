@@ -104,6 +104,7 @@ parser.add_argument("--contact_drop", type=str, default="",
                          "실물 3 Hz 진동이 '한 발 접촉 비트 상실'에서 시작되는지 보는 관측 교란 대조")
 parser.add_argument("--switch_to", type=str, default="",
                     help="진단(1004, C4 근거): '<run>:<model_N.pt>' 두 번째(회복) 정책. 감지기(IMU 관측만: 기울기·|ω_xy|, 히스테리시스)가 켜면 회복 정책, 꺼지면 주(서기) 정책. 두 정책 모두 같은 관측·명령 계약")
+parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
 parser.add_argument("--sw_off", type=str, default="2.5,0.25,1.0,1.5", help="전환 끄기: 기울기 deg, |ω| rad/s 둘 다 미만 & 양발 접촉이 calm s 연속 & 켜진 뒤 최소 hold s")
 parser.add_argument("--out_tag", type=str, default="rec")
@@ -491,6 +492,9 @@ if args_cli.switch_to and policy is not None:
     sw_mode = torch.zeros(N, dtype=torch.bool, device=dev); sw_t_on = torch.zeros(N, device=dev); sw_calm = torch.zeros(N, device=dev)
     sw_ticks = torch.zeros(N, device=dev); swc_n = torch.zeros(N, device=dev); sw_ticks_pre_dist = torch.zeros(N, device=dev)
     swc_first = torch.full((N,), float('nan'), device=dev); swc_pre = torch.zeros(N, device=dev)   # 1004 SW-1b: 첫 켜짐 시각(인계 기준)·외란 전 켜짐 수 (sw_n 은 스윙 계측과 이름 충돌 — 분리)
+    _HW = 10   # 1004 C5 handoff 계측: 첫 외란 뒤 전환 전후 ±_HW 틱
+    hof_ring_obs = None; hof_ring_a = None; hof_k = torch.full((N,), -1, dtype=torch.long, device=dev)
+    HOF = {}
     print(f"[switch] 주 정책 {resume_path} ↔ 회복 정책 {_p2} · 켜기 {_SW_ON} · 끄기 {_SW_OFF}", flush=True)
 
 obs = env.get_observations()
@@ -504,6 +508,7 @@ if args_cli.obs_ema:
         _off[_n] = (_o, _o + _sz); _o += _sz
     for _tok in args_cli.obs_ema.split(","):
         _n, _al = _tok.split(":"); _OBS_EMA.append((*_off[_n], float(_al)))
+    _OBS_LAYOUT = dict(_off)
     print(f"[obs_ema] {[(n, _off[n]) for n in [t.split(':')[0] for t in args_cli.obs_ema.split(',')]]} 총 {_o}", flush=True)
 _DEF = robot.data.default_joint_pos.clone()      # 정책 기본자세(= 액션 오프셋) — 시뮬 홀드 명령각
 _BOFF = torch.zeros_like(_DEF)                  # 인계 출발 자세 오프셋(실물 홀드 명령과 정책 기본의 차이 재현)
@@ -767,16 +772,45 @@ for i in range(STEPS):
             _quiet = (_tilt < _SW_OFF[0]) & (_w < _SW_OFF[1]) & _cf[:, 0] & _cf[:, 1]
             sw_calm = torch.where(sw_mode & _quiet, sw_calm + 0.02, torch.zeros_like(sw_calm))
             sw_t_on = torch.where(sw_mode, sw_t_on + 0.02, torch.zeros_like(sw_t_on))
-            _off = sw_mode & (sw_calm >= _SW_OFF[2]) & (sw_t_on >= _SW_OFF[3])
+            _swoff = sw_mode & (sw_calm >= _SW_OFF[2]) & (sw_t_on >= _SW_OFF[3])
             _new_on = (~sw_mode) & _on
-            swc_n += _new_on.float(); sw_mode = (sw_mode | _new_on) & ~_off
+            swc_n += _new_on.float(); sw_mode = (sw_mode | _new_on) & ~_swoff
             swc_first = torch.where(_new_on & torch.isnan(swc_first), torch.full_like(swc_first, t_rel), swc_first)
             if dists and t_rel < min(d.t0 for d in dists):
                 swc_pre += _new_on.float()
             sw_ticks += (sw_mode & alive).float()
             if dists and t_rel < min(d.t0 for d in dists):
                 sw_ticks_pre_dist += (sw_mode & alive).float()
-            a = torch.where(sw_mode.unsqueeze(1), policy2(obs), a)
+            _a2 = policy2(obs); _a1 = a
+            if args_cli.sw_monitor:
+                pass
+            else:
+                a = torch.where(sw_mode.unsqueeze(1), _a2, a)
+            # ── C5 handoff 계측 ──
+            _po = obs["policy"]
+            if hof_ring_obs is None:
+                hof_ring_obs = torch.zeros(_HW, N, _po.shape[1], device=dev); hof_ring_a = torch.zeros(_HW, N, a.shape[1], device=dev)
+                _jn = robot.data.joint_pos.shape[1]
+                for _k, _shp in (("obs", (2*_HW+1, _po.shape[1])), ("a_exec", (2*_HW+1, a.shape[1])), ("a1", (2*_HW+1, a.shape[1])), ("a2", (2*_HW+1, a.shape[1])),
+                                 ("tilt", (2*_HW+1,)), ("w", (2*_HW+1,)), ("vxy", (2*_HW+1,)), ("q", (2*_HW+1, _jn)), ("qd", (2*_HW+1, _jn)), ("gyro", (2*_HW+1, 3)),
+                                 ("fz", (2*_HW+1, 2)), ("mode", (2*_HW+1,)), ("t_sw", ())):
+                    HOF[_k] = torch.full((N,) + _shp, float("nan"), device=dev)
+            _first_after = _new_on & (hof_k < 0) & alive & ((not dists) or (t_rel >= min(d.t0 for d in dists)))
+            if bool(_first_after.any()):
+                hof_k[_first_after] = 0; HOF["t_sw"][_first_after] = t_rel
+                for _j in range(_HW):     # 전환 전 _HW 틱(링: 가장 오래된 것부터)
+                    _src = (i - _HW + _j) % _HW
+                    HOF["obs"][_first_after, _j] = hof_ring_obs[_src, _first_after]; HOF["a_exec"][_first_after, _j] = hof_ring_a[_src, _first_after]
+            _rec = (hof_k >= 0) & (hof_k <= _HW)
+            if bool(_rec.any()):
+                _ix = (_HW + hof_k[_rec])
+                _ri = torch.nonzero(_rec).squeeze(1)
+                _fz = _cs.data.net_forces_w[:, [_fl, _fr], 2]
+                for _k, _v in (("obs", _po), ("a_exec", a), ("a1", _a1), ("a2", _a2), ("tilt", _tilt), ("w", _w), ("vxy", robot.data.root_lin_vel_w[:, :2].norm(dim=-1)),
+                               ("q", robot.data.joint_pos - _DEF), ("qd", robot.data.joint_vel), ("gyro", robot.data.root_ang_vel_b), ("fz", _fz), ("mode", sw_mode.float())):
+                    HOF[_k][_ri, _ix] = _v[_ri].to(HOF[_k].dtype)
+                hof_k[_rec] += 1
+            hof_ring_obs[i % _HW] = _po; hof_ring_a[i % _HW] = a
         if args_cli.freeze_after is not None and policy is not None and t_rel >= args_cli.freeze_after:
             if _FROZEN[0] is None:
                 _FROZEN[0] = a.clone(); print(f"[freeze] t_rel={t_rel:.2f}s 정책 출력 고정", flush=True)
@@ -1045,6 +1079,11 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     fh.write(txt + "\n")
 P(f"[종료 조건] {_TERM_CNT if _TERM_CNT else '없음'}")
 import csv  # noqa: E402
+if policy2 is not None and HOF:
+    import numpy as _np
+    _np.savez_compressed(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}_handoff.npz"),
+                         fell=fell.cpu().numpy(), pre_pass=pre_pass.cpu().numpy(), monitor=bool(args_cli.sw_monitor), obs_layout=json.dumps(_OBS_LAYOUT) if "_OBS_LAYOUT" in dir() else "",
+                         **{k: v.cpu().numpy() for k, v in HOF.items()})
 with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}_envs.csv"), "w", newline="") as fh:
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []

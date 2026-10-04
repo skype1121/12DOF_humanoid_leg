@@ -25,7 +25,7 @@ p.add_argument("--seed", type=int, default=1)
 p.add_argument("--t_stand", type=float, default=3.0)
 p.add_argument("--t_walk", type=float, default=8.0)
 p.add_argument("--t_after", type=float, default=4.0)
-p.add_argument("--out_tag", default="walk"); p.add_argument("--friction_scale", type=float, default=1.0, help="진단(T4): 발 마찰 범위 배율(학습 설정 불변)"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)")
+p.add_argument("--out_tag", default="walk"); p.add_argument("--friction_scale", type=float, default=1.0, help="진단(T4): 발 마찰 범위 배율(학습 설정 불변)"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)"); p.add_argument("--wz_groups", default="", help="진단: 걷기 중 상수 요 명령을 env 묶음별로(예 -0.3,0,0.3) — 회전 명령 추종 확인")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
@@ -74,6 +74,10 @@ fid = mdp_hang._feet_body_ids(U); bid = mdp_hang._g21_bids(U)
 cmd_term = U.command_manager.get_term("base_velocity")
 
 hh_ref = None
+WZ = None
+if a.wz_groups:
+    _wz = [float(x) for x in a.wz_groups.split(',')]
+    WZ = torch.tensor(_wz, device=dev)[(torch.arange(N, device=dev) // len(speeds)) % len(_wz)]
 def set_cmd(vx):
     global hh_ref
     cmd_term.vel_command_b[:, 0] = vx; cmd_term.vel_command_b[:, 1] = 0.0; cmd_term.vel_command_b[:, 2] = 0.0
@@ -83,6 +87,8 @@ def set_cmd(vx):
             hh_ref = yw.clone()
         err = torch.atan2(torch.sin(hh_ref - yw), torch.cos(hh_ref - yw))
         cmd_term.vel_command_b[:, 2] = (a.heading_hold * err).clamp(-0.6, 0.6)
+    if WZ is not None:
+        cmd_term.vel_command_b[:, 2] = torch.where(vx > 0, WZ, torch.zeros_like(WZ))
     cmd_term.is_standing_env[:] = False
     cmd_term.is_heading_env[:] = False
 
@@ -186,6 +192,14 @@ for k, v in enumerate(speeds):
              f" | {f(slip_s, slip_n):.3f} | {100 * float(alt_n[mt].sum()) / max(tdn, 1):.0f} | " + (f"{float(st.median()):.2f} ({len(st)}/{int(alive[mt].sum())})" if len(st) else "—") +
              f" | {rms:.4f} | {p2p:.2f} |")
 L.append("추종 오차 = 걷기 시작 2 s 뒤부터 생존 env 의 |요 프레임 전진속도 − 명령|. 서기 그룹(0.00)은 '걷기' 창에도 명령 0 — 무명령 서기 대조.")
+if WZ is not None:
+    L.append("| 요 명령 rad/s | n(걷기·생존) | 실제 요 변화 ° (부호, 평균) | 기대 ° (명령×걷기시간) | 추종비 |")
+    L.append("|---|---|---|---|---|")
+    for wv in _wz:
+        mw = (WZ == wv) & (vgrp > 0) & alive
+        mean = float(yaw_w[mw].mean()) if mw.any() else float("nan")
+        exp = math.degrees(wv * a.t_walk)
+        L.append(f"| {wv:+.2f} | {int(mw.sum())} | {mean:+.1f} | {exp:+.1f} | " + (f"{mean / exp:.2f}" if abs(exp) > 1e-6 else "—") + " |")
 txt = "\n".join(L); print(txt, flush=True)
 os.makedirs(os.path.join(REPO, "log_picture"), exist_ok=True)
 open(os.path.join(REPO, "log_picture", f"walk_eval_{a.out_tag}.txt"), "w").write(txt + "\n")

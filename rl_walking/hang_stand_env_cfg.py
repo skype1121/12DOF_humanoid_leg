@@ -2522,3 +2522,15 @@ class Biped12HangStandG24RcEnvCfg(Biped12HangStandG24RaEnvCfg):
         rw.recovery_time = RewTerm(func=mdp_hang.g2_recovery_time, weight=-0.10)
         rw.unarmed_takeoff_event = RewTerm(func=mdp_hang.g22r_event, weight=-10.0, params={"name": "ev_unarmed"})
         rw.swing_timeout_event = RewTerm(func=mdp_hang.g22r_event, weight=-10.0, params={"name": "ev_swto"})
+
+
+@configclass
+class Biped12HangStandW2hEnvCfg(Biped12HangStandW2gEnvCfg):
+    """W2-8 (1004): W2-7 + **스텝 모드 모방 보상 3종 끔**(joint_pose_reference·foot_position_reference·contact_phase_reference) 단일 개념 변경.
+    근거(구조 재진단, 요 실패 5회째): W2 계보는 A0m 부터 모방 배율 1.0 그대로 — 기준 동작은 직진 스텝(힙 회전 가중 1.0·σq 0.10 rad,
+    스윙발 상대 궤적 σp 3 cm 횡 0) 이라 회전 보행 자세를 벌한다. W2-7 상수 요 명령 진단: ±0.3 rad/s 에 실제 회전 추종비 −0.03~0.24."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        rw = self.rewards
+        rw.joint_pose_reference = None; rw.foot_position_reference = None; rw.contact_phase_reference = None

@@ -102,6 +102,10 @@ parser.add_argument("--gyro_delay", type=int, default=0,
 parser.add_argument("--contact_drop", type=str, default="",
                     help="1001: 정책 관측의 발 접촉 비트만 강제로 0 (물리 접촉·채점 불변) — 'L|R|B:t_rel:dur' ';' 구분, t_rel 은 인계 기준 [s]. "
                          "실물 3 Hz 진동이 '한 발 접촉 비트 상실'에서 시작되는지 보는 관측 교란 대조")
+parser.add_argument("--switch_to", type=str, default="",
+                    help="진단(1004, C4 근거): '<run>:<model_N.pt>' 두 번째(회복) 정책. 감지기(IMU 관측만: 기울기·|ω_xy|, 히스테리시스)가 켜면 회복 정책, 꺼지면 주(서기) 정책. 두 정책 모두 같은 관측·명령 계약")
+parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
+parser.add_argument("--sw_off", type=str, default="2.5,0.25,1.0,1.5", help="전환 끄기: 기울기 deg, |ω| rad/s 둘 다 미만 & 양발 접촉이 calm s 연속 & 켜진 뒤 최소 hold s")
 parser.add_argument("--out_tag", type=str, default="rec")
 parser.add_argument("--video", action="store_true", help="측면 카메라 프레임(10 Hz)·mp4 저장 + 힘 화살표 주석 (env --video_env)")
 parser.add_argument("--video_env", type=int, default=0)
@@ -477,6 +481,16 @@ if not args_cli.hold:
     runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
     runner.load(resume_path)
     policy = runner.get_inference_policy(device=dev)
+policy2 = None
+if args_cli.switch_to and policy is not None:
+    _r2, _c2 = args_cli.switch_to.split(":")
+    _p2 = get_checkpoint_path(os.path.join(REPO, "logs", "rsl_rl", agent_cfg.experiment_name), _r2, _c2)
+    runner2 = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
+    runner2.load(_p2); policy2 = runner2.get_inference_policy(device=dev)
+    _SW_ON = [float(x) for x in args_cli.sw_on.split(",")]; _SW_OFF = [float(x) for x in args_cli.sw_off.split(",")]
+    sw_mode = torch.zeros(N, dtype=torch.bool, device=dev); sw_t_on = torch.zeros(N, device=dev); sw_calm = torch.zeros(N, device=dev)
+    sw_ticks = torch.zeros(N, device=dev); sw_n = torch.zeros(N, device=dev); sw_ticks_pre_dist = torch.zeros(N, device=dev)
+    print(f"[switch] 주 정책 {resume_path} ↔ 회복 정책 {_p2} · 켜기 {_SW_ON} · 끄기 {_SW_OFF}", flush=True)
 
 obs = env.get_observations()
 _OBS_EMA = []; _OBS_EMA_ST = {}
@@ -743,6 +757,21 @@ for i in range(STEPS):
         robot.set_external_force_and_torque(fvec_b, torch.zeros_like(fvec_b), body_ids=[_base_id])
     with torch.inference_mode():
         a = torch.zeros(N, J, device=dev) if (policy is None or i < STEPS_PRE) else policy(obs)
+        if policy2 is not None and i >= STEPS_PRE:
+            _pg = robot.data.projected_gravity_b
+            _tilt = torch.rad2deg(torch.acos((-_pg[:, 2]).clamp(-1.0, 1.0))); _w = robot.data.root_ang_vel_b[:, :2].norm(dim=-1)
+            _cf = _cs.data.net_forces_w[:, [_fl, _fr], :].norm(dim=-1) > 5.0
+            _on = (_tilt > _SW_ON[0]) | (_w > _SW_ON[1])
+            _quiet = (_tilt < _SW_OFF[0]) & (_w < _SW_OFF[1]) & _cf[:, 0] & _cf[:, 1]
+            sw_calm = torch.where(sw_mode & _quiet, sw_calm + 0.02, torch.zeros_like(sw_calm))
+            sw_t_on = torch.where(sw_mode, sw_t_on + 0.02, torch.zeros_like(sw_t_on))
+            _off = sw_mode & (sw_calm >= _SW_OFF[2]) & (sw_t_on >= _SW_OFF[3])
+            _new_on = (~sw_mode) & _on
+            sw_n += _new_on.float(); sw_mode = (sw_mode | _new_on) & ~_off
+            sw_ticks += (sw_mode & alive).float()
+            if dists and t_rel < min(d.t0 for d in dists):
+                sw_ticks_pre_dist += (sw_mode & alive).float()
+            a = torch.where(sw_mode.unsqueeze(1), policy2(obs), a)
         if args_cli.freeze_after is not None and policy is not None and t_rel >= args_cli.freeze_after:
             if _FROZEN[0] is None:
                 _FROZEN[0] = a.clone(); print(f"[freeze] t_rel={t_rel:.2f}s 정책 출력 고정", flush=True)
@@ -935,6 +964,10 @@ P = L.append
 P("=" * 100)
 P(f"지면 절차 평가 — {args_cli.task} | {'홀드(비교 기준)' if policy is None else resume_path}")
 P("인자: " + " ".join(sys.argv[1:]))
+if policy2 is not None:
+    _m = pre_pass
+    P(f"[전환] 회복 정책 사용 시간 비율 {100*float(sw_ticks[_m].sum())/max(1.0, float(_m.sum())*T_after*50):.1f} % · 켜짐 횟수 env 평균 {float(sw_n[_m].mean()):.2f} · 한 번이라도 켜진 env {100*float((sw_n[_m]>0).float().mean()):.1f} %"
+      + (f" · 외란 전 켜짐(오탐) env {100*float((sw_ticks_pre_dist[_m]>0).float().mean()):.1f} %" if dists else ""))
 P(f"env {N} · 사전 검사(홀드) {T_pre:.1f}s → 인계 → {T_after:.1f}s | DR {'OFF(명목·식별 플랜트 중심)' if args_cli.nominal else 'ON'} com_fix={args_cli.com_fix} seed={env_cfg.seed} | 배포 경로: {chain_desc}")
 P(f"스폰 기울기: 피치 {args_cli.tilt_pitch_deg:+.1f}° 롤 {args_cli.tilt_roll_deg:+.1f}° | 외란: " + ("; ".join(d.label() for d in dists) if dists else "없음") + f" | 회복 창 {args_cli.recover_s:.0f}s (정지 = 양발접촉·|ω|<{QUIET_W}·|v|<{QUIET_V}·관절속도RMS<{QUIET_QD}, {QUIET_TICKS}틱 연속)")
 P("=" * 100)

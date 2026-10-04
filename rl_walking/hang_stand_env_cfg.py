@@ -2435,3 +2435,14 @@ class Biped12HangStandW2dEnvCfg(Biped12HangStandW2cEnvCfg):
         pr = self.events.push_robot
         from isaaclab.envs.mdp.events import push_by_setting_velocity
         pr.func = push_by_setting_velocity; pr.params = {"velocity_range": dict(pr.params["velocity_range"])}
+
+
+@configclass
+class Biped12HangStandW2eEnvCfg(Biped12HangStandW2dEnvCfg):
+    """W2-5 (1004): W2-4 + **hip_r_deviation(−3.0, 힙 회전 관절 편차 벌점) 스텝 모드 OFF**(서기 모드 유지) 단일 변경.
+    근거: 요 표류 3회(W2-1·2·3: 13–18°/8 s, std 0.1 요 추종에도 불변) — 교정에 필요한 힙 회전 관절 사용이 −3.0 으로 막힘(가설)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.hip_r_deviation
+        self.rewards.hip_r_deviation = RewTerm(func=mdp_hang.w1_stand_gated, weight=t.weight, params={"func": t.func, "params": dict(t.params or {})})

@@ -2562,3 +2562,13 @@ class Biped12HangStandW2jEnvCfg(Biped12HangStandW2iEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.track_ang_vel_walk = RewTerm(func=mdp_hang.track_yaw_rate_halfcycle, weight=1.5, params={"std": 0.25})
+
+
+@configclass
+class Biped12HangStandG24RdEnvCfg(Biped12HangStandG24RaEnvCfg):
+    """G24R-d (1004, C5 회복 정책 후보): G24R-a + **외란 단계 R3 → R4 고정**(무외란 25 %·앞 55 %·뒤 20 %, 앞 12–15 N·뒤 18 N, 충격 ×1.5) 단일 변경.
+    근거(C5 기본 판정): 서기는 C5 에서 G21a 가 맡고 인계 불일치 근거 없음 → 남은 미달 sf12 12.0·sf15 31.8 % 는 회복 정책 성능. G24R-a 학습 앞 힘 10–12 N 은 평가 sf15 밖."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.disturbance.params = dict(self.events.disturbance.params, stage_override=3)

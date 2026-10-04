@@ -282,6 +282,11 @@ CHECKPOINTS = {
     #   관측 계약: actions = 원시 액션 EMA(β0.27) · joint_vel = 관절속도 EMA(β0.25) — env.yaml 로 자동 결정(ckpt_obs_filter), G12 는 종전 그대로.
     "stand_crouch_g21a": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported"),
+    # stand_c5_g21a_g24ra (1004, 사용자 승인 C5 구조 진단 — **승격 아님**): 서기 G21a-11300 + 회복 G24R-a-21793, 상대 기울기 감지기 RV3.
+    #   이 키의 경로 = 서기 정책(G21a) — 이름 기반 계약(기본자세·클록·관측 필터 env.yaml)이 전부 G21a 로 해석된다. 회복 정책은 C5_PAIRS 에서만 붙는다.
+    #   근거: reports/gen_c5/REAL_GATE_C5.md (G1 RV3·G2 실물 로그 재생·G3/G4 21793·G5 힙 편향 곡선). 두 정책 관측·액션 계약 env.yaml 동일 확인.
+    "stand_c5_g21a_g24ra": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported"),
     # stand_crouch_v2 (0918 저녁, S9d, models/stand_crouch_v2) — **등록 보류**: 기본자세 = 실물 v4 명령 + 무릎 직렬 처짐 편향 DR.
     # 시뮬 명목 94.5 % 이나 목 센서 500틱(IMU 무반응) 시험에서 기본자세 출발도 슬루 최대로 발산(틱 34 비유한) → 공중·줄 고정
     # 몸통에서 관절 폭주 위험. 정책 500틱 selftest 는 등록된 stand_* 전부를 순회하므로 등록 자체가 prep 게이트를 막는다.
@@ -292,8 +297,9 @@ CHECKPOINTS = {
 #: 서기 정책의 관측 계약(기본자세·클록·관측 필터)을 두 정책이 공유한다(G24R 계열 = G21a 계보, 같은 계약).
 #: 감지기 = 상대 기울기(기준 자세 편차, τ 10 s) — 절대 기울기는 실물 서기 3–4° 로 회복 모드 고착(1004 로그 재생 70–99 %).
 #: 회복 체크포인트는 reports/gen_c5/REAL_GATE_C5.md G3 확정 뒤 등록(그 전엔 비움).
-C5_PAIRS = {}
-C5_DETECTOR_KW = dict(on_tilt_deg=4.0, on_w=0.5, off_tilt_deg=2.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, ref_tau_s=10.0)
+C5_PAIRS = {"stand_c5_g21a_g24ra": ("stand_crouch_g21a", os.path.join(
+    REPO, "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported"))}
+C5_DETECTOR_KW = dict(on_tilt_deg=3.0, on_w=0.5, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, ref_tau_s=10.0, ref_init_s=1.5)   # RV3(1004): 실물 1003 재생 오탐 3.4 %·시뮬 G1 통과
 
 
 def _make_runner(checkpoint):
@@ -339,6 +345,7 @@ CKPT_DEFAULT_POSE = {
     "stand_crouch_g12": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
     "stand_crouch_g12_ema0": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
     "stand_crouch_g21a": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
+    "stand_c5_g21a_g24ra": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
 }
 
 
@@ -350,7 +357,7 @@ def ckpt_default_pose(checkpoint):
 #: 위상 어긋난 관측 → 보행 파괴). 미등록 = 1.4 (기존 가족 전체의 계약).
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
-CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "stand_crouch_v6": 1.1, "stand_crouch_g11a": 1.1, "stand_crouch_g12": 1.1, "stand_crouch_g12_ema0": 1.1, "stand_crouch_g21a": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
+CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "stand_crouch_v6": 1.1, "stand_crouch_g11a": 1.1, "stand_crouch_g12": 1.1, "stand_crouch_g12_ema0": 1.1, "stand_crouch_g21a": 1.1, "stand_c5_g21a_g24ra": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
                    "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1, "stand_hang_v1": 1.1, "stand_hang_v2": 1.1, "stand_hang_v3": 1.1, "stand_hang_v4": 1.1, "stand_hang_v5": 1.1, "stand_hang_v5p": 1.1, "stand_hang_v6": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 
@@ -359,7 +366,7 @@ CKPT_GAIT_FREQ_DEFAULT = 1.4
 #: v2 로 학습한 정책(G16~)에 0 을 넣는 반대 방향 결함은 _jvel_ema_contract 검사가 기동을 거부한다.
 CKPT_JVEL_EMA_MODE = {"stand_crouch_g12_ema0": "ema0"}
 #: 1003: 관측 필터 계약(학습 env.yaml 로 결정)이 필요한 정책 — env.yaml 이 없으면 원시 관측으로 조용히 도는 대신 기동 거부.
-CKPT_REQUIRE_ENV_YAML = {"stand_crouch_g21a"}
+CKPT_REQUIRE_ENV_YAML = {"stand_crouch_g21a", "stand_c5_g21a_g24ra"}
 #: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).
 #: 대체는 경고 로그로 드러낸다 (0905 감사 A1: 무언 대체 'stand_v7' = 10.49kg 자산 정책 탑승 경로).
 STAND_DEFAULT = "stand_v18b"

@@ -654,6 +654,7 @@ st_land_t = torch.full((N, 2), -1.0, device=dev)               # 재접촉 시�
 st_load_sum = torch.zeros(N, 2, device=dev); st_load_n = torch.zeros(N, 2, device=dev)
 n_takeoff = torch.zeros(N, device=dev); n_surv_takeoff = torch.zeros(N, device=dev)
 n_land = torch.zeros(N, device=dev); n_load = torch.zeros(N, device=dev)
+st_rl = torch.zeros(N, 2, dtype=torch.bool, device=dev); n_relift = torch.zeros(N, device=dev); n_loadfail_stay = torch.zeros(N, device=dev)   # 1004: 하중 실패 분해 — 0.3 s 창 안 재이륙 / 붙어 있었는데 하중 미달
 n_to_lr = torch.zeros(2, device=dev); sw_sq = torch.zeros(N, device=dev)   # 1003 G22R 리포트: 좌/우 이륙 수·스텝 변위 제곱합(표준편차)
 sw_travel = torch.zeros(N, device=dev); sw_n = torch.zeros(N, device=dev)
 BW = 17.62 * 9.81
@@ -849,11 +850,13 @@ for i in range(STEPS):
         _ffwd = (_fp * _fw[:, None, :2]).sum(-1)               # (N,2) 발-골반 앞축 거리
         for c in (0, 1):
             off = a_ & ever_both & ~st_air[:, c] & ~contact[:, c]
+            _rl = off & (st_land_t[:, c] >= 0) & ((t_rel - st_land_t[:, c]) <= 0.3)
+            st_rl[_rl, c] = True                                   # 창 안 재이륙 태그(판정 정의는 종전 그대로)
             st_air[off, c] = True; st_t0[off, c] = t_rel; st_f0[off, c] = _ffwd[off, c]; st_alive0[off, c] = True
             n_takeoff += off.float()
             n_to_lr[c] += off.float().sum()
             on = a_ & st_air[:, c] & contact[:, c]
-            st_air[on, c] = False; st_land_t[on, c] = t_rel; st_load_sum[on, c] = 0.0; st_load_n[on, c] = 0.0
+            st_air[on, c] = False; st_land_t[on, c] = t_rel; st_rl[on, c] = False; st_load_sum[on, c] = 0.0; st_load_n[on, c] = 0.0
             n_land += on.float()
             sw_travel[on] += (_ffwd[on, c] - st_f0[on, c]); sw_n += on.float()
             sw_sq[on] += (_ffwd[on, c] - st_f0[on, c]) ** 2
@@ -865,7 +868,8 @@ for i in range(STEPS):
             st_load_sum[win, c] += f[win, c]; st_load_n[win, c] += 1.0
             done = a_ & (st_land_t[:, c] >= 0) & ((t_rel - st_land_t[:, c]) > 0.3) & (st_load_n[:, c] > 0)
             ok = done & ((st_load_sum[:, c] / st_load_n[:, c].clamp(min=1)) >= 0.3 * BW)
-            n_load += ok.float(); st_land_t[done, c] = -1.0
+            n_load += ok.float(); n_relift += (done & ~ok & st_rl[:, c]).float(); n_loadfail_stay += (done & ~ok & ~st_rl[:, c]).float()
+            st_land_t[done, c] = -1.0; st_rl[done, c] = False
     if i < STEPS_PRE:
         if i == STEPS_PRE - 1 and len(_bi) == 8:            # 링크 기울기(수직 기준, + = 아래쪽 끝이 앞): 실물 폰 수평계(허벅지/정강이/발등)와 같은 정의
             _fw = _dir_vec("f"); _pw = robot.data.body_pos_w
@@ -1023,6 +1027,7 @@ if float(ank_n.sum()) > 0:
       f"소프트 한계 초과 틱 {100*float(ank_over.sum()/ank_n.sum()):.1f} % · 초과량 최대 {float(ank_over_deg.max()):.1f}°   "
       f"(0922 실물 2회차: 평균 7.3 · 최대 28.3 · 명령 최대 56.7 · 한계 클램프 43회)")
 _tk = int(n_takeoff.sum()); _sv = int(n_surv_takeoff.sum()); _ld = int(n_land.sum()); _lo = int(n_load.sum())
+P(f"[하중 실패 분해] 재접촉 {_ld} = 하중 지지 {_lo} + 미달·창 안 같은 발 재이륙 {int(n_relift.sum())} + 미달·붙어 있음 {int(n_loadfail_stay.sum())} + 창 중 낙상/종료 {_ld - _lo - int(n_relift.sum()) - int(n_loadfail_stay.sum())}")
 P(f"[스텝 단계 분해] 이륙 {_tk}회 → 생존 이륙(0.3 s 이상 생존) {_sv} → 재접촉 {_ld} → 하중 지지(0.3 s 평균 ≥30 % 체중) {_lo}"
   + (f" · 재접촉한 발의 앞축 이동 평균 {100*float(sw_travel.sum()/sw_n.sum().clamp(min=1)):+.1f} cm" if float(sw_n.sum()) > 0 else "")
   + f" · 실패한 시도(이륙했으나 재접촉 못 함) {_tk - _ld}")

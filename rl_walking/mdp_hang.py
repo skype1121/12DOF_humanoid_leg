@@ -2851,3 +2851,18 @@ def heading_hold_train(env, env_ids, kp: float = 1.0, wz_max: float = 0.6, walk_
     wz = (env._hh_wz0 + kp * err).clamp(-wz_max, wz_max)
     term.vel_command_b[:, 2] = torch.where(walk, wz, term.vel_command_b[:, 2])
     env._hh_tl = term.time_left.clone()
+
+
+
+def feet_air_time_biped_walk(env, threshold: float = 0.4, sensor_cfg=None, walk_min: float = 0.03) -> torch.Tensor:
+    """1005 W2o: OSS 표준 이족 공중시간 보상(Isaac Lab feet_air_time_positive_biped 와 같은 식) — 한 발 지지 중 각 발의 현재 모드 시간 최소값, threshold 상한.
+    명령 노름 > 0.1 게이트 대신 **걷기 모드(|vx 명령| ≥ walk_min)** 게이트(우리 명령 0.05–0.20 m/s)."""
+    cs = env.scene.sensors[(sensor_cfg.name if sensor_cfg is not None else "contact_forces")]
+    ids = _feet_body_ids(env)
+    air = cs.data.current_air_time[:, ids]; con = cs.data.current_contact_time[:, ids]
+    in_contact = con > 0.0
+    in_mode = torch.where(in_contact, con, air)
+    single = torch.sum(in_contact.int(), dim=1) == 1
+    r = torch.min(torch.where(single.unsqueeze(-1), in_mode, torch.zeros_like(in_mode)), dim=1)[0].clamp(max=threshold)
+    mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
+    return r * mode

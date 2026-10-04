@@ -2731,3 +2731,34 @@ class Biped12HangStandW2wEnvCfg(Biped12HangStandW2hEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.sb0.params = dict(self.events.sb0.params, disp_hi=0.35)
+
+
+@configclass
+class Biped12HangStandW2sEnvCfg(Biped12HangStandW2hEnvCfg):
+    """WV3 (1005, 보행 트랙): W2-8 + **걷기 속도 추종 std 0.1 → 0.03**(가중 3 불변) 단일 변경 — 속도 추종 형태 첫 조정.
+    근거: 실제 속도 명령 무관 0.09 m/s, 보폭 상한은 비구속(보폭 ~4 cm < 창 10 cm·포화 5 cm, 검토 13회차). std 0.1 에서 오차 0.05 m/s 도 보상 78 % → 속도 구분 기울기 약함."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.track_lin_vel_walk
+        p = dict(t.params["params"]); p["std"] = 0.03
+        t.params = {"func": t.params["func"], "params": p}
+
+
+_SB0_WALK_TERMS = ("missed_step_event", "premature_swing", "swing_progress", "swing_clearance", "swing_unload",
+                   "touchdown_event", "settle_event", "load_accept_event", "load_transfer")
+
+
+@configclass
+class Biped12HangStandW2oEnvCfg(Biped12HangStandW2hEnvCfg):
+    """W2o (1005, 보행 트랙): W2-8 + **걷기 모드 보상 세트를 sb0 사건형 → OSS 표준형으로 교체** — sb0 사건·스윙 항(착지·하중·정착·놓친 스텝·조기 스윙·스윙 3종) 제거,
+    이족 공중시간 보상(feet_air_time_positive_biped 식, 문턱 0.4 s, 가중 1.0, 걷기 모드 게이트) 추가. 속도 추종(std 0.1, 가중 3)·서기 모드 보상·관측·클록 불변.
+    근거(라운드 25): 반주기당 사건 보상(+5/+10/+15/−20)이 추종 이득(0.018/틱)보다 커서 고정 보폭 국소해 — WV1–3·W2w 400 반복 이어 학습 전부 실패. OSS(humanoid-gym·unitree)는 고정 주기 클록으로도 사건 보상 없이 속도 추종."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        rw = self.rewards
+        for n in _SB0_WALK_TERMS:
+            if hasattr(rw, n):
+                setattr(rw, n, None)
+        rw.feet_air_time_walk = RewTerm(func=mdp_hang.feet_air_time_biped_walk, weight=1.0, params={"threshold": 0.4})

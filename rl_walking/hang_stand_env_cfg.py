@@ -2495,3 +2495,30 @@ class Biped12HangStandW2gEnvCfg(Biped12HangStandW2fEnvCfg):
         t = self.rewards.track_ang_vel_walk
         p = dict(t.params["params"]); p["std"] = 0.5
         t.params = {"func": t.params["func"], "params": p}
+
+
+@configclass
+class Biped12HangStandG24RcEnvCfg(Biped12HangStandG24RaEnvCfg):
+    """G24R-c (1004): G24R-a + **G22R 회복 구조** 단일 개념 변경 — 회복 게이트 recovery_gate_g22r(무장 래치·회복 방향·valid 이륙/착지/하중·SETTLE),
+    구 회복 항(recovery_quality·recovery_event, 서기 게이트) 제거, action_rate_window RECOVERY 만(−0.06), 추가: vel_quality +1.5·ang_quality +1.0·
+    step_direction +0.5·touchdown +5·load_accept +10·settle +25·recovery_time −0.10·unarmed_takeoff −10·swing_timeout −10.
+    근거: G24R-a 의 남은 실패 = 앞 15 N 하중/착지 72 %·정착 1.36 s·낙상 32 % — 이 구조가 겨냥하는 항목. G22R 당시엔 스텝 능력이 없어 무효였음."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev, rw = self.events, self.rewards
+        ev.recovery_gate.func = mdp_hang.recovery_gate_g22r; ev.recovery_gate.params = {}
+        rw.recovery_quality = None
+        rw.recovery_event = None
+        arw = rw.action_rate_window
+        inner = arw.params["params"]["func"] if arw.func is mdp_hang.w1_stand_gated else arw.params["func"]
+        rw.action_rate_window = RewTerm(func=mdp_hang.g2_phase_gated, weight=-0.06, params={"func": inner, "params": {}, "phases": [1]})
+        rw.recovery_vel_quality = RewTerm(func=mdp_hang.g22r_vel_quality, weight=1.5)
+        rw.recovery_ang_quality = RewTerm(func=mdp_hang.g22r_ang_quality, weight=1.0)
+        rw.recovery_step_direction = RewTerm(func=mdp_hang.g22r_step_direction, weight=0.5)
+        rw.valid_touchdown_event = RewTerm(func=mdp_hang.g22r_event, weight=5.0, params={"name": "ev_td"})
+        rw.load_accept_rec_event = RewTerm(func=mdp_hang.g22r_event, weight=10.0, params={"name": "ev_load"})
+        rw.settle_success_event = RewTerm(func=mdp_hang.g22r_event, weight=25.0, params={"name": "ev_settle"})
+        rw.recovery_time = RewTerm(func=mdp_hang.g2_recovery_time, weight=-0.10)
+        rw.unarmed_takeoff_event = RewTerm(func=mdp_hang.g22r_event, weight=-10.0, params={"name": "ev_unarmed"})
+        rw.swing_timeout_event = RewTerm(func=mdp_hang.g22r_event, weight=-10.0, params={"name": "ev_swto"})

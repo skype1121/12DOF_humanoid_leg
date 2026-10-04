@@ -25,7 +25,7 @@ p.add_argument("--seed", type=int, default=1)
 p.add_argument("--t_stand", type=float, default=3.0)
 p.add_argument("--t_walk", type=float, default=8.0)
 p.add_argument("--t_after", type=float, default=4.0)
-p.add_argument("--torsion_r", type=float, default=None, help="1005 진단: 로봇 충돌 형상 비틀림 마찰 패치 반경[m](PhysX torsional_patch_radius) — ⚠1005 WTOR: 이 자산·GPU 경로에서 결과 비트 동일 = 효과 없음 확인, 쓰지 말 것"); p.add_argument("--hipf_deg", type=float, default=None, help="1005: 공유 힙 앞뒤 영점 편향 고정[deg](default_pose_bias.shared_hip_f_rad lo=hi) — 힙 편향 강건성"); p.add_argument("--stand_policy", default="", help="1005 전환 평가: 'run:model_N.pt' 서기 정책(G21a) — 걷기 명령 전·정지 뒤 stand_after_s 이후에 사용(같은 관측 계약)"); p.add_argument("--stand_after_s", type=float, default=0.5); p.add_argument("--out_tag", default="walk"); p.add_argument("--friction_scale", type=float, default=1.0, help="진단(T4): 발 마찰 범위 배율(학습 설정 불변)"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)"); p.add_argument("--wz_groups", default="", help="진단: 걷기 중 상수 요 명령을 env 묶음별로(예 -0.3,0,0.3) — 회전 명령 추종 확인")
+p.add_argument("--torsion_r", type=float, default=None, help="1005 진단: 로봇 충돌 형상 비틀림 마찰 패치 반경[m](PhysX torsional_patch_radius) — ⚠1005 WTOR: 이 자산·GPU 경로에서 결과 비트 동일 = 효과 없음 확인, 쓰지 말 것"); p.add_argument("--hipf_deg", type=float, default=None, help="1005: 공유 힙 앞뒤 영점 편향 고정[deg](default_pose_bias.shared_hip_f_rad lo=hi) — 힙 편향 강건성"); p.add_argument("--keep_dist", action="store_true", help="1005: 학습 외란(disturbance·push_robot) 유지 — 걷기 중 외란 강건성"); p.add_argument("--stand_policy", default="", help="1005 전환 평가: 'run:model_N.pt' 서기 정책(G21a) — 걷기 명령 전·정지 뒤 stand_after_s 이후에 사용(같은 관측 계약)"); p.add_argument("--stand_after_s", type=float, default=0.5); p.add_argument("--out_tag", default="walk"); p.add_argument("--friction_scale", type=float, default=1.0, help="진단(T4): 발 마찰 범위 배율(학습 설정 불변)"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)"); p.add_argument("--wz_groups", default="", help="진단: 걷기 중 상수 요 명령을 env 묶음별로(예 -0.3,0,0.3) — 회전 명령 추종 확인")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
@@ -46,7 +46,8 @@ env_cfg.scene.num_envs = a.num_envs; env_cfg.seed = a.seed
 env_cfg.curriculum = None
 c = env_cfg.commands.base_velocity
 c.resampling_time_range = (1e6, 1e6); c.rel_standing_envs = 1.0
-env_cfg.events.disturbance = None
+if not a.keep_dist:
+    env_cfg.events.disturbance = None
 if a.friction_scale != 1.0 and getattr(env_cfg.events, "physics_material", None) is not None:
     pm = env_cfg.events.physics_material.params
     pm["static_friction_range"] = tuple(x * a.friction_scale for x in pm["static_friction_range"])
@@ -57,7 +58,7 @@ if a.torsion_r is not None:
     import isaaclab.sim as _su
     env_cfg.scene.robot.spawn.collision_props = _su.CollisionPropertiesCfg(torsional_patch_radius=a.torsion_r, min_torsional_patch_radius=a.torsion_r)
     print(f"[torsion] 비틀림 패치 반경 {a.torsion_r} m", flush=True)
-if getattr(env_cfg.events, "push_robot", None) is not None:
+if getattr(env_cfg.events, "push_robot", None) is not None and not a.keep_dist:
     env_cfg.events.push_robot = None
 act = env_cfg.actions.joint_pos
 act.lpf_beta_range = (0.27, 0.27); act.min_delay_steps = act.max_delay_steps = a.delay
@@ -186,7 +187,7 @@ b_, a_ = butter(2, [2.0 / (0.5 / dt), 4.5 / (0.5 / dt)], btype="band")
 band = filtfilt(b_, a_, WY, axis=0)
 t_axis = 1.0 + np.arange(WY.shape[0]) * dt
 PA = torch.stack(pitch_after).numpy() if pitch_after else None
-L = [f"W1 보행 평가 · {a.task} · {ck}" + (f" · HeadingHold kp {a.heading_hold}" if a.heading_hold > 0 else "") + (f" · 마찰 ×{a.friction_scale}" if a.friction_scale != 1.0 else "") + (f" · 비틀림 r {a.torsion_r} m" if a.torsion_r is not None else "") + (f" · 힙 편향 {a.hipf_deg}°" if a.hipf_deg is not None else "") + (f" · 서기 정책 {a.stand_policy} (정지 뒤 {a.stand_after_s}s 인계)" if a.stand_policy else ""), f"지연 {a.delay}틱 · LPF β 0.27 · seed {a.seed} · env {N} · 서기 {a.t_stand}s → 걷기 {a.t_walk}s → 정지 {a.t_after}s · 외란 없음 · 학습 DR 유지",
+L = [f"W1 보행 평가 · {a.task} · {ck}" + (f" · HeadingHold kp {a.heading_hold}" if a.heading_hold > 0 else "") + (f" · 마찰 ×{a.friction_scale}" if a.friction_scale != 1.0 else "") + (f" · 비틀림 r {a.torsion_r} m" if a.torsion_r is not None else "") + (f" · 힙 편향 {a.hipf_deg}°" if a.hipf_deg is not None else "") + (f" · 서기 정책 {a.stand_policy} (정지 뒤 {a.stand_after_s}s 인계)" if a.stand_policy else ""), f"지연 {a.delay}틱 · LPF β 0.27 · seed {a.seed} · env {N} · 서기 {a.t_stand}s → 걷기 {a.t_walk}s → 정지 {a.t_after}s" + (" · 학습 외란 유지" if a.keep_dist else " · 외란 없음") + " · 학습 DR 유지",
      "| vx 명령 | n | 낙상 % | 추종 오차 m/s | 요 표류 ° | 옆 표류 cm | 착지 수/env | 왼 착지 % | 보폭 cm | 공중 s | 양발지지 s | 미끄럼 m/s | 교대 % | 정지 정착 s (중앙) | 정지 창 3Hz RMS | 정지 뒤 피치 p2p ° |",
      "|" + "---|" * 16]
 gn = grp.cpu().numpy(); al = alive.cpu().numpy()

@@ -1913,7 +1913,10 @@ def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), g
         hs["dst_hold"][ids] = torch.where(sel, dur, hs["dst_hold"][ids])
         if not hasattr(env, "_imp_cur_ep"):
             env._imp_cur_ep = torch.zeros(env.num_envs, device=dev)
+            env._imp_cur_t0 = torch.full((env.num_envs,), float("nan"), device=dev)
         env._imp_cur_ep[ids] = cur.any(1).float()
+        t0s = torch.where(cur, hs["dst_t0"][ids], torch.full_like(hs["dst_t0"][ids], float("inf"))).min(1).values   # 첫 현재-단계 충격 시각 [s, 에피소드 시간]
+        env._imp_cur_t0[ids] = torch.where(torch.isfinite(t0s), t0s, torch.full_like(t0s, float("nan")))
     hs["dst_kind"][ids] = kind; hs["dst_F"][ids] = torch.where(kind > 0, F, torch.zeros_like(F)); hs["dst_dir"][ids] = d
 
 
@@ -2755,7 +2758,7 @@ def track_yaw_rate_halfcycle(env, std: float = 0.5, window_ticks: int = 23, walk
     return torch.exp(-err * err / (std * std)) * mode
 
 
-def imp_level_curriculum(env, env_ids, min_eps: int = 400, up: float = 0.85, down: float = 0.60, down_blocks: int = 3, steps_per_iter: int = 24):
+def imp_level_curriculum(env, env_ids, min_eps: int = 400, up: float = 0.85, down: float = 0.60, down_blocks: int = 3, steps_per_iter: int = 24, win_s: float = 2.5):
     """G25 충격 단계 커리큘럼: 현재 단계 충격을 받은 에피소드(스폰 2 s 이후 종료분)의 성공(낙상 아님) 비율로 블록 판정.
     ≥ up → 다음 단계, < down 이 down_blocks 연속 → 한 단계 강등. 블록 독립 판정(G22R 과 같은 규칙). disturbance_reset_g22r 보다 먼저 호출되어도
     _imp_cur_ep 는 '끝난 에피소드' 의 값이다(리셋 이벤트가 덮기 전에 커리큘럼이 실행됨 — Isaac Lab 순서: curriculum → reset events)."""
@@ -2764,11 +2767,16 @@ def imp_level_curriculum(env, env_ids, min_eps: int = 400, up: float = 0.85, dow
         g = {"n": 0.0, "ok": 0.0, "bad": 0, "last": float("nan")}; env._imp_cur = g; env._imp_level = 0
     ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
     if len(ids) and hasattr(env, "_imp_cur_ep"):
+        # 1004 밤 수정(토너먼트 1 진단): 에피소드 전체 생존이 아니라 '첫 현재-단계 충격 뒤 win_s 안 낙상 여부' 로 판정
+        # (에피소드 판정은 램프·학습 DR 낙상이 섞여 단계 0 성공 ~40 % 로 정체 — 평가의 같은 충격량 낙상 0–20 % 와 불일치).
         tm = env.termination_manager
-        fell = (tm.terminated[ids] & ~tm.time_outs[ids]).float()
-        started = env.episode_length_buf[ids] > int(2.0 / env.step_dt)
-        m = (env._imp_cur_ep[ids] > 0.5) & started
-        g["n"] += float(m.sum()); g["ok"] += float((m.float() * (1.0 - fell)).sum())
+        fell = (tm.terminated[ids] & ~tm.time_outs[ids])
+        t_end = env.episode_length_buf[ids].to(torch.float32) * env.step_dt
+        t0 = env._imp_cur_t0[ids]
+        seen = (env._imp_cur_ep[ids] > 0.5) & torch.isfinite(t0) & (t_end >= t0)          # 충격이 실제로 발생한 에피소드
+        fail = seen & fell & (t_end <= t0 + win_s)
+        judged = seen & ((t_end >= t0 + win_s) | fail)                                     # 판정 가능(창 끝까지 봤거나 창 안 낙상)
+        g["n"] += float(judged.sum()); g["ok"] += float((judged & ~fail).sum())
     if g["n"] >= min_eps:
         r = g["ok"] / g["n"]; g["last"] = r; it = int(env.common_step_counter) // steps_per_iter
         lv = env._imp_level

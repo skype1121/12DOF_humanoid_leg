@@ -413,9 +413,15 @@ if args_cli.contact_drop:
         raise SystemExit("--contact_drop: 정책 관측에 feet_contact 항 없음")
     _fc_orig = _fc.func
 
-    def _fc_drop(env, sensor_cfg=None, threshold: float = 5.0, delay_steps: int = 0, threshold_range=None):
-        out = _fc_orig(env, sensor_cfg=sensor_cfg, threshold=threshold, delay_steps=delay_steps,
-                       threshold_range=threshold_range).clone()
+    import inspect as _insp
+    _fc_names = set(_insp.signature(_fc_orig).parameters) - {"env"}
+
+    def _fc_drop(env, sensor_cfg=None, threshold: float = 5.0, delay_steps: int = 0, threshold_range=None,
+                 hold_ticks=None, extra_delay=None, tilt_off_deg=None):
+        # 1004 밤: --contact_real(feet_contact_real: hold_ticks·extra_delay·tilt_off_deg) 와 기본 feet_contact 모두 지원 — 원 함수가 받는 인자만 전달
+        _kw = dict(sensor_cfg=sensor_cfg, threshold=threshold, delay_steps=delay_steps, threshold_range=threshold_range,
+                   hold_ticks=hold_ticks, extra_delay=extra_delay, tilt_off_deg=tilt_off_deg)
+        out = _fc_orig(env, **{k: v for k, v in _kw.items() if k in _fc_names and v is not None}).clone()
         t_rel = env.episode_length_buf.to(out.dtype) * float(env.step_dt) - float(args_cli.precheck_s)
         for cols, t0_, d_ in _CD:
             m = (t_rel >= t0_) & (t_rel < t0_ + d_)
@@ -784,6 +790,11 @@ for i in range(STEPS):
             _pg = robot.data.projected_gravity_b
             _tilt = torch.rad2deg(torch.acos((-_pg[:, 2]).clamp(-1.0, 1.0))); _w = robot.data.root_ang_vel_b[:, :2].norm(dim=-1)
             _cf = _cs.data.net_forces_w[:, [_fl, _fr], :].norm(dim=-1) > 5.0
+            if args_cli.contact_drop:      # 1004 밤: 패드 고장은 감지기 접촉에도 같게(실물 감지기 = 패드 비트)
+                for _cols, _t0, _d in _CD:
+                    if _t0 <= t_rel < _t0 + _d:
+                        for _c in _cols:
+                            _cf[:, _c] = False
             if float(args_cli.sw_ref_tau) > 0.0:      # 1004 상대 기울기 감지기(실물 서기 기울기 3–4° 대응)
                 _pp_, _rr_ = _rp(); _rp2 = torch.stack([_rr_, _pp_], -1)
                 if i == STEPS_PRE or "sw_ref" not in dir():

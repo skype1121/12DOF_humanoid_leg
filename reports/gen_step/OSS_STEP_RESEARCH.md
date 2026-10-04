@@ -903,3 +903,87 @@ A0k 학습 중에 §2 의 α 구간별 로그(반환·κ·V 오차)를 남기면
 - 위험: 추종 항과 스텝 항의 상충(§2 위험). 0.15 이상은 공중 시간 연장 실험을 별도로.
 
 출처: [walk-these-ways](https://github.com/Improbable-AI/walk-these-ways) `corl_rewards.py:161-200` · [HugWBC](https://github.com/InternRobotics/HugWBC) `h1.py:776-778` · [isaac_berkeley_humanoid](https://github.com/HybridRobotics/isaac_berkeley_humanoid) `curriculums.py:133-170` · van Marum 2024 arXiv 2404.19173 · Atalante arXiv 2203.01148 · Ferigo 2021 arXiv 2104.14534 · [Faraji et al. 2019 time-projection 스텝 제어(IJRR)](https://journals.sagepub.com/doi/10.1177/0278364919835606)(고전 제어, 참고만)
+
+## 라운드 10 (2026-10-04 09:30) — W2 요 표류, '정책 교정 실패 vs 지지발 슬립' 판별, 사건 기준 클록 오프셋의 일관성 요건
+
+전제(측정 사실, 코디네이터 전달)
+- STEP-A0m primitive PASS(α=0 착지 94 %), 서기 보존 FAIL(외란 OFF 망각).
+- W2-1/2/3(0.05–0.15 m/s): 추종 오차 0.03–0.06, 교대 94 %. 그러나 **요 표류 10–18°/8 s**. 요 추종 보상(std 0.5·0.1)과 평가 HeadingHold(kp 1, ±0.6 rad/s) 모두 효과 없음.
+- diag: 표류의 70 % 가 한 발 지지 중, 지지발 요 회전 합 14°(7 s), 한 발 지지 중 7.9°, 방향 무작위. W2-5(스텝 모드 hip_r_deviation OFF) 대기.
+- 회복: G23R-a(외란만) 앞 스텝 0 %. G23R-b(밀림 시 스텝 모드 힌트·감쇠)는 외란 낙상 0.50→0.81 — 클록 위상 정렬 없는 스텝이 해로움.
+
+근거 설정: W2d `logs/rsl_rl/biped12_stepb0/2026-10-04_09-06-04_w2d_seed1_from_w2c17796/params/env.yaml`(hip_r_deviation = joint_deviation_l1 `.*_hip_r_joint` −3.0, joint_deviation_hip = `.*_hip_a_joint`·`.*_hip_r_joint` −0.5, foot_yaw_slip_step, heading_command True·stiffness 0.5, 마찰 DR 정지 0.5–1.1·동 0.4–0.9·곱셈 결합·지면 1.0).
+
+### 0. 계산 (우리 자산·설정, 가정 명시)
+
+**(a) 힙 요 관절 벌점의 크기** — 우리 힙 요(hip_r)에는 L1 벌점 −3.0 과 −0.5 가 겹쳐 실효 **−3.5/rad** 이다.
+- 힙 요를 10° 쓰면 3.5 × 0.175 × 0.02 = **0.012/틱**, 14° 면 0.017/틱. 서기·스텝 모드 양(+) 합(≈ 0.08/틱, 라운드 7)의 15–20 % 다.
+- 공개 구현은 훨씬 작다.
+  - Isaac Lab G1: hip_yaw·hip_roll L1 −0.1 → 10° 에 0.00035/틱(우리의 1/35). `isaaclab_tasks/.../velocity/config/g1/rough_env_cfg.py` joint_deviation_hip(설치본 `:57-61`).
+  - Berkeley Humanoid: HR·HAA L1 −0.1(`exts/.../velocity/velocity_env_cfg.py:296-299`).
+  - unitree G1: 힙 롤·요 위치 **제곱합** −1.0(`legged_gym/envs/g1/g1_env.py:122-123`, `g1_config.py:86`) → 10° 에 0.03 × 0.02 = 0.0006/틱.
+  - humanoid-gym: 요·롤 노름이 **0.1 rad(5.7°) 데드밴드** 안이면 벌점 없음, 넘으면 exp(−100·초과)로 양(+) 보상 급감(가중 +0.5, `humanoid_env.py:362-372`, `humanoid_config.py:207`).
+- → 우리 힙 요 벌점은 공개 구현보다 **20–35 배** 크다. 스윙 중 발을 다시 겨누는 데 필요한 5–10° 힙 요 사용이 반주기마다 0.1–0.27 손해다. 같은 반주기의 스텝 이벤트 이득(≈ 0.6)의 1/6–1/2 에 해당한다.
+
+**(b) 지지발 요 마찰 한계** — 발 접촉은 RA30P 패드 4개다(`rl_walking/assets/biped12_final3.urdf` 의 `*_RA30P` 조인트 원점: 좌우 ±0.025 m, 앞 +0.0706 m / 뒤 −0.0509 m; `merge_fixed_joints: true` 로 발목 링크에 병합, `usd_final3/config.yaml`).
+- 패드 중심에서 각 패드까지 반경 ≈ **0.066 m**. 한 발 정하중 F = 17.62 × 9.81 ≈ 173 N.
+- 요 마찰 토크 한계 ≈ μ·F·r: 네 패드 균등 하중이면 μ 0.4/0.65/0.9 → **4.5/7.4/10.2 N·m**. 앞 또는 뒤 두 패드만 하중(밀어내기·착지 직후)이면 반경이 좌우 0.025 m 뿐이라 **1.7/2.8/3.9 N·m**.
+- **비틀림(torsional) 마찰은 없다고 보는 것이 맞다.** USD 에 `torsionalPatchRadius` 속성 문자열이 없다(crate 파일 토큰 grep 0건). env.yaml 로봇 `collision_props: null`. Isaac Lab `sim/schemas/schemas_cfg.py:150-158` "If the radius is zero, no torsional friction is applied".
+  비교: LearningHumanoidWalking 의 MuJoCo 바닥은 `friction=".8 .1 .1"`(둘째 값 = 비틀림 계수, 단 condim 3 이라 비활성; `envs/h1/gen_xml.py:114`).
+- 스윙 다리를 휘두를 때 지지발에 걸리는 요 반작용 토크는 측정하지 않았다(미측정). 그래서 이 한계가 실제로 넘는지는 §2 측정으로 판별해야 한다.
+
+### 1. ① 이족·휴머노이드 RL 보행에서 요 표류를 잡는 공개 수단
+
+| 수단 | 구현 (commit) · 파일:줄 | 수치 | 우리와 비교 |
+|---|---|---|---|
+| 요 각속도 추종 + 헤딩 명령 | Isaac Lab velocity env `velocity_env_cfg.py:97-100`(rel_heading_envs 1.0, heading_control_stiffness 0.5), G1 track_ang_vel_z_world_exp 2.0·std 0.5; legged_gym·Berkeley 동형 | 헤딩 오차 → 요 각속도 명령(P 0.5) | 우리도 같은 구조(W2d env.yaml heading_command True·0.5). 보상 std 를 바꿔도 불변 → **보상 신호가 아니라 수단(관절·마찰)이 병목**이라는 신호 |
+| 힙 요 편차 벌점 | Isaac Lab G1 −0.1 L1, Berkeley −0.1 L1, unitree −1.0 제곱, humanoid-gym 데드밴드 0.1 rad | §0a | 우리 −3.5 L1 은 20–35배 |
+| 지지발 미끄럼 벌점 | humanoid-gym foot_slip = Σ √‖v_foot,xy‖ × 접촉, −0.05(`humanoid_env.py:308-318`, `humanoid_config.py:195`); Isaac Lab/Berkeley feet_slide −0.25(Berkeley `velocity_env_cfg.py:283-285`) | 병진 미끄럼만 | 우리 foot_yaw_slip_step(접촉 발 요 각속도) −0.5 는 **회전 슬립을 직접 벌하는 드문 형태**. 정책이 막을 수단이 없으면 벌점만 쌓임 |
+| 착지 시 발 방향 겨누기 | LearningHumanoidWalking 발판 목표(요 포함)·몸통 요 목표(orient 0.05, `tasks/stepping_task.py:81,117,128-136`) | 발판 계획이 요를 줌 | 우리는 발 요 목표 없음 |
+| 요 각속도 보상 형태 | LHW `tasks/rewards.py:27-37` exp(−10·|e|³), walking_task 0.15 | — | 형태 차이는 부차적(§1 첫 행 해석) |
+| 마찰·접촉 모델 | Isaac Lab 비틀림 패치 반경(`schemas_cfg.py:150-158`), MuJoCo condim 4/6 비틀림 계수 | 기본 0 | 우리 0(§0b) |
+
+**정리**: 공개 구현들은 요를 (i) 헤딩 P 명령 + 요 각속도 추종과 (ii) **약한** 힙 요 벌점(또는 데드밴드)으로 잡는다. 정책은 스윙 중 힙 요로 다음 발을 다시 겨눌 수 있다.
+우리 설정은 (ii) 가 20–35배 강해서 이 경로가 사실상 막혀 있다. 이것은 W2-5 가설과 같은 방향이다(공개 수치 근거).
+
+### 2. ② '정책 교정 실패' vs '지지발 슬립(물리)' 판별
+
+diag 수치(지지발 요 회전 합 14°/7 s, 한 발 지지 중 7.9°)는 **지지발이 접촉한 채 월드에서 회전했다**는 뜻이므로 **슬립은 이미 일어나고 있다**(정의상 물리). 질문은 두 가지로 나뉜다. (A) 슬립을 왜 막지 못하나(마찰 한계 vs 정책이 큰 요 토크를 만듦), (B) 슬립을 왜 다음 걸음에서 되돌리지 못하나(힙 요 재조준 막힘).
+
+| 시험 (모두 평가만, 학습 없음) | 방법 | 판정 |
+|---|---|---|
+| T1 분해 | 한 발 지지 구간마다 골반 요 변화 = 지지발 월드 요 변화(슬립) + 지지 다리 힙 요 관절 변화(+ 다른 관절의 요 기여, 순기구학) | 표류 ≈ 지지발 슬립이면 (A) 가 주 경로. 힙 요 변화가 슬립과 반대 부호로 상쇄하지 않으면 정책이 보정하지 않는 것 |
+| T2 확실 접촉 한정 | 지지발 요 회전을 Fz > 0.5 mg(확실 지지)와 Fz < 0.3 mg(이륙·착지 가장자리)로 나눔 | 회전이 가벼운 접촉 틱에 몰리면 '두 패드만 닿는 가장자리 슬립'(§0b 한계 1.7–3.9 N·m)이 원인 |
+| T3 토크비 | 지지 다리 힙 요 관절 토크 |τ_hip_r| ÷ (μ_동·Fz·r_eff), r_eff 0.066(4패드)/0.025(2패드) | 슬립 순간 비율 ≈ 1 이면 마찰 한계(물리). ≪ 1 인데 회전하면 접촉 모델·측정 의심 |
+| T4 반사실 물리 | 같은 정책·seed 로 (i) 동마찰 ×1.5, (ii) 비틀림 패치 반경 0.02–0.04 m(`CollisionPropertiesCfg`)만 바꿔 평가 | 표류가 절반 이하로 줄면 **물리(슬립) 지배**. 불변이면 정책 쪽 |
+| T5 정책 응답 | HeadingHold ±0.6 rad/s 명령에 대해 착지 순간 스윙발 요(골반 대비)가 명령과 상관이 있는지 | 상관 ≈ 0 → 정책이 재조준 수단을 안 씀(힙 요 벌점 의심, W2-5 가 직접 시험) |
+
+- 해석 주의: T4 의 물리 변경은 **판별용**이다. 실물 패드 고무의 비틀림 저항은 측정값이 없다(가정 범위로만 표시, CLAUDE.md "실측 없는 파라미터는 가정 범위").
+  표류가 물리 지배로 판정돼도 실물에서 같은지는 현장 확인 필요(영상 + 요 IMU 로 정지 보행 표류 측정).
+- W2-5(힙 요 벌점 OFF)는 T5 가설의 단일 변수 시험으로 적절하다. 결과 해석은 T1·T4 와 함께 한다. W2-5 로 표류가 줄면서 T4 도 크면 '슬립은 그대로, 재조준으로 상쇄'가 된다. 이 경우 실물에서는 슬립 크기가 달라 보정량이 맞지 않을 수 있다.
+
+### 3. ③ 사건 시점 기준 위상을 '클록 오프셋'으로 주는 설계 — 시뮬–실물 일관성 요건 (승인안 C4 보강)
+
+공개 사례 없음(라운드 9 §1). G23R-b 결과(위상 정렬 없는 스텝 힌트 → 외란 낙상 0.50→0.81)는 **힌트와 위상 정렬이 함께여야 한다**는 근거다.
+
+요건 목록(구현 전 테스트로 고정할 항목)
+1. **같은 함수, 같은 입력.** 감지기·오프셋 계산은 env 와 러너가 같은 모듈을 import 한다(현재 클록 공식 공유 방식: `rl_walking/deploy/policy_runner_stage4.py:138-145` ↔ `mdp_stage4.py:25-33`).
+   입력은 actor 가 보는 **지연·잡음 포함 관측**(base_ang_vel_lagged·projected_gravity_lagged·feet_contact_real_v2)에서만 얻는다. 특권 신호(`dst_F_now`, 실제 CoM 속도)는 금지.
+2. **위상 연산 정의.** φ = 2π·f·(t − t0) + φ_off. 사건 틱에 φ_off 를 '선택 발의 전환 창 시작(v = 0)'이 되도록 갱신하고, 같은 틱 관측부터 적용한다.
+   float32 연산 순서·반올림(k = ⌊v·23⌋)·f(체크포인트별 `CKPT_GAIT_FREQ`, `jetson/scripts/rl_bridge_node.py:327`)를 env 와 같게 한다. 기존 러너 셀프테스트(`policy_runner_stage4.py:571-572` sin/cos 일치)를 오프셋 케이스로 확장한다.
+3. **이력 버퍼.** 위상 점프가 정책 관측 5틱 이력에 env 와 같은 방식으로 들어가야 한다(러너 이력 링버퍼에 점프 값을 그대로 push, 보간·평활 금지). 학습에서도 같은 점프를 겪게 한다.
+4. **명령 힌트 동기.** vx 힌트 ON/OFF 는 오프셋과 **같은 틱**에 시작해 정확히 N 틱(한 반주기 = 23 틱) 뒤 끈다. 재트리거 금지 시간(≥ 1 반주기)과 최대 빈도를 둔다.
+5. **env 내부 보상·보조의 위상 원천 일원화.** sb0/sbi/보조 훅/`gait_clock` 이 모두 `episode_length_buf` 기반이다(`mdp_stage4.py:32`, `mdp_hang.py:2272,2355,2416` 계열). 같은 오프셋 버퍼를 더하는 한 곳으로 바꾼다(라운드 4 §2 #12).
+   `episode_length_buf` 자체를 바꾸면 fresh 판정 20여 곳·외란 스케줄·통계 제외가 깨진다.
+6. **상태 기계와 안전.** 감지기는 콘솔 상태가 '정책 실행·자립' 일 때만 켠다(매달림·인계·회수 중 OFF). 오탐 시 동작 = 한 반주기 스텝 시도이므로, 무외란 서기에서 트리거율 0 을 시뮬·실물 로그 둘 다로 확인한다.
+7. **기록과 재생 검증.** 러너 블랙박스에 감지기 입력·트리거 틱·φ_off·힌트 상태를 기록한다. `rl_walking/deploy/replay_bridge_log.py` 류 재생에서 env 함수가 같은 로그로 같은 트리거를 내는지 확인한다(계약 검증 — 폐루프 성능 증명 아님, CLAUDE.md 6번).
+8. **DR 정합.** 감지기 문턱은 고정값(배포값)으로 두거나, DR 을 하더라도 배포값을 범위 안에 둔다. IMU 지연 DR(0–3틱)·접촉 10 Hz hold 아래에서 트리거 지연 분포를 측정하고, 위상 리셋 타깃(v = 0)이 지연만큼 늦게 적용되는 것을 학습이 포함하게 한다.
+9. **실물 시험 전 현장 확인 항목**(미검증으로 남김): 실물 밀림 시 IMU 기반 ξ̂ 의 상승 시간, 오탐률(걷는 사람 진동·케이블 접촉).
+
+### 4. 이번 라운드의 우선순위 제안
+
+1. **W2-5 실행 전 또는 병행으로 T1·T4(평가만)** — 표류가 물리 슬립 지배인지 먼저 갈라야 W2-5 결과를 해석할 수 있다. T4 는 물리 파라미터만 바꾼 대조군이다(CLAUDE.md 1번).
+2. **W2-5 의 크기 대안**: OFF 대신 humanoid-gym 식 데드밴드(0.1 rad 안 무벌) 또는 Isaac Lab 수준(−0.1)을 쓰면 서기 모드 힙 정렬 효과(−3.0 을 넣었던 이유)를 덜 잃는다. 스텝 모드 OFF 가 1차로 맞고, 데드밴드형은 서기 퇴보가 보일 때의 차선.
+3. 회복 쪽은 §3 요건으로 C4 를 보강해 승인 요청한다. 그 전에는 G23R-b 식 '정렬 없는 힌트'를 반복하지 않는다.
+
+출처: Isaac Lab 설치본(37ddf62687) `schemas_cfg.py`·G1 rough_env_cfg·velocity_env_cfg · [unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) · [humanoid-gym](https://github.com/roboterax/humanoid-gym) · [isaac_berkeley_humanoid](https://github.com/HybridRobotics/isaac_berkeley_humanoid) · [LearningHumanoidWalking](https://github.com/rohanpsingh/LearningHumanoidWalking) · 우리 URDF/USD·env.yaml

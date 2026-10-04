@@ -104,6 +104,7 @@ parser.add_argument("--contact_drop", type=str, default="",
                          "실물 3 Hz 진동이 '한 발 접촉 비트 상실'에서 시작되는지 보는 관측 교란 대조")
 parser.add_argument("--switch_to", type=str, default="",
                     help="진단(1004, C4 근거): '<run>:<model_N.pt>' 두 번째(회복) 정책. 감지기(IMU 관측만: 기울기·|ω_xy|, 히스테리시스)가 켜면 회복 정책, 꺼지면 주(서기) 정책. 두 정책 모두 같은 관측·명령 계약")
+parser.add_argument("--min_height", type=float, default=None, help="진단(1004): base_too_low 종료 높이 덮어쓰기 [m] (거짓 낙상 대조, 기본 cfg 0.45)")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
 parser.add_argument("--sw_off", type=str, default="2.5,0.25,1.0,1.5", help="전환 끄기: 기울기 deg, |ω| rad/s 둘 다 미만 & 양발 접촉이 calm s 연속 & 켜진 뒤 최소 hold s")
@@ -468,6 +469,8 @@ env_cfg.episode_length_s = T_pre + T_after + 1.0
 
 if args_cli.video:
     env_cfg.viewer.resolution = (1280, 720)
+if args_cli.min_height is not None and getattr(env_cfg.terminations, "base_too_low", None) is not None:
+    env_cfg.terminations.base_too_low.params["minimum_height"] = float(args_cli.min_height); print(f"[min_height] base_too_low {args_cli.min_height} m (진단)", flush=True)
 env = gym.make(args_cli.task, cfg=env_cfg, render_mode=("rgb_array" if args_cli.video else None))
 env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 uenv = env.unwrapped
@@ -643,6 +646,8 @@ death_step = torch.full((N,), -1, dtype=torch.long, device=dev)
 fall_pitch_prev = torch.zeros(N, device=dev); fall_roll_prev = torch.zeros(N, device=dev)
 term_reason = torch.full((N,), -1, dtype=torch.long, device=dev); fall_h_prev = torch.zeros(N, device=dev)
 lat_sep0 = torch.zeros(N, device=dev); lat_sep_min = torch.full((N,), 9.0, device=dev); lat_roll_max = torch.zeros(N, device=dev); lat_v_max = torch.zeros(N, device=dev); lat_ss_t = torch.zeros(N, device=dev)
+t_sep_min = torch.full((N,), float('nan'), device=dev); t_roll8 = torch.full((N,), float('nan'), device=dev); t_sep18 = torch.full((N,), float('nan'), device=dev); h_min_post = torch.full((N,), 9.0, device=dev)
+td_sep_s = torch.zeros(N, device=dev); td_sep_n = torch.zeros(N, device=dev); td_sep_min = torch.full((N,), 9.0, device=dev)
 pitch_death = torch.full((N,), float("nan"), device=dev); roll_death = torch.full((N,), float("nan"), device=dev)
 pre_both = torch.ones(N, dtype=torch.bool, device=dev); pre_pmax = torch.zeros(N, device=dev); pre_rmax = torch.zeros(N, device=dev)
 pre_w = torch.zeros(N, device=dev); pre_v = torch.zeros(N, device=dev); pre_pitch_sum = torch.zeros(N, device=dev); pre_n = 0
@@ -899,7 +904,14 @@ for i in range(STEPS):
         if (not dists) or t_rel >= min(d.t0 for d in dists):
             _bothc = contact[:, 0] & contact[:, 1]
             _ok_ = a_ & ~term
+            _newmin = _ok_ & _bothc & (_sep < lat_sep_min)
+            t_sep_min = torch.where(_newmin, torch.full_like(t_sep_min, t_rel), t_sep_min)
             lat_sep_min = torch.where(_ok_ & _bothc, torch.minimum(lat_sep_min, _sep), lat_sep_min)
+            _r8 = _ok_ & (roll.abs() > 8.0) & torch.isnan(t_roll8)
+            t_roll8 = torch.where(_r8, torch.full_like(t_roll8, t_rel), t_roll8)
+            _n18 = _ok_ & _bothc & (_sep < 0.18) & torch.isnan(t_sep18)
+            t_sep18 = torch.where(_n18, torch.full_like(t_sep18, t_rel), t_sep18)
+            h_min_post = torch.where(_ok_, torch.minimum(h_min_post, robot.data.root_pos_w[:, 2]), h_min_post)
             lat_roll_max = torch.where(_ok_, torch.maximum(lat_roll_max, roll.abs()), lat_roll_max)
             _vl = (robot.data.root_lin_vel_w[:, :2] * _fl_[:, :2]).sum(-1).abs()
             lat_v_max = torch.where(_ok_, torch.maximum(lat_v_max, _vl), lat_v_max)
@@ -915,6 +927,9 @@ for i in range(STEPS):
             on = a_ & st_air[:, c] & contact[:, c]
             st_air[on, c] = False; st_land_t[on, c] = t_rel; st_rl[on, c] = False; st_load_sum[on, c] = 0.0; st_load_n[on, c] = 0.0
             n_land += on.float()
+            if "_sep" in dir():
+                td_sep_s += torch.where(on, _sep, torch.zeros_like(_sep)); td_sep_n += on.float()
+                td_sep_min = torch.where(on, torch.minimum(td_sep_min, _sep), td_sep_min)
             sw_travel[on] += (_ffwd[on, c] - st_f0[on, c]); sw_n += on.float()
             sw_sq[on] += (_ffwd[on, c] - st_f0[on, c]) ** 2
             # 생존 이륙: 이륙 후 0.3 s 이상 살아 있음(낙상 부수 접촉상실과 구분)
@@ -1111,7 +1126,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s"] if policy2 is not None else []))
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s"] if policy2 is not None else []))
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -1128,7 +1143,9 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
                 (round(float(fall_pitch_prev[e]), 1) if fell[e] else ""), (round(float(fall_roll_prev[e]), 1) if fell[e] else ""),
                 round(100 * float(lat_sep0[e]), 1), (round(100 * float(lat_sep_min[e]), 1) if float(lat_sep_min[e]) < 8.0 else ""),
                 round(float(lat_roll_max[e]), 1), round(float(lat_v_max[e]), 3), round(float(lat_ss_t[e]), 2),
-                (list(uenv.termination_manager.active_terms)[int(term_reason[e])] if int(term_reason[e]) >= 0 else ""), (round(float(fall_h_prev[e]), 3) if fell[e] else "")]
+                (list(uenv.termination_manager.active_terms)[int(term_reason[e])] if int(term_reason[e]) >= 0 else ""), (round(float(fall_h_prev[e]), 3) if fell[e] else ""),
+                *[("" if math.isnan(float(x[e])) else round(float(x[e]), 2)) for x in (t_sep_min, t_sep18, t_roll8)], round(float(h_min_post[e]), 3),
+                (round(100 * float(td_sep_s[e] / td_sep_n[e]), 1) if float(td_sep_n[e]) > 0 else ""), (round(100 * float(td_sep_min[e]), 1) if float(td_sep_min[e]) < 8 else "")]
         if policy2 is not None:
             row += [float(swc_n[e]), (round(float(swc_first[e]), 2) if not math.isnan(float(swc_first[e])) else ""), float(swc_pre[e]), round(float(sw_ticks[e]) / 50.0, 2)]
         wcsv.writerow(row)

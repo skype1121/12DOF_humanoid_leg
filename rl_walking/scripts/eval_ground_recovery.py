@@ -111,6 +111,8 @@ parser.add_argument("--sw_ref_tau", type=float, default=0.0, help="1004: 감지�
 parser.add_argument("--sw_ref_init_s", type=float, default=0.0, help="1004: 인계 뒤 이 시간 동안은 기준 자세가 현재 자세를 그대로 따라감(편차 0 → ω 로만 켜짐) — 인계 블렌딩 과도 오탐 방지")
 parser.add_argument("--sw_off_contact", type=str, default="both", choices=("both", "any", "none"), help="1004 밤: 감지기 끄기 조건의 접촉 요구 — both(종전)/any(한 발 이상)/none(IMU 정숙만). 실물 패드 0 고착 대응")
 parser.add_argument("--sw_oracle", action="store_true", help="1004 밤 진단: 외란 시작 틱에 즉시 회복 정책으로 전환(오라클 감지기) — 감지·인계 지연의 상한 효과 측정")
+parser.add_argument("--sw_rec_vx", type=float, default=None, help="1005 진단: 회복 정책에만 관측 명령 vx 를 이 값으로(스텝 모드 신호 0.05) — 서기 정책 관측·환경 명령 불변. velocity_commands 5 프레임 전부 덮어씀")
+parser.add_argument("--sw_rec_vx_s", type=float, default=0.0, help="1005: --sw_rec_vx 를 회복 모드 켜진 뒤 이 시간[s] 동안만(0 = 회복 모드 내내) — 반사 스텝 창, 이후 cmd 0 으로 정착")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
 parser.add_argument("--sw_off", type=str, default="2.5,0.25,1.0,1.5", help="전환 끄기: 기울기 deg, |ω| rad/s 둘 다 미만 & 양발 접촉이 calm s 연속 & 켜진 뒤 최소 hold s")
@@ -823,7 +825,21 @@ for i in range(STEPS):
             sw_ticks += (sw_mode & alive).float()
             if dists and t_rel < min(d.t0 for d in dists):
                 sw_ticks_pre_dist += (sw_mode & alive).float()
-            _a2 = policy2(obs); _a1 = a
+            if args_cli.sw_rec_vx is not None:
+                if "_VC_OFF" not in dir():
+                    _nm_ = list(uenv.observation_manager.active_terms["policy"]); _dm_ = uenv.observation_manager.group_obs_term_dim["policy"]
+                    _o_ = 0
+                    for _n_, _d_ in zip(_nm_, _dm_):
+                        _sz_ = 1
+                        for _v_ in (_d_ if isinstance(_d_, (tuple, list)) else (_d_,)): _sz_ *= int(_v_)
+                        if _n_ == "velocity_commands": _VC_OFF = (_o_, _o_ + _sz_)
+                        _o_ += _sz_
+                    print(f"[sw_rec_vx] velocity_commands 열 {_VC_OFF} → vx {args_cli.sw_rec_vx}", flush=True)
+                _obs2 = obs.clone(); _p2o = _obs2["policy"].clone(); _vxm_ = (sw_t_on < float(args_cli.sw_rec_vx_s)) if float(args_cli.sw_rec_vx_s) > 0.0 else torch.ones_like(sw_mode)
+                _p2o[:, _VC_OFF[0]:_VC_OFF[1]:3] = torch.where(_vxm_.unsqueeze(1), torch.full_like(_p2o[:, _VC_OFF[0]:_VC_OFF[1]:3], float(args_cli.sw_rec_vx)), _p2o[:, _VC_OFF[0]:_VC_OFF[1]:3]); _obs2["policy"] = _p2o
+                _a2 = policy2(_obs2); _a1 = a
+            else:
+                _a2 = policy2(obs); _a1 = a
             if args_cli.sw_monitor:
                 pass
             else:

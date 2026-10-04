@@ -2534,3 +2534,19 @@ class Biped12HangStandW2hEnvCfg(Biped12HangStandW2gEnvCfg):
         super().__post_init__()
         rw = self.rewards
         rw.joint_pose_reference = None; rw.foot_position_reference = None; rw.contact_phase_reference = None
+
+
+@configclass
+class _W2iCurriculumCfg:
+    turn_anneal = _CurrTerm(func=mdp_hang.turn_assist_curriculum)
+
+
+@configclass
+class Biped12HangStandW2iEnvCfg(Biped12HangStandW2hEnvCfg):
+    """W2-9 (1004): W2-8 + **회전 부트스트랩 보조**(스윙 힙 회전 += α·0.455·wz, 지지 반주기 복귀, 6틱 앞당김, α 2.0→0 감쇠 — 블록 회전 추종비 ≥ 0.5) 단일 개념 변경.
+    근거: 요 명령 전달 정상(cmd_probe) & 보상 수정 5회·모방 끔에도 회전 0 → 탐색 실패(STEP primitive 와 같은 양상, 같은 처방)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={})
+        self.curriculum = _W2iCurriculumCfg()

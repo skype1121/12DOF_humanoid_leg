@@ -2644,3 +2644,66 @@ def recovery_hint_curriculum(env, env_ids, ps: tuple = (1.0, 0.75, 0.5, 0.25, 0.
             c["stage"] += 1; c["since"] = it; c["f0"] = None; env._hint_p = ps[c["stage"]]
         c["n"] = 0.0; c["fall"] = 0.0
     return {"stage": float(c["stage"]), "hint_p": float(env._hint_p), "block_fall": c["last"]}
+
+
+# ---------------------------------------------------------------- W2-9 (1004): 회전 부트스트랩 ----------------------------------------------------------------
+# 근거: 요 명령은 관측에 정상 전달(cmd_probe)되나 W2-2~8 6회 회전 추종 0 — 스텝 primitive 때처럼 탐색 실패로 진단.
+# 보조: 스윙 다리 힙 회전 관절(좌우 축 모두 몸통 +z, URDF 확인)에 +κ·wz 를 스윙 중 올리고 지지 반주기에 0 으로 되돌림 → 반주기당 몸통 요 ≈ κ·wz.
+# κ = −0.455(크기 = 반주기 0.455 s). 부호: 1004 개루프(W2-8 정책 + κ +0.455) 실측이 명령 반대로 회전(추종비 α1 −0.35·α2 −0.57, 낙상 3 % 불변) → 음수. 관측 계약 불변, α 감쇠로 0 에서 순수 정책.
+def install_turn_assist(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, alpha0: float = 2.0, kappa: float = -0.455, lead_ticks: int = 6):
+    """mode="startup": 액션 항 pre_delay_hook 에 회전 보조 잔차. env._turn_alpha (커리큘럼 감쇠, env var TURN_ALPHA 로 진단 고정).
+    매 틱 걷기 env(|wz 명령| > 0.1)의 회전 추종비(실제 world ω_z·sign(wz)/|wz|) 누적 → env._turn_stat."""
+    term = env.action_manager.get_term("joint_pos")
+    asset = env.scene[_base_cfg().name]
+    jn = list(asset.joint_names); iL = jn.index("left_hip_r_joint"); iR = jn.index("right_hip_r_joint")
+    env._turn_alpha = float(os.environ.get("TURN_ALPHA", alpha0))
+    env._turn_stat = [0.0, 0.0]
+    prev = term.pre_delay_hook
+
+    def _ss(x):
+        return x * x * (3.0 - 2.0 * x)
+
+    def hook(target):
+        if prev is not None:
+            target = prev(target)
+        cmd = env.command_manager.get_command("base_velocity")
+        mode = cmd[:, 0].abs() >= walk_min
+        wz = cmd[:, 2]
+        sel = mode & (wz.abs() > 0.1)
+        if bool(sel.any()):
+            wr = asset.data.root_ang_vel_w[:, 2]
+            env._turn_stat[0] += float((wr[sel] * torch.sign(wz[sel]) / wz[sel].abs()).sum()); env._turn_stat[1] += float(sel.sum())
+        a = float(getattr(env, "_turn_alpha", 0.0))
+        if a <= 0.0:
+            return target
+        t = env.episode_length_buf.to(torch.float32) * env.step_dt + lead_ticks * env.step_dt
+        u = torch.remainder(freq * t, 1.0); v = torch.remainder(2.0 * u, 1.0)
+        rise = _ss(v); fall = 1.0 - _ss(v)
+        swingL = u < 0.5                           # 앞 반주기 = 왼발 스윙(sb0 규약)
+        shL = torch.where(swingL, rise, fall); shR = torch.where(swingL, fall, rise)
+        amp = a * kappa * wz * mode.float()
+        target = target.clone()
+        target[:, iL] = target[:, iL] + amp * shL
+        target[:, iR] = target[:, iR] + amp * shR
+        return target
+
+    term.pre_delay_hook = hook
+
+
+def turn_assist_curriculum(env, env_ids, alphas: tuple = (2.0, 1.5, 1.0, 0.5, 0.25, 0.0), min_samples: float = 2.0e5, min_iters: int = 50,
+                           ratio_ok: float = 0.5, steps_per_iter: int = 24):
+    """회전 보조 α 감쇠: 블록(걷기·|wz|>0.1 env-틱 ≥ min_samples)마다 평균 회전 추종비 ≥ ratio_ok 이고 체류 ≥ min_iters 면 다음 α."""
+    g = getattr(env, "_turn_cur", None)
+    if g is None:
+        g = {"stage": 0, "since": 0, "last": float("nan")}; env._turn_cur = g
+        if "TURN_ALPHA" not in os.environ:
+            env._turn_alpha = alphas[0]
+    s = getattr(env, "_turn_stat", [0.0, 0.0]); it = int(env.common_step_counter) // steps_per_iter
+    if s[1] >= min_samples:
+        r = s[0] / s[1]; g["last"] = r
+        ok = r >= ratio_ok and it - g["since"] >= min_iters and g["stage"] < len(alphas) - 1
+        print(f"[W2-9 회전 보조 블록] 반복 {it} α={alphas[g['stage']]}: 회전 추종비 {r:.3f}" + (" → 감쇠" if ok else ""), flush=True)
+        if ok and "TURN_ALPHA" not in os.environ:
+            g["stage"] += 1; g["since"] = it; env._turn_alpha = alphas[g["stage"]]
+        env._turn_stat = [0.0, 0.0]
+    return {"stage": float(g["stage"]), "alpha": float(env._turn_alpha), "ratio": g["last"]}

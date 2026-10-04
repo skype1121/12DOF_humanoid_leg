@@ -2711,3 +2711,13 @@ class Biped12HangStandW2vEnvCfg(Biped12HangStandW2hEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.sb0.params = dict(self.events.sb0.params, stride_scale=True)
+
+
+@configclass
+class Biped12HangStandW2v2EnvCfg(Biped12HangStandW2hEnvCfg):
+    """WV2 (1005, 보행 트랙): W2-8 + **sb0 보폭 상한만 명령 비례로 올림** — prog_sat = max(5 cm, |vx|/2.2), 착지 창 상한 = max(10 cm, 1.8·|vx|/2.2). 하한·이벤트·클록 불변.
+    근거(라운드 24): 속도 고정은 보폭 상한(10 cm 착지 창·5 cm 진행 포화) + 반주기 1 걸음 이벤트 구조; WV1 은 창을 작은 명령 쪽으로도 줄여 붕괴."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.sb0.params = dict(self.events.sb0.params, stride_scale="up")

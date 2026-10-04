@@ -2361,7 +2361,10 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
     if stride_scale:     # 1005 WV1: 보폭 기준을 명령 속도에 비례 — stride = |vx|/(2f) (0.05→2.3 cm, 0.10→4.5, 0.15→6.8, 0.20→9.1)
         _vx = env.command_manager.get_command("base_velocity")[:, 0].abs()
         _stride = (_vx / (2.0 * freq)).clamp(0.015, 0.12)
-        prog_sat = _stride; disp_lo = 0.4 * _stride; disp_hi = (1.8 * _stride).clamp(min=0.04)
+        if stride_scale == "up":     # 1005 WV2: 상한만 올림(하한·이벤트 구조는 그대로) — 라운드 24
+            prog_sat = _stride.clamp(min=prog_sat); disp_hi = (1.8 * _stride).clamp(min=disp_hi)
+        else:
+            prog_sat = _stride; disp_lo = 0.4 * _stride; disp_hi = (1.8 * _stride).clamp(min=0.04)
     st["r_prog"] = (dfwd[ar, sw] / prog_sat).clamp(0.0, 1.0) * sw_air.float() * w_sw.float() * mode
     if td_any_dir:
         dh = (fxy[ar, sw] - st["lift_xy"][ar, sw]).norm(dim=-1)

@@ -116,6 +116,7 @@ parser.add_argument("--sw_rec_vx_s", type=float, default=0.0, help="1005: --sw_r
 parser.add_argument("--cue_state", type=str, default="", help="1005 활성화 구조: vx cue 상태 기반 종료 'tmin,hold,w,tmax' — 켜진 뒤 tmin s 지나고 양발 접촉·|ω_xy|<w 가 hold s 지속되면 종료, tmax 넘으면 다음 양발 지지에서 종료(래치, 감지기 꺼질 때까지 재점화 없음)")
 parser.add_argument("--cue_dir", type=float, default=None, help="1005 ACT2: 방향 조건 cue — cue 시작 순간 몸통 전진속도(base x, m/s) > 이 값일 때만 cue(아니면 이번 활성화는 cue 없음). 정책은 전진 스텝만 학습")
 parser.add_argument("--sw_early", type=str, default="", help="1005 ④ 정착: 상태 기반 조기 복귀 'v,tilt,hold' — 첫 외란 뒤 첫 하중 수용이 있었고 |v_xy|<v m/s·감지기 기울기<tilt° 가 hold s 지속되면 회복 모드 강제 해제(G21a 복귀)")
+parser.add_argument("--cue_align", type=str, default="", help="1005 (B) 정착: cue 종료를 '발 앞뒤 정렬'로 — 'tmin,dx_cm,tmax': 켜진 뒤 tmin s 지나고 양발 접촉·두 발 앞축 거리 < dx_cm 이면 종료, tmax 넘으면 다음 양발 지지에서 종료")
 parser.add_argument("--cue_clock", type=str, default="", choices=("", "reset"), help="1005 D: cue 시작 시 회복 정책 관측 gait_clock 을 '하중 적은 발이 바로 스윙' 위상에서 재시작(cue 동안만; 이후 환경 클록)")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
@@ -871,7 +872,13 @@ for i in range(STEPS):
                 cue_act = cue_act | _st_on; cue_t0 = torch.where(_st_on, torch.full_like(cue_t0, t_rel), cue_t0)
                 _Lf = _cs.data.net_forces_w[:, _fl, :].norm(dim=-1); _Rf = _cs.data.net_forces_w[:, _fr, :].norm(dim=-1)
                 cue_phi0 = torch.where(_st_on, torch.where(_Lf < _Rf, torch.full_like(cue_phi0, math.pi + 0.05), torch.full_like(cue_phi0, 0.05)), cue_phi0)
-                if args_cli.cue_state:
+                if args_cli.cue_align:
+                    _amin, _adx, _amax = [float(x) for x in args_cli.cue_align.split(",")]
+                    _fwa = _dir_vec("f"); _fpa = robot.data.body_pos_w[:, _FT, :2]
+                    _dxa = 100.0 * ((_fpa[:, 0] - _fpa[:, 1]) * _fwa[:, :2]).sum(-1).abs()
+                    _ela = t_rel - cue_t0; _bca = _cf[:, 0] & _cf[:, 1]
+                    _end = cue_act & _bca & (((_ela >= _amin) & (_dxa < _adx)) | (_ela >= _amax))
+                elif args_cli.cue_state:
                     _tmin, _hold, _wq, _tmax = [float(x) for x in args_cli.cue_state.split(",")]
                     _el = t_rel - cue_t0; _bc = _cf[:, 0] & _cf[:, 1]
                     cue_hold = torch.where(cue_act & _bc & (_w < _wq), cue_hold + 0.02, torch.zeros_like(cue_hold))

@@ -2483,3 +2483,15 @@ class Biped12HangStandG24RbEnvCfg(Biped12HangStandG24RaEnvCfg):
         super().__post_init__()
         self.commands.base_velocity.rel_standing_envs = 0.7
         self.events.disturbance.params = dict(self.events.disturbance.params, p_none_override=0.5)
+
+
+@configclass
+class Biped12HangStandW2gEnvCfg(Biped12HangStandW2fEnvCfg):
+    """W2-7 (1004): W2-6 + **스텝 모드 요 추종 std 0.1 → 0.5** 단일 변경(회전 명령 ±0.3 유지).
+    근거(OSS 11, 계산): std 0.1 에서 회전 안 하는 정책의 오차 0.3 → 보상 1e-4·기울기 ≈ 0 — W2-6 track_ang_vel 0.09 평탄과 일치. 공개 구현 std 0.45–0.5."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.track_ang_vel_walk
+        p = dict(t.params["params"]); p["std"] = 0.5
+        t.params = {"func": t.params["func"], "params": p}

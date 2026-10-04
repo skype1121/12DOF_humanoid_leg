@@ -987,3 +987,86 @@ diag 수치(지지발 요 회전 합 14°/7 s, 한 발 지지 중 7.9°)는 **�
 3. 회복 쪽은 §3 요건으로 C4 를 보강해 승인 요청한다. 그 전에는 G23R-b 식 '정렬 없는 힌트'를 반복하지 않는다.
 
 출처: Isaac Lab 설치본(37ddf62687) `schemas_cfg.py`·G1 rough_env_cfg·velocity_env_cfg · [unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) · [humanoid-gym](https://github.com/roboterax/humanoid-gym) · [isaac_berkeley_humanoid](https://github.com/HybridRobotics/isaac_berkeley_humanoid) · [LearningHumanoidWalking](https://github.com/rohanpsingh/LearningHumanoidWalking) · 우리 URDF/USD·env.yaml
+
+## 라운드 11 (2026-10-04 11:00) — 클록 스텝 보행의 회전 학습, 스텝·회복 획득 뒤 서기 정숙 유지
+
+전제(측정 사실, 코디네이터 전달)
+- T4 마찰 ×1.5 → 요 표류 −21 %(슬립은 부분 기여).
+- W2-5(스텝 모드 힙 회전 벌점 OFF) 표류 불변.
+- W2-6(스텝 모드 요 명령 ±0.3 rad/s 무작위, 요 추종 std 0.1 × 가중 1.5): 1500 반복 동안 track_ang_vel 0.09 평탄 = 회전 추종 미학습. 힙 회전 한계 ±24–29°.
+- 회복은 크게 진전했다: W2-4(보행 + G21a 외란)에서 서기 밀림 앞 스텝이 자발 출현했고, G24R-a 에서 sf15 낙상 91→32 %·스텝 93 %·+10 cm, sf12 4.5 %, sf10 1.8 %, sb10 5.4 %, b18 0 %.
+- 그러나 서기 흔들림 nd 7.1 %·d3nd 11.6 %(G21a 0.9·3.6), 피치 1–1.5 Hz. 클록 고정 반사실 7.1→5.4 %(주원인 아님). G24R-b(서기 비율 0.7·무외란 0.5) 학습 중.
+
+### 0. W2-6 이 회전을 못 배운 직접 원인 후보 — 보상 폭(std)의 기울기 소실 [설정 확인 + 계산]
+
+- 설정: W2f `logs/rsl_rl/biped12_stepb0/2026-10-04_10-45-08_w2f_seed1_from_w2e20294/params/env.yaml`. `track_ang_vel_walk` = `w1_walk_gated(track_ang_vel_z_world_exp, std 0.1)`, 가중 1.5. 명령 ang_vel_z U(−0.3, 0.3), heading_command False.
+  Isaac Lab 식은 exp(−e²/std²)(`isaaclab_tasks/.../velocity/mdp/rewards.py:318-326`).
+- **회전하지 않는 정책의 오차 e = |명령|(0–0.3 rad/s)에서의 기울기 |dr/de|**:
+
+| std | e = 0.05 | e = 0.15 | e = 0.30 |
+|---|---|---|---|
+| 0.1 (우리) | r 0.78 / 7.8 | r 0.11 / 3.2 | **r 0.0001 / 0.01** |
+| 0.45 (humanoid-gym 상당) | 0.99 / 0.49 | 0.90 / 1.33 | 0.64 / 1.90 |
+| 0.5 (Isaac Lab G1·Berkeley·unitree) | 0.99 / 0.40 | 0.91 / 1.10 | 0.70 / 1.67 |
+
+- 명령의 절반 이상(|명령| > 0.15)에서 std 0.1 은 **보상도 기울기도 거의 0** 이다. '회전을 조금 해 보기'에 대한 신호가 없다. 평탄한 0.09 와 정합한다.
+  std 0.1 은 요 표류(작은 오차)를 잡기에는 날카롭지만, 큰 명령을 처음 배우기에는 부적합하다.
+- 공개 구현의 요 추종 폭(모두 큰 쪽):
+  - Isaac Lab G1: std 0.5, 가중 2.0, 명령 ±1.0(`config/g1/rough_env_cfg.py:29-31`, `flat_env_cfg.py:41`).
+  - Berkeley: std √0.25 = 0.5, 가중 0.5(`velocity_env_cfg.py:265-266`).
+  - unitree: σ² = 0.25(→ std 0.5), 명령 ±1(`legged_robot_config.py:48,120`; `legged_robot.py:698-701`).
+  - humanoid-gym: exp(−e²·5)(→ std 0.45), 가중 1.1, 명령 ±0.3(`humanoid_config.py:171,185,202`; `humanoid_env.py:436-443`).
+- 필요한 동작 크기: 0.3 rad/s 면 반주기(0.455 s)마다 **7.8°** 회전 → 힙 요 ±8° 정도. 한계(±24–29°) 안이다.
+
+### 1. (a) 클록 스텝 보행에서 회전을 학습시킨 사례
+
+| 출처 (commit) | 회전용 장치 | 파일:줄 | 우리에게 |
+|---|---|---|---|
+| walk-these-ways (0e7236b) | **Raibert 발 배치에 요 항**: 요 명령 → 발 좌우 목표 오프셋. y_vel_des = yaw_vel_des × (stance_length/2), desired_ys_offset = phase × y_vel_des × (0.5/f), 뒤 다리 부호 반전(사족) | `go1_gym/envs/rewards/corl_rewards.py:184-191` | 이족 형태: 회전 시 스윙발 착지 요(골반 대비) 목표 = ω_cmd·T_h(0.3 rad/s → 7.8°)를 r_foot 에 요 성분으로 추가. 우리 r_foot 은 위치만 보고 발 요를 보지 않는다(`mdp_hang.py:2375-2382`) |
+| walk-these-ways | **명령 공간 격자 커리큘럼**(vx·vy·wz bin). 성공 bin 주변(local_range 0.5)으로 확장, 성공 = 추종 보상 > 문턱 × 가중(선속도 0.8, **요 0.7**, 접촉 0.9). 요 명령 ±1 → 한계 ±5, bin 21개 | `go1_gym/envs/base/curriculum.py:113-150`; `envs/base/legged_robot.py:727-736`; `scripts/train.py:23-26,155,170,185` | 요 명령을 ±0.3 에서 바로 균등으로 주지 말고 ±0.05 에서 시작해 '요 추종 > 0.7' 일 때 넓힌다 |
+| LearningHumanoidWalking (cd8c655) | 곡선 발판 시퀀스(CURVED 모드 15 %) + 몸통 요 목표 + 요 각속도 exp(−10·e³) | `tasks/stepping_task.py:81,117,128-136,290-300`; `tasks/rewards.py:27-37`; `tasks/walking_task.py:121-141` | 발판·몸통 요 목표가 회전의 '위치' 신호를 준다. 우리 W2 는 회전에 대한 위치 목표가 없다 |
+| HugWBC (eb831af) | 요 명령 + 보행 주파수 명령, 추종 가중 3.0(요) / 2.0(선속도) | `legged_gym/envs/h1/h1_config.py:193-194` | 요 추종 가중을 선속도보다 크게 둔 예 |
+| Isaac Lab G1·Berkeley | 클록 없음, std 0.5 추종만으로 ±1 rad/s 회전 학습(scratch) | 위 §0 | 폭 0.5 가 표준 |
+
+- **스텝 primitive 위에 회전을 얹은 공개 사례는 찾지 못했다.** 위 사례는 모두 처음부터 학습이다. 회전용 보조력/잔차를 쓴 사례도 찾지 못했다.
+
+**우리에게 적용 (단일 변경 순위)**
+1. **요 추종 std 0.1 → 0.5**(가중·명령 범위 그대로) — §0 의 기울기 소실이 가장 직접적인 원인 후보이고, 공개 구현이 모두 0.45–0.5 다. 표류(작은 오차) 억제력은 약해진다. 표류는 §0 판단상 슬립·재조준 문제(라운드 10)라 별도로 다룬다.
+2. (1이 부족하면) **회전 착지 요 목표**(walk-these-ways 식 피드포워드: 스윙발 착지 요 = ω_cmd·T_h)를 r_foot 에 추가.
+3. **요 명령 커리큘럼**(±0.05 → ±0.3, 요 추종 > 0.7 일 때 확장).
+- 위험: 회전 학습이 교대·착지(94 %)를 깎을 수 있다. 판정에 교대율·착지율·서기 회귀를 같이 둔다.
+
+### 2. (b) 스텝·회복을 얻은 뒤 서기 정숙이 무너지는 문제 — 단일 정책 유지 사례
+
+| 출처 | 서기 유지 장치 | 수치 / 파일:줄 | 비고 |
+|---|---|---|---|
+| HugWBC | **서기 env 의 클록을 지지 위상에 고정** + 서기 보상(양발 접촉 +1, 양발 공중 −1, 관절 편차 −2) + 서기 env 비율 1/10 | `h1.py:631-637,776-778,1519-1535`; `h1_config.py:227-229` | 우리 클록 고정 반사실(평가만) 7.1→5.4 % 는 '학습은 도는 클록으로 하고 평가만 고정'이다. **학습에서 서기 클록을 고정**하면 더 줄 가능성(미검증). 단 배포 러너가 서기 때 클록을 고정해야 하므로 계약 변경(승인) |
+| HugWBC interrupt | 상체 교란을 **서기 env 에만** 줌(`stand_interrupt_only`) | `h1interrupt.py:284-288` | 외란을 서기 표본에 몰아 '서기 + 외란'을 강화 |
+| van Marum 2024 | 서기 명령에서 접촉 항 상수 1, 나머지 항이 자연히 서기를 선호 | 논문(라운드 7 §3) | 서기 전용 정숙 항 없이 유지 |
+| MuJoCo Playground | stand_still = Σ|q − q_default| × (명령 < 0.1): G1 **−1.0**, T1·Berkeley 0.0 | `_src/locomotion/g1/joystick.py:75`; `t1/joystick.py:74,627-633` | 로봇별로 켜고 끔. 우리 경험(G15: 정숙 항이 회복 낙상 증가)과 같은 상충 |
+| legged_gym | stand_still 기본 −0 | `envs/base/legged_robot.py:900`; `legged_robot_config.py:146` | 기본 비활성 |
+| CaT | 명령 < 0.1 일 때 관절속도 > 4 rad/s 를 **확률적 종료**(max_p 0.1) | `utils/cat/constraints.py:223-235`; `cat_flat_env_cfg.py:339-346` | 벌점이 아니라 소프트 종료. 정숙 위반의 '미래 보상 상실'을 키운다 → 회복에도 불리할 수 있음 |
+| Isaac Lab G1·Berkeley | 서기 env 2 %(`velocity_env_cfg.py:97/100`) | — | 서기 비율이 낮아도 걷기 중심 평가라 서기 정숙 지표가 없음 |
+| humanoid-gym | 명령 < 0.2 면 0, 클록 계속(제자리걸음) | `envs/base/legged_robot.py:336` | 서기 정숙을 포기한 설계 |
+
+**우리 기록과의 정합**
+- 정숙 보상 확대(G15)는 회복 낙상을 늘렸다. 정착 보너스 연속화(G21a3, state_gated)는 흔들림을 줄였다. 관절속도 관측 지연 DR(c1)은 충격 생존을 회복시켰다.
+- 공개 사례도 '서기 정숙 항을 게이트 없이 세게'(Playground G1, CaT)와 '서기 정숙 포기'(humanoid-gym)로 갈린다. **회복 게이트로 닫힌 동안만 주는 우리 state_gated 방식**(`mdp_hang.py:400-404`)이 둘의 상충을 피하는 쪽이다.
+
+**1–1.5 Hz 피치 흔들림 판별 제안(평가만, 학습 없음)**
+1. **클록 누설 확인**: 서기 모드(명령 0, 무외란)에서 두 발 Fz 차의 스펙트럼에 1.1 Hz 피크가 있는지 본다(학습 클록 1.1 Hz).
+   피크가 있고 피치 흔들림과 같은 위상이면 '스텝 모드 하중 이동 패턴이 서기로 새는 것'(모드 혼동)이다.
+   클록 고정 반사실의 −24 % 가 이 성분의 크기를 시사한다(나머지 76 % 는 다른 원인).
+2. **피드백 루프 확인**: 같은 정책을 자이로·관절속도 관측 지연 0 고정 vs 학습 DR 상한(3틱)으로 평가해 흔들림이 지연에 민감한지 본다.
+   민감하면 '회복 이득이 커진 피치 되먹임 + 지연'의 루프다(G17·G19 의 루프 귀속 방식, 이번엔 1–1.5 Hz 대역).
+3. 판별 결과에 따른 단일 변경
+   - 1 이 주원인 → (i) 학습 중 서기 env 클록을 지지 위상에 고정(HugWBC, 계약 변경·승인), 또는 (ii) 서기 모드·게이트 닫힘 한정 '좌우 하중 진동' 벌점(1.1 Hz 성분 억제, 보상 변경, 승인 불요).
+   - 2 가 주원인 → 서기 표본에서 관측 지연 DR 상한 쪽 비중 증가(c1 계열, 관측 계약 불변). 또는 정착 보너스(G21a3 형) 가중을 서기 모드에서만 소폭 증가. 정숙 항 확대는 G15 처럼 회복을 깎을 수 있으므로 sf15·b18 회귀를 함께 판정.
+- G24R-b(서기 비율 0.7·무외란 0.5)는 HugWBC·Isaac Lab 보다 서기 비중이 훨씬 높다. 표본 비율로 해결되면 가장 싸다. 그 결과를 1·2 판별과 함께 해석한다(서기 비율 ↑ → 회복 표본 ↓ → sf15 회귀 위험).
+
+### 3. 다음 단일 실험 (권장)
+
+1. **W2-7 = W2-6 + 요 추종 std 0.1 → 0.5**(단일 변경). 판정: track_ang_vel 상승, 회전 명령 대비 실제 요 각속도 기울기, 교대·착지 유지.
+2. **서기 흔들림 판별 평가 2종**(§2: 1.1 Hz 하중 스펙트럼, 지연 민감도) — G24R-b 결과와 같이 해석한 뒤 서기 단일 변경을 고른다.
+
+출처: [walk-these-ways](https://github.com/Improbable-AI/walk-these-ways) · [HugWBC](https://github.com/InternRobotics/HugWBC) · [LearningHumanoidWalking](https://github.com/rohanpsingh/LearningHumanoidWalking) · [humanoid-gym](https://github.com/roboterax/humanoid-gym) · [unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) · [isaac_berkeley_humanoid](https://github.com/HybridRobotics/isaac_berkeley_humanoid) · [mujoco_playground](https://github.com/google-deepmind/mujoco_playground) · [legged_gym](https://github.com/leggedrobotics/legged_gym) · [CaT](https://github.com/Gepetto/constraints-as-terminations) · Isaac Lab 설치본 · van Marum 2024 arXiv 2404.19173

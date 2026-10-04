@@ -1,0 +1,41 @@
+22:12:08 [FrameMap] 하드웨어맵: /home/mama/humanoid_repo/config/robot_12dof_hardware_map.json
+22:12:08 [FrameMap] IMU 장착 편향 보정 lat +1.30° fwd -0.60° (정책 중력벡터에만 적용)
+22:12:08 [FrameMap] ** guard_mode=data ** — 발진 가드·타깃 발진 가드·리프트 가드는 기록만 하고 정책을 멈추지 않는다. 과속(12 rad/s)·센서 스테일·중력 게이트는 그대로 정지한다. 운영자가 줄과 손으로 회수를 책임지는 데이터 수집 모드다.
+22:12:09 [INFO] [1791119529.690017180] [humanoid_rl_bridge]: 블랙박스 기록: /home/mama/logs/rl_bridge_20261004_221209.jsonl
+22:12:09 [INFO] [1791119529.700661961] [humanoid_rl_bridge]: RL 브리지 기동 — LIVE, checkpoint=stand_c5_g21a_g24ra jvel_ema=v2
+22:12:15 [INFO] [1791119535.595629784] [humanoid_rl_bridge]: 중력 정합 OK (|g−(0,0,−1)|=0.02)
+22:12:15 [INFO] [1791119535.596635601] [humanoid_rl_bridge]: RL stand 시작 ckpt=stand_c5_g21a_g24ra cmd=(0.0, 0.0, 0.0) (인계 워밍업 최대 4s)
+22:12:15 [INFO] [1791119535.601657200] [humanoid_rl_bridge]: 인계 워밍업 완료 — 관절 피드백 신선, 정책 구동 시작
+22:12:18 [INFO] [1791119538.621730865] [humanoid_rl_bridge]: 행잉 가드 상태 → FREE_STAND
+22:13:39 [WARN] [1791119619.021603097] [humanoid_rl_bridge]: STOP_ALL (sensor_stale)
+22:13:39 [ERROR] [1791119619.022882138] [humanoid_rl_bridge]: 센서 공백 → STOP_ALL + 정책 비활성. 원인 확인 후 march 재명령으로만 재개
+22:14:20 Traceback (most recent call last):
+22:14:20   File "/home/mama/humanoid_repo/jetson/scripts/rl_bridge_node.py", line 2852, in main
+22:14:20     rclpy.spin(node)
+22:14:20   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 229, in spin
+22:14:20     executor.spin_once()
+22:14:20   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 776, in spin_once
+22:14:20     self._spin_once_impl(timeout_sec)
+22:14:20   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 765, in _spin_once_impl
+22:14:20     handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+22:14:20   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 748, in wait_for_ready_callbacks
+22:14:20     return next(self._cb_iter)
+22:14:20   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 649, in _wait_for_ready_callbacks
+22:14:20     raise ExternalShutdownException()
+22:14:20 rclpy.executors.ExternalShutdownException
+22:14:20 
+22:14:20 During handling of the above exception, another exception occurred:
+22:14:20 
+22:14:20 Traceback (most recent call last):
+22:14:20   File "/home/mama/humanoid_repo/jetson/scripts/rl_bridge_node.py", line 2864, in <module>
+22:14:20     raise SystemExit(main())
+22:14:20   File "/home/mama/humanoid_repo/jetson/scripts/rl_bridge_node.py", line 2859, in main
+22:14:20     rclpy.shutdown()
+22:14:20   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+22:14:20     _shutdown(context=context)
+22:14:20   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+22:14:20     return context.shutdown()
+22:14:20   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+22:14:20     self.__context.shutdown()
+22:14:20 rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[종료] 반환코드 1

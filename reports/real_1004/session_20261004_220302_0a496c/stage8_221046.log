@@ -1,0 +1,12 @@
+22:10:47 [Stage8-12Axis] command topic = /humanoid/stage8_12axis_mit_command
+22:10:47 [Stage8-12Axis] status topic = /humanoid/stage8_12axis_mit_status
+22:10:47 [Stage8-12Axis] CAN channel = can1
+22:10:47 [Stage8-12Axis] CAN send timeout = 0.2 s
+22:10:47 [Stage8-12Axis] REAL_CAN_WRITE_ENABLED = True
+22:10:47 [Stage8-12Axis] ALLOWED_JOINTS = ['left_hip_f_joint', 'left_hip_a_joint', 'left_hip_r_joint', 'left_knee_joint', 'left_ankle_f_joint', 'left_ankle_r_joint', 'right_hip_f_joint', 'right_hip_a_joint', 'right_hip_r_joint', 'right_knee_joint', 'right_ankle_f_joint', 'right_ankle_r_joint']
+22:10:47 [Stage8-12Axis] 12-axis MIT control node started
+22:12:05 [takeover] 인수 전 RX 백로그 278프레임 폐기
+22:12:05 [takeover] hold 0s 최대괴리 +0.00° (-)
+22:12:06 [takeover] hold 1s 최대괴리 +2.62° (left_knee_joint)
+22:12:07 [takeover] hold 2s 최대괴리 +2.60° (left_knee_joint)
+[종료] 반환코드 0

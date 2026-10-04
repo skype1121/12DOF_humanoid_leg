@@ -1,0 +1,22 @@
+22:33:48 [FrameMap] 하드웨어맵: /home/mama/humanoid_repo/config/robot_12dof_hardware_map.json
+22:33:48 [FrameMap] IMU 장착 편향 보정 lat +1.30° fwd -0.60° (정책 중력벡터에만 적용)
+22:33:48 [FrameMap] ** guard_mode=data ** — 발진 가드·타깃 발진 가드·리프트 가드는 기록만 하고 정책을 멈추지 않는다. 과속(12 rad/s)·센서 스테일·중력 게이트는 그대로 정지한다. 운영자가 줄과 손으로 회수를 책임지는 데이터 수집 모드다.
+22:33:49 [INFO] [1791120829.090592260] [humanoid_rl_bridge]: 블랙박스 기록: /home/mama/logs/rl_bridge_20261004_223349.jsonl
+22:33:49 [INFO] [1791120829.100600104] [humanoid_rl_bridge]: RL 브리지 기동 — LIVE, checkpoint=stand_c5_g21a_g24ra jvel_ema=v2
+22:33:53 [INFO] [1791120833.610699043] [humanoid_rl_bridge]: 중력 정합 OK (|g−(0,0,−1)|=0.02)
+22:33:53 [INFO] [1791120833.611752578] [humanoid_rl_bridge]: RL stand 시작 ckpt=stand_c5_g21a_g24ra cmd=(0.0, 0.0, 0.0) (인계 워밍업 최대 4s)
+22:33:53 [INFO] [1791120833.620984591] [humanoid_rl_bridge]: 인계 워밍업 완료 — 관절 피드백 신선, 정책 구동 시작
+22:33:56 [INFO] [1791120836.640938376] [humanoid_rl_bridge]: 행잉 가드 상태 → FREE_STAND
+22:34:57 [WARN] [1791120897.282663154] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_hip_f_joint: 0.5s 내 반전 9회, 진폭 4.5° (정지하지 않음)
+22:34:57 [WARN] [1791120897.303764468] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_hip_f_joint: 0.5s 내 반전 10회, 진폭 4.4° (정지하지 않음)
+22:34:57 [WARN] [1791120897.382642718] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 left_hip_f_joint: 0.5s 내 반전 10회, 진폭 4.5° (정지하지 않음)
+22:35:10 [WARN] [1791120910.862663260] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 right_hip_f_joint: 0.5s 내 반전 9회, 진폭 4.5° (정지하지 않음)
+22:35:10 [WARN] [1791120910.882638109] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 right_hip_f_joint: 0.5s 내 반전 10회, 진폭 4.2° (정지하지 않음)
+22:35:10 [WARN] [1791120910.903889507] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 right_hip_f_joint: 0.5s 내 반전 10회, 진폭 5.8° (정지하지 않음)
+22:35:11 [WARN] [1791120911.043886701] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 right_hip_f_joint: 0.5s 내 반전 10회, 진폭 5.6° (정지하지 않음)
+22:35:11 [WARN] [1791120911.122982809] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 right_hip_f_joint: 0.5s 내 반전 10회, 진폭 5.8° (정지하지 않음)
+22:35:11 [WARN] [1791120911.243984351] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 right_hip_f_joint: 0.5s 내 반전 9회, 진폭 5.7° (정지하지 않음)
+22:35:11 [WARN] [1791120911.722709982] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 right_hip_f_joint: 0.5s 내 반전 9회, 진폭 8.6° (정지하지 않음)
+22:35:11 [WARN] [1791120911.744290989] [humanoid_rl_bridge]: [data] osc_guard_tgt 감지 — 발진 right_hip_f_joint: 0.5s 내 반전 10회, 진폭 8.6° (정지하지 않음)
+22:35:26 [WARN] [1791120926.480953273] [humanoid_rl_bridge]: STOP_ALL (sensor_stale)
+22:35:26 [ERROR] [1791120926.485050447] [humanoid_rl_bridge]: 센서 공백 → STOP_ALL + 정책 비활성. 원인 확인 후 march 재명령으로만 재개

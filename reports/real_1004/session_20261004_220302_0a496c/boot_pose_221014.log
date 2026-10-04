@@ -1,0 +1,21 @@
+22:10:15 [boot_pose_check] 기준: 하드웨어맵 stand_zero (직립 정렬 자세)
+22:10:15 전제: 로봇이 지금 '기준표를 캡처했던 자세'에 있어야 판정 유효
+22:10:15 
+22:10:26   모터 관절                             읽기       기준   k      잔차  판정
+22:10:26    1 left_hip_f_joint              무응답
+22:10:26    2 left_hip_a_joint              무응답
+22:10:26    3 left_hip_r_joint              무응답
+22:10:26    4 left_knee_joint               무응답
+22:10:26    5 left_ankle_f_joint            무응답
+22:10:26    6 left_ankle_r_joint            무응답
+22:10:26    7 right_hip_f_joint             무응답
+22:10:26    8 right_hip_a_joint             무응답
+22:10:26    9 right_hip_r_joint             무응답
+22:10:26   10 right_knee_joint              무응답
+22:10:26   11 right_ankle_f_joint           무응답
+22:10:26   12 right_ankle_r_joint           무응답
+22:10:26 
+22:10:26 [결측] 모터 [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] 무응답 — 전원/커넥터 확인 후 재실행
+22:10:26 [저널] '✓ 일치' 검증 관측 없음 — 저널 갱신 생략 (어긋난 프레임을 기준으로 삼지 않기 위함)
+22:10:26 SocketcanBus was not properly shut down
+[종료] 반환코드 1

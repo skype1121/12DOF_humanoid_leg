@@ -1,0 +1,4 @@
+22:14:38 [release_all] 12모터 현재각 홀드 → 2s 게인 램프다운
+22:14:40 [release_all] 12모터 소프트 릴리즈+MIT 해제 완료 — 무토크
+22:14:40 RELEASE_VERDICT=OK seen=12 fail=0
+[종료] 반환코드 0

@@ -21,11 +21,15 @@ import sys
 
 import numpy as np
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-if _HERE not in sys.path:
-    sys.path.insert(0, _HERE)
-from policy_runner_stage4 import (ACT_DIM, ACTION_SCALE, SLEW_RAD, PolicyRunner,  # noqa: E402
-                                  PolicyRunnerStage4, _load_backend)
+try:      # 패키지 경로(브리지: rl_walking.deploy.c5_switch) — 러너 모듈을 한 번만 로드
+    from .policy_runner_stage4 import (ACT_DIM, ACTION_SCALE, SLEW_RAD, PolicyRunner,  # noqa: F401
+                                       PolicyRunnerStage4, _load_backend)
+except ImportError:   # 단독 실행(--selftest)
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    from policy_runner_stage4 import (ACT_DIM, ACTION_SCALE, SLEW_RAD, PolicyRunner,  # noqa: E402
+                                      PolicyRunnerStage4, _load_backend)
 
 RATE_HZ = 50.0
 
@@ -99,6 +103,21 @@ class C5Runner:
         self.last_switch = ""
         self.last_raw_stand = None
         self.last_raw_rec = None
+
+    def __getattr__(self, name):
+        """브리지가 읽는 러너 속성(last_obs·last_action·act_obs_ema_beta·jvel_ema_mode·last_jvel_ema·_ema …)은 공유 코어에 위임."""
+        core = self.__dict__.get("core")
+        if core is None:
+            raise AttributeError(name)
+        return getattr(core, name)
+
+    def blackbox(self) -> dict:
+        """블랙박스 C5 필드(기록 전용)."""
+        d = self.det
+        return {"mode": int(self.last_mode), "switch": self.last_switch, "n_on": int(d.n_on),
+                "ref_deg": (None if d.ref is None else [round(float(v), 3) for v in d.ref]),
+                "raw_stand": (None if self.last_raw_stand is None else [round(float(v), 4) for v in self.last_raw_stand]),
+                "raw_rec": (None if self.last_raw_rec is None else [round(float(v), 4) for v in self.last_raw_rec])}
 
     def reset(self) -> None:
         self.core.reset()

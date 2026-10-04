@@ -88,6 +88,7 @@ from rl_walking.deploy.policy_runner_stage4 import (  # noqa: E402
     yaw_from_quat_wxyz)
 from rl_walking.deploy.policy_runner import (  # noqa: E402
     DEFAULT_POSE_RAD, JOINT_ORDER, SLEW_RAD)
+from rl_walking.deploy.c5_switch import C5Runner, SwitchDetector  # noqa: E402 — 1004 C5(서기+회복 전환), 미배포
 from rl_walking.deploy import deploy_chain as _DC  # noqa: E402 — 배포 경로 상수·함수의 단일 원본 (판정 스크립트와 공유)
 
 RATE_HZ = 50.0
@@ -286,6 +287,31 @@ CHECKPOINTS = {
     # 몸통에서 관절 폭주 위험. 정책 500틱 selftest 는 등록된 stand_* 전부를 순회하므로 등록 자체가 prep 게이트를 막는다.
     # 재학습(자세 편차 벌점·목 루프 안정성 평가 추가) 후 재등록.
 }
+
+#: 1004 C5 (사용자 승인 구조, **실물 미검증·미배포**): 이름 → (서기 정책 이름[CHECKPOINTS 키], 회복 정책 exported 경로).
+#: 서기 정책의 관측 계약(기본자세·클록·관측 필터)을 두 정책이 공유한다(G24R 계열 = G21a 계보, 같은 계약).
+#: 감지기 = 상대 기울기(기준 자세 편차, τ 10 s) — 절대 기울기는 실물 서기 3–4° 로 회복 모드 고착(1004 로그 재생 70–99 %).
+#: 회복 체크포인트는 reports/gen_c5/REAL_GATE_C5.md G3 확정 뒤 등록(그 전엔 비움).
+C5_PAIRS = {}
+C5_DETECTOR_KW = dict(on_tilt_deg=4.0, on_w=0.5, off_tilt_deg=2.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, ref_tau_s=10.0)
+
+
+def _make_runner(checkpoint):
+    """체크포인트 이름 → 러너. C5 이름이면 C5Runner(서기 정책 계약 공유), 아니면 PolicyRunnerStage4(종전)."""
+    if checkpoint in C5_PAIRS:
+        stand, rec_path = C5_PAIRS[checkpoint]
+        return C5Runner(CHECKPOINTS[stand], rec_path, detector=SwitchDetector(**C5_DETECTOR_KW),
+                        gait_freq=CKPT_GAIT_FREQ.get(stand, CKPT_GAIT_FREQ_DEFAULT),
+                        default_pose_rad=CKPT_DEFAULT_POSE.get(stand),
+                        jvel_ema_mode=ckpt_jvel_ema_mode(stand),
+                        act_obs_ema_beta=ckpt_obs_filter(stand)[0], jvel_obs_ema_beta=ckpt_obs_filter(stand)[1])
+    return PolicyRunnerStage4(
+        CHECKPOINTS[checkpoint],
+        gait_freq=CKPT_GAIT_FREQ.get(checkpoint, CKPT_GAIT_FREQ_DEFAULT),
+        default_pose_rad=CKPT_DEFAULT_POSE.get(checkpoint),
+        jvel_ema_mode=ckpt_jvel_ema_mode(checkpoint),
+        act_obs_ema_beta=ckpt_obs_filter(checkpoint)[0], jvel_obs_ema_beta=ckpt_obs_filter(checkpoint)[1])
+
 
 #: 0918 체크포인트별 기본자세 [rad, JOINT_ORDER 순]. 미등록 = 학습 공통 DEFAULT_POSE_RAD.
 _CROUCH_V1_POSE = {
@@ -809,12 +835,7 @@ class BridgeCore:
     """
 
     def __init__(self, checkpoint="walk"):
-        self.runner = PolicyRunnerStage4(
-            CHECKPOINTS[checkpoint],
-            gait_freq=CKPT_GAIT_FREQ.get(checkpoint, CKPT_GAIT_FREQ_DEFAULT),
-            default_pose_rad=CKPT_DEFAULT_POSE.get(checkpoint),
-            jvel_ema_mode=ckpt_jvel_ema_mode(checkpoint),
-            act_obs_ema_beta=ckpt_obs_filter(checkpoint)[0], jvel_obs_ema_beta=ckpt_obs_filter(checkpoint)[1])
+        self.runner = _make_runner(checkpoint)
         self.ckpt_name = checkpoint
         self.hh = HeadingHold(kp=1.0, wz_limit=0.6)
         self.hh_ref_set = False
@@ -825,12 +846,7 @@ class BridgeCore:
 
     def reset(self, checkpoint=None):
         if checkpoint and checkpoint != self.ckpt_name:
-            self.runner = PolicyRunnerStage4(
-                CHECKPOINTS[checkpoint],
-                gait_freq=CKPT_GAIT_FREQ.get(checkpoint, CKPT_GAIT_FREQ_DEFAULT),
-                default_pose_rad=CKPT_DEFAULT_POSE.get(checkpoint),
-                jvel_ema_mode=ckpt_jvel_ema_mode(checkpoint),
-            act_obs_ema_beta=ckpt_obs_filter(checkpoint)[0], jvel_obs_ema_beta=ckpt_obs_filter(checkpoint)[1])
+            self.runner = _make_runner(checkpoint)
             self.ckpt_name = checkpoint
         self.runner.reset()
         self.hh_ref_set = False
@@ -1326,6 +1342,35 @@ def ckpt_jvel_ema_mode(name):
             raise ValueError(f"{name}: ema0 은 legacy 계약 정책에만 — 이 정책의 joint_vel_ema 계약 = {c} (반대 방향 결함), 기동 거부")
     return mode
 
+
+
+def _selftest_c5():
+    """(1004) C5 브리지 경로: _make_runner → C5Runner(서기 G21a 계약 공유) · 300틱 유한·슬루 · 상대 감지기(정적 3.5° 기울기에서 안 켜짐,
+    +6° 계단에서 켜짐, 복귀 후 꺼짐) · 블랙박스 c5 필드. 회복 자리에 G21a 내보내기를 임시로 써서 경로만 검증(정책 성능 아님)."""
+    import numpy as np
+    if not os.path.isdir(CHECKPOINTS["stand_crouch_g21a"]):
+        return "SKIP (G21a 미배포)"
+    C5_PAIRS["_selftest_c5"] = ("stand_crouch_g21a", CHECKPOINTS["stand_crouch_g21a"])
+    try:
+        core = BridgeCore("_selftest_c5")
+        assert isinstance(core.runner, C5Runner) and core.runner.act_obs_ema_beta == 0.27, "C5 러너·관측 필터 계약"
+        q = np.asarray(CKPT_DEFAULT_POSE["stand_crouch_g21a"], dtype=np.float32); prev = None; modes = []
+        for k in range(300):
+            ang = math.radians(3.5 + (6.0 if 100 <= k < 110 else 0.0))
+            quat = (math.cos(ang / 2), 0.0, math.sin(ang / 2), 0.0)       # 피치 기울기
+            out = core.tick((0.0, 0.0, 0.0), quat, q, np.zeros(12, np.float32), (1.0, 1.0))
+            assert np.all(np.isfinite(out))
+            if prev is not None:
+                assert float(np.max(np.abs(out - prev))) <= math.radians(4.0) + 1e-6, "슬루 초과"
+            prev = out; q = out.astype(np.float32); modes.append(core.runner.last_mode)
+        bb = core.runner.blackbox()
+        assert max(modes[:100]) == 0, "정적 3.5° 에서 회복 모드"
+        assert max(modes[100:112]) == 1, "+6° 계단에서 안 켜짐"
+        assert modes[-1] == 0, "복귀 뒤 서기로 안 돌아옴"
+        assert set(bb) >= {"mode", "switch", "n_on", "ref_deg", "raw_stand", "raw_rec"}
+        return f"C5 경로 OK: 켜짐 {bb['n_on']} 회 · 회복 체류 {sum(modes)} 틱 · 기준 자세 {bb['ref_deg']}"
+    finally:
+        C5_PAIRS.pop("_selftest_c5", None)
 
 
 def _selftest_obs_filter():
@@ -1966,6 +2011,7 @@ def run_selftest(required=()):
              ("행잉 가드", _selftest_hang_guard),
              ("학습 계약", lambda: _selftest_contract(required)),
              ("관측 필터 계약(1003)", _selftest_obs_filter),
+             ("C5 전환 경로(1004)", _selftest_c5),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:
@@ -2615,6 +2661,8 @@ def main():
                    "obs": ([round(float(v), 4) for v in self.core.runner.last_obs]
                            if getattr(self.core.runner, "last_obs", None) is not None else None),
                    "raw_action": [round(float(v), 4) for v in self.core.runner.last_action],
+                   # 1004 C5: 모드(0 서기/1 회복)·이번 틱 전환(on/off)·켜짐 누계·감지기 기준 자세·두 정책 원시 출력(전환 매끄러움 판정용)
+                   "c5": (self.core.runner.blackbox() if isinstance(self.core.runner, C5Runner) else None),
                    # 1001: 관측 joint_vel_ema 모드(v2 = 실제 속도 EMA / ema0 = 0, 학습 계약 복원)와 실제 속도 EMA RMS(두 모드 모두 계산)
                    "jvel_ema_mode": getattr(self.core.runner, "jvel_ema_mode", "v2"),
                    "obs_filter": [getattr(self.core.runner, "act_obs_ema_beta", None), getattr(self.core.runner, "jvel_obs_ema_beta", None)],   # 1003 관측 필터 계약(act β, jvel β)

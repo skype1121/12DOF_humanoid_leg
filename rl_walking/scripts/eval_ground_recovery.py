@@ -105,6 +105,7 @@ parser.add_argument("--contact_drop", type=str, default="",
 parser.add_argument("--switch_to", type=str, default="",
                     help="진단(1004, C4 근거): '<run>:<model_N.pt>' 두 번째(회복) 정책. 감지기(IMU 관측만: 기울기·|ω_xy|, 히스테리시스)가 켜면 회복 정책, 꺼지면 주(서기) 정책. 두 정책 모두 같은 관측·명령 계약")
 parser.add_argument("--min_height", type=float, default=None, help="진단(1004): base_too_low 종료 높이 덮어쓰기 [m] (거짓 낙상 대조, 기본 cfg 0.45)")
+parser.add_argument("--ramp_off", action="store_true", help="진단(1004): hang_support 준정적 롤 토크 램프 DR 끔(학습 DR 의 가정 외란 — 평가 교란 대조)")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
 parser.add_argument("--sw_off", type=str, default="2.5,0.25,1.0,1.5", help="전환 끄기: 기울기 deg, |ω| rad/s 둘 다 미만 & 양발 접촉이 calm s 연속 & 켜진 뒤 최소 hold s")
@@ -152,6 +153,8 @@ for _k in ("onset_hold_range", "onset_blend_range"):              # G7: env 온�
 if hasattr(env_cfg.actions.joint_pos, "lpf_beta_range") and not args_cli.no_chain:
     env_cfg.actions.joint_pos.lpf_beta_range = (1.0, 1.0)         # 필터는 배포 체인 1개만
 _hp = env_cfg.events.hang_support_reset.params
+if args_cli.ramp_off:
+    _hp["ramp_rate_range"] = None; print("[ramp_off] 준정적 롤 토크 램프 끔(진단)", flush=True)
 assert float(_hp["r0_range"][1]) <= 1e-6, f"지면 절차 평가는 지지 0 태스크에서만 (r0_range={_hp['r0_range']})"
 _DR_AXES = ("pose", "gains", "delay", "com", "posebias", "play", "mass", "friction", "calib", "asym")
 _OFF = {x.strip() for x in (args_cli.dr_off or "").split(",") if x.strip()}
@@ -893,6 +896,9 @@ for i in range(STEPS):
         _ov = ((_cmd_ank - _hi_ank).clamp(min=0.0) + (_lo_ank - _cmd_ank).clamp(min=0.0)).max(1).values
         ank_over[a_] += (_ov[a_] > 0.0).float(); ank_over_deg = torch.maximum(ank_over_deg, _ov * a_.float())
         ank_n[a_] += 1.0
+    if i == STEPS_PRE:      # 1004: 인계 시점 램프 DR 값 기록(종료 뒤 자동 리셋이 재표본하므로 여기서)
+        from rl_walking import mdp_hang as _mh2
+        _hst = _mh2._state(uenv); _RAMP = (_hst["ramp_rate"].clone(), _hst["ramp_cap"].clone(), _hst["ramp_start"].clone())
     if i >= STEPS_PRE:      # ── 스텝 단계 집계 ──
         _fw = _dir_vec("f"); _fp = robot.data.body_pos_w[:, _FT, :2] - robot.data.root_pos_w[:, None, :2]
         _ffwd = (_fp * _fw[:, None, :2]).sum(-1)               # (N,2) 발-골반 앞축 거리
@@ -1126,7 +1132,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s"] if policy2 is not None else []))
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s"] if policy2 is not None else []))
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -1145,7 +1151,8 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
                 round(float(lat_roll_max[e]), 1), round(float(lat_v_max[e]), 3), round(float(lat_ss_t[e]), 2),
                 (list(uenv.termination_manager.active_terms)[int(term_reason[e])] if int(term_reason[e]) >= 0 else ""), (round(float(fall_h_prev[e]), 3) if fell[e] else ""),
                 *[("" if math.isnan(float(x[e])) else round(float(x[e]), 2)) for x in (t_sep_min, t_sep18, t_roll8)], round(float(h_min_post[e]), 3),
-                (round(100 * float(td_sep_s[e] / td_sep_n[e]), 1) if float(td_sep_n[e]) > 0 else ""), (round(100 * float(td_sep_min[e]), 1) if float(td_sep_min[e]) < 8 else "")]
+                (round(100 * float(td_sep_s[e] / td_sep_n[e]), 1) if float(td_sep_n[e]) > 0 else ""), (round(100 * float(td_sep_min[e]), 1) if float(td_sep_min[e]) < 8 else ""),
+                round(float(_RAMP[0][e]), 3), round(float(_RAMP[1][e]), 2), round(float(_RAMP[2][e]), 2)]
         if policy2 is not None:
             row += [float(swc_n[e]), (round(float(swc_first[e]), 2) if not math.isnan(float(swc_first[e])) else ""), float(swc_pre[e]), round(float(sw_ticks[e]) / 50.0, 2)]
         wcsv.writerow(row)

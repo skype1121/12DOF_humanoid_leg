@@ -2676,3 +2676,28 @@ class Biped12HangStandW2kEnvCfg(Biped12HangStandW2iEnvCfg):
 @configclass
 class Biped12HangStandW2hSafeEnvCfg(Biped12HangStandW2hEnvCfg):
     """WT0 대조(1005, 보행 트랙): W2-8 환경 그대로 — 안전 PPO 이어 학습 표류만 측정."""
+
+
+@configclass
+class Biped12HangStandG24RcueEnvCfg(Biped12HangStandG24RaEnvCfg):
+    """R1 (1005, 회복 트랙): G24R-a + **배포 cue 규칙을 학습에**(서기 env 외력 중 기울기>3°·|v|>0.15·|ω|>0.5 & 전진 중 → 1 s 동안 vx 0.03, 확률 1 고정).
+    근거(ACT2): 평가 전용 방향 조건 cue(bamd4)가 지연4 sf15 57→33 %. 배포와 같은 신호로 학습해 정책이 cue 를 쓰는 법을 익히게."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.recovery_hint = EventTerm(func=mdp_hang.recovery_step_hint, mode="interval", interval_range_s=(0.0, 0.0),
+                                              params={"vx_hint": 0.03, "win_s": 1.0, "tilt_deg": 3.0, "v_min": 0.15, "w_min": 0.5, "fwd_only": True})
+        # 1005 R1′: cue(힌트) 중 sb0 유효 착지 창 상한 10 → 35 cm (진단: 회복 생존 첫 걸음 22–28 cm, 종전 창이면 '놓친 스텝' 벌점)
+        self.events.sb0.params = dict(self.events.sb0.params, disp_hi_rec=0.35)
+
+
+@configclass
+class Biped12HangStandG24RcapEnvCfg(Biped12HangStandG24RcueEnvCfg):
+    """R2 (1005): R1 + **착지 캡처 여유 이벤트 보상**(가중 10 → 실효 ±0.2/착지; (발 − ξ)·v̂ / 5 cm).
+    근거(ACT3 진단): 전방 밀기 낙상의 80–94 % 가 첫 착지 캡처 여유 < 0 — 걸음이 짧다(낙상 14 cm vs 생존 22–25 cm, 착지 시각 동일). 기존 swing_progress 는 8 cm 포화."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.capture_margin_event = RewTerm(func=mdp_hang.sb0_value, weight=10.0, params={"name": "ev_cap"})
+        self.events.sb0.params = dict(self.events.sb0.params, cap_on=True)
+        # 1005 정정: G24R-a 의 착지 이벤트는 sb0_step(스텝 모드) 출처 — 게이트(recovery_gate_step)에는 착지 계산이 없어 처음 R2 는 보상 0 이었다.

@@ -1627,6 +1627,24 @@ def _g2(env):
     return st
 
 
+
+def _capture_margin_ev(asset, td, fpos):
+    """1005 R2: 착지 캡처 여유 이벤트 (N,) — 착지 발 xy − ξ(=CoM + v_CoM/ω) 의 CoM 수평속도 방향 성분 / 5 cm, [−1, 1].
+    특권 CoM 은 보상 계산에만 쓴다(관측 계약 불변). |v_CoM| ≤ 0.10 m/s 이면 0. td: (N,2) 이번 틱 유효 착지, fpos: (N,2,3) 발 링크 위치."""
+    out = torch.zeros(td.shape[0], device=td.device)
+    if not bool(td.any()):
+        return out
+    _m = asset.data.default_mass.to(td.device)
+    _cp = asset.data.body_com_pos_w if hasattr(asset.data, "body_com_pos_w") else asset.data.body_pos_w
+    _cvw = asset.data.body_com_lin_vel_w if hasattr(asset.data, "body_com_lin_vel_w") else asset.data.body_lin_vel_w
+    _com = (_cp * _m[..., None]).sum(1) / _m.sum(1, keepdim=True); _cv = (_cvw * _m[..., None]).sum(1) / _m.sum(1, keepdim=True)
+    _vh = _cv[:, :2]; _vn = _vh.norm(dim=1)
+    _fsel = torch.where(td[:, :1], fpos[:, 0, :], fpos[:, 1, :])
+    _om = torch.sqrt(9.81 / (_com[:, 2] - _fsel[:, 2]).clamp(min=0.2))
+    _xi = _com[:, :2] + _vh / _om.unsqueeze(1)
+    _mg = ((_fsel[:, :2] - _xi) * (_vh / _vn.clamp(min=1e-6).unsqueeze(1))).sum(1)
+    return torch.where(td.any(1) & (_vn > 0.10), (_mg / 0.05).clamp(-1.0, 1.0), out)
+
 def recovery_gate_v2(env, env_ids, tilt_ok: float = 6.5, w_ok: float = 1.5, v_ok: float = 0.5, lift_tilt: float = 3.0,
                      arm_s: float = 2.5, td_air_s: float = 0.06, td_disp_m: float = 0.02, load_frac: float = 0.25,
                      load_s: float = 0.10, pre_tilt: float = 6.5, pre_w: float = 1.0, pre_v: float = 0.30, pre_s: float = 0.15,
@@ -1675,6 +1693,7 @@ def recovery_gate_v2(env, env_ids, tilt_ok: float = 6.5, w_ok: float = 1.5, v_ok
     landed = (st["prev_c"] < 0.5) & (c > 0.5)
     disp = (fxy - st["lift_xy"]).norm(dim=-1)
     td = landed & (st["swing_t"] > td_air_s) & (disp > td_disp_m) & rec.unsqueeze(1)
+    st["ev_cap"] = _capture_margin_ev(asset, td, asset.data.body_pos_w[:, bid, :])
     st["had_swing"] = torch.where(rec & (air & (st["swing_t"] + dt > td_air_s)).any(1), torch.ones_like(st["had_swing"]), st["had_swing"])
     st["swing_t"] = torch.where(air, st["swing_t"] + dt, torch.zeros_like(st["swing_t"]))
     st["ev_td"] = td.any(1).float()
@@ -1952,7 +1971,7 @@ def recovery_gate_g22r(env, env_ids, tilt_ok: float = 6.5, w_ok: float = 1.5, v_
     rec_open = (phase ≠ STAND) 로 종전 state_gated/open_gated 와 호환."""
     st = _g2(env); hs = _state(env); g = _g22(env)
     for k, shape in (("rec_dir", (2,)), ("lift_z", (2,)), ("valid_lift", (2,)), ("to_fired", (2,)), ("prog", ()),
-                     ("ev_unarmed", ()), ("ev_swto", ()), ("ev_takeoff", ())):
+                     ("ev_unarmed", ()), ("ev_swto", ()), ("ev_takeoff", ()), ("ev_cap", ())):
         if k not in st:
             st[k] = torch.zeros(env.num_envs, *shape, device=env.device)
     asset = env.scene[(asset_cfg or _base_cfg()).name]
@@ -1997,6 +2016,8 @@ def recovery_gate_g22r(env, env_ids, tilt_ok: float = 6.5, w_ok: float = 1.5, v_
     disp = (fxy - st["lift_xy"]).norm(dim=-1)
     td = landed & (st["valid_lift"] > 0.5) & (disp >= td_disp_m) & rec.unsqueeze(1)
     st["ev_td"] = td.any(1).float()
+    # 1005 R2: 착지 캡처 여유 이벤트 — 착지 발 xy − ξ(=CoM + v_CoM/ω) 의 CoM 속도 방향 성분 / 5 cm, [−1, 1]. 특권 CoM 은 보상에만(관측 계약 불변).
+    st["ev_cap"] = _capture_margin_ev(asset, td, asset.data.body_pos_w[:, bid, :])
     st["td_done"] = torch.maximum(st["td_done"], st["ev_td"])
     st["td_pend"] = torch.where(td, torch.ones_like(st["td_pend"]), st["td_pend"])
     st["valid_lift"] = torch.where(landed, torch.zeros_like(st["valid_lift"]), st["valid_lift"])
@@ -2276,7 +2297,7 @@ def _sb0(env):
         st = {"prev_c": torch.ones(N, 2, device=dev), "air_t": z(N, 2), "lift_xy": z(N, 2, 2), "lift_z": z(N, 2), "valid": z(N, 2),
               "half": torch.full((N,), -1.0, device=dev), "td_done": z(), "load_done": z(), "settle_done": z(), "load_t": z(), "settle_t": z(),
               "r_transfer": z(), "r_asym": z(), "ev_miss": z(), "r_unload": z(), "r_clear": z(), "r_prog": z(), "ev_td": z(), "ev_load": z(), "ev_settle": z(), "r_prem": z(),
-              "n_sched": z(), "n_td": z()}
+              "n_sched": z(), "n_td": z(), "ev_cap": z()}
         env._sb0 = st
     return st
 
@@ -2285,7 +2306,7 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
              fz_sw_hi: float = 0.5, fz_sw_lo: float = 0.175, td_air_s: float = 0.06, lift_dz: float = 0.01,
              clr_lo: float = 0.015, clr_hi: float = 0.04, prog_sat: float = 0.05, disp_lo: float = 0.03, disp_hi: float = 0.10,
              load_frac: float = 0.25, load_s: float = 0.10, settle_s: float = 0.06, prem_fz: float = 0.6, td_any_dir: bool = False,
-             threshold: float = 5.0, asset_cfg=None):
+             threshold: float = 5.0, asset_cfg=None, disp_hi_rec: float | None = None, cap_on: bool = False):
     """mode="interval"(0 s): STEP-B0 접촉 일정 추적·보상 값 계산(스텝 모드에서만 0 아님).
     td_any_dir(1004 A0b): 착지 이벤트 변위 조건을 앞축 [disp_lo, disp_hi] 대신 **방향 무관 수평** [0.02, disp_hi] 로 — primitive 단계에서 제자리·옆 스텝 허용.
     전환: r = ramp(지지 Fz/mg: 0.5→0.85) × ramp(스윙 Fz/mg: 0.5→0.175) — 성공 스텝의 이륙 순간 0.9/0.17 을 목표로.
@@ -2342,7 +2363,15 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
         dh = (fxy[ar, sw] - st["lift_xy"][ar, sw]).norm(dim=-1)
         disp_ok = (dh >= 0.02) & (dh <= disp_hi)
     else:
-        disp_ok = (dfwd[ar, sw] >= disp_lo) & (dfwd[ar, sw] <= disp_hi)
+        _dh = disp_hi
+        _hin = getattr(env, "_hint_on", None)
+        if disp_hi_rec is not None and _hin is not None:     # 1005 R1′: 회복 cue(힌트) 중에는 착지 창 상한을 회복 보폭까지(앞 3–35 cm)
+            _dh = torch.where(_hin, torch.full_like(dfwd[:, 0], disp_hi_rec), torch.full_like(dfwd[:, 0], disp_hi))
+        disp_ok = (dfwd[ar, sw] >= disp_lo) & (dfwd[ar, sw] <= _dh)
+    if cap_on:      # 1005 R2′: 회복 cue 중 모든 유효 착지(어느 발이든)에 캡처 여유 이벤트
+        _hin2 = getattr(env, "_hint_on", None)
+        _tdc = landed & (st["valid"] > 0.5) & ((_hin2.unsqueeze(1)) if _hin2 is not None else torch.zeros_like(landed))
+        st["ev_cap"] = _capture_margin_ev(asset, _tdc, fp)
     td = landed[ar, sw] & (st["valid"][ar, sw] > 0.5) & disp_ok & (st["td_done"] < 0.5) & (mode > 0.5)
     st["ev_td"] = td.float(); st["td_done"] = torch.maximum(st["td_done"], st["ev_td"]); st["n_td"] += st["ev_td"]
     st["valid"] = torch.where(landed, torch.zeros_like(st["valid"]), st["valid"])
@@ -2624,7 +2653,8 @@ def step_assist_curriculum_rel(env, env_ids, step: float = 0.1, keep_ratio: floa
 
 
 # ---------------------------------------------------------------- G23R-b (1004: 밀림 → 스텝 모드 힌트 주입·감쇠, 지시서 G22R3 위상 힌트) ----------------------------------------------------------------
-def recovery_step_hint(env, env_ids, vx_hint: float = 0.05, win_s: float = 1.0, tilt_deg: float = 4.0, v_min: float = 0.15, asset_cfg=None):
+def recovery_step_hint(env, env_ids, vx_hint: float = 0.05, win_s: float = 1.0, tilt_deg: float = 4.0, v_min: float = 0.15, asset_cfg=None,
+                       w_min: float = 1e9, fwd_only: bool = False):
     """mode="interval"(0 s): **학습 전용** 힌트 — 서기 명령(|vx|<0.03) env 에 외력이 걸려 있고 (기울기 > tilt_deg 또는 |v_xy| > v_min) 이면,
     확률 env._hint_p 로 win_s 동안 명령 vx 를 vx_hint(스텝 모드)로 덮어쓴다. 창이 끝나면 0 으로 되돌린다. 배포 정책은 힌트 0 에서 판정."""
     asset = env.scene[(asset_cfg or _base_cfg()).name]; hs = _state(env)
@@ -2639,7 +2669,9 @@ def recovery_step_hint(env, env_ids, vx_hint: float = 0.05, win_s: float = 1.0, 
     vx = term.vel_command_b[:, 0]
     pg = asset.data.projected_gravity_b; tilt = torch.rad2deg(torch.acos((-pg[:, 2]).clamp(-1.0, 1.0)))
     v = asset.data.root_lin_vel_w[:, :2].norm(dim=1)
-    trig = (~env._hint_on) & (vx.abs() < 0.03) & (hs["dst_F_now"] > 0.0) & ((tilt > tilt_deg) | (v > v_min))
+    trig = (~env._hint_on) & (vx.abs() < 0.03) & (hs["dst_F_now"] > 0.0) & ((tilt > tilt_deg) | (v > v_min) | (asset.data.root_ang_vel_b[:, :2].norm(dim=1) > w_min))
+    if fwd_only:     # 1005 R1: 배포 cue 규칙(전진 중일 때만) — 몸통 전진속도 > 0
+        trig = trig & (asset.data.root_lin_vel_b[:, 0] > 0.0)
     trig = trig & (torch.rand(N, device=dev) < float(env._hint_p))
     env._hint_until = torch.where(trig, t + win_s, env._hint_until); env._hint_on = env._hint_on | trig
     env._hint_count += float(trig.sum())

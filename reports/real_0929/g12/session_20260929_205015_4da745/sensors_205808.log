@@ -1,0 +1,4 @@
+20:58:22 [sensors_up] OK — imu·foot_force 실데이터 확인
+20:58:22   IMU:  {"timestamp": 1790683099.818466, "gyro_rad_s": [-0.08037729610982196, 
+20:58:22   FOOT: {"timestamp": 1790683102.0714326, "left_n": 0.0, "right_n": 0.0, "left
+[종료] 반환코드 0

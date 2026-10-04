@@ -25,7 +25,7 @@ p.add_argument("--seed", type=int, default=1)
 p.add_argument("--t_stand", type=float, default=3.0)
 p.add_argument("--t_walk", type=float, default=8.0)
 p.add_argument("--t_after", type=float, default=4.0)
-p.add_argument("--torsion_r", type=float, default=None, help="1005 진단: 로봇 충돌 형상 비틀림 마찰 패치 반경[m](PhysX torsional_patch_radius) — ⚠1005 WTOR: 이 자산·GPU 경로에서 결과 비트 동일 = 효과 없음 확인, 쓰지 말 것"); p.add_argument("--out_tag", default="walk"); p.add_argument("--friction_scale", type=float, default=1.0, help="진단(T4): 발 마찰 범위 배율(학습 설정 불변)"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)"); p.add_argument("--wz_groups", default="", help="진단: 걷기 중 상수 요 명령을 env 묶음별로(예 -0.3,0,0.3) — 회전 명령 추종 확인")
+p.add_argument("--torsion_r", type=float, default=None, help="1005 진단: 로봇 충돌 형상 비틀림 마찰 패치 반경[m](PhysX torsional_patch_radius) — ⚠1005 WTOR: 이 자산·GPU 경로에서 결과 비트 동일 = 효과 없음 확인, 쓰지 말 것"); p.add_argument("--stand_policy", default="", help="1005 전환 평가: 'run:model_N.pt' 서기 정책(G21a) — 걷기 명령 전·정지 뒤 stand_after_s 이후에 사용(같은 관측 계약)"); p.add_argument("--stand_after_s", type=float, default=0.5); p.add_argument("--out_tag", default="walk"); p.add_argument("--friction_scale", type=float, default=1.0, help="진단(T4): 발 마찰 범위 배율(학습 설정 불변)"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)"); p.add_argument("--wz_groups", default="", help="진단: 걷기 중 상수 요 명령을 env 묶음별로(예 -0.3,0,0.3) — 회전 명령 추종 확인")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
@@ -70,6 +70,12 @@ log_root = os.path.abspath(os.path.join(REPO, "logs", "rsl_rl", agent_cfg.experi
 ck = get_checkpoint_path(log_root, agent_cfg.load_run, agent_cfg.load_checkpoint)
 runner = OnPolicyRunner(venv, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
 runner.load(ck); policy = runner.get_inference_policy(device=dev)
+policy_st = None
+if a.stand_policy:
+    _r2, _c2 = a.stand_policy.split(':')
+    ck_st = get_checkpoint_path(log_root, _r2, _c2)
+    runner_st = OnPolicyRunner(venv, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device); runner_st.load(ck_st); policy_st = runner_st.get_inference_policy(device=dev)
+    print(f'[stand_policy] {ck_st} · 정지 뒤 {a.stand_after_s}s 에 인계', flush=True)
 speeds = [0.0] + [float(s) for s in a.speeds.split(",")]
 grp = torch.arange(N, device=dev) % len(speeds)
 vgrp = torch.tensor(speeds, device=dev)[grp]
@@ -119,7 +125,8 @@ for i in range(steps):
     walking = (t >= t_ws) & (t < t_we)
     set_cmd(vgrp if walking else torch.zeros(N, device=dev))
     with torch.inference_mode():
-        act_ = policy(obs)
+        _use_st = policy_st is not None and ((t < t_ws) or (t >= t_we + a.stand_after_s))
+        act_ = policy_st(obs) if _use_st else policy(obs)
     obs, _, dones, _ = venv.step(act_)
     if isinstance(obs, tuple):
         obs = obs[0]
@@ -176,7 +183,7 @@ b_, a_ = butter(2, [2.0 / (0.5 / dt), 4.5 / (0.5 / dt)], btype="band")
 band = filtfilt(b_, a_, WY, axis=0)
 t_axis = 1.0 + np.arange(WY.shape[0]) * dt
 PA = torch.stack(pitch_after).numpy() if pitch_after else None
-L = [f"W1 보행 평가 · {a.task} · {ck}" + (f" · HeadingHold kp {a.heading_hold}" if a.heading_hold > 0 else "") + (f" · 마찰 ×{a.friction_scale}" if a.friction_scale != 1.0 else "") + (f" · 비틀림 r {a.torsion_r} m" if a.torsion_r is not None else ""), f"지연 {a.delay}틱 · LPF β 0.27 · seed {a.seed} · env {N} · 서기 {a.t_stand}s → 걷기 {a.t_walk}s → 정지 {a.t_after}s · 외란 없음 · 학습 DR 유지",
+L = [f"W1 보행 평가 · {a.task} · {ck}" + (f" · HeadingHold kp {a.heading_hold}" if a.heading_hold > 0 else "") + (f" · 마찰 ×{a.friction_scale}" if a.friction_scale != 1.0 else "") + (f" · 비틀림 r {a.torsion_r} m" if a.torsion_r is not None else "") + (f" · 서기 정책 {a.stand_policy} (정지 뒤 {a.stand_after_s}s 인계)" if a.stand_policy else ""), f"지연 {a.delay}틱 · LPF β 0.27 · seed {a.seed} · env {N} · 서기 {a.t_stand}s → 걷기 {a.t_walk}s → 정지 {a.t_after}s · 외란 없음 · 학습 DR 유지",
      "| vx 명령 | n | 낙상 % | 추종 오차 m/s | 요 표류 ° | 옆 표류 cm | 착지 수/env | 왼 착지 % | 보폭 cm | 공중 s | 양발지지 s | 미끄럼 m/s | 교대 % | 정지 정착 s (중앙) | 정지 창 3Hz RMS | 정지 뒤 피치 p2p ° |",
      "|" + "---|" * 16]
 gn = grp.cpu().numpy(); al = alive.cpu().numpy()

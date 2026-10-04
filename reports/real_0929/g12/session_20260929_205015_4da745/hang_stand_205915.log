@@ -1,0 +1,137 @@
+20:59:15 [개별제어] 관절 한계표(좌우 대칭 소프트 한계) 로드 — ROM 표 대신 사용
+20:59:15 모터별 이동량: 1:-0.4 2:-1.5 3:+5.6 4:-1.0 5:+3.4 6:-0.6 7:-2.0 8:+2.3 9:+4.7 10:+2.3 11:+1.3 12:+3.1
+20:59:15 [hang_stand] 에어램프 6.0s → 유지 (kp20 시작)
+20:59:16 [에어램프   1.0s] kp 20.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터3 -0.91° | 평균 0.39°
+20:59:17 [에어램프   2.0s] kp 20.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터12 -1.03° | 평균 0.57°
+20:59:18 [에어램프   3.0s] kp 20.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터12 -1.52° | 평균 0.78°
+20:59:19 [에어램프   4.0s] kp 20.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터12 -1.23° | 평균 0.81°
+20:59:20 [에어램프   5.0s] kp 20.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터12 -1.72° | 평균 0.98°
+20:59:21 [에어유지   6.0s] kp 20.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -1.64° | 평균 0.93°
+20:59:22 [게인램프] kp20/kd1 → kp150/kd5 (8s) — 완료 후 줄을 천천히 풀어 착지시키세요
+20:59:22 [게인램프   7.0s] kp 28.2 트림 a0.00/h0.00/k0.00° | 최대오차 모터2 +1.35° | 평균 0.78°
+20:59:23 [게인램프   8.0s] kp 44.5 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.94° | 평균 0.53°
+20:59:24 [게인램프   9.0s] kp 60.8 트림 a0.00/h0.00/k0.00° | 최대오차 모터2 +0.79° | 평균 0.37°
+20:59:25 [게인램프  10.0s] kp 77.1 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.68° | 평균 0.31°
+20:59:26 [게인램프  11.0s] kp 93.4 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.64° | 평균 0.25°
+20:59:27 [게인램프  12.0s] kp109.7 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.53° | 평균 0.23°
+20:59:28 [게인램프  13.0s] kp126.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.53° | 평균 0.20°
+20:59:29 [게인램프  14.1s] kp142.3 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.42° | 평균 0.17°
+20:59:30 [운용대기  15.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.40° | 평균 0.17°
+20:59:31 [운용대기  16.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.40° | 평균 0.17°
+20:59:32 [운용대기  17.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.40° | 평균 0.17°
+20:59:33 [운용대기  18.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.40° | 평균 0.17°
+20:59:34 [운용대기  19.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.40° | 평균 0.17°
+20:59:35 [운용대기  20.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.40° | 평균 0.17°
+20:59:36 [운용대기  21.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.40° | 평균 0.17°
+20:59:37 [운용대기  22.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터8 -0.40° | 평균 0.17°
+20:59:38 [운용대기  23.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터7 +2.01° | 평균 1.02° | 개별 left_hip_f+8.4 left_knee-8.4 left_ankle_f+8.4 right_hip_f-8.4 right_knee+8.4 right_ankle_f-8.4
+20:59:39 [운용대기  24.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 -2.22° | 평균 0.63° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:40 [운용대기  25.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -1.10° | 평균 0.33° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:41 [운용대기  26.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -1.10° | 평균 0.32° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:42 [운용대기  27.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -1.10° | 평균 0.32° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:43 [운용대기  28.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.32° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:44 [운용대기  29.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.97° | 평균 0.34° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:45 [운용대기  30.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:46 [운용대기  31.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:47 [운용대기  32.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:48 [운용대기  33.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.97° | 평균 0.26° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:49 [운용대기  34.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:50 [운용대기  35.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.26° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:51 [운용대기  36.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:52 [운용대기  37.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:53 [운용대기  38.1s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:54 [운용대기  39.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:55 [운용대기  40.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:56 [운용대기  41.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:57 [운용대기  42.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.97° | 평균 0.26° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:58 [운용대기  43.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+20:59:59 [운용대기  44.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:00 [운용대기  45.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:01 [운용대기  46.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.97° | 평균 0.26° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:02 [운용대기  47.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:03 [운용대기  48.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.97° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:04 [운용대기  49.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.97° | 평균 0.26° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:05 [운용대기  50.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.97° | 평균 0.26° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:07 [운용대기  51.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.97° | 평균 0.26° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:08 [운용대기  52.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.99° | 평균 0.27° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:09 [운용대기  53.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.95° | 평균 0.21° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:10 [운용대기  54.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.84° | 평균 0.30° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:11 [운용대기  55.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.82° | 평균 0.30° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:12 [운용대기  56.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터1 -0.82° | 평균 0.31° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:13 [운용대기  57.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +1.04° | 평균 0.36° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:14 [운용대기  58.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +1.15° | 평균 0.39° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:15 [운용대기  59.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +1.59° | 평균 0.46° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:16 [운용대기  60.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +1.59° | 평균 0.45° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:17 [운용대기  61.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +1.59° | 평균 0.45° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:18 [운용대기  62.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +1.76° | 평균 0.49° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:19 [운용대기  63.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.02° | 평균 0.51° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:20 [운용대기  64.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.50° | 평균 0.57° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:21 [운용대기  65.2s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.46° | 평균 0.61° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:22 [운용대기  66.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.88° | 평균 0.67° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:23 [운용대기  67.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.94° | 평균 0.71° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:24 [운용대기  68.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.92° | 평균 0.70° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:25 [운용대기  69.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.90° | 평균 0.67° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:26 [운용대기  70.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.90° | 평균 0.68° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:27 [운용대기  71.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.90° | 평균 0.68° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:28 [운용대기  72.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.88° | 평균 0.69° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:29 [운용대기  73.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.88° | 평균 0.69° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:30 [운용대기  74.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.85° | 평균 0.67° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:31 [운용대기  75.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.85° | 평균 0.66° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:32 [운용대기  76.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.85° | 평균 0.67° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:33 [운용대기  77.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +2.88° | 평균 0.68° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:34 [운용대기  78.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.05° | 평균 0.73° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:35 [운용대기  79.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.80° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:36 [운용대기  80.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.80° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:37 [운용대기  81.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.80° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:38 [운용대기  82.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.80° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:39 [운용대기  83.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.80° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:40 [운용대기  84.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.79° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:41 [운용대기  85.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.79° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:42 [운용대기  86.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.79° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:43 [운용대기  87.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.79° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:44 [운용대기  88.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.79° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:45 [운용대기  89.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.79° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:46 [착지 선언] 스톨가드 해제 — 트림 라이브 조정 가능
+21:00:46 [하중유지  90.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.79° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:47 [하중유지  91.3s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.78° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:48 [하중유지  92.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.78° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:49 [하중유지  93.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.79° | 개별 left_hip_f+30.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.3 right_knee+38.5 right_ankle_f-28.0
+21:00:50 [하중유지  94.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.80° | 개별 left_hip_f+30.5 left_knee-38.5 left_ankle_f+28.0 right_hip_f-30.5 right_knee+38.5 right_ankle_f-28.0
+21:00:51 [하중유지  95.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.81° | 개별 left_hip_f+31.0 left_knee-38.5 left_ankle_f+28.0 right_hip_f-31.0 right_knee+38.5 right_ankle_f-28.0
+21:00:52 [하중유지  96.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.80° | 개별 left_hip_f+31.5 left_knee-38.5 left_ankle_f+28.0 right_hip_f-31.5 right_knee+38.5 right_ankle_f-28.0
+21:00:53 [하중유지  97.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.80° | 개별 left_hip_f+32.0 left_knee-38.5 left_ankle_f+28.0 right_hip_f-32.0 right_knee+38.5 right_ankle_f-28.0
+21:00:54 [하중유지  98.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.81° | 개별 left_hip_f+32.5 left_knee-38.5 left_ankle_f+28.0 right_hip_f-32.5 right_knee+38.5 right_ankle_f-28.0
+21:00:55 [하중유지  99.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.79° | 개별 left_hip_f+32.8 left_knee-38.5 left_ankle_f+28.0 right_hip_f-32.8 right_knee+38.5 right_ankle_f-28.0
+21:00:56 [하중유지 100.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.79° | 개별 left_hip_f+33.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-33.3 right_knee+38.5 right_ankle_f-28.0
+21:00:57 [하중유지 101.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.78° | 개별 left_hip_f+33.8 left_knee-38.5 left_ankle_f+28.0 right_hip_f-33.8 right_knee+38.5 right_ankle_f-28.0
+21:00:58 [하중유지 102.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:00:59 [하중유지 103.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:00 [하중유지 104.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:01 [하중유지 105.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:02 [하중유지 106.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:03 [하중유지 107.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:04 [하중유지 108.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:05 [하중유지 109.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:06 [하중유지 110.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:07 [하중유지 111.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:08 [하중유지 112.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:09 [하중유지 113.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:10 [하중유지 114.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:11 [하중유지 115.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:12 [하중유지 116.4s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:13 [하중유지 117.5s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:14 [하중유지 118.5s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:15 [하중유지 119.5s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:16 [하중유지 120.5s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:17 [하중유지 121.5s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:18 [하중유지 122.5s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:19 [하중유지 123.5s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:20 [하중유지 124.5s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:21 [하중유지 125.5s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:22 [하중유지 126.5s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.14° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:23 [하중유지 127.5s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:24 [하중유지 128.5s] kp150.0 트림 a0.00/h0.00/k0.00° | 최대오차 모터4 +3.16° | 평균 0.77° | 개별 left_hip_f+34.3 left_knee-38.5 left_ankle_f+28.0 right_hip_f-34.3 right_knee+38.5 right_ankle_f-28.0
+21:01:25 [핸드오프] 상태 파일 기록 → stage8 인수 홀드 준비 완료
+21:01:25 [핸드오프] 릴리즈 생략 — 모터가 현 자세·운용게인을 그대로 잡고 있습니다. 즉시 진행: stage8 기동(인수 홀드 자동) → SET_BASELINE_FROM_CURRENT_ALL → ARM_ALL → 정책. 지연·실패 시 회수 = 줄 인장 후 release_all.py
+21:01:25 SocketcanBus was not properly shut down
+[종료] 반환코드 3

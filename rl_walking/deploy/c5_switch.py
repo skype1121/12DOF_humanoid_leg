@@ -38,12 +38,12 @@ class SwitchDetector:
     """IMU 히스테리시스 감지기 — 상태: 0 = 서기 정책, 1 = 회복 정책."""
 
     def __init__(self, on_tilt_deg: float = 4.0, on_w: float = 0.5, off_tilt_deg: float = 2.5, off_w: float = 0.3,
-                 calm_s: float = 1.0, dwell_s: float = 0.4, dt: float = 1.0 / RATE_HZ, ref_tau_s: float = 0.0, ref_cap_deg: float = 8.0):
+                 calm_s: float = 1.0, dwell_s: float = 0.4, dt: float = 1.0 / RATE_HZ, ref_tau_s: float = 0.0, ref_cap_deg: float = 8.0, ref_init_s: float = 0.0):
         """ref_tau_s > 0: 기울기를 **기준 자세 대비 편차**로(1004 실물 로그 재생: 실물 서기 기울기 3–4° → 절대 기준이면 회복 모드 70–99 % 체류).
         기준 = 첫 update 의 (롤, 피치), 서기 모드·|ω|<0.1·양발일 때 EMA(τ) 갱신, |ref| ≤ ref_cap_deg. 0 = 절대 기울기(시뮬 SW-1 정의)."""
         self.on_tilt, self.on_w, self.off_tilt, self.off_w = float(on_tilt_deg), float(on_w), float(off_tilt_deg), float(off_w)
         self.calm_s, self.dwell_s, self.dt = float(calm_s), float(dwell_s), float(dt)
-        self.ref_tau_s, self.ref_cap = float(ref_tau_s), float(ref_cap_deg)
+        self.ref_tau_s, self.ref_cap, self.ref_init_s = float(ref_tau_s), float(ref_cap_deg), float(ref_init_s)
         self.reset()
 
     def reset(self) -> None:
@@ -52,6 +52,7 @@ class SwitchDetector:
         self.calm = 0.0
         self.n_on = 0
         self.ref = None
+        self.t_since = 0.0
 
     @staticmethod
     def tilt_deg(gravity_unit) -> float:
@@ -70,7 +71,7 @@ class SwitchDetector:
         c = np.asarray(contact2, dtype=np.float64).reshape(2) > 0.5
         if self.ref_tau_s > 0.0:
             rp = self.roll_pitch_deg(gravity_unit)
-            if self.ref is None:
+            if self.ref is None or self.t_since < self.ref_init_s:     # 인계 블렌딩 과도 동안 기준 = 현재 자세(편차 0)
                 self.ref = rp.copy()
             if self.mode == 0 and w < 0.1 and bool(c[0] and c[1]):
                 self.ref = np.clip(self.ref + (rp - self.ref) * (self.dt / self.ref_tau_s), -self.ref_cap, self.ref_cap)
@@ -81,6 +82,7 @@ class SwitchDetector:
         self.t_on = self.t_on + self.dt if self.mode == 1 else 0.0
         off = self.mode == 1 and self.calm >= self.calm_s and self.t_on >= self.dwell_s
         on = self.mode == 0 and ((tilt > self.on_tilt) or (w > self.on_w))
+        self.t_since += self.dt
         if on:
             self.n_on += 1
         self.mode = 1 if (self.mode == 1 or on) and not off else 0

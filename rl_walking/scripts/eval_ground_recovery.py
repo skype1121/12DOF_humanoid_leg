@@ -108,6 +108,7 @@ parser.add_argument("--switch_to", type=str, default="",
 parser.add_argument("--min_height", type=float, default=None, help="진단(1004): base_too_low 종료 높이 덮어쓰기 [m] (거짓 낙상 대조, 기본 cfg 0.45)")
 parser.add_argument("--ramp_off", action="store_true", help="진단(1004): hang_support 준정적 롤 토크 램프 DR 끔(학습 DR 의 가정 외란 — 평가 교란 대조)")
 parser.add_argument("--sw_ref_tau", type=float, default=0.0, help="1004: 감지기 기울기를 기준 자세 대비 편차로(기준 = 인계 시점 롤·피치, 서기·조용·양발일 때 EMA τ[s] 갱신, |ref|≤8°). 0 = 절대 기울기(종전)")
+parser.add_argument("--sw_ref_init_s", type=float, default=0.0, help="1004: 인계 뒤 이 시간 동안은 기준 자세가 현재 자세를 그대로 따라감(편차 0 → ω 로만 켜짐) — 인계 블렌딩 과도 오탐 방지")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
 parser.add_argument("--sw_off", type=str, default="2.5,0.25,1.0,1.5", help="전환 끄기: 기울기 deg, |ω| rad/s 둘 다 미만 & 양발 접촉이 calm s 연속 & 켜진 뒤 최소 hold s")
@@ -785,6 +786,8 @@ for i in range(STEPS):
             if float(args_cli.sw_ref_tau) > 0.0:      # 1004 상대 기울기 감지기(실물 서기 기울기 3–4° 대응)
                 _pp_, _rr_ = _rp(); _rp2 = torch.stack([_rr_, _pp_], -1)
                 if i == STEPS_PRE or "sw_ref" not in dir():
+                    sw_ref = _rp2.clone()
+                if t_rel < float(args_cli.sw_ref_init_s):
                     sw_ref = _rp2.clone()
                 _upd = (~sw_mode) & (_w < 0.1) & _cf[:, 0] & _cf[:, 1]
                 sw_ref = torch.where(_upd.unsqueeze(1), sw_ref + (_rp2 - sw_ref) * (0.02 / float(args_cli.sw_ref_tau)), sw_ref).clamp(-8.0, 8.0)

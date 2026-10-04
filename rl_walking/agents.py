@@ -113,3 +113,14 @@ class Biped12StepB0PPORunnerCfg(Biped12Stage4PPOHoldPriorRunnerCfg):
     def __post_init__(self):
         super().__post_init__()
         self.experiment_name = "biped12_stepb0"
+
+
+@configclass
+class Biped12StepB0SafePPORunnerCfg(Biped12StepB0PPORunnerCfg):
+    """1004 밤: 이어 학습 표류 방지(독립 검토 7회차) — 고정 학습률 1e-4·엔트로피 0. 같은 실험 디렉터리."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.algorithm.learning_rate = 1.0e-4
+        self.algorithm.schedule = "fixed"
+        self.algorithm.entropy_coef = 0.0

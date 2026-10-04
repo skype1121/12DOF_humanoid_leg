@@ -2626,3 +2626,25 @@ class Biped12HangStandG24RhEnvCfg(Biped12HangStandG24RaEnvCfg):
         super().__post_init__()
         t = self.rewards.joint_deviation_hip
         self.rewards.joint_deviation_hip = RewTerm(func=mdp_hang.state_gated, weight=t.weight, params={"func": t.func, "params": dict(t.params or {})})
+
+
+@configclass
+class _G25CurriculumCfg:
+    imp_level = _CurrTerm(func=mdp_hang.imp_level_curriculum)
+
+
+@configclass
+class Biped12HangStandG25EnvCfg(Biped12HangStandG24RaEnvCfg):
+    """G25 (1004 밤, C5 회복 정책 후보): G24R-a + **앞/뒤 충격 단계 커리큘럼**(충격량 4–8 → 14–18 N·s, 지속 0.1–0.3 s,
+    현재 단계 50 %·숙달 30 %·원 분포 20 %, 성공 ≥ 85 % 승격·< 60 % 3 블록 강등) 단일 개념 변경.
+    근거: C5 앞 충격 envelope 경계 6–8 N·s(학습 분포 끝), 실물 '콱 밀기' 낙상(1004)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.disturbance.params = dict(self.events.disturbance.params, imp_curr=True)
+        self.curriculum = _G25CurriculumCfg()
+
+
+@configclass
+class Biped12HangStandG24RaSafeEnvCfg(Biped12HangStandG24RaEnvCfg):
+    """T1 대조군(1004 밤): G24R-a 환경 그대로 — 안전 PPO(고정 lr 1e-4·엔트로피 0)로 이어 학습 표류만 측정."""

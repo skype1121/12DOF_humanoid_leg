@@ -1847,10 +1847,13 @@ def _g22(env):
     return st
 
 
+_IMP_LEVELS = ((4.0, 8.0), (6.0, 10.0), (8.0, 12.0), (10.0, 14.0), (12.0, 16.0), (14.0, 18.0))   # 충격량 단계 [N·s] (1004 envelope: 경계 6–8)
+
+
 def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), gap_range=(3.0, 7.0), ramp_prob=0.6,
                            F_ramp_range=(3.0, 20.0), rise_range=(1.0, 4.0), hold_range=(1.0, 3.0),
                            F_imp_range=(5.0, 30.0), dur_imp_range=(0.2, 0.4), lateral_prob=0.0, lateral_scale=0.6, p_active=1.0,
-                           branch: str = "g22r", w1_p_active: float = 0.125, w1_F: tuple = (5.0, 8.0), imp_scale: float = 1.5, lateral_override: float = 0.0,
+                           branch: str = "g22r", w1_p_active: float = 0.125, w1_F: tuple = (5.0, 8.0), imp_scale: float = 1.5, lateral_override: float = 0.0, imp_curr: bool = False,
                            stage_set: str = "r", stage_override: int = -1, p_none_override: float = -1.0, asset_cfg=None):
     """mode="reset": 종전 disturbance_reset 의 횟수·시각·램프/충격 모양을 그대로 쓰고 **방향·힘 분포만** 단계별로 바꾼다.
     G22R: 에피소드 단위로 무외란/앞/뒤 범주를 뽑아(단계 비율), 앞(+몸통 x)·뒤 힘 범위 적용(좌우 외란 없음 — 지시서 R1–R4).
@@ -1894,6 +1897,23 @@ def disturbance_reset_g22r(env, env_ids, n_range=(1, 3), t0_range=(2.0, 10.0), g
         lsg = torch.where(torch.rand(n, K, 1, device=dev) < 0.5, -1.0, 1.0)
         d = torch.where(lat.unsqueeze(-1), ly * lsg, d)
         F = torch.where(lat, F * float(lateral_scale), F)
+    if imp_curr:      # 1004 밤 G25: 앞/뒤 충격 커리큘럼(충격량 단계) — 현재 단계 50 %·숙달 단계 30 %·원 분포 20 %
+        lv = int(getattr(env, "_imp_level", 0)); J = _IMP_LEVELS
+        imp = (kind == 2) & (cat > 0.5).unsqueeze(1)
+        u = torch.rand(n, K, device=dev)
+        cur = imp & (u < 0.5); old = imp & (u >= 0.5) & (u < 0.8)
+        lo_c, hi_c = J[lv]
+        jl = torch.empty(n, K, device=dev).uniform_(0.0, 1.0)
+        olv = torch.randint(0, lv + 1, (n, K), device=dev)
+        J_lo = torch.tensor([j[0] for j in J], device=dev)[olv]; J_hi = torch.tensor([j[1] for j in J], device=dev)[olv]
+        Jv = torch.where(cur, lo_c + (hi_c - lo_c) * jl, J_lo + (J_hi - J_lo) * jl)
+        dur = torch.empty(n, K, device=dev).uniform_(0.1, 0.3)
+        sel = cur | old
+        F = torch.where(sel, Jv / dur, F)
+        hs["dst_hold"][ids] = torch.where(sel, dur, hs["dst_hold"][ids])
+        if not hasattr(env, "_imp_cur_ep"):
+            env._imp_cur_ep = torch.zeros(env.num_envs, device=dev)
+        env._imp_cur_ep[ids] = cur.any(1).float()
     hs["dst_kind"][ids] = kind; hs["dst_F"][ids] = torch.where(kind > 0, F, torch.zeros_like(F)); hs["dst_dir"][ids] = d
 
 
@@ -2733,3 +2753,33 @@ def track_yaw_rate_halfcycle(env, std: float = 0.5, window_ticks: int = 23, walk
     err = cmd[:, 2] - buf.mean(1)
     std = float(os.environ.get("YAW_HC_STD", std))      # 진단 전용 덮어쓰기(학습 설정은 cfg 값)
     return torch.exp(-err * err / (std * std)) * mode
+
+
+def imp_level_curriculum(env, env_ids, min_eps: int = 400, up: float = 0.85, down: float = 0.60, down_blocks: int = 3, steps_per_iter: int = 24):
+    """G25 충격 단계 커리큘럼: 현재 단계 충격을 받은 에피소드(스폰 2 s 이후 종료분)의 성공(낙상 아님) 비율로 블록 판정.
+    ≥ up → 다음 단계, < down 이 down_blocks 연속 → 한 단계 강등. 블록 독립 판정(G22R 과 같은 규칙). disturbance_reset_g22r 보다 먼저 호출되어도
+    _imp_cur_ep 는 '끝난 에피소드' 의 값이다(리셋 이벤트가 덮기 전에 커리큘럼이 실행됨 — Isaac Lab 순서: curriculum → reset events)."""
+    g = getattr(env, "_imp_cur", None)
+    if g is None:
+        g = {"n": 0.0, "ok": 0.0, "bad": 0, "last": float("nan")}; env._imp_cur = g; env._imp_level = 0
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    if len(ids) and hasattr(env, "_imp_cur_ep"):
+        tm = env.termination_manager
+        fell = (tm.terminated[ids] & ~tm.time_outs[ids]).float()
+        started = env.episode_length_buf[ids] > int(2.0 / env.step_dt)
+        m = (env._imp_cur_ep[ids] > 0.5) & started
+        g["n"] += float(m.sum()); g["ok"] += float((m.float() * (1.0 - fell)).sum())
+    if g["n"] >= min_eps:
+        r = g["ok"] / g["n"]; g["last"] = r; it = int(env.common_step_counter) // steps_per_iter
+        lv = env._imp_level
+        if r >= up and lv < len(_IMP_LEVELS) - 1:
+            env._imp_level = lv + 1; g["bad"] = 0
+        elif r < down:
+            g["bad"] += 1
+            if g["bad"] >= down_blocks and lv > 0:
+                env._imp_level = lv - 1; g["bad"] = 0
+        else:
+            g["bad"] = 0
+        print(f"[G25 충격 커리큘럼] 반복 {it} 단계 {lv} {_IMP_LEVELS[lv]} N·s: 성공 {r:.3f} (n {int(g['n'])}) → 단계 {env._imp_level}", flush=True)
+        g["n"] = 0.0; g["ok"] = 0.0
+    return {"level": float(env._imp_level), "succ": g["last"]}

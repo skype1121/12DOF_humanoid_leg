@@ -38,12 +38,15 @@ class SwitchDetector:
     """IMU 히스테리시스 감지기 — 상태: 0 = 서기 정책, 1 = 회복 정책."""
 
     def __init__(self, on_tilt_deg: float = 4.0, on_w: float = 0.5, off_tilt_deg: float = 2.5, off_w: float = 0.3,
-                 calm_s: float = 1.0, dwell_s: float = 0.4, dt: float = 1.0 / RATE_HZ, ref_tau_s: float = 0.0, ref_cap_deg: float = 8.0, ref_init_s: float = 0.0):
+                 calm_s: float = 1.0, dwell_s: float = 0.4, dt: float = 1.0 / RATE_HZ, ref_tau_s: float = 0.0, ref_cap_deg: float = 8.0, ref_init_s: float = 0.0, off_contact: str = "both"):
         """ref_tau_s > 0: 기울기를 **기준 자세 대비 편차**로(1004 실물 로그 재생: 실물 서기 기울기 3–4° → 절대 기준이면 회복 모드 70–99 % 체류).
         기준 = 첫 update 의 (롤, 피치), 서기 모드·|ω|<0.1·양발일 때 EMA(τ) 갱신, |ref| ≤ ref_cap_deg. 0 = 절대 기울기(시뮬 SW-1 정의)."""
         self.on_tilt, self.on_w, self.off_tilt, self.off_w = float(on_tilt_deg), float(on_w), float(off_tilt_deg), float(off_w)
         self.calm_s, self.dwell_s, self.dt = float(calm_s), float(dwell_s), float(dt)
         self.ref_tau_s, self.ref_cap, self.ref_init_s = float(ref_tau_s), float(ref_cap_deg), float(ref_init_s)
+        if off_contact not in ("both", "any", "none"):
+            raise ValueError(off_contact)
+        self.off_contact = off_contact   # 1004 밤: 끄기 조건 접촉 요구 — 실물 패드 0(무응답·무부하)로 회복 모드 고착(시험 4, 검토 7회차)
         self.reset()
 
     def reset(self) -> None:
@@ -76,7 +79,8 @@ class SwitchDetector:
             if self.mode == 0 and w < 0.1 and bool(c[0] and c[1]):
                 self.ref = np.clip(self.ref + (rp - self.ref) * (self.dt / self.ref_tau_s), -self.ref_cap, self.ref_cap)
             tilt = float(np.linalg.norm(rp - self.ref))
-        quiet = (tilt < self.off_tilt) and (w < self.off_w) and bool(c[0] and c[1])
+        cq = {"both": bool(c[0] and c[1]), "any": bool(c[0] or c[1]), "none": True}[self.off_contact]
+        quiet = (tilt < self.off_tilt) and (w < self.off_w) and cq
         # 시뮬과 같은 순서: calm·t_on 갱신 → 끄기 판정 → 켜기 판정
         self.calm = self.calm + self.dt if (self.mode == 1 and quiet) else 0.0
         self.t_on = self.t_on + self.dt if self.mode == 1 else 0.0

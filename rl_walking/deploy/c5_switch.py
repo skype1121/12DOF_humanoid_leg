@@ -38,7 +38,8 @@ class SwitchDetector:
     """IMU 히스테리시스 감지기 — 상태: 0 = 서기 정책, 1 = 회복 정책."""
 
     def __init__(self, on_tilt_deg: float = 4.0, on_w: float = 0.5, off_tilt_deg: float = 2.5, off_w: float = 0.3,
-                 calm_s: float = 1.0, dwell_s: float = 0.4, dt: float = 1.0 / RATE_HZ, ref_tau_s: float = 0.0, ref_cap_deg: float = 8.0, ref_init_s: float = 0.0, off_contact: str = "both"):
+                 calm_s: float = 1.0, dwell_s: float = 0.4, dt: float = 1.0 / RATE_HZ, ref_tau_s: float = 0.0, ref_cap_deg: float = 8.0, ref_init_s: float = 0.0, off_contact: str = "both",
+                 early=None):
         """ref_tau_s > 0: 기울기를 **기준 자세 대비 편차**로(1004 실물 로그 재생: 실물 서기 기울기 3–4° → 절대 기준이면 회복 모드 70–99 % 체류).
         기준 = 첫 update 의 (롤, 피치), 서기 모드·|ω|<0.1·양발일 때 EMA(τ) 갱신, |ref| ≤ ref_cap_deg. 0 = 절대 기울기(시뮬 SW-1 정의)."""
         self.on_tilt, self.on_w, self.off_tilt, self.off_w = float(on_tilt_deg), float(on_w), float(off_tilt_deg), float(off_w)
@@ -46,6 +47,9 @@ class SwitchDetector:
         self.ref_tau_s, self.ref_cap, self.ref_init_s = float(ref_tau_s), float(ref_cap_deg), float(ref_init_s)
         if off_contact not in ("both", "any", "none"):
             raise ValueError(off_contact)
+        # 1005 ki: 상태 기반 조기 복귀 (tmin, tilt, w, hold) — 켜진 뒤 tmin s 지나고 기울기<tilt·|ω_xy|<w·양발 접촉(0/1)이 hold s 유지 → 끄기.
+        # 시뮬 eval_ground_recovery --sw_early_imu 와 같은 정의(IMU·접촉 0/1 만, 참 속도·접촉 힘 미사용).
+        self.early = None if early is None else tuple(float(x) for x in early)
         self.off_contact = off_contact   # 1004 밤: 끄기 조건 접촉 요구 — 실물 패드 0(무응답·무부하)로 회복 모드 고착(시험 4, 검토 7회차)
         self.reset()
 
@@ -56,6 +60,8 @@ class SwitchDetector:
         self.n_on = 0
         self.ref = None
         self.t_since = 0.0
+        self.early_hold = 0.0
+        self.n_early = 0
 
     @staticmethod
     def tilt_deg(gravity_unit) -> float:
@@ -85,6 +91,12 @@ class SwitchDetector:
         self.calm = self.calm + self.dt if (self.mode == 1 and quiet) else 0.0
         self.t_on = self.t_on + self.dt if self.mode == 1 else 0.0
         off = self.mode == 1 and self.calm >= self.calm_s and self.t_on >= self.dwell_s
+        if self.early is not None:
+            _tm, _tt, _tw, _th = self.early
+            ec = self.mode == 1 and self.t_on >= _tm and tilt < _tt and w < _tw and bool(c[0] and c[1])
+            self.early_hold = self.early_hold + self.dt if ec else 0.0
+            if self.mode == 1 and self.early_hold >= _th and not off:
+                off = True; self.n_early += 1
         on = self.mode == 0 and ((tilt > self.on_tilt) or (w > self.on_w))
         self.t_since += self.dt
         if on:
@@ -100,8 +112,15 @@ class C5Runner:
     last_mode·last_switch(이번 틱 켜짐/꺼짐 이벤트)·last_raw_stand·last_raw_rec 를 남긴다(블랙박스 기록용).
     """
 
-    def __init__(self, stand_model, rec_model, backend: str = "auto", detector: SwitchDetector | None = None, **runner_kw):
+    def __init__(self, stand_model, rec_model, backend: str = "auto", detector: SwitchDetector | None = None,
+                 cue_vx: float | None = None, cue_s: float = 1.0, cue_dir_imu: bool = True, **runner_kw):
+        """cue_vx(1005 ki): 감지기가 켜지는 틱에 IMU ω_y > 0(앞으로 기우는 중)이면 cue_s 동안 **회복 네트워크 입력만** 명령 vx 를 cue_vx 로
+        (관측 velocity_commands 이력 전 프레임; 서기 네트워크·공유 이력·외부 명령 불변). 시뮬 --sw_rec_vx/--sw_rec_vx_s/--cue_dir_imu 와 같은 정의."""
         self.core = PolicyRunnerStage4(stand_model, backend=backend, **runner_kw)
+        self.cue_vx = None if cue_vx is None else float(cue_vx)
+        self.cue_s = float(cue_s); self.cue_dir_imu = bool(cue_dir_imu)
+        self.cue_active = False; self.cue_t = 0.0; self.n_cue = 0
+        self._vc_slices = None
         rb, self._rec_net = _load_backend(rec_model, backend)
         self.rec_backend = rb
         self.det = detector or SwitchDetector()
@@ -121,6 +140,7 @@ class C5Runner:
         """블랙박스 C5 필드(기록 전용)."""
         d = self.det
         return {"mode": int(self.last_mode), "switch": self.last_switch, "n_on": int(d.n_on),
+                "cue": int(self.cue_active), "n_cue": int(self.n_cue), "n_early": int(getattr(d, "n_early", 0)),
                 "ref_deg": (None if d.ref is None else [round(float(v), 3) for v in d.ref]),
                 "raw_stand": (None if self.last_raw_stand is None else [round(float(v), 4) for v in self.last_raw_stand]),
                 "raw_rec": (None if self.last_raw_rec is None else [round(float(v), 4) for v in self.last_raw_rec])}
@@ -130,6 +150,21 @@ class C5Runner:
         self.det.reset()
         self.last_mode = 0
         self.last_switch = ""
+        self.cue_active = False; self.cue_t = 0.0
+
+    def _vx_slices(self):
+        """관측에서 velocity_commands 각 프레임의 vx 위치(이력 L 프레임, 프레임당 3) — 코어 항 목록에서 계산."""
+        if self._vc_slices is None:
+            off = 0; out = None
+            for name, dim in self.core.terms:
+                L = self.core._hist[name]._buf.shape[0]
+                if name == "velocity_commands":
+                    out = [off + k * dim for k in range(L)]; break
+                off += dim * L
+            if out is None:
+                raise RuntimeError("관측에 velocity_commands 항 없음 — cue 사용 불가")
+            self._vc_slices = out
+        return self._vc_slices
 
     def step(self, gyro_rad_s, gravity_unit, cmd, qpos_rad, qvel_rad_s, contact2) -> np.ndarray:
         core = self.core
@@ -140,7 +175,24 @@ class C5Runner:
         prev = self.last_mode
         mode = self.det.update(gravity_unit, gyro_rad_s, contact2)
         raw_s = np.asarray(core._net(obs), dtype=np.float32).reshape(-1)
-        raw_r = np.asarray(self._rec_net(obs), dtype=np.float32).reshape(-1)     # 매 틱 계산(지연 일정·기록용)
+        obs_r = obs
+        if self.cue_vx is not None:
+            if mode == 1 and prev == 0:          # 이번 틱 켜짐 → 방향 조건 만족 시 cue 시작(활성화당 1회)
+                fwd = (float(np.asarray(gyro_rad_s, dtype=np.float64).reshape(3)[1]) > 0.0) if self.cue_dir_imu else True
+                self.cue_active = bool(fwd); self.cue_t = 0.0
+                if fwd:
+                    self.n_cue += 1
+            elif mode == 1 and self.cue_active:
+                self.cue_t += self.det.dt
+                if self.cue_t >= self.cue_s - 1e-9:
+                    self.cue_active = False
+            if mode == 0:
+                self.cue_active = False
+            if self.cue_active:
+                obs_r = obs.copy()
+                for i0 in self._vx_slices():
+                    obs_r[i0] = self.cue_vx
+        raw_r = np.asarray(self._rec_net(obs_r), dtype=np.float32).reshape(-1)     # 매 틱 계산(지연 일정·기록용)
         for r in (raw_s, raw_r):
             if r.shape != (ACT_DIM,):
                 raise RuntimeError(f"정책 출력 shape 이상: {r.shape}")
@@ -243,8 +295,49 @@ def _selftest_continuity() -> str:
     return "continuity OK"
 
 
+def _selftest_cue_early() -> str:
+    """1005 ki: cue 는 켜짐 틱 ω_y>0 일 때만, 정확히 cue_s(50 틱) 동안 회복 입력의 vx 만 바꾼다. 조기 복귀는 tmin·hold 뒤 끈다."""
+    W = np.random.default_rng(3).normal(0, 0.05, (12, 320)).astype(np.float32)
+    seen = []
+    stand = lambda o: np.tanh(W @ o)                                  # noqa: E731
+    def rec(o):
+        seen.append(o.copy()); return -np.tanh(W @ o)
+    kw = dict(obs_dim=320, act_obs_ema_beta=0.27, jvel_obs_ema_beta=0.25)
+    # (1) cue 없음 설정은 종전 C5 와 비트 동일
+    a = C5Runner(stand, lambda o: -np.tanh(W @ o), **kw); b = C5Runner(stand, lambda o: -np.tanh(W @ o), cue_vx=None, **kw)
+    for k in range(60):
+        x = _inputs(k, 6.0 if 20 <= k < 25 else 1.0)
+        assert np.array_equal(a.step(**x), b.step(**x)), "cue 없음 설정이 종전과 다름"
+    # (2) 앞으로 기울며 켜짐(ω_y>0) → 50 틱 cue
+    c = C5Runner(stand, rec, cue_vx=0.03, cue_s=1.0, **kw)
+    for k in range(10):
+        c.step(**_inputs(k, 1.0))
+    seen.clear(); vx = c._vx_slices()
+    x = _inputs(10, 6.0, w=0.6); c.step(**x)
+    assert c.cue_active and c.n_cue == 1, "ω_y>0 켜짐에서 cue 미시작"
+    n_cue_ticks = 1
+    for k in range(11, 120):
+        c.step(**_inputs(k, 6.0))
+        n_cue_ticks += int(c.cue_active)
+    assert n_cue_ticks == 50, f"cue 지속 틱 {n_cue_ticks} ≠ 50"
+    assert all(abs(seen[0][i] - 0.03) < 1e-7 for i in vx), "cue 중 회복 입력 vx ≠ 0.03"
+    assert all(abs(c.core.last_obs[i]) < 1e-7 for i in vx), "공유 관측(서기 입력)의 vx 가 바뀜"
+    # (3) 뒤로 기울며 켜짐(ω_y<0) → cue 없음
+    d = C5Runner(stand, lambda o: -np.tanh(W @ o), cue_vx=0.03, **kw)
+    for k in range(10):
+        d.step(**_inputs(k, 1.0))
+    d.step(**_inputs(10, 6.0, w=-0.6)); assert d.last_mode == 1 and not d.cue_active and d.n_cue == 0, "뒤 기울기에서 cue 시작"
+    # (4) 조기 복귀: tmin 0.6 s 전에는 유지, 이후 hold 0.2 s 조용하면 끔(calm 1.0 s 보다 먼저)
+    e = SwitchDetector(on_tilt_deg=3.0, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, early=(0.6, 6.0, 0.4, 0.2))
+    e.update(_inputs(0, 5.0)["gravity_unit"], [0, 0, 0], [1, 1])
+    m = [e.update(_inputs(0, 2.0)["gravity_unit"], [0, 0, 0], [1, 1]) for _ in range(60)]
+    first_off = m.index(0) + 1
+    assert 39 <= first_off <= 41 and e.n_early == 1, f"조기 복귀 시점 {first_off} 틱(기대 ~40 = tmin 0.6 s + hold 0.2 s)"
+    return "cue·early OK"
+
+
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
-        for f in (_selftest_detector, _selftest_equivalence, _selftest_continuity):
+        for f in (_selftest_detector, _selftest_equivalence, _selftest_continuity, _selftest_cue_early):
             print(f())
         print("C5 selftest PASS")

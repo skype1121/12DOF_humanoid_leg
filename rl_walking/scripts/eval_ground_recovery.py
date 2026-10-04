@@ -115,6 +115,7 @@ parser.add_argument("--sw_rec_vx", type=float, default=None, help="1005 진단: 
 parser.add_argument("--sw_rec_vx_s", type=float, default=0.0, help="1005: --sw_rec_vx 를 회복 모드 켜진 뒤 이 시간[s] 동안만(0 = 회복 모드 내내) — 반사 스텝 창, 이후 cmd 0 으로 정착")
 parser.add_argument("--cue_state", type=str, default="", help="1005 활성화 구조: vx cue 상태 기반 종료 'tmin,hold,w,tmax' — 켜진 뒤 tmin s 지나고 양발 접촉·|ω_xy|<w 가 hold s 지속되면 종료, tmax 넘으면 다음 양발 지지에서 종료(래치, 감지기 꺼질 때까지 재점화 없음)")
 parser.add_argument("--cue_dir", type=float, default=None, help="1005 ACT2: 방향 조건 cue — cue 시작 순간 몸통 전진속도(base x, m/s) > 이 값일 때만 cue(아니면 이번 활성화는 cue 없음). 정책은 전진 스텝만 학습")
+parser.add_argument("--sw_early", type=str, default="", help="1005 ④ 정착: 상태 기반 조기 복귀 'v,tilt,hold' — 첫 외란 뒤 첫 하중 수용이 있었고 |v_xy|<v m/s·감지기 기울기<tilt° 가 hold s 지속되면 회복 모드 강제 해제(G21a 복귀)")
 parser.add_argument("--cue_clock", type=str, default="", choices=("", "reset"), help="1005 D: cue 시작 시 회복 정책 관측 gait_clock 을 '하중 적은 발이 바로 스윙' 위상에서 재시작(cue 동안만; 이후 환경 클록)")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
@@ -693,6 +694,11 @@ _NAN_ = lambda: torch.full((N,), float('nan'), device=dev)
 to_first_t = _NAN_(); td_first_t = _NAN_(); load_first_t = _NAN_(); rec_off_t = _NAN_(); cue_end_rec = _NAN_()
 to_after_cue = torch.zeros(N, device=dev); cue_xy0 = torch.full((N, 2), float('nan'), device=dev); xy_last = torch.zeros(N, 2, device=dev)
 osc_flag_post = torch.zeros(N, dtype=torch.bool, device=dev)
+# 1005 ③a 진단: 외란 뒤 1·2번째 착지의 캡처 여유(발 − ξ, 몸통 앞/왼축, cm)·걸음 길이·시각·피치·피치율
+_MASS = robot.root_physx_view.get_masses().to(dev).float(); _MTOT = _MASS.sum(-1, keepdim=True)
+td_k = torch.zeros(N, dtype=torch.long, device=dev)
+TDM = {k: _NAN_() for k in ('t1','mf1','ml1','len1','p1','pr1','t2','mf2','ml2','len2','p2','pr2')}
+early_hold = torch.zeros(N, device=dev)
 n_land = torch.zeros(N, device=dev); n_load = torch.zeros(N, device=dev)
 st_rl = torch.zeros(N, 2, dtype=torch.bool, device=dev); n_relift = torch.zeros(N, device=dev); n_loadfail_stay = torch.zeros(N, device=dev)   # 1004: 하중 실패 분해 — 0.3 s 창 안 재이륙 / 붙어 있었는데 하중 미달
 n_to_lr = torch.zeros(2, device=dev); sw_sq = torch.zeros(N, device=dev)   # 1003 G22R 리포트: 좌/우 이륙 수·스텝 변위 제곱합(표준편차)
@@ -823,6 +829,11 @@ for i in range(STEPS):
             sw_calm = torch.where(sw_mode & _quiet, sw_calm + 0.02, torch.zeros_like(sw_calm))
             sw_t_on = torch.where(sw_mode, sw_t_on + 0.02, torch.zeros_like(sw_t_on))
             _swoff = sw_mode & (sw_calm >= _SW_OFF[2]) & (sw_t_on >= _SW_OFF[3])
+            if args_cli.sw_early:
+                _ev, _et, _eh = [float(x) for x in args_cli.sw_early.split(',')]
+                _ec = sw_mode & ~torch.isnan(load_first_t) & (robot.data.root_lin_vel_w[:, :2].norm(dim=-1) < _ev) & (_tilt < _et)
+                early_hold = torch.where(_ec, early_hold + 0.02, torch.zeros_like(early_hold))
+                _swoff = _swoff | (sw_mode & (early_hold >= _eh))
             if args_cli.sw_oracle and dists:
                 _on = _on | torch.full_like(_on, any(d.t0 <= t_rel < d.t0 + 0.02 for d in dists))
             _new_on = (~sw_mode) & _on
@@ -1056,6 +1067,20 @@ for i in range(STEPS):
             on = a_ & st_air[:, c] & contact[:, c]
             st_air[on, c] = False; st_land_t[on, c] = t_rel; st_rl[on, c] = False; st_load_sum[on, c] = 0.0; st_load_n[on, c] = 0.0
             n_land += on.float()
+            if dists and t_rel >= min(d.t0 for d in dists) and bool((on & (td_k < 2)).any()):
+                _cpw = robot.data.body_com_pos_w if hasattr(robot.data, 'body_com_pos_w') else robot.data.body_pos_w
+                _cvw = robot.data.body_com_lin_vel_w if hasattr(robot.data, 'body_com_lin_vel_w') else robot.data.body_lin_vel_w
+                _com = (_cpw * _MASS[..., None]).sum(1) / _MTOT; _cv = (_cvw * _MASS[..., None]).sum(1) / _MTOT
+                _fpw = robot.data.body_pos_w[:, _FT[c], :]
+                _om = torch.sqrt(9.81 / (_com[:, 2] - _fpw[:, 2]).clamp(min=0.2))
+                _xi = _com[:, :2] + _cv[:, :2] / _om[:, None]; _dm = _fpw[:, :2] - _xi
+                _mf = 100.0 * (_dm * _fw[:, :2]).sum(-1); _ml = 100.0 * (_dm * _fl_[:, :2]).sum(-1)
+                _pr = robot.data.root_ang_vel_b[:, 1]
+                for _kk in (1, 2):
+                    _m = on & (td_k == _kk - 1)
+                    for _nm, _v in (('t', torch.full_like(_mf, t_rel)), ('mf', _mf), ('ml', _ml), ('len', 100.0 * (_ffwd[:, c] - st_f0[:, c])), ('p', pitch), ('pr', _pr)):
+                        TDM[f'{_nm}{_kk}'] = torch.where(_m, _v, TDM[f'{_nm}{_kk}'])
+                td_k = td_k + on.long()
             if dists and t_rel >= min(d.t0 for d in dists):
                 to_first_t = torch.where(off & torch.isnan(to_first_t), torch.full_like(to_first_t, t_rel), to_first_t)
                 td_first_t = torch.where(on & ~torch.isnan(to_first_t) & torch.isnan(td_first_t), torch.full_like(td_first_t, t_rel), td_first_t)
@@ -1262,7 +1287,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s", "cue_end_t", "cue_time_s", "to_first_t", "td_first_t", "load_first_t", "to_after_cue", "drift_after_cue_cm", "rec_off_t", "osc_flag_post"] if policy2 is not None else []))
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s", "cue_end_t", "cue_time_s", "to_first_t", "td_first_t", "load_first_t", "to_after_cue", "drift_after_cue_cm", "rec_off_t", "osc_flag_post"] if policy2 is not None else []) + ["td1_t", "td1_mf_cm", "td1_ml_cm", "td1_len_cm", "td1_pitch", "td1_prate", "td2_t", "td2_mf_cm", "td2_ml_cm", "td2_len_cm", "td2_pitch", "td2_prate"])
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -1290,6 +1315,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
             _ct_ = (float(cue_ticks[e]) / 50.0) if "cue_ticks" in dir() else 0.0
             _dr_ = (100.0 * float((xy_last[e] - cue_xy0[e]).norm())) if not math.isnan(float(cue_xy0[e, 0])) else ""
             row += [_fx_(cue_end_rec[e]), round(_ct_, 2), _fx_(to_first_t[e]), _fx_(td_first_t[e]), _fx_(load_first_t[e]), float(to_after_cue[e]), (round(_dr_, 1) if _dr_ != "" else ""), _fx_(rec_off_t[e]), int(osc_flag_post[e])]
+        row += [("" if math.isnan(float(TDM[k][e])) else round(float(TDM[k][e]), 2)) for k in ('t1','mf1','ml1','len1','p1','pr1','t2','mf2','ml2','len2','p2','pr2')]
         wcsv.writerow(row)
 if _VID is not None and _VID["n"] > 0:
     import subprocess  # noqa: E402

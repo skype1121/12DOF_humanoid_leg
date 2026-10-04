@@ -11,7 +11,7 @@ for f in sys.argv[1:]:
     R = [r for r in R if r.get("live") and r.get("armed") and r.get("rp_deg") is not None]
     if not R:
         print(os.path.basename(f), "정책 구간 없음"); continue
-    d = SwitchDetector(); modes = []; tilts = []; ws = []; on_t = []
+    d = SwitchDetector(ref_tau_s=float(os.environ.get('REF_TAU', '0'))); modes = []; tilts = []; ws = []; on_t = []
     t0 = R[0]["timestamp"]
     for r in R:
         rl, pt = [math.radians(x) for x in r["rp_deg"][:2]]

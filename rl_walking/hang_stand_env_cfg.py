@@ -2459,3 +2459,16 @@ class Biped12HangStandG24RaEnvCfg(Biped12HangStandW2eEnvCfg):
         d.func = mdp_hang.disturbance_reset_g22r; d.params = dict(d.params, branch="g22r", stage_override=2)
         pr = self.events.push_robot
         pr.func = mdp_hang.push_with_arm_g22; pr.params = {"velocity_range": dict(pr.params["velocity_range"]), "arm_s": 2.5, "branch": "g22r"}
+
+
+@configclass
+class Biped12HangStandW2fEnvCfg(Biped12HangStandW2eEnvCfg):
+    """W2-6 (1004): W2-5 + **스텝 모드 요 각속도 명령 ±0.3 rad/s 무작위**(heading 제어 끔, 직접 표본) 단일 변경 — 회전 명령 추종 학습.
+    근거: 요 표류(13–19°/8 s)가 보상 변경 4회에 불변, 평가 HeadingHold 명령에도 불응 — 학습 중 요 명령이 항상 0 이었다. 배포 브리지 HeadingHold(kp 1.0·±0.6)가 쓸 수 있게."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        c = self.commands.base_velocity
+        c.ranges.ang_vel_z = (-0.3, 0.3); c.heading_command = False
+        if hasattr(c, "rel_heading_envs"):
+            c.rel_heading_envs = 0.0

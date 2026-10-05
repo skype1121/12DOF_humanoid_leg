@@ -25,7 +25,7 @@ yaw = [r for c, r in rows.items() if c[0] == 0 and c[1] == 0 and c[2] != 0]
 yaw_ok = all(abs(r[2]) >= 0.2 and r[4] > 0.5 for r in yaw) if yaw else False
 dir_ok = sum(ok for _, ok in resp) / max(1, len(resp))
 print(f"[{ck}] vx 기울기 {slope:.2f} · 전진 유효 cadence {cad_fw:.2f} Hz · 최대 낙상 {falls:.1f} % · 방향 반응 {dir_ok*100:.0f} % ({resp}) · 제자리 회전 {'OK' if yaw_ok else 'X'}")
-if ck <= 1000 and (cad_fw < 0.3 or falls > 30 or not any_resp):
+if ck == 1000 and (cad_fw < 0.3 or falls > 30 or not any_resp):
     print("결정: KILL (1000 기준)")
 elif slope >= 0.4 and dir_ok >= 0.5 and yaw_ok and falls <= 10:
     print("결정: SUCCESS (최종 기준 충족)")

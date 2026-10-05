@@ -2604,7 +2604,7 @@ def step_assist_curriculum(env, env_ids, alphas: tuple = (2.0, 1.5, 1.0, 0.5, 0.
 
 
 def omni_assist_update(env, env_ids, alphas: tuple = (1.0, 0.75, 0.5, 0.25, 0.0), cats: tuple = (1, 2, 3), min_sched: float = 20000.0,
-                       min_full: float = 0.5, min_iters: int = 50, steps_per_iter: int = 24, dir_too: bool = False):
+                       min_full: float = 0.5, min_iters: int = 50, steps_per_iter: int = 24, dir_too: bool = False, start_stage: int = 0):
     """mode="interval"(0 s) — 1006 W2omA: 스텝 보조(install_step_assist 굽힘 펄스)를 **명령 범주 cats(뒤·옆·회전)** env 에만 env 별 α 로.
     감쇠는 그 범주의 블록 하중 수용률(load 사건 / 예정 반주기) ≥ min_full 일 때만(앞 범주는 이미 걷기 때문에 전체 통계로 감쇠하면 안 됨).
     α 가 마지막 단계(0)면 순수 정책. 합격 판정은 평가(α 0)에서."""
@@ -2613,7 +2613,7 @@ def omni_assist_update(env, env_ids, alphas: tuple = (1.0, 0.75, 0.5, 0.25, 0.0)
         return
     g = getattr(env, "_oa", None)
     if g is None:
-        g = {"stage": 0, "since": 0, "n_s": 0.0, "n_td": 0.0, "n_ld": 0.0}; env._oa = g
+        g = {"stage": int(start_stage), "since": 0, "n_s": 0.0, "n_td": 0.0, "n_ld": 0.0}; env._oa = g   # start_stage: 이어학습 시 α 단계 이어받기(프로세스 재시작 = 커리큘럼 초기화 함정)
     sel = torch.zeros_like(cat, dtype=torch.bool)
     for c in cats:
         sel |= cat == c

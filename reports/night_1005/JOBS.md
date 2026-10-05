@@ -65,3 +65,5 @@
 | 1006 | A0MT(a0mt.sh: A0m 14299 × omni 게이트 × α 0/1.5) | "A0MT 끝" in scratchpad/a0mt.out | walk_eval_a0mt_a*.txt | 감시 btqo17yor |
 | 1006 | A0MT | — | 기각(vx 관측이 걸음 촉발) → NEXT=W2omP | — |
 | 1006 | W2omP(w2omp.sh PID 2524339: A0m 14299 → 600 반복 → 끝 평가) | "W2omP 학습 시작/끝/W2omP 끝" | walk_eval_w2omP_* | 감시 bgqzqiv0t(+300 블록) |
+| 1006 | W2omP | — | 끝 KILL(α 0 제자리 cadence 0; α 0.5 진단 0.36–0.49 Hz) → NEXT=W2omP2 | — |
+| 1006 | W2omP2(w2omp2.sh PID 2534312: W2omP 14898 → 1000, α 단계 이어받기) | "W2omP2 학습 시작/끝/W2omP2 끝" | walk_eval_w2omP2_* | 감시 bdpihsz6f(+500 블록) |

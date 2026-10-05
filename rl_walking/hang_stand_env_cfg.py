@@ -2874,6 +2874,15 @@ class Biped12HangStandW2omPEnvCfg(Biped12HangStandW2omAEnvCfg):
 
 
 @configclass
+class Biped12HangStandW2omP2EnvCfg(Biped12HangStandW2omPEnvCfg):
+    """W2omP2 (1006): W2omP 이어학습 — 보조 α 단계를 이어받음(start_stage 2 = α 0.5; 프로세스 재시작 시 커리큘럼 초기화 함정 방지) 외 동일."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.omni_assist.params = {"cats": (3,), "start_stage": 2}
+
+
+@configclass
 class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
     """W2om 평가용: + 회전 보조 훅(TURN_ALPHA, 0 이면 무동작) — W2qe 와 같은 평가 조건."""
 

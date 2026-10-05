@@ -2812,6 +2812,16 @@ class Biped12HangStandW2omEnvCfg(Biped12HangStandW2qEnvCfg):
 
 
 @configclass
+class Biped12HangStandW2omAEnvCfg(Biped12HangStandW2omEnvCfg):
+    """W2omA (1006): W2om + **뒤·옆·회전 범주에만 스텝 보조**(굽힘 펄스 기준, α 1.0 → 0.75 → 0.5 → 0.25 → 0, 그 범주 하중 수용 ≥ 0.5 로 감쇠) 단일 변경.
+    근거: W2om +510 — 게이트·방향 사건을 열어도 새 범주에서 걸음 시작 자체가 없음(cadence 0.00–0.01) = 탐색 문제. 앞 걸음도 처음엔 이 보조(A0h)로 부트스트랩했다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.omni_assist = EventTerm(func=mdp_hang.omni_assist_update, mode="interval", interval_range_s=(0.0, 0.0), params={})
+
+
+@configclass
 class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
     """W2om 평가용: + 회전 보조 훅(TURN_ALPHA, 0 이면 무동작) — W2qe 와 같은 평가 조건."""
 
@@ -2821,6 +2831,15 @@ class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
         self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={})
         self.curriculum = None
 
+
+
+@configclass
+class Biped12HangStandW2omdEnvCfg(Biped12HangStandW2omeEnvCfg):
+    """W2om 방향 보조 진단 평가: + install_dir_assist(기본 0 — DIR_KX/KY/KZ env var 로 크기·부호 실측), STEP_ASSIST_ALPHA 로 굽힘 펄스 병용."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.dir_assist = EventTerm(func=mdp_hang.install_dir_assist, mode="startup", params={})
 
 @configclass
 class Biped12HangStandW2q2EnvCfg(Biped12HangStandW2qEnvCfg):

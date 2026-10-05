@@ -2601,6 +2601,35 @@ def step_assist_curriculum(env, env_ids, alphas: tuple = (2.0, 1.5, 1.0, 0.5, 0.
     return {"stage": float(g["stage"]), "alpha": float(env._assist_alpha), "block_td": g["last"][0], "block_load": g["last"][1]}
 
 
+def omni_assist_update(env, env_ids, alphas: tuple = (1.0, 0.75, 0.5, 0.25, 0.0), cats: tuple = (1, 2, 3), min_sched: float = 20000.0,
+                       min_full: float = 0.5, min_iters: int = 50, steps_per_iter: int = 24):
+    """mode="interval"(0 s) — 1006 W2omA: 스텝 보조(install_step_assist 굽힘 펄스)를 **명령 범주 cats(뒤·옆·회전)** env 에만 env 별 α 로.
+    감쇠는 그 범주의 블록 하중 수용률(load 사건 / 예정 반주기) ≥ min_full 일 때만(앞 범주는 이미 걷기 때문에 전체 통계로 감쇠하면 안 됨).
+    α 가 마지막 단계(0)면 순수 정책. 합격 판정은 평가(α 0)에서."""
+    st = _sb0(env); cat = getattr(env, "_omni_cat", None)
+    if cat is None:
+        return
+    g = getattr(env, "_oa", None)
+    if g is None:
+        g = {"stage": 0, "since": 0, "n_s": 0.0, "n_td": 0.0, "n_ld": 0.0}; env._oa = g
+    sel = torch.zeros_like(cat, dtype=torch.bool)
+    for c in cats:
+        sel |= cat == c
+    term = env.command_manager.get_term("base_velocity")
+    sel = sel & _walk_mode(env, 0.03) & ~term.is_standing_env
+    f = getattr(env, "_gf", None); f = f if f is not None else torch.full((env.num_envs,), 1.1, device=env.device)
+    g["n_s"] += float((sel.float() * 2.0 * f * env.step_dt).sum()); g["n_td"] += float((st["ev_td"] * sel.float()).sum()); g["n_ld"] += float((st["ev_load"] * sel.float()).sum())
+    it = int(env.common_step_counter) // steps_per_iter
+    if g["n_s"] >= min_sched:
+        td, ld = g["n_td"] / g["n_s"], g["n_ld"] / g["n_s"]
+        ok = ld >= min_full and it - g["since"] >= min_iters and g["stage"] < len(alphas) - 1
+        print(f"[W2omA 보조 블록] 반복 {it} α={alphas[g['stage']]}: 뒤·옆·회전 착지 {td:.3f} · 하중 수용 {ld:.3f}" + (" → 감쇠" if ok else ""), flush=True)
+        if ok:
+            g["stage"] += 1; g["since"] = it
+        g["n_s"] = g["n_td"] = g["n_ld"] = 0.0
+    env._assist_alpha_env = alphas[g["stage"]] * sel.float()
+
+
 def step_lift_support(env, env_ids, frac: float = 0.2, walk_min: float = 0.03, asset_cfg=None):
     """mode="interval"(0 s), hang_support_step 뒤: 스텝 모드 env 골반에 **수직 위 힘 frac·mg**(월드 z, base 로컬로 변환)을 더하는 부분 체중 지지.
     자세 하네스(롤·피치 PD)는 낙상과 함께 이륙도 줄였다(1004 개루프: k60 이륙 30→13 %) — 몸통 운동을 막지 않고 발 하중만 줄이는 대안.
@@ -2822,6 +2851,47 @@ def install_turn_assist(env, env_ids, freq: float = 1.1, walk_min: float = 0.03,
         target = target.clone()
         target[:, iL] = target[:, iL] + amp * shL
         target[:, iR] = target[:, iR] + amp * shR
+        return target
+
+    term.pre_delay_hook = hook
+
+
+def install_dir_assist(env, env_ids, kx: float = 0.0, ky: float = 0.0, kz: float = 0.0, sx: tuple = (-1.0, 1.0), sy: tuple = (-1.0, -1.0),
+                       sz: tuple = (1.0, 1.0), freq: float = 1.1, walk_min: float = 0.03, lead_ticks: int = 6):
+    """mode="startup" — 1006 방향 보조(걸음 기하): 회전 보조(install_turn_assist)의 위상 모양(스윙 rise·지지 fall, 앞당김 lead)을 일반화.
+    관절 잔차(raw rad) L += a·s_L·sh_L, R += a·s_R·sh_R — 뒤(vx<0): hip_f, a = kx·vx(뒤 명령만) · 옆: hip_a, a = ky·vy · 회전: hip_r, a = kz·wz.
+    부호 (s_L, s_R)는 raw 축 부호 규약(좌우 반대) 가설값 — 평가 전용 env var DIR_KX/DIR_KY/DIR_KZ 로 크기·부호를 바꿔 실측 보정.
+    α = env._dir_alpha_env(범주별, 커리큘럼) 가 있으면 곱하고, 없으면 1. 걷기 모드 = _walk_mode."""
+    term = env.action_manager.get_term("joint_pos")
+    asset = env.scene[_base_cfg().name]
+    jn = list(asset.joint_names)
+    J = {g: (jn.index(f"left_{g}_joint"), jn.index(f"right_{g}_joint")) for g in ("hip_f", "hip_a", "hip_r")}
+    K = (float(os.environ.get("DIR_KX", kx)), float(os.environ.get("DIR_KY", ky)), float(os.environ.get("DIR_KZ", kz)))
+    S = (sx, sy, sz)
+    prev = term.pre_delay_hook
+
+    def _ss(x):
+        return x * x * (3.0 - 2.0 * x)
+
+    def hook(target):
+        if prev is not None:
+            target = prev(target)
+        if K == (0.0, 0.0, 0.0):
+            return target
+        cmd = env.command_manager.get_command("base_velocity")
+        mode = _walk_mode(env, walk_min).float()
+        al = getattr(env, "_dir_alpha_env", None)
+        if al is not None and "DIR_KX" not in os.environ and "DIR_KY" not in os.environ and "DIR_KZ" not in os.environ:
+            mode = mode * al
+        u = gait_u(env, freq, lead_s=lead_ticks * env.step_dt); v = torch.remainder(2.0 * u, 1.0)
+        rise = _ss(v); fall = 1.0 - _ss(v); swingL = u < 0.5
+        shL = torch.where(swingL, rise, fall); shR = torch.where(swingL, fall, rise)
+        amps = (K[0] * cmd[:, 0].clamp(max=0.0), K[1] * cmd[:, 1], K[2] * cmd[:, 2])
+        target = target.clone()
+        for (g, amp, sg) in zip(("hip_f", "hip_a", "hip_r"), amps, S):
+            iL, iR = J[g]; a = amp * mode
+            target[:, iL] = target[:, iL] + sg[0] * a * shL
+            target[:, iR] = target[:, iR] + sg[1] * a * shR
         return target
 
     term.pre_delay_hook = hook

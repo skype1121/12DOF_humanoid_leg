@@ -122,6 +122,7 @@ parser.add_argument("--sw_early_imu", type=str, default="", help="1005 배포 �
 parser.add_argument("--sw_refrac", type=str, default="", help="1005: 조기 복귀 뒤 불응기 's,tilt,w' — 조기 복귀 후 s 초 동안은 기울기>tilt° 또는 |ω|>w 일 때만 다시 켬(모드 왕복 억제)")
 parser.add_argument("--cue_end_back", type=str, default="", help="1005 H-B1: cue 를 몸통이 뒤로 돌아서는 순간 종료 'pitch_deg,wy' — 기준 대비 피치 < −pitch_deg 또는 IMU ω_y < −wy (IMU 만)")
 parser.add_argument("--det_from_obs", action="store_true", help="1005 검토 14: 감지기·cue 방향·조기 복귀 입력을 참값 대신 정책 관측 최신 프레임(지연·잡음 자이로·중력, 실물 계약 패드 0/1)으로 — 배포 브리지 입력과 같은 성질")
+parser.add_argument("--det_filt", type=float, default=0.0, help="1005 KD: --det_from_obs 감지 입력(자이로·중력)에 EMA α (0 = 끔, 0.5 ≈ 2틱) — 브리지 구현 가능한 감지 전용 필터(정책 입력 불변)")
 parser.add_argument("--cue_clock", type=str, default="", choices=("", "reset"), help="1005 D: cue 시작 시 회복 정책 관측 gait_clock 을 '하중 적은 발이 바로 스윙' 위상에서 재시작(cue 동안만; 이후 환경 클록)")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
@@ -828,6 +829,12 @@ for i in range(STEPS):
                 _po_ = obs["policy"]
                 _gy_det = _po_[:, _DET_OFF["base_ang_vel"][1] - 3:_DET_OFF["base_ang_vel"][1]]
                 _pg_det = _po_[:, _DET_OFF["projected_gravity"][1] - 3:_DET_OFF["projected_gravity"][1]]
+                if float(args_cli.det_filt) > 0.0:
+                    _al_ = float(args_cli.det_filt)
+                    if "_DF_G" not in dir() or i == STEPS_PRE:
+                        _DF_G, _DF_W = _pg_det.clone(), _gy_det.clone()
+                    _DF_G = _DF_G + _al_ * (_pg_det - _DF_G); _DF_W = _DF_W + _al_ * (_gy_det - _DF_W)
+                    _pg_det, _gy_det = _DF_G, _DF_W
                 _pg_det = _pg_det / _pg_det.norm(dim=-1, keepdim=True).clamp(min=1e-6)
                 _cf = _po_[:, _DET_OFF["feet_contact"][1] - 2:_DET_OFF["feet_contact"][1]] > 0.5
                 _tilt = torch.rad2deg(torch.acos((-_pg_det[:, 2]).clamp(-1.0, 1.0))); _w = _gy_det[:, :2].norm(dim=-1)

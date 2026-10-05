@@ -78,9 +78,3 @@ c5_switch.py --selftest                     C5 selftest PASS
 
 - 운영: 정책 ON을 쓰지 않고 기존 단계별 버튼이나 `robotctl handoff/stand`를 쓰면 됩니다. stand payload가 종전과 같다는 것을 시험으로 고정해 두었습니다.
 - 코드: `git revert <이 커밋>`. `touchdown_start`가 없으면 브리지 경로는 종전과 같습니다.
-
-## 1006 갱신 — 착지 뒤 정책 시작 대기 강화 (시뮬 DROP/DROP2 근거)
-- 시뮬(KE, 지연 3, 3 cm 낙하, seed 1·2): 착지 1.2 s 뒤 시작 = nd 낙상 3.4 %·오탐 14 / 2.0 s 뒤 = 0 %·4 / 3.0 s 뒤 = 0 %·4. 6 cm 낙하는 1.2 s 안 정착 41 %.
-- 변경: TD_MIN_AFTER_TOUCH_S 2.0(첫 양발 접촉 뒤 최소 대기), TD_QUIET_S 0.1→0.5, TD_SETTLE_MAX_S 1.0→4.0(계속 흔들리면 그때 시작).
-- 실물 절차 권장: 발과 바닥 사이 ≤ 3 cm 로 낮게 매단 뒤 지그를 푼다.
-- 검증: 브리지 selftest ALL PASS(착지 게이트 9케이스, 최소 대기 케이스 추가), pytest 55 passed.

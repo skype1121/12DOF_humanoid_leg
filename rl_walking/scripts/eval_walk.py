@@ -25,7 +25,7 @@ p.add_argument("--seed", type=int, default=1)
 p.add_argument("--t_stand", type=float, default=3.0)
 p.add_argument("--t_walk", type=float, default=8.0)
 p.add_argument("--t_after", type=float, default=4.0)
-p.add_argument("--torsion_r", type=float, default=None, help="1005 진단: 로봇 충돌 형상 비틀림 마찰 패치 반경[m](PhysX torsional_patch_radius) — ⚠1005 WTOR: 이 자산·GPU 경로에서 결과 비트 동일 = 효과 없음 확인, 쓰지 말 것"); p.add_argument("--hipf_deg", type=float, default=None, help="1005: 공유 힙 앞뒤 영점 편향 고정[deg](default_pose_bias.shared_hip_f_rad lo=hi) — 힙 편향 강건성"); p.add_argument("--keep_dist", action="store_true", help="1005: 학습 외란(disturbance·push_robot) 유지 — 걷기 중 외란 강건성"); p.add_argument("--wpush", default="", help="1005: 걷기 중 정의 밀기 'dir:F:dur[:ramp]' (dir f|b|l, 힘 N, 지속 s, ramp=램프 상승 s) — 걷기 시작 3 s 뒤 몸통 프레임으로 모든 env"); p.add_argument("--rec_monitor", action="store_true", help="1005 통합 진단: 감지기만 계산하고 전환하지 않음 — 걷기 중 |ω_xy|·기울기 편차 최대값 분포 기록"); p.add_argument("--rec_walk_f", type=float, default=0.0, help="1005: 걷기 중 감지 = 보행 주기 저역(τ 0.45 s) 기울기 편차 > 값[°] (0 = 원 문턱 사용). 걷기 1.5 s 뒤부터"); p.add_argument("--rec_walk_on", default="3.0,0.5", help="걷기 중 감지기 켜기 문턱 'tilt,w'"); p.add_argument("--rec_policy", default="", help="1005 통합: 'run:model_N.pt' 회복 정책 — 걷기 시작부터 감지기(RV4 상대 3°/0.5, 끄기 1.5°/0.3·calm 1 s·dwell 0.4·접촉 any) + ki cue(ω_y>0 → 1 s vx 0.03) + 조기 복귀(0.6,6,0.4,0.2). 회복 뒤 = 서기(G21a) 래치"); p.add_argument("--cmd_set", default="", help="1005 밤 전방향 평가: 'vx,vy,wz;vx,vy,wz;...' 명령 그룹(지정 시 --speeds 대신, 걷기 구간에 적용; HeadingHold 는 0 으로 둘 것)"); p.add_argument("--stand_policy", default="", help="1005 전환 평가: 'run:model_N.pt' 서기 정책(G21a) — 걷기 명령 전·정지 뒤 stand_after_s 이후에 사용(같은 관측 계약)"); p.add_argument("--stand_after_s", type=float, default=0.5); p.add_argument("--out_tag", default="walk"); p.add_argument("--friction_scale", type=float, default=1.0, help="진단(T4): 발 마찰 범위 배율(학습 설정 불변)"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)"); p.add_argument("--wz_groups", default="", help="진단: 걷기 중 상수 요 명령을 env 묶음별로(예 -0.3,0,0.3) — 회전 명령 추종 확인")
+p.add_argument("--torsion_r", type=float, default=None, help="1005 진단: 로봇 충돌 형상 비틀림 마찰 패치 반경[m](PhysX torsional_patch_radius) — ⚠1005 WTOR: 이 자산·GPU 경로에서 결과 비트 동일 = 효과 없음 확인, 쓰지 말 것"); p.add_argument("--hipf_deg", type=float, default=None, help="1005: 공유 힙 앞뒤 영점 편향 고정[deg](default_pose_bias.shared_hip_f_rad lo=hi) — 힙 편향 강건성"); p.add_argument("--keep_dist", action="store_true", help="1005: 학습 외란(disturbance·push_robot) 유지 — 걷기 중 외란 강건성"); p.add_argument("--wpush", default="", help="1005: 걷기 중 정의 밀기 'dir:F:dur[:ramp]' (dir f|b|l, 힘 N, 지속 s, ramp=램프 상승 s) — 걷기 시작 3 s 뒤 몸통 프레임으로 모든 env"); p.add_argument("--rec_monitor", action="store_true", help="1005 통합 진단: 감지기만 계산하고 전환하지 않음 — 걷기 중 |ω_xy|·기울기 편차 최대값 분포 기록"); p.add_argument("--rec_walk_f", type=float, default=0.0, help="1005: 걷기 중 감지 = 보행 주기 저역(τ 0.45 s) 기울기 편차 > 값[°] (0 = 원 문턱 사용). 걷기 1.5 s 뒤부터"); p.add_argument("--rec_walk_on", default="3.0,0.5", help="걷기 중 감지기 켜기 문턱 'tilt,w'"); p.add_argument("--rec_policy", default="", help="1005 통합: 'run:model_N.pt' 회복 정책 — 걷기 시작부터 감지기(RV4 상대 3°/0.5, 끄기 1.5°/0.3·calm 1 s·dwell 0.4·접촉 any) + ki cue(ω_y>0 → 1 s vx 0.03) + 조기 복귀(0.6,6,0.4,0.2). 회복 뒤 = 서기(G21a) 래치"); p.add_argument("--cmd_set", default="", help="1005 밤 전방향 평가: 'vx,vy,wz;vx,vy,wz;...' 명령 그룹(지정 시 --speeds 대신, 걷기 구간에 적용; HeadingHold 는 0 으로 둘 것)"); p.add_argument("--stand_policy", default="", help="1005 전환 평가: 'run:model_N.pt' 서기 정책(G21a) — 걷기 명령 전·정지 뒤 stand_after_s 이후에 사용(같은 관측 계약)"); p.add_argument("--stand_after_s", type=float, default=0.5); p.add_argument("--out_tag", default="walk"); p.add_argument("--friction_scale", type=float, default=1.0, help="진단(T4): 발 마찰 범위 배율(학습 설정 불변)"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)"); p.add_argument("--hh_wz_max", type=float, default=0.6, help="HeadingHold 명령 |wz| 상한(배포 브리지 기본 0.6)"); p.add_argument("--heading_target", default="", help="1006 supervisor 회전 평가: 목표 요 변화[deg] env 묶음(예 -90,-45,45,90) — --heading_hold kp 와 함께: 요 기준 = 시작 요 + 목표, 도달 시각(|오차|<10°)·끝 오차 보고"); p.add_argument("--wz_groups", default="", help="진단: 걷기 중 상수 요 명령을 env 묶음별로(예 -0.3,0,0.3) — 회전 명령 추종 확인")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
@@ -106,15 +106,24 @@ if a.wz_groups:
     _wz = [float(x) for x in a.wz_groups.split(',')]
     WZ = torch.tensor(_wz, device=dev)[(torch.arange(N, device=dev) // len(speeds)) % len(_wz)]
 _walking_now = [False]
+HT = None; _ht_list = []
+if a.heading_target:
+    _ht_list = [float(x) for x in a.heading_target.split(',')]
+    HT = torch.tensor([math.radians(x) for x in _ht_list], device=dev)[(torch.arange(N, device=dev) // len(speeds)) % len(_ht_list)]
+ht_first = torch.full((N,), float("nan"), device=dev); ht_err = torch.full((N,), float("nan"), device=dev); _ht_tick = [0]
 def set_cmd(vx):
     global hh_ref
     cmd_term.vel_command_b[:, 0] = vx; cmd_term.vel_command_b[:, 1] = 0.0; cmd_term.vel_command_b[:, 2] = 0.0
     if a.heading_hold > 0.0:
         yw = yaw_of(robot.data.root_quat_w)
         if hh_ref is None:
-            hh_ref = yw.clone()
+            hh_ref = yw.clone() + (HT if HT is not None else 0.0)
         err = torch.atan2(torch.sin(hh_ref - yw), torch.cos(hh_ref - yw))
-        cmd_term.vel_command_b[:, 2] = (a.heading_hold * err).clamp(-0.6, 0.6)
+        if HT is not None and _walking_now[0]:
+            _ht_tick[0] += 1; _tw = _ht_tick[0] * dt
+            _ok = (err.abs() < math.radians(10.0)) & torch.isnan(ht_first)
+            ht_first[_ok] = _tw; ht_err[:] = torch.rad2deg(err.abs())
+        cmd_term.vel_command_b[:, 2] = (a.heading_hold * err).clamp(-a.hh_wz_max, a.hh_wz_max)
     if WZ is not None:
         cmd_term.vel_command_b[:, 2] = torch.where(vx > 0, WZ, torch.zeros_like(WZ))
     if CS is not None:
@@ -347,6 +356,16 @@ if WZ is not None:
         mean = float(yaw_w[mw].mean()) if mw.any() else float("nan")
         exp = math.degrees(wv * a.t_walk)
         L.append(f"| {wv:+.2f} | {int(mw.sum())} | {mean:+.1f} | {exp:+.1f} | " + (f"{mean / exp:.2f}" if abs(exp) > 1e-6 else "—") + " |")
+if HT is not None:
+    L.append("| 목표 요 ° | n(걷기·생존) | 낙상 % | 10° 안 도달 % | 도달 시각 중앙 s | 끝 |오차| 평균 ° | 끝 오차 < 10° % |")
+    L.append("|---|---|---|---|---|---|---|")
+    for k_, hv in enumerate(_ht_list):
+        mg = (HT == HT.new_tensor(math.radians(hv))) & (vgrp > 0)
+        ma = mg & alive
+        nn_ = max(1, int(ma.sum()))
+        reach = (~torch.isnan(ht_first)) & ma
+        L.append(f"| {hv:+.0f} | {int(ma.sum())} | {100*float((~alive[mg]).float().mean()) if mg.any() else float('nan'):.1f} | {100*float(reach.sum())/nn_:.0f} | "
+                 + (f"{float(ht_first[reach].median()):.1f}" if reach.any() else "—") + f" | {float(ht_err[ma].mean()) if ma.any() else float('nan'):.1f} | {100*float(((ht_err < 10.0) & ma).sum())/nn_:.0f} |")
 txt = "\n".join(L); print(txt, flush=True)
 os.makedirs(os.path.join(REPO, "log_picture"), exist_ok=True)
 open(os.path.join(REPO, "log_picture", f"walk_eval_{a.out_tag}.txt"), "w").write(txt + "\n")

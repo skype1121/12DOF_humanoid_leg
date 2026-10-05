@@ -125,6 +125,7 @@ parser.add_argument("--det_from_obs", action="store_true", help="1005 검토 14:
 parser.add_argument("--det_filt", type=float, default=0.0, help="1005 KD: --det_from_obs 감지 입력(자이로·중력)에 EMA α (0 = 끔, 0.5 ≈ 2틱) — 브리지 구현 가능한 감지 전용 필터(정책 입력 불변)")
 parser.add_argument("--early_gate", type=str, default="", help="1005 KE: 조기 복귀는 켜진 뒤 최대 기울기 편차 ≥ tilt° 또는 최대 |ω_xy| ≥ w 였던 활성화에만 허용 'tilt,w' — 작은 오탐은 종전 calm 1 s 경로로만 꺼짐(채터 억제)")
 parser.add_argument("--spawn_dz", type=float, default=0.0, help="1006 착지 출발: 스폰 높이 +dz [m](지그 해제 낙하 모사, 홀드 상태로 떨어진 뒤 precheck 끝에 정책 인계)")
+parser.add_argument("--delay_switch", type=str, default="", help="1006 검토 16: 액션 지연을 첫 외란 뒤 첫 착지 전/후로 바꾼다 'pre,post'[틱] — --delay_steps 를 범위(예 1,4)로 같이 줄 것(버퍼 크기). 착지 뒤 지연 효과 분리")
 parser.add_argument("--cue_clock", type=str, default="", choices=("", "reset"), help="1005 D: cue 시작 시 회복 정책 관측 gait_clock 을 '하중 적은 발이 바로 스윙' 위상에서 재시작(cue 동안만; 이후 환경 클록)")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
@@ -817,6 +818,9 @@ for i in range(STEPS):
         # 0920 검증: Isaac Lab 2.3.2 의 is_global=True 가 실제로는 로컬로 걸렸다(1 env 검증에서 뒤 밀기에 골반이 앞으로) → 월드 힘을 base 쿼터니언으로 직접 로컬 변환해 기본 경로(로컬)로 건다
         fvec_b = quat_apply_inverse(robot.data.root_quat_w, fvec[:, 0, :]).unsqueeze(1)
         robot.set_external_force_and_torque(fvec_b, torch.zeros_like(fvec_b), body_ids=[_base_id])
+    if args_cli.delay_switch and getattr(_term, "_max_delay", 0) > 0:
+        _dpre, _dpost = [int(x) for x in args_cli.delay_switch.split(",")]
+        _term._delay = torch.where(torch.isnan(td_first_t), torch.full_like(_term._delay, _dpre), torch.full_like(_term._delay, _dpost))
     with torch.inference_mode():
         a = torch.zeros(N, J, device=dev) if (policy is None or i < STEPS_PRE) else policy(obs)
         if policy2 is not None and i >= STEPS_PRE:

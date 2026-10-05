@@ -72,7 +72,7 @@ BRIDGE_JOINT_FRESH_SEC = 0.2  # rl_bridge_node.SENSOR_STALE_SEC 와 동일 — '
 #   이름 그대로의 stand_crouch_g12 는 0929·1002 실물과 같은 동작(실제 속도 EMA).
 # 1003 승윤님 결정(배포 시): 교대 진단의 G12 = v2 그대로(1002 실물과 같은 동작) → 기본값(맨 앞) 유지. G21a = 학습 관측 필터 계약(진단 전용, 승격 아님).
 #   stand_crouch_g12_ema0(학습 관측 계약) 은 선택지로만 둔다.
-CKPT_CHOICES = ["stand_crouch_g12", "stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_crouch_g12_ema0", "stand_crouch_g11a"]   # 1004: C5(G21a+G24R-a 전환) 구조 진단 선택지
+CKPT_CHOICES = ["stand_crouch_g12", "stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr_g21a_g24ra", "stand_crouch_g12_ema0", "stand_crouch_g11a"]   # 1004: C5(G21a+G24R-a 전환) 구조 진단 선택지
 CKPT_DEFAULT = CKPT_CHOICES[0]
 
 

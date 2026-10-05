@@ -287,6 +287,10 @@ CHECKPOINTS = {
     #   근거: reports/gen_c5/REAL_GATE_C5.md (G1 RV3·G2 실물 로그 재생·G3/G4 21793·G5 힙 편향 곡선). 두 정책 관측·액션 계약 env.yaml 동일 확인.
     "stand_c5_g21a_g24ra": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported"),
+    # stand_c5kr_g21a_g24ra (1005, **로컬 준비·실물 미검증·미배포**): C5 + 회복 cue(켜짐 틱 IMU ω_y>0 → 1 s 회복 입력 vx 0.03)
+    #   + 조기 복귀(0.6 s·6°·0.4 rad/s·양발 0.2 s) + 불응기(1 s, 6°/1.0). 근거: reports/gen_c5/imu/{RESULT,REG_RESULT,KR_RESULT}.md.
+    "stand_c5kr_g21a_g24ra": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported"),
     # stand_crouch_v2 (0918 저녁, S9d, models/stand_crouch_v2) — **등록 보류**: 기본자세 = 실물 v4 명령 + 무릎 직렬 처짐 편향 DR.
     # 시뮬 명목 94.5 % 이나 목 센서 500틱(IMU 무반응) 시험에서 기본자세 출발도 슬루 최대로 발산(틱 34 비유한) → 공중·줄 고정
     # 몸통에서 관절 폭주 위험. 정책 500틱 selftest 는 등록된 stand_* 전부를 순회하므로 등록 자체가 prep 게이트를 막는다.
@@ -298,7 +302,12 @@ CHECKPOINTS = {
 #: 감지기 = 상대 기울기(기준 자세 편차, τ 10 s) — 절대 기울기는 실물 서기 3–4° 로 회복 모드 고착(1004 로그 재생 70–99 %).
 #: 회복 체크포인트는 reports/gen_c5/REAL_GATE_C5.md G3 확정 뒤 등록(그 전엔 비움).
 C5_PAIRS = {"stand_c5_g21a_g24ra": ("stand_crouch_g21a", os.path.join(
+    REPO, "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported")),
+            "stand_c5kr_g21a_g24ra": ("stand_crouch_g21a", os.path.join(
     REPO, "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported"))}
+#: 1005 kr: C5 키별 추가 설정(감지기 조기 복귀·불응기, 러너 cue) — 시뮬 --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.0,6,1.0 --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu 와 같은 정의.
+C5_EXTRA = {"stand_c5kr_g21a_g24ra": dict(det=dict(early=(0.6, 6.0, 0.4, 0.2), refrac=(1.0, 6.0, 1.0)),
+                                           runner=dict(cue_vx=0.03, cue_s=1.0, cue_dir_imu=True))}
 C5_DETECTOR_KW = dict(on_tilt_deg=3.0, on_w=0.5, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, ref_tau_s=10.0, ref_init_s=1.5, off_contact="any")   # RV4(1004 밤): RV3 + 끄기 접촉 한 발 이상 — 실물 시험 4 패드 0 고착 19 s 재생 해소·시뮬 RV3 와 동일(짝 불일치 0) — 젯슨 미반영(다음 배포 승인)
 
 
@@ -306,7 +315,8 @@ def _make_runner(checkpoint):
     """체크포인트 이름 → 러너. C5 이름이면 C5Runner(서기 정책 계약 공유), 아니면 PolicyRunnerStage4(종전)."""
     if checkpoint in C5_PAIRS:
         stand, rec_path = C5_PAIRS[checkpoint]
-        return C5Runner(CHECKPOINTS[stand], rec_path, detector=SwitchDetector(**C5_DETECTOR_KW),
+        _ex = C5_EXTRA.get(checkpoint, {})
+        return C5Runner(CHECKPOINTS[stand], rec_path, detector=SwitchDetector(**C5_DETECTOR_KW, **_ex.get("det", {})), **_ex.get("runner", {}),
                         gait_freq=CKPT_GAIT_FREQ.get(stand, CKPT_GAIT_FREQ_DEFAULT),
                         default_pose_rad=CKPT_DEFAULT_POSE.get(stand),
                         jvel_ema_mode=ckpt_jvel_ema_mode(stand),
@@ -346,6 +356,7 @@ CKPT_DEFAULT_POSE = {
     "stand_crouch_g12_ema0": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
     "stand_crouch_g21a": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
     "stand_c5_g21a_g24ra": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
+    "stand_c5kr_g21a_g24ra": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
 }
 
 
@@ -357,7 +368,7 @@ def ckpt_default_pose(checkpoint):
 #: 위상 어긋난 관측 → 보행 파괴). 미등록 = 1.4 (기존 가족 전체의 계약).
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
-CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "stand_crouch_v6": 1.1, "stand_crouch_g11a": 1.1, "stand_crouch_g12": 1.1, "stand_crouch_g12_ema0": 1.1, "stand_crouch_g21a": 1.1, "stand_c5_g21a_g24ra": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
+CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "stand_crouch_v6": 1.1, "stand_crouch_g11a": 1.1, "stand_crouch_g12": 1.1, "stand_crouch_g12_ema0": 1.1, "stand_crouch_g21a": 1.1, "stand_c5_g21a_g24ra": 1.1, "stand_c5kr_g21a_g24ra": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
                    "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1, "stand_hang_v1": 1.1, "stand_hang_v2": 1.1, "stand_hang_v3": 1.1, "stand_hang_v4": 1.1, "stand_hang_v5": 1.1, "stand_hang_v5p": 1.1, "stand_hang_v6": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 
@@ -366,7 +377,7 @@ CKPT_GAIT_FREQ_DEFAULT = 1.4
 #: v2 로 학습한 정책(G16~)에 0 을 넣는 반대 방향 결함은 _jvel_ema_contract 검사가 기동을 거부한다.
 CKPT_JVEL_EMA_MODE = {"stand_crouch_g12_ema0": "ema0"}
 #: 1003: 관측 필터 계약(학습 env.yaml 로 결정)이 필요한 정책 — env.yaml 이 없으면 원시 관측으로 조용히 도는 대신 기동 거부.
-CKPT_REQUIRE_ENV_YAML = {"stand_crouch_g21a", "stand_c5_g21a_g24ra"}
+CKPT_REQUIRE_ENV_YAML = {"stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr_g21a_g24ra"}
 #: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).
 #: 대체는 경고 로그로 드러낸다 (0905 감사 A1: 무언 대체 'stand_v7' = 10.49kg 자산 정책 탑승 경로).
 STAND_DEFAULT = "stand_v18b"
@@ -1380,6 +1391,38 @@ def _selftest_c5():
         C5_PAIRS.pop("_selftest_c5", None)
 
 
+def _selftest_c5kr():
+    """(1005) kr 브리지 경로: C5_EXTRA 가 감지기(조기 복귀·불응기)·러너(cue)로 전달되는지, 앞 기울기(ω_y>0) 켜짐에서 cue 50 틱,
+    조기 복귀로 서기 복귀, 블랙박스 cue·n_cue·n_early 필드. 회복 자리에 G21a 내보내기(경로 검증, 정책 성능 아님)."""
+    import numpy as np
+    if not os.path.isdir(CHECKPOINTS["stand_crouch_g21a"]):
+        return "SKIP (G21a 미배포)"
+    C5_PAIRS["_selftest_c5kr"] = ("stand_crouch_g21a", CHECKPOINTS["stand_crouch_g21a"])
+    C5_EXTRA["_selftest_c5kr"] = C5_EXTRA["stand_c5kr_g21a_g24ra"]
+    try:
+        core = BridgeCore("_selftest_c5kr")
+        r = core.runner
+        assert isinstance(r, C5Runner) and r.cue_vx == 0.03 and r.det.early is not None and r.det.refrac is not None, "kr 설정 전달"
+        q = np.asarray(CKPT_DEFAULT_POSE["stand_crouch_g21a"], dtype=np.float32); prev = None; modes = []; cues = []
+        for k in range(300):
+            ang = math.radians(3.5 + (6.0 if 100 <= k < 110 else 0.0))
+            quat = (math.cos(ang / 2), 0.0, math.sin(ang / 2), 0.0)
+            gy = 0.6 if k == 100 else 0.0
+            out = core.tick((0.0, gy, 0.0), quat, q, np.zeros(12, np.float32), (1.0, 1.0))
+            assert np.all(np.isfinite(out))
+            if prev is not None:
+                assert float(np.max(np.abs(out - prev))) <= math.radians(4.0) + 1e-6, "슬루 초과"
+            prev = out; q = out.astype(np.float32); modes.append(r.last_mode); cues.append(int(r.cue_active))
+        bb = r.blackbox()
+        assert max(modes[:100]) == 0 and max(modes[100:112]) == 1 and modes[-1] == 0, "켜짐·복귀"
+        assert sum(cues) == min(50, sum(modes)) and bb["n_cue"] == 1, f"cue 틱 {sum(cues)} (회복 체류 {sum(modes)})"   # cue 는 회복 모드가 끝나면(조기 복귀) 같이 끝난다
+        assert bb["n_early"] >= 1, "조기 복귀 미발동"
+        assert {"cue", "n_cue", "n_early"} <= set(bb)
+        return f"kr 경로 OK: 켜짐 {bb['n_on']} · cue {sum(cues)} 틱 · 조기 복귀 {bb['n_early']} · 회복 체류 {sum(modes)} 틱"
+    finally:
+        C5_PAIRS.pop("_selftest_c5kr", None); C5_EXTRA.pop("_selftest_c5kr", None)
+
+
 def _selftest_obs_filter():
     """(1003) 체크포인트별 관측 필터 계약: G12 = 종전(필터 없음), G21a = actions EMA β0.27·joint_vel EMA β0.25 (env.yaml 기준).
     BridgeCore 가 정책을 바꾸면 러너를 새로 만들어 필터·이력 상태가 비워진다(G21a → G12 전환 후 G12 러너에 필터 없음)."""
@@ -2019,6 +2062,7 @@ def run_selftest(required=()):
              ("학습 계약", lambda: _selftest_contract(required)),
              ("관측 필터 계약(1003)", _selftest_obs_filter),
              ("C5 전환 경로(1004)", _selftest_c5),
+             ("C5 kr 경로(1005)", _selftest_c5kr),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:

@@ -42,6 +42,15 @@ parser.add_argument("--gp_block", type=str, default="165:225",
                     help="벌점 관측 구간 'a:b'(기본 last_action 이력 165–224) 또는 'all'")
 parser.add_argument("--restore_lr", action="store_true", default=False,
                     help="G18: 이어 학습 시 체크포인트 optimizer 의 학습률을 alg.learning_rate 로 복원(rsl_rl 3.1.2 누락, 5.5.1 ppo.py:405)")
+parser.add_argument("--c5_stand", type=str, default="",
+                    help="PA1(1006): 파이프라인 정렬 회복 학습 — 고정 서기 정책 '<run>:<model_N.pt>'(실험 디렉터리 기준) 또는 .pt 경로. "
+                         "비우면 끔(기존 동작 그대로). rl_walking/c5_train.py")
+parser.add_argument("--c5_frac", type=float, default=0.75, help="PA1: 파이프라인 env 비율(나머지 = 정책 상시 앵커 env)")
+parser.add_argument("--c5_critic_warmup", type=int, default=0, help="PA1: critic 예열 반복 수(mask 전부 0·액터 고정)")
+parser.add_argument("--c5_arm_s", type=float, default=1.0,
+                    help="PA1: 에피소드 시작 뒤 감지기 무장 지연[s](그동안 G21a 고정, 스폰 과도 오탐 방지)")
+parser.add_argument("--c5_no_rescale", action="store_true", default=False,
+                    help="PA1: mask advantage 표본비 배율(전/mask, 상한 10) 끔 — 기본은 켬(손실 평균 희석 보정)")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -106,8 +115,11 @@ from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
 
 import isaaclab_tasks  # noqa: F401
 
-# biped12 커스텀 태스크 등록
-sys.path.insert(0, "/home/ryu/humanoid_leg_test1")
+# biped12 커스텀 태스크 등록 — 이 스크립트가 속한 저장소(작업트리 포함)의 rl_walking. 본 저장소에서는 종전 경로와 같다.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if not os.path.isfile(os.path.join(_REPO_ROOT, "rl_walking", "__init__.py")):
+    _REPO_ROOT = "/home/ryu/humanoid_leg_test1"
+sys.path.insert(0, _REPO_ROOT)
 import rl_walking  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
@@ -213,6 +225,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         SmoothPPO.GP_SL = None if args_cli.gp_block == "all" else slice(*map(int, args_cli.gp_block.split(":")))
         _opr.PPO = SmoothPPO
         print(f"[G18] SmoothPPO 야코비안 벌점 coef={SmoothPPO.GP_COEF} block={SmoothPPO.GP_SL}")
+    if args_cli.c5_stand:
+        # PA1: 고정 서기 정책 + 감지기 파이프라인 래퍼 + MaskedPPO (꺼져 있으면 이 블록 전체를 건너뜀)
+        if agent_cfg.class_name != "OnPolicyRunner" or args_cli.distributed:
+            raise ValueError("--c5_stand 는 단일 GPU OnPolicyRunner 에서만")
+        from rl_walking import c5_train as _c5
+        env = _c5.install(env, agent_cfg, args_cli, log_root_path,
+                          resume_path if agent_cfg.resume else None)
     # create runner from rsl-rl
     if agent_cfg.class_name == "OnPolicyRunner":
         runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)

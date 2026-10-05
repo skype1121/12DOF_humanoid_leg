@@ -163,6 +163,10 @@ def _mirror(x: torch.Tensor, kind: str) -> torch.Tensor:
     return x.index_select(-1, perm) * sign.to(x.dtype)
 
 
+# PA1(1006): 학습 전용 관측 그룹(정책·크리틱 입력이 아님, obs_groups 밖) — 미러 시 그대로 복사.
+_PASSTHROUGH_GROUPS = ("c5",)
+
+
 def _obs_kind(key: str) -> str:
     if key not in ("policy", "critic"):
         raise ValueError(
@@ -189,11 +193,13 @@ def mirror_biped12(env=None, obs=None, actions=None):
         if TensorDict is not None and isinstance(obs, TensorDict):
             mirrored = obs.clone()
             for key in list(obs.keys()):
+                if key in _PASSTHROUGH_GROUPS:      # PA1 c5 마스크/모드 그룹 — 좌우 불변(복사 그대로)
+                    continue
                 mirrored[key] = _mirror(obs[key], _obs_kind(key))
             obs_out = torch.cat([obs, mirrored], dim=0)
         elif isinstance(obs, dict):  # 단위테스트/타 러너 호환
             obs_out = {
-                key: torch.cat([val, _mirror(val, _obs_kind(key))], dim=0)
+                key: torch.cat([val, val if key in _PASSTHROUGH_GROUPS else _mirror(val, _obs_kind(key))], dim=0)
                 for key, val in obs.items()
             }
         else:  # 평탄 텐서 — 정책 관측으로 해석

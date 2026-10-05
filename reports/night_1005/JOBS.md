@@ -43,3 +43,6 @@
 | 1006 | PA1 병합(39653e9f, worktree 브랜치 cherry-pick) | — | — | — |
 | 1006 | PA1(pa1.sh PID 2410779: GPU ≤ 7.5 GB 대기 → 학습 1000 → 22300 d3 평가 → 끝 d3·d4) | "PA1 학습 시작/22300 평가 끝/PA1 끝" in scratchpad/pa1.out | ground_recovery_pa1* | 감시 b7zadq0nc(초기 신호), bjdfqw9m0(22300 kill 판정) |
 | 1006 | 대조 C 학습 시작 06:03(seqC.sh) | "대조 C 평가 끝" | walk_eval_w2qC_* | 감시 b0txw20d2(WSTEER·C 최종) |
+| 1006 | PA1 | — | 22300 KILL → H1 미지지 → NEXT=WRAPFIT | — |
+| 1006 | 대조 C | — | 학습 붕괴(대조 무효) → WSTEER KILL 유지 + 사후 진단 26300 | — |
+| 1006 | diag2.sh PID 2446326: PA1 끝 평가 뒤 WRAPFIT(rd3·rh2·pa1 × C5 래퍼 없음) → WS26300(WSTEER·C α1/α0) | "WRAPFIT 끝"·"WS26300 끝" in scratchpad/diag2.out | ground_recovery_wf*·walk_eval_*_26300_* | 감시 bz32m027q, (WS26300) |

@@ -2784,3 +2784,24 @@ class Biped12HangStandW2qeEnvCfg(Biped12HangStandW2qEnvCfg):
         super().__post_init__()
         self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={})
         self.curriculum = None
+
+
+
+@configclass
+class Biped12HangStandW2q2EnvCfg(Biped12HangStandW2qEnvCfg):
+    """W2q2 (1005, 보행 트랙): W2q + **sb0 보폭 기준 = 스윙당 발 이동 |vx|/f(vx)**(0.05→5.6, 0.10→9.1, 0.15→11.5, 0.20→13.3 cm): 진행 포화 = 기준, 착지 창 상한 = max(10 cm, 1.4×기준) — 보폭 기준 한 개념.
+    근거(W2q 300 반복 단계 분해): 명령→클록→실제 cadence 는 전달(0.80→1.33 Hz)되나 보폭이 cadence 에 반비례로 줄어 실제 vx 0.061→0.084 고정. 진행 포화 5 cm 고정이 걸음당 보폭 신호를 주지 않는다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.sb0.params = dict(self.events.sb0.params, stride_scale="cad")
+
+
+@configclass
+class Biped12HangStandW2q2eEnvCfg(Biped12HangStandW2q2EnvCfg):
+    """W2q2 평가용 + 회전 보조 훅(TURN_ALPHA)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={})
+        self.curriculum = None

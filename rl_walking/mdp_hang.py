@@ -2360,7 +2360,11 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
     if stride_scale:     # 1005 WV1: 보폭 기준을 명령 속도에 비례 — stride = |vx|/(2f) (0.05→2.3 cm, 0.10→4.5, 0.15→6.8, 0.20→9.1)
         _vx = env.command_manager.get_command("base_velocity")[:, 0].abs()
         _stride = (_vx / (2.0 * freq)).clamp(0.015, 0.12)
-        if stride_scale == "up":     # 1005 WV2: 상한만 올림(하한·이벤트 구조는 그대로) — 라운드 24
+        if stride_scale == "cad":    # 1005 W2q2: 명령 연동 cadence(env._gf) 와 짝 — 스윙당 발 이동 기준 = |vx|/f(vx)(한 주기 몸통 이동 = 한 스윙 발 이동)
+            _f = getattr(env, "_gf", None)
+            _stride_c = (_vx / (_f if _f is not None else torch.full_like(_vx, freq))).clamp(0.03, 0.15)
+            prog_sat = _stride_c; disp_hi = (1.4 * _stride_c).clamp(min=disp_hi)
+        elif stride_scale == "up":     # 1005 WV2: 상한만 올림(하한·이벤트 구조는 그대로) — 라운드 24
             prog_sat = _stride.clamp(min=prog_sat); disp_hi = (1.8 * _stride).clamp(min=disp_hi)
         else:
             prog_sat = _stride; disp_lo = 0.4 * _stride; disp_hi = (1.8 * _stride).clamp(min=0.04)

@@ -1672,6 +1672,125 @@ class HangGuard:
         return None
 
 
+#: ── 착지 자동 인수 게이트 (1005, 단순화 기동 경로 — stand 명령에 touchdown_start:true 를 **명시**한 경우만) ──────────
+#: 배경: 배포 후보(G21a·C5/KE = G21a+G24R-a)는 학습 env 에서 hang_support r0=0(지지 없음)·스폰 z 0~1 cm(지면 출발)
+#: 이었다 — 공중(무접촉·몸통이 줄에 매달려 관절 동작이 중력벡터를 못 바꾸는 상태) 관측을 한 번도 본 적이 없다.
+#: 실물 guard_mode=data 에서는 리프트 가드·발진 가드(과속 제외)가 정지하지 않으므로, 공중에서 정책을 돌리면 막는 층이 없다.
+#: → 이 경로는 착지 전에는 **정책을 계산조차 하지 않고**(러너 이력·EMA·직전 액션·C5 감지기 미접촉) stage8 이 스트리밍하던
+#:   수평 홀드 명령을 그대로 유지한다. 양발 접촉 TD_CONFIRM_S 지속 + 중력 게이트 + 짧은 정착(|ω_xy|) 뒤에
+#:   종전 stand 시작과 **같은 초기화**(러너 reset = 학습 리셋 계약: 이력 백필·직전 액션 0·EMA 첫 값, 가드·LPF·블렌딩 재시작)
+#:   를 그 시점에 수행한다. 이후는 hang_arm 없는 종전 지상 stand 와 비트 단위로 같은 경로(블렌딩 1.5 s 포함 — 평가된 배포 체인).
+#: touchdown_start 가 없으면 이 게이트는 만들어지지도 않는다(종전 동작 불변, 셀프테스트 고정).
+TD_CONFIRM_S = CONTACT_CONFIRM_S   # 양발 접촉 지속 [s] — 행잉 ARM 의 접지 확인과 같은 값
+TD_QUIET_W = 0.3                   # [rad/s] |ω_xy| 정착 문턱 — C5 감지기 off_w 와 같은 값(켜기 0.5 보다 낮다: 시작 직후 오탐 방지)
+TD_QUIET_S = 0.1                   # 정착 연속 시간 [s]
+TD_SETTLE_MAX_S = 1.0              # 양발 확인 뒤 정착 대기 상한 — 넘으면 시작(계속 흔들리면 실제 외란 → 정책·회복이 맡는다)
+TD_WAIT_MAX_S = HANG_MAX_S         # 무장 뒤 착지 대기 상한 — 초과 시 STOP_ALL(동결 = 같은 홀드 유지) + 정책 비활성
+#: 홀드 자세(래치) vs 정책 기본자세 허용 편차 [deg, 관절 최대]. 넘으면 정책을 시작하지 않고 정지(동결 = 같은 홀드).
+#: 근거: 인수 블렌딩이 홀드→정책 기본자세 이동 명령이 된다 — 0918 실물 낙상(힙 15° 차), 0922 발목 +3.9° 차로 전방 기울기.
+#: 8° = '수평 자세 적용 누락'(무릎 0 vs 38.5°)·0918 힙 15° 는 잡고, 손 미세 조정(수 °)은 통과.
+TD_POSE_TOL_DEG = 8.0
+
+
+class TouchdownGate:
+    """착지 자동 인수 상태기 — AIR_CHECK → WAIT_CONTACT → SETTLE → POLICY (POLICY 는 되돌아가지 않는다).
+
+    update() 반환 (act, why): act = "hold"(홀드 유지, 정책 미구동) | "start"(이번 틱 정책 시작) | "timeout"(정지).
+    AIR_CHECK: 무장 뒤 '양발 동시 접촉이 아닌' 상태를 한 번 봐야 착지 대기로 간다 — 이미 선 채로/패드 1 고착으로
+    무장되면 정책이 시작되지 않는다(실제 착지 전이만 인정). 중력 게이트 불통과(>17.5° 기울기)면 시작하지 않는다."""
+
+    AIR_CHECK = "AIR_CHECK"
+    WAIT = "WAIT_CONTACT"
+    SETTLE = "SETTLE"
+    POLICY = "POLICY"
+
+    def __init__(self, t0=None, confirm_s=TD_CONFIRM_S, quiet_w=TD_QUIET_W, quiet_s=TD_QUIET_S,
+                 settle_max_s=TD_SETTLE_MAX_S, max_wait_s=TD_WAIT_MAX_S, require_air=True):
+        self.t0 = t0
+        self.confirm_s, self.quiet_w, self.quiet_s = float(confirm_s), float(quiet_w), float(quiet_s)
+        self.settle_max_s, self.max_wait_s = float(settle_max_s), float(max_wait_s)
+        self.state = self.AIR_CHECK if require_air else self.WAIT
+        self.contact_t0 = None
+        self.settle_t0 = None
+        self.quiet_t0 = None
+        self.why = "착지 대기"
+        self.start_t = None
+        self.start_kind = None       # "quiet" | "settle_cap"
+        self.last_w = None
+        self._transitions = []
+
+    @property
+    def started(self):
+        return self.state == self.POLICY
+
+    def _go(self, state, now):
+        self.state = state
+        self._transitions.append((state, now))
+
+    def pop_transitions(self):
+        out, self._transitions = self._transitions, []
+        return out
+
+    def snapshot(self, now):
+        return {"state": self.state, "why": self.why,
+                "waited_s": (round(now - self.t0, 2) if self.t0 is not None else None),
+                "start_kind": self.start_kind,
+                "w_xy": (round(self.last_w, 3) if self.last_w is not None and math.isfinite(self.last_w) else None)}
+
+    def update(self, now, contact2, gyro, grav_ok):
+        if self.state == self.POLICY:
+            return "start", self.why
+        if self.t0 is None:
+            self.t0 = now
+        both = contact2[0] > 0.0 and contact2[1] > 0.0
+        try:
+            w = math.hypot(float(gyro[0]), float(gyro[1]))
+        except (TypeError, ValueError, IndexError):
+            w = float("nan")
+        self.last_w = w
+        if self.state == self.AIR_CHECK:
+            if not both:
+                self._go(self.WAIT, now)
+            else:
+                self.why = "양발 접촉 상태로 무장됨 — 공중(양발 동시 접촉 아님) 확인 전에는 시작하지 않음"
+        if self.state == self.WAIT:
+            if both:
+                if self.contact_t0 is None:
+                    self.contact_t0 = now
+                if now - self.contact_t0 >= self.confirm_s:
+                    self._go(self.SETTLE, now)
+                    self.settle_t0 = now
+                    self.quiet_t0 = None
+                else:
+                    self.why = "양발 접촉 확인 중"
+            else:
+                self.contact_t0 = None
+                self.why = "착지 대기 — 수평 자세 홀드(정책 미구동)"
+        if self.state == self.SETTLE:
+            if not both:
+                self.contact_t0 = None
+                self.settle_t0 = None
+                self._go(self.WAIT, now)
+                self.why = "접촉 상실 — 착지 대기로 복귀"
+            else:
+                quiet = math.isfinite(w) and w < self.quiet_w
+                self.quiet_t0 = (self.quiet_t0 if self.quiet_t0 is not None else now) if quiet else None
+                quiet_ok = self.quiet_t0 is not None and now - self.quiet_t0 >= self.quiet_s - 1e-9
+                capped = now - self.settle_t0 >= self.settle_max_s - 1e-9
+                if grav_ok and (quiet_ok or capped):
+                    self.start_kind = "quiet" if quiet_ok else "settle_cap"
+                    self.start_t = now
+                    self.why = f"착지 확인 — 정책 시작({self.start_kind})"
+                    self._go(self.POLICY, now)
+                    return "start", self.why
+                self.why = ("중력 게이트 불통과(기울기 과대) — 홀드 유지" if not grav_ok
+                            else f"착지 정착 대기 |ω_xy| {w:.2f} rad/s")
+        if now - self.t0 >= self.max_wait_s:
+            return "timeout", (f"touchdown_wait_timeout: 착지 자동 인수 대기 {self.max_wait_s:.0f}s 초과 "
+                               f"({self.state}) — 정책 미시작")
+        return "hold", self.why
+
+
 #: 온셋 블렌딩 가중치 — 스무스스텝 0→1 (양 끝 기울기 0, 단조증가). dur_s<=0 이면 즉시 1.0.
 #: 구현은 deploy_chain.blend_alpha (판정 스크립트와 동일 함수).
 blend_alpha = _DC.blend_alpha
@@ -2044,6 +2163,60 @@ def _selftest_hang_guard():
             f"재들림 → 공중 허용 복귀(≤{HANG_MAX_RELIFTS}회, 초과 동결) · 재들림 창 상한 재적용 · 채터/한발 고착0·1 불변 · hang_arm 아님/FREE_STAND 재들림 동결 · 상한 {HANG_MAX_S:.0f}s 동결 — 12케이스 통과")
 
 
+def _selftest_touchdown_gate():
+    """TouchdownGate(1005): 공중 확인 → 양발 0.3 s → 정착 → 시작, 채터·접촉 상실 복귀, 중력 불통과 보류, 정착 상한, 대기 상한, 선 채 무장 거부."""
+    dt = 0.02
+    B, NONE, L = [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]
+    Q, W = (0.0, 0.0, 0.0), (0.0, 0.8, 0.0)
+
+    def run(g, seq, t=0.0, grav=True):
+        """seq: [(지속초, contact2, gyro)] → (act, why, t) — 'start'/'timeout' 에서 멈춘다."""
+        act, why = "hold", ""
+        for dur, c2, gy in seq:
+            for _ in range(int(round(dur / dt))):
+                t += dt
+                act, why = g.update(t, c2, gy, grav)
+                if act != "hold":
+                    return act, why, t
+        return act, why, t
+    # (1) 정상: 공중 2 s → 착지(조용) — 양발 0.3 s + 정착 0.1 s 뒤 시작, 그 전엔 hold
+    g = TouchdownGate(t0=0.0)
+    act, _, t = run(g, [(2.0, NONE, Q), (1.0, B, Q)])
+    assert act == "start" and g.started and g.start_kind == "quiet" and abs(t - (2.0 + TD_CONFIRM_S + TD_QUIET_S)) < 0.05, (act, t)
+    assert [s for s, _ in g.pop_transitions()] == [TouchdownGate.WAIT, TouchdownGate.SETTLE, TouchdownGate.POLICY]
+    # (2) 착지 채터(0.2 s 접촉/0.1 s 이탈 반복) → 시작 없음, 이후 연속 접촉이면 시작
+    g = TouchdownGate(t0=0.0)
+    act, _, t = run(g, [(0.5, NONE, Q)] + [(0.2, B, Q), (0.1, L, Q)] * 10)
+    assert act == "hold" and not g.started
+    act, _, _ = run(g, [(1.0, B, Q)], t)
+    assert act == "start"
+    # (3) 착지 충격(|ω| 0.8) 지속 → 정착 상한 1.0 s 에서 시작(settle_cap), 그 전엔 hold
+    g = TouchdownGate(t0=0.0)
+    act, _, t = run(g, [(0.5, NONE, Q), (3.0, B, W)])
+    assert act == "start" and g.start_kind == "settle_cap" and abs(t - (0.5 + TD_CONFIRM_S + TD_SETTLE_MAX_S)) < 0.05, (t, g.start_kind)
+    # (4) 중력 게이트 불통과 → 양발·정숙이어도 시작 안 함
+    g = TouchdownGate(t0=0.0)
+    act, why, _ = run(g, [(0.5, NONE, Q), (5.0, B, Q)], grav=False)
+    assert act == "hold" and not g.started and "중력" in why, why
+    # (5) 선 채로 무장(양발 접촉 고착) → 공중 확인 전에는 시작하지 않음 → 상한에서 timeout
+    g = TouchdownGate(t0=0.0, max_wait_s=5.0)
+    act, why, t = run(g, [(6.0, B, Q)])
+    assert act == "timeout" and abs(t - 5.0) < 0.03 and g.state == TouchdownGate.AIR_CHECK, (act, t, g.state)
+    # (6) 공중 유지 → 대기 상한 timeout
+    g = TouchdownGate(t0=0.0, max_wait_s=3.0)
+    act, why, t = run(g, [(4.0, NONE, Q)])
+    assert act == "timeout" and why.startswith("touchdown_wait_timeout") and abs(t - 3.0) < 0.03
+    # (7) 정착 중 접촉 상실 → WAIT 복귀(확인 시간 재시작), 한 발만 접촉은 시작 아님
+    g = TouchdownGate(t0=0.0)
+    act, _, t = run(g, [(0.5, NONE, Q), (TD_CONFIRM_S + 0.04, B, W), (0.1, NONE, Q), (2.0, L, Q)])
+    assert act == "hold" and g.state == TouchdownGate.WAIT, g.state
+    # (8) 시작 뒤 상태 고정(되돌아가지 않음)
+    g = TouchdownGate(t0=0.0); run(g, [(0.2, NONE, Q), (1.0, B, Q)])
+    assert g.started and g.update(10.0, NONE, Q, False)[0] == "start" and g.started
+    return (f"공중 확인→양발 {TD_CONFIRM_S}s→정착 {TD_QUIET_S}s 시작 · 채터 무시 · 충격 지속 시 상한 {TD_SETTLE_MAX_S}s · "
+            f"중력 불통과 보류 · 선 채 무장 거부 · 대기 상한 timeout · 접촉 상실 복귀 · 단방향 — 8케이스 통과")
+
+
 def run_selftest(required=()):
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 게이트 + 정책 500틱.
     required: 파일이 반드시 있어야 하는 체크포인트(기동 --checkpoint, STAND_DEFAULT) — 없으면 FAIL."""
@@ -2061,6 +2234,7 @@ def run_selftest(required=()):
              ("롤/피치 기록", _selftest_roll_pitch),
              ("발진 가드", _selftest_osc_guard),
              ("행잉 가드", _selftest_hang_guard),
+             ("착지 자동 인수 게이트(1005)", _selftest_touchdown_gate),
              ("학습 계약", lambda: _selftest_contract(required)),
              ("관측 필터 계약(1003)", _selftest_obs_filter),
              ("C5 전환 경로(1004)", _selftest_c5),
@@ -2172,6 +2346,8 @@ def main():
             self.blend_from = None
             self.nocontact_t0 = None
             self.hang_guard = HangGuard(hang_mode=False)
+            self.td_gate = None          # 1005 착지 자동 인수 게이트 — stand 에 touchdown_start 를 명시할 때만 생성
+            self.td_hold_rel = None      # 착지 대기 중 보내는 홀드 상대 명령(첫 대기 틱 래치)
             self.stage8_cmd_rel = {}
             # 블랙박스 전용(제어 무관): stage8 피드백의 토크 추정·모터 온도 원값.
             # 0905 — 시뮬 판정이 토크 피크/포화 %를 지표로 쓰므로 실물도 같은
@@ -2416,6 +2592,12 @@ def main():
                         if args.checkpoint in (
                             set(CHECKPOINTS) - march_family - stand_family) \
                         else "drv2"
+                # 1005 착지 자동 인수(touchdown_start): stand 전용, 행잉 ARM 과 동시 금지(공중 정책 경로와 섞지 않는다).
+                _td = bool(d.get("touchdown_start", False))
+                if _td and (c != "stand" or bool(d.get("hang_arm", False))):
+                    self.get_logger().error(
+                        f"[거부] touchdown_start 는 stand 전용이며 hang_arm 과 함께 쓸 수 없음 — 무시: {d}")
+                    return
                 # 중력 정합 게이트 (0905 감사 A4) — 장착보정 미적용 IMU 관측(±1,0,0)이 그대로
                 # 정책에 들어가는 경로 차단. 드라이런도 같은 게이트(관측 검증이 목적).
                 g_ok, g_why = gravity_gate(self.imu, self.imu_ts, time.time())
@@ -2429,24 +2611,20 @@ def main():
                 # 라이브 (재)시작 = 가드·미분 상태 전부 리셋 (적대리뷰 A1·A2:
                 # 종전엔 osc_tripped 래치로 재개 시 가드 영구 사망 + prev_qpos
                 # 동결로 복귀 첫 틱 qvel 폭주)
-                self.osc = OscGuard(JOINT_ORDER)
-                self.osc_tripped = None
-                self.prev_qpos = None
-                self.blend_t0 = None
-                self.blend_from = None
-                self.nocontact_t0 = None
                 # 0908 행잉 ARM: stand + hang_arm:true 를 명시한 경우에만 접지 전 무접촉 허용
                 _hang = (c == "stand" and bool(d.get("hang_arm", False)))
-                self.hang_guard = HangGuard(hang_mode=_hang, t0=time.time())
+                self._reset_chain_state(_hang, time.time())
                 if _hang:
                     self.get_logger().warn(
                         f"행잉 ARM — 접지 전 무접촉 허용(최대 {HANG_MAX_S:.0f}s), 양발 접촉 {CONTACT_CONFIRM_S}s 후 "
                         "기존 리프트 가드 복원")
-                self.tgt_filt = None
-                self.roll_comp.reset()
-                self.pitch_comp.reset()
-                self.osc_tgt = OscGuard(JOINT_ORDER)
-                self.prev_tgt = None
+                # 1005: touchdown_start 면 착지 확인 전까지 정책 미구동(홀드 유지) — 없으면 None(종전 경로 그대로)
+                self.td_gate = TouchdownGate(t0=time.time()) if _td else None
+                self.td_hold_rel = None
+                if _td:
+                    self.get_logger().warn(
+                        f"착지 자동 인수 — 착지 전 정책 미구동(수평 홀드 유지), 양발 접촉 {TD_CONFIRM_S}s·정착 뒤 "
+                        f"정책 시작(최대 대기 {TD_WAIT_MAX_S:.0f}s)")
                 self.core.reset(checkpoint=ck)
                 self.core.cmd = cmd
                 # stand 계열은 heading_hold 강제 OFF (0803 발진 분석: stand_v3
@@ -2464,6 +2642,79 @@ def main():
                 self.warmed = False
                 self.warmup_until = time.time() + STAND_WARMUP_MAX_S
                 self.get_logger().info(f"RL {c} 시작 ckpt={ck} cmd={self.core.cmd} (인계 워밍업 최대 {STAND_WARMUP_MAX_S:.0f}s)")
+
+        def _reset_chain_state(self, hang, t0):
+            """정책 (재)시작 시 가드·미분·필터·블렌딩 상태 리셋 — stand 명령과 착지 자동 인수 시작이 같은 함수를 쓴다.
+            (종전 _on_cmd 의 리셋 블록을 그대로 옮긴 것; 순서·내용 불변)"""
+            self.osc = OscGuard(JOINT_ORDER)
+            self.osc_tripped = None
+            self.prev_qpos = None
+            self.blend_t0 = None
+            self.blend_from = None
+            self.nocontact_t0 = None
+            self.hang_guard = HangGuard(hang_mode=hang, t0=t0)
+            self.tgt_filt = None
+            self.roll_comp.reset()
+            self.pitch_comp.reset()
+            self.osc_tgt = OscGuard(JOINT_ORDER)
+            self.prev_tgt = None
+
+        def _td_hold(self, now, qpos, contact2, gyro, quat):
+            """착지 자동 인수 대기 틱: 정책을 계산하지 않고, 무장 시점에 stage8 이 스트리밍하던 상대 명령(수평 홀드)을 그대로 보낸다.
+            래치는 첫 대기 틱 1회 — 스트리밍 명령 에코를 매 틱 다시 읽지 않으므로 표류가 없다."""
+            if self.td_hold_rel is None:
+                if all(j in self.stage8_cmd_rel for j in JOINT_ORDER):
+                    self.td_hold_rel = {j: float(self.stage8_cmd_rel[j]) for j in JOINT_ORDER}
+                    src = "stage8 스트리밍 명령"
+                elif all(j in self.baseline for j in JOINT_ORDER) and all(j in self.joint_deg for j in JOINT_ORDER):
+                    self.td_hold_rel = {j: self.joint_deg[j] - self.baseline[j] for j in JOINT_ORDER}
+                    src = "실측 자세(폴백)"
+                else:
+                    src = None
+                if src:
+                    self.get_logger().info(f"착지 대기 홀드 목표 래치 — {src}")
+                    self._bb_write({"timestamp": now, "event": "touchdown_hold_latch", "src": src,
+                                    "rel_deg": [round(self.td_hold_rel[j], 4) for j in JOINT_ORDER]})
+                    # 홀드 자세 vs 정책 기본자세 — 블렌딩이 큰 자세 이동 명령이 되는 경로 차단(기준점이 있어야 판정 가능)
+                    if all(j in self.baseline for j in JOINT_ORDER):
+                        pose = ckpt_default_pose(self.core.ckpt_name)
+                        dev = [(abs(math.degrees(self.frames.motor_deg_to_joint_rad(j, self.baseline[j] + self.td_hold_rel[j]) - float(pose[k]))), j)
+                               for k, j in enumerate(JOINT_ORDER)]
+                        worst, wj = max(dev)
+                        if not math.isfinite(worst) or worst > TD_POSE_TOL_DEG:
+                            why = (f"touchdown_pose_mismatch: 홀드 자세가 정책 기본자세와 {wj} {worst:.1f}° 차이"
+                                   f"(허용 {TD_POSE_TOL_DEG:g}°) — 수평 자세 적용 확인. 정책 미시작")
+                            self._bb_write({"timestamp": now, "event": "touchdown_pose_mismatch", "why": why})
+                            self._stop_all(why)
+                            self.core.active = False
+                            self.get_logger().error(why)
+                            return
+            rel = self.td_hold_rel
+            tgt_motor = ({j: self.baseline[j] + rel[j] for j in JOINT_ORDER}
+                         if rel is not None and all(j in self.baseline for j in JOINT_ORDER) else None)
+            dbg = {"timestamp": now, "live": self.live, "armed": self.armed,
+                   "checkpoint": self.core.ckpt_name, "cmd": list(self.core.cmd),
+                   "targets_deg_motor": tgt_motor,
+                   "targets_deg_joint": ({j: math.degrees(self.frames.motor_deg_to_joint_rad(j, v)) for j, v in tgt_motor.items()}
+                                         if tgt_motor else None),
+                   "qpos_rad": [round(v, 5) for v in qpos],
+                   "contact": contact2, "hang_state": None, "blend_alpha": 0.0,
+                   "foot_n": [round(float(self.foot[0]), 2), round(float(self.foot[1]), 2)],
+                   "quat_wxyz": [round(float(v), 5) for v in quat],
+                   "gyro_rad_s": [round(float(v), 4) for v in gyro],
+                   "rp_deg": _roll_pitch_deg(quat),
+                   "status_age_s": round(now - self.status_ts, 3) if self.status_ts > 0.0 else None,
+                   "obs": None, "raw_action": None, "c5": None,
+                   "start_gate": self.td_gate.snapshot(now),
+                   "osc_tripped": self.osc_tripped, "stopped_for_stale": self.stopped_for_stale,
+                   "stop_reason": self.stop_reason, "grav_gate": self.grav_last,
+                   "foot_raw_sum": self.foot_raw_sum, "last_reject_reason": self.reject_reason}
+            if self.guard_mode != "safe":
+                dbg["guard_mode"] = self.guard_mode
+            self.pub_dbg.publish(String(data=json.dumps(dbg)))
+            self._bb_write(dbg)
+            if self.live and self.armed and rel is not None:
+                self.pub_cmd.publish(String(data=self._targets_msg(dict(rel))))
 
         # ---- 50Hz 틱 ----
         def _tick(self):
@@ -2563,6 +2814,36 @@ def main():
             else:
                 contact2 = [1.0 if self.foot[0] > CONTACT_FORCE_THRESHOLD_N else 0.0,
                             1.0 if self.foot[1] > CONTACT_FORCE_THRESHOLD_N else 0.0]
+            # 1005 착지 자동 인수: 착지 확인 전에는 정책 경로에 들어가지 않는다(러너·감지기·가드 상태 미접촉).
+            # 센서 신선도·비유한 게이트(위)는 대기 중에도 그대로 적용된다(stale → STOP_ALL = 같은 홀드 동결).
+            if self.td_gate is not None and not self.td_gate.started:
+                _g_ok = gravity_gate(self.imu, self.imu_ts, now)[0]
+                _act, _why = self.td_gate.update(now, contact2, gyro, _g_ok)
+                for _st, _t in self.td_gate.pop_transitions():
+                    self._bb_write({"timestamp": _t, "event": "touchdown_gate", "state": _st})
+                    self.get_logger().info(f"착지 자동 인수 상태 → {_st}")
+                if _act == "timeout":
+                    # 정책이 아직 시작하지 않은 대기 상한 — guard_mode 와 무관하게 정지(동결 = 같은 홀드, 토크 유지).
+                    # 그 뒤 착지해도 정책이 갑자기 시작되지 않게 비활성화한다.
+                    self._bb_write({"timestamp": now, "event": "touchdown_timeout", "why": _why})
+                    self._stop_all(_why)
+                    self.core.active = False
+                    self.get_logger().error(f"{_why} — STOP_ALL(홀드 동결) + 정책 비활성. 재무장은 회수 후 새 시험")
+                    return
+                if _act == "hold":
+                    self._td_hold(now, qpos, contact2, gyro, quat)
+                    return
+                # _act == "start": 종전 stand 시작과 같은 초기화를 **지금** 수행 — 러너 reset(이력 백필·직전 액션 0·
+                # EMA 첫 값·클록 0·C5 감지기 기준 미설정 → 착지 뒤 첫 틱부터 캡처), 가드·LPF·블렌딩 재시작(블렌딩 시작점 =
+                # 지금 스트리밍 중인 홀드 명령). hang_mode=False → 종전 지상 리프트 가드 그대로.
+                self._reset_chain_state(False, now)
+                self.core.reset()
+                self.prev_qpos = qpos          # 종전 첫 틱과 같은 qvel 수열(첫 틱 0)
+                self.qpos_hold_ticks = [1] * 12
+                qvel = [0.0] * 12
+                self._bb_write({"timestamp": now, "event": "touchdown_start", "why": _why,
+                                "gate": self.td_gate.snapshot(now)})
+                self.get_logger().info(f"{_why} — 정책 구동 시작 (ckpt={self.core.ckpt_name})")
             # 리프트 가드 — 양발 무접촉 LIFT_STOP_S 지속 시 동결 (발버둥 차단).
             # 0908: HangGuard 상태기로 이관. hang_arm 미명시면 종전과 동일 동작(셀프테스트 고정),
             # hang_arm 명시면 접지 획득 전에만 무접촉 허용(상한 HANG_MAX_S).
@@ -2746,6 +3027,8 @@ def main():
                     dbg["targets_deg_joint_pre_rc"] = rc_pre_deg
             if self.guard_mode != "safe":
                 dbg["guard_mode"] = self.guard_mode
+            if self.td_gate is not None:   # 1005: touchdown_start 경로에서만 필드 추가(종전 스키마 불변)
+                dbg["start_gate"] = self.td_gate.snapshot(now)
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
             if not (self.live and self.armed):

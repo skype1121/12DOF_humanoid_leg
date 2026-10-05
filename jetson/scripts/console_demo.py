@@ -17,6 +17,7 @@ class Demo:
         self.loaded = None
         self.policy_started = False
         self.fault = None
+        self.start_gate = None        # 1005 착지 자동 인수(stand touchdown_start) 합성 상태
 
     def act(self, action, payload):
         proc = {"alive": False, "rc": 0, "lines": ["[DEMO] 합성 응답 — 실물 검증 아님"], "pid": None, "started": time.time()}
@@ -50,6 +51,8 @@ class Demo:
         elif action == "stand":
             self.running = True
             self.policy_started = True
+            if payload.get("touchdown_start"):
+                self.start_gate = "POLICY" if self.contact == [True, True] else "WAIT_CONTACT"
             self.command = "SET_ALL"
             self.seq += 1
         elif action == "estop":
@@ -63,6 +66,8 @@ class Demo:
             self.running = self.armed = self.holding = False
         elif action == "op_touchdown":
             self.contact = [True, True]
+            if self.start_gate is not None:
+                self.start_gate = "POLICY"
         elif action == "selftest":
             proc["all_pass"] = True
         elif action == "release":
@@ -107,5 +112,6 @@ class Demo:
                            "accepted": True, "command_seq": self.seq, "joints": joints if stage else {}},
                 "bridge": {"live": bridge, "armed": self.running, "checkpoint": self.loaded if bridge else None,
                            "loaded_checkpoint": self.loaded if procs.get("bridge", {}).get("alive") else None,
-                           "blend": 1 if self.running else None, "contact": list(self.contact), "fault": self.fault},
+                           "blend": 1 if self.running else None, "contact": list(self.contact), "fault": self.fault,
+                           "start_gate": ({"state": self.start_gate} if self.start_gate else None)},
                 "can": {"state": "DEMO", "busoff": 0, "rate60": 0}, "procs": procs, "events": []}

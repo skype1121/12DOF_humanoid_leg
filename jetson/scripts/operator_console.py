@@ -38,9 +38,9 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 try:
-    from .console_state import TrialState, LABELS, EVENTS, CONTROL, finite
+    from .console_state import TrialState, LABELS, EVENTS, CONTROL, POLICY_ON_STEPS, finite
 except ImportError:
-    from console_state import TrialState, LABELS, EVENTS, CONTROL, finite
+    from console_state import TrialState, LABELS, EVENTS, CONTROL, POLICY_ON_STEPS, finite
 
 # --- 경로: 젯슨은 스크립트가 두 디렉토리로 갈려 있다 (0808 실측 확인) ---
 CALIB = os.path.expanduser("~/rl_calib")
@@ -694,6 +694,8 @@ class Telemetry:
             "contact": br.get("contact"),
             "fault": self.bridge_fault,
             "hang_state": br.get("hang_state"),
+            # 1005 착지 자동 인수 게이트(브리지 stand touchdown_start 경로에서만 옴) — 정책 미구동 홀드 대기 여부 표시·명령 주체 판정
+            "start_gate": br.get("start_gate") if isinstance(br.get("start_gate"), dict) else None,
             # 0913: 롤 보정기(브리지 맵 키 roll_comp) 표시 전용 — 맵 키가 없으면 브리지가 필드를
             # 아예 안 보내므로 None = 보정기 OFF. 판정·자동 진행에는 쓰지 않는다(읽기 전용 표시).
             "roll_comp": br.get("roll_comp_deg"),
@@ -1020,6 +1022,20 @@ def _level_pose():
     return dict(LEVEL_POSE_0914), None
 
 
+def _level_pose_file_ref():
+    """1005 정책 ON 선행조건용: level_pose.json 의 12관절 수평 기준 자세(관절 프레임 deg). 파일이 없거나 형식이 틀리면 None
+    (코드 상수 0914 폴백을 기준으로 삼지 않는다 — 정책 기본자세와 다른 옛 자세라 '적용 확인' 이 거짓 통과/거부가 된다)."""
+    try:
+        with open(LEVEL_POSE_FILE, encoding="utf-8") as f:
+            raw = json.load(f)
+        t = raw.get("trims_joint_frame_deg") if isinstance(raw, dict) else None
+        if isinstance(t, dict) and set(t) == set(JOINT_NAMES) and all(math.isfinite(float(v)) for v in t.values()):
+            return {k: float(t[k]) for k in JOINT_NAMES}
+    except (OSError, ValueError, TypeError):
+        pass
+    return None
+
+
 # ── 0918 자동 수평(auto level): 접지 상태에서 IMU fwd 를 목표(기본 0°)로 맞추도록 힙앞뒤 트림을 천천히 돌린다.
 #    근거: 같은 관절각이라도 착지마다 몸통 기울기가 −1~+9° 로 달랐고(0917), 고정 홀드엔 수평 피드백이 없다.
 #    부호(실측 0914~17): 힙앞뒤 굴곡(왼 +, 오른 −)을 키우면 fwd(앞 기울기)가 +로 간다(≈1:1).
@@ -1231,7 +1247,9 @@ ACTIONS = {
                    else "policy_v8")]), "정적 자세 시험"),
     # 정책
     # 0908: hang_arm 체크 시에만 브리지 HangGuard 가 접지 전 무접촉을 허용한다(미체크 = 종전과 동일)
-    "stand":      (lambda p: act_bridge_cmd("stand", {"hang_arm": bool(p.get("hang_arm"))}), "stand 발사"),
+    # 1005: touchdown_start 는 '정책 ON' 순서기만 넘긴다(착지 확인 전 정책 미구동). 단계별 절차의 payload 는 종전과 같다.
+    "stand":      (lambda p: act_bridge_cmd("stand", {"hang_arm": bool(p.get("hang_arm")),
+                                                      "touchdown_start": bool(p.get("touchdown_start"))}), "stand 발사"),
     "march":      (lambda p: act_bridge_cmd("march"), "march 발사"),
     "estop":      (lambda p: act_estop(), "비상정지"),
     # 회수·판정
@@ -1259,7 +1277,7 @@ STOPPABLE = {"stage8", "hang_stand", "bridge"}
 
 PAGE = Path(__file__).with_name("console_ui.html").read_text(encoding="utf-8")
 DEMO_SOURCE = None
-CONFIRM_ACTIONS = {"hang_stand", "gain_ramp", "ground", "handoff", "arm", "stand",
+CONFIRM_ACTIONS = {"hang_stand", "gain_ramp", "ground", "handoff", "arm", "stand", "policy_on",
                    "release", "support_confirm", "op_slack_done", "new_trial", "zero_multiple", "zero_recapture", "air_gait_on"}
 
 
@@ -1291,6 +1309,7 @@ def console_snapshot():
         st["joint_trim_req"] = None if DEMO else _read_joint_trim()
         st["air_gait_req"] = None if DEMO else _read_air_gait()
         st["auto_level"] = dict(AUTO_LEVEL)
+        st["level_pose_ref"] = None if DEMO else _level_pose_file_ref()   # 1005 정책 ON 선행조건(수평 자세 적용 확인)용
         TRIAL.update(st)
         st["trial"] = TRIAL.snapshot()
         if BUSY:
@@ -1372,6 +1391,11 @@ def dispatch_action(payload):
         REQUESTS[request_id] = (fingerprint, (202, {"ok": True, "message": "동일 요청 처리 중 · 재실행하지 않음"}))
         while len(REQUESTS) > 256:
             REQUESTS.popitem(last=False)
+        if action == "policy_on":
+            result = start_policy_on(record_warning)
+            REQUESTS[request_id] = (fingerprint, result)
+            console_snapshot()
+            return result
         if immediate:
             if action in EVENTS | {"support_confirm"}:
                 TRIAL.operator_event(action, payload)
@@ -1459,6 +1483,130 @@ def dispatch_action(payload):
         REQUESTS[request_id] = (fingerprint, result)
         console_snapshot()
         return result
+
+
+# ---------------------------------------------------------------------------
+# 1005 정책 ON — 단순화 기동 순서기 (기존 단계별 절차는 그대로 남는다)
+# ---------------------------------------------------------------------------
+#: 운영자 조작: 영점 → 수평 자세(공중, kp150) → **정책 ON** → 지그 해제. 정책 ON 한 번이 서버 안에서
+#:   접지 마커(공중 인계 허가) → 인계 → 기준점 → ARM → 정책 로드 → stand(touchdown_start)
+#: 를 **기존 액션 함수·기존 게이트(TrialState.reason)·기존 응답 확인(TrialState.update)** 그대로 순서대로 실행한다.
+#: 단계 하나라도 거부·실패·시간 초과면 즉시 멈추고 고장 래치(회수 절차로) — 자동 재시도 없음.
+#: 정책은 브리지 착지 게이트가 양발 착지를 확인한 뒤에만 구동된다(그 전엔 stage8 이 하던 수평 홀드 명령 유지).
+POLICY_ON_WORKER = None
+POLICY_ON_STEP_TIMEOUT_S = 90.0      # 단계 응답 확인 상한(각 단계 고유 시간 초과는 TrialState.update 가 먼저 판정)
+POLICY_ON_SUB_WAIT_S = 10.0          # 정책 로드 뒤 브리지 명령 토픽 구독 연결 대기 상한(DDS 발견) — 넘으면 그대로 진행(stand 8 s 확인이 판정)
+POLICY_ON_POLL_S = 0.05
+
+
+def _bridge_cmd_subscribed():
+    """브리지 명령 토픽에 구독자가 붙었는가 (None = 알 수 없음). 첫 stand 발행이 DDS 발견 전에 사라지는 것을 줄인다."""
+    pub = getattr(TEL, "_pub_bridge", None)
+    if pub is None:
+        return None
+    try:
+        return pub.get_subscription_count() > 0
+    except Exception:
+        return None
+
+
+def start_policy_on(record_warning=""):
+    """STATE_LOCK 안에서 호출(dispatch). 선행조건은 이미 TRIAL.reason('policy_on') 으로 확인됨."""
+    global POLICY_ON_WORKER
+    TRIAL.macro = {"action": "policy_on", "step": None, "started": now()}
+    TRIAL.policy_on = True
+    TRIAL.revision += 1
+    TRIAL.emit("policy_on_start", checkpoint=TRIAL.checkpoint)
+    SESSION.event("policy_on_start", checkpoint=TRIAL.checkpoint, trial=TRIAL.number)
+    if AUTO_LEVEL.get("on"):
+        # 자동 수평은 접지 상태 힙 트림 적분기 — 인계 뒤엔 자세 유지 스크립트가 없어 의미가 없다(robotctl handoff 와 같이 끈다)
+        AUTO_LEVEL.update(on=False, status="off(정책 ON)")
+    POLICY_ON_WORKER = threading.Thread(target=_policy_on_worker, args=(TRIAL,), name="policy_on", daemon=True)
+    POLICY_ON_WORKER.start()
+    return (200, {"ok": True, "message": "정책 ON 시작 — 인계·기준점·ARM·정책 로드·착지 대기를 기존 게이트로 순서 진행"
+                  " (정책은 양발 착지 확인 뒤에만 구동)" + record_warning})
+
+
+def _policy_on_abort(trial, message):
+    with STATE_LOCK:
+        if TRIAL is not trial:
+            return
+        step = (trial.macro or {}).get("step")
+        trial.macro = None
+        trial.revision += 1
+        trial.emit("policy_on_aborted", step=step, message=message)
+        SESSION.event("policy_on_aborted", step=step, message=message)
+        trial.latch(f"정책 ON 중단({LABELS.get(step, step)}): {message}")
+
+
+def _policy_on_worker(trial):
+    for step in POLICY_ON_STEPS:
+        if not DEMO:
+            poll_processes()
+        with STATE_LOCK:
+            console_snapshot()
+            if TRIAL is not trial or trial.macro is None:
+                return
+            if trial.fault:
+                return _policy_on_abort(trial, f"고장·정지 래치 — {trial.fault}")
+            if step in trial.completed:
+                continue
+        if step == "stand" and not DEMO:
+            t_sub = time.monotonic()
+            while time.monotonic() - t_sub < POLICY_ON_SUB_WAIT_S and _bridge_cmd_subscribed() is False:
+                time.sleep(0.1)
+            time.sleep(0.5)
+        with STATE_LOCK:
+            console_snapshot()
+            if TRIAL is not trial or trial.macro is None:
+                return
+            if trial.fault:
+                return _policy_on_abort(trial, f"고장·정지 래치 — {trial.fault}")
+            why = trial.reason(step, _macro=True)
+            if why:
+                return _policy_on_abort(trial, why)
+            trial.macro["step"] = step
+            trial.begin(step, now())
+            pending = trial.pending
+            effective = {"checkpoint": trial.checkpoint, "hang_arm": False, "touchdown_start": True}
+            SESSION.event("policy_on_step", step=step, trial=trial.number)
+        try:
+            ok, msg = DEMO_SOURCE.act(step, effective) if DEMO else ACTIONS[step][0](effective)
+        except Exception as exc:
+            ok, msg = False, f"{LABELS[step]} 실행 실패: {exc}"
+        with STATE_LOCK:
+            SESSION.event("action_dispatched", action=step, ok=bool(ok), message=msg, via="policy_on")
+            if trial.pending is not pending:
+                return _policy_on_abort(trial, "진행이 취소되었습니다 — 잔존 프로세스·실제 상태를 확인하세요")
+            if not ok:
+                trial.finish(False, msg)
+                return _policy_on_abort(trial, msg)
+            pending["launched"] = True
+        t0 = time.monotonic()
+        while True:
+            time.sleep(POLICY_ON_POLL_S)
+            with STATE_LOCK:
+                console_snapshot()
+                if TRIAL is not trial:
+                    return
+                if trial.pending is not pending:
+                    break
+                if time.monotonic() - t0 > POLICY_ON_STEP_TIMEOUT_S:
+                    trial.finish(False, "정책 ON 단계 응답 확인 시간 초과")
+                    break
+        with STATE_LOCK:
+            if step not in trial.completed:
+                lr = trial.last_result or {}
+                return _policy_on_abort(trial, lr.get("message") or "단계 확인 실패")
+    with STATE_LOCK:
+        if TRIAL is not trial or trial.macro is None:
+            return
+        trial.macro = None
+        trial.completed.add("policy_on")
+        trial.revision += 1
+        trial.emit("policy_on_armed", message="착지 대기 — 양발 착지 확인 뒤 정책 자동 시작")
+        SESSION.event("policy_on_armed", trial=trial.number)
+        console_snapshot()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1579,6 +1727,21 @@ def selftest():
         assert t.reason("release") is not None
         assert bridge_cmd_payload("stand") == {"cmd": "stand"}
         assert bridge_cmd_payload("stand", {"hang_arm": True})["hang_arm"] is True
+        # 1005 정책 ON: 종전 stand payload 불변 · touchdown_start 는 순서기만 · 착지 대기 브리지 홀드는 '정책' 아님 · 선행조건
+        assert bridge_cmd_payload("stand", {"hang_arm": False, "touchdown_start": False}) == {"cmd": "stand"}
+        assert bridge_cmd_payload("stand", {"touchdown_start": True}) == {"cmd": "stand", "touchdown_start": True}
+        assert "policy_on" in LABELS and "policy_on" in CONFIRM_ACTIONS and tuple(POLICY_ON_STEPS) == ("ground", "handoff", "baseline", "arm", "bridge", "stand")
+        _tp = TrialState(CKPT_DEFAULT); _tp.completed.update({"arm", "bridge", "stand"})
+        _S8 = {"armed": True, "running": True}; _FR = {"status": True, "bridge": True, "imu": True, "foot": True}
+        _tp.view = {"stage8": _S8, "bridge": {"armed": True, "start_gate": {"state": "WAIT_CONTACT"}}, "fresh": _FR}
+        assert _tp.commander() == "hold", _tp.commander()
+        _tp.view = dict(_tp.view, bridge={"armed": True, "start_gate": {"state": "POLICY"}}); assert _tp.commander() == "policy"
+        _tp.view = dict(_tp.view, bridge={"armed": True}); assert _tp.commander() == "policy"          # 종전 경로(필드 없음)
+        _tq = TrialState(CKPT_DEFAULT); _tq.view = _ts.view; assert "먼저" in _tq.reason("policy_on")   # 준비 전 거부
+        _tq.completed.update(_ts.completed); _tq.view = dict(_base, foot={"contact": [True, True]}, demo=True)
+        assert "양발 접촉" in _tq.reason("policy_on"), _tq.reason("policy_on")
+        _tq.view = dict(_base, foot={"contact": [False, False]}, demo=True); assert _tq.reason("policy_on") is None, _tq.reason("policy_on")
+        _tq.macro = {"action": "policy_on", "step": "arm"}; assert "정책 ON" in _tq.reason("bridge") and _tq.reason("estop") is None
         with patch.object(TEL, "publish", return_value=False) as publish:
             assert act_estop()[0] is False
             assert publish.call_count == 2

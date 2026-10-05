@@ -505,6 +505,103 @@ class ConsoleTests(unittest.TestCase):
             c.poll_processes()
             self.assertIsNotNone(c.PROCESS_HEALTH["error"])
 
+    # ---- 1005 정책 ON(단순화 기동) ------------------------------------------------------
+    def wait_policy_on(self):
+        worker = c.POLICY_ON_WORKER
+        self.assertIsNotNone(worker)
+        worker.join(timeout=20)
+        self.assertFalse(worker.is_alive(), "정책 ON 순서기가 끝나지 않음")
+        c.console_snapshot()
+
+    def test_policy_on_runs_existing_steps_and_waits_for_touchdown(self):
+        self.prepare(until="gain_ramp")
+        self.assertEqual(self.demo.contact, [False, False])        # 매달린 상태
+        calls = []
+        original = self.demo.act
+        def spy(action, payload):
+            calls.append((action, dict(payload)))
+            return original(action, payload)
+        with patch.object(self.demo, "act", side_effect=spy):
+            self.step("policy_on")
+            self.wait_policy_on()
+        self.assertFalse(self.trial.fault, self.trial.fault)
+        self.assertEqual([a for a, _ in calls], list(c.POLICY_ON_STEPS))   # 기존 단계를 순서대로, 한 번씩
+        stand = dict(calls)["stand"]
+        self.assertEqual(stand, {"checkpoint": c.CKPT_DEFAULT, "hang_arm": False, "touchdown_start": True})
+        self.assertTrue(set(c.POLICY_ON_STEPS) | {"policy_on"} <= self.trial.completed)
+        snap = c.console_snapshot()["trial"]
+        self.assertIn("착지 대기", snap["phase"])
+        self.assertEqual(self.trial.commander(), "hold")            # 착지 전 = 홀드(정책 아님)
+        self.assertEqual(self.request("policy_on")[0], 409)          # 중복 실행 거부
+        self.assertEqual(self.request("stand")[0], 409)              # 단계 재실행 거부
+        self.step("op_touchdown")                                   # 착지 → 브리지 게이트 POLICY
+        self.assertNotIn("착지 대기", c.console_snapshot()["trial"]["phase"])
+        self.assertEqual(self.trial.commander(), "policy")
+        self.step("op_slack_done")
+        self.assertEqual(self.trial.measurement["commander"], "policy")
+
+    def test_policy_on_blocks_other_actions_while_running_and_estop_aborts(self):
+        self.prepare(until="gain_ramp")
+        gate = threading.Event()
+        original = self.demo.act
+        def slow(action, payload):
+            if action == "baseline":
+                gate.wait(5)
+            return original(action, payload)
+        with patch.object(self.demo, "act", side_effect=slow):
+            self.step("policy_on")
+            for _ in range(200):
+                if (self.trial.macro or {}).get("step") == "baseline":
+                    break
+                time.sleep(0.01)
+            self.assertEqual((self.trial.macro or {}).get("step"), "baseline")
+            self.assertEqual(self.request("arm")[0], 409)            # 순서 건너뛰기 거부
+            self.assertEqual(self.request("policy_on")[0], 409)      # 중복 클릭 거부
+            self.assertIn("정책 ON", c.console_snapshot()["trial"]["allowed"]["bridge"]["reason"])
+            c.dispatch_action({"action": "estop"})                   # 정지는 언제나
+            gate.set()
+            self.wait_policy_on()
+        self.assertIsNone(self.trial.macro)
+        self.assertIsNotNone(self.trial.fault)
+        self.assertNotIn("arm", self.trial.completed)
+        self.assertNotIn("stand", self.trial.completed)
+
+    def test_policy_on_step_failure_stops_and_latches(self):
+        self.prepare(until="gain_ramp")
+        original = self.demo.act
+        def fail_arm(action, payload):
+            if action == "arm":
+                return False, "ARM 송신 실패(모의)"
+            return original(action, payload)
+        with patch.object(self.demo, "act", side_effect=fail_arm):
+            self.step("policy_on")
+            self.wait_policy_on()
+        self.assertIsNone(self.trial.macro)
+        self.assertIn("ARM", self.trial.fault)
+        self.assertNotIn("bridge", self.trial.completed)
+        self.assertNotIn("policy_on", self.trial.completed)
+        self.assertNotIn("bridge", self.demo.procs)                  # 정책 프로세스는 띄우지 않았다
+
+    def test_policy_on_preconditions(self):
+        self.step("configure", mode="ground", checkpoint=c.CKPT_DEFAULT)
+        self.assertEqual(self.request("policy_on")[0], 409)          # 준비 전
+        self.prepare(until="gain_ramp")
+        self.demo.act("op_touchdown", {})                            # 양발 접촉 상태 → 거부(매달린 상태에서만)
+        self.assertIn("양발 접촉", c.console_snapshot()["trial"]["allowed"]["policy_on"]["reason"])
+        self.demo.contact = [False, False]
+        self.assertTrue(c.console_snapshot()["trial"]["allowed"]["policy_on"]["enabled"])
+        self.demo.contact = [True, True]
+        self.step("ground")                                          # 단계별 절차를 시작하면 정책 ON 불가(섞지 않음)
+        self.assertIn("단계별", c.console_snapshot()["trial"]["allowed"]["policy_on"]["reason"])
+
+    def test_old_stepwise_stand_payload_unchanged(self):
+        self.assertEqual(c.bridge_cmd_payload("stand", {"hang_arm": False, "touchdown_start": False}), {"cmd": "stand"})
+        self.prepare(until="bridge")
+        with patch.object(self.demo, "act", wraps=self.demo.act) as execute:
+            self.step("stand")
+            execute.assert_called_once_with("stand", {"checkpoint": c.CKPT_DEFAULT, "hang_arm": False})
+        self.assertFalse(self.trial.policy_on)
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -650,3 +747,30 @@ def test_slack_confirm_still_needs_contact_and_fresh_sensors():
     assert reason() is None, reason()                       # 홀드·양발·신선 → 허용
     assert reason(contact=(False, True)) is not None        # 한 발만 → 거부
     assert reason(fresh=dict(FRESH, imu=False)) is not None  # IMU 낡음 → 거부
+
+
+def test_policy_on_level_pose_and_ramp_preconditions():
+    """1005 정책 ON(실물 경로): 수평 기준 자세 적용·램프 완료·에어 보행 정지가 선행조건 — 누락이면 인수 순간 큰 자세 이동이 된다(0918 낙상 기전)."""
+    from jetson.scripts import console_state as cs
+    ref = {j: 0.0 for j in c.JOINT_NAMES}
+    ref.update(left_knee_joint=-38.5, right_knee_joint=38.5)
+
+    def reason(jt_cur, jt_req=None, gait=False, ref_override="unset"):
+        t = cs.TrialState("stand_crouch_g21a")
+        t.completed = set(cs.PREP)
+        jt = {j: {"req": (jt_req or jt_cur)[j], "cur": jt_cur[j]} for j in c.JOINT_NAMES}
+        t.view = {"server_time": 1000.0, "fresh": {"status": True, "imu": True, "foot": True, "bridge": False},
+                  "stage8": {"waiting": True}, "bridge": {}, "foot": {"contact": [False, False]},
+                  "procs": {"hang_stand": {"alive": True, "hold": {"kp": 150.0, "ts": 999.5}}, "stage8": {"alive": True}},
+                  "process_check_ok": True, "session": {"active": True}, "external_controls": [],
+                  "hang_hold": {"kp": 150.0, "joint_trim": jt, "gait": {"active": gait}},
+                  "level_pose_ref": ref if ref_override == "unset" else ref_override}
+        return t.reason("policy_on")
+
+    assert reason(dict(ref)) is None, reason(dict(ref))
+    zero = {j: 0.0 for j in c.JOINT_NAMES}
+    assert "수평 기준 자세 적용" in reason(zero)                       # 수평 자세 누락(무릎 0°)
+    assert "램프" in reason(dict(ref, left_knee_joint=-30.0), dict(ref))  # 램프 진행 중
+    assert "에어 보행" in reason(dict(ref), gait=True)
+    assert reason(dict(ref, left_knee_joint=-35.0)) is None             # 미세 조정(±5° 이내)은 허용
+    assert "level_pose" in reason(dict(ref), ref_override=None)          # level_pose.json 없음 → 거부(0914 상수 폴백을 기준으로 쓰지 않음)

@@ -26,6 +26,8 @@
   robotctl ground            접지 확인 (발을 바닥에 대고 서게 할 때만)
   robotctl handoff [-y]      제어 인계 → 기준점 → ARM → 정책 로드 (선택 정책은 콘솔 설정; 자동 수평은 먼저 끔)
   robotctl stand [-y]        정책 시작 (인계·ARM·정책 로드 뒤)
+  robotctl policy-on [-y]    [1005 단순화] 공중 수평 자세(hang·level 뒤)에서 한 번: 인계→기준점→ARM→정책 로드→착지 대기를
+                             콘솔이 기존 게이트로 진행. 정책은 양발 착지 확인 뒤에만 시작 → 그 다음 지그 해제
   robotctl down [-y]         회수: 줄 지지 확인 → 제어 프로세스 종료 → 토크 해제
   robotctl estop             정지 요청
   robotctl new               새 시험 준비 (회수·토크 해제 뒤)
@@ -113,6 +115,11 @@ def line(st):
         parts.append(f"자동수평 {al.get('status')} off{al.get('offset', 0):+.1f}")
     if b.get("live"):
         parts.append(f"정책 LIVE {b.get('loaded_checkpoint')}")
+    sg = b.get("start_gate") or {}
+    if sg.get("state") and sg.get("state") != "POLICY":
+        parts.append(f"착지 대기({sg.get('state')}: {sg.get('why')})")
+    if t.get("macro"):
+        parts.append(f"정책 ON 진행 {(t['macro'] or {}).get('step')}")
     if t.get("fault"):
         parts.append(f"⚠ {t['fault']}")
     if t.get("next_action"):
@@ -324,6 +331,29 @@ def cmd_stand(a):
         print("✓ 정책 제어 중 — 'robotctl watch' 로 관찰, 문제 시 robotctl estop", flush=True)
 
 
+def cmd_policy_on(a):
+    """1005 단순화 기동: 서버 순서기가 기존 단계를 같은 게이트로 실행 — 클라이언트는 요청 1회 + 관찰만."""
+    st = state()
+    im = st.get("imu") or {}
+    print(f"현재 fwd {im.get('fwd', 0):+.1f}° lat {im.get('lat', 0):+.1f}° | 선택 정책 {st['trial'].get('checkpoint')}", flush=True)
+    if not confirm("정책 ON: 줄(지그)이 로봇을 지지하고 발이 바닥에서 떨어져 있으며 수평 자세(level)가 적용됐나요? "
+                   "정책은 착지 확인 뒤에만 시작합니다", a.yes):
+        die("취소")
+    if not act("policy_on"):
+        sys.exit(1)
+
+    def done(st):
+        t = st["trial"]
+        if "policy_on" in t.get("completed", []):
+            return True
+        if not t.get("macro") and t.get("fault"):
+            die(f"정책 ON 중단: {t['fault']}")
+        return False
+    wait_until(done, 180, "정책 ON")
+    print("✓ 착지 대기 — 정책 미구동·수평 자세 유지 중. 이제 지그를 해제하세요(양발 착지 0.3 s·정착 뒤 정책 자동 시작). "
+          "'robotctl watch' 로 관찰, 문제 시 robotctl estop", flush=True)
+
+
 def cmd_config(a):
     st = state()
     ck = a.ckpt or st["trial"].get("checkpoint")
@@ -452,6 +482,7 @@ def main():
     sub.add_parser("ground").set_defaults(fn=lambda a: act("ground"))
     s = sub.add_parser("handoff"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_handoff)
     s = sub.add_parser("stand"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_stand)
+    s = sub.add_parser("policy-on"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_policy_on)
     s = sub.add_parser("down"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_down)
     sub.add_parser("estop").set_defaults(fn=lambda a: act("estop", confirmed=False))
     sub.add_parser("new").set_defaults(fn=lambda a: act("new_trial"))

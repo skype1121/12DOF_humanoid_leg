@@ -26,11 +26,17 @@ LABELS = {
     "air_gait_on": "에어 보행 시작", "air_gait_off": "에어 보행 정지",
     "auto_level_on": "자동 수평 ON", "auto_level_off": "자동 수평 OFF",
     "zero_multiple": "영점 배수 보정", "zero_recapture": "영점 재캡처", "zero_kin": "영점 기구학 검증",
+    "policy_on": "정책 ON(착지 자동 인수)",
 }
 MANUAL = {"joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd", "air_gait_on", "air_gait_off", "auto_level_on", "auto_level_off"}
 ZERO_TOOLS = {"zero_multiple", "zero_recapture", "zero_kin"}   # 0914 영점 도구 — 제어 시작 전(준비)에서만   # 0914 12축 개별 제어기(자세 유지 스크립트의 관절 트림). 운용 게인 뒤에만.
 PREP = ("can_up", "sensors", "boot_pose", "selftest", "stage8", "hang_stand", "gain_ramp")
 CONTROL = ("stage8", "hang_stand", "bridge", "stage8_arm", "stage8_baseline")
+#: 1005 단순화 기동: '정책 ON' 한 번이 서버 안에서 기존 단계를 같은 게이트·같은 응답 확인으로 순서대로 실행한다.
+#: 정책은 착지 확인 전까지 구동되지 않는다(브리지 stand touchdown_start — 착지 전 홀드 유지). 기존 단계별 절차는 그대로 남는다.
+POLICY_ON_STEPS = ("ground", "handoff", "baseline", "arm", "bridge", "stand")
+POLICY_ON_LEVEL_TOL_DEG = 5.0     # 홀드 자세 vs 수평 기준 자세(level_pose) 허용 편차 — '수평 자세 적용 누락' 검출용
+POLICY_ON_RAMP_TOL_DEG = 0.5      # 개별 조정 램프 완료(요청 vs 적용) 허용 편차
 
 #: 0918 프로세스 종료 코드 → (뜻, 할 일). 키 = 액션 이름 또는 프로세스 키. 3 = 정상(핸드오프)라 실패로 안 잡음.
 RC_HINTS = {
@@ -112,6 +118,8 @@ class TrialState:
         self.history = []
         self.changes = []
         self._pose_stamps = None
+        self.macro = None        # 1005 정책 ON 자동 순서 진행 상태 {action, step, started} — 진행 중 다른 조작 차단
+        self.policy_on = False   # 1005 이 시험이 '정책 ON(착지 자동 인수)' 경로인지 — 접지 마커·stand 의 접촉 게이트를 브리지 착지 게이트가 대신한다
 
     def emit(self, event, **data):
         row = {"event": event, "trial": self.number, **data}
@@ -122,6 +130,16 @@ class TrialState:
     def drain_events(self):
         rows, self.changes = self.changes, []
         return rows
+
+    @staticmethod
+    def start_gate_waiting(b):
+        """1005: 브리지가 착지 자동 인수 대기(정책 미구동, 홀드 명령 스트리밍) 중인가."""
+        g = (b or {}).get("start_gate")
+        return isinstance(g, dict) and g.get("state") not in (None, "POLICY")
+
+    def policy_commanding(self, b):
+        """브리지가 실제로 '정책' 목표를 내고 있는가 — 착지 대기 중의 브리지 홀드는 정책이 아니다."""
+        return bool((b or {}).get("armed")) and not self.start_gate_waiting(b)
 
     def commander(self):
         """지금 실제로 명령을 내고 있는 제어기 — "policy" | "hold" | None.
@@ -135,11 +153,11 @@ class TrialState:
         s = self.view.get("stage8", {}) or {}
         b = self.view.get("bridge", {}) or {}
         fresh = self.view.get("fresh", {}) or {}
-        if "stand" in self.completed and fresh.get("bridge") and b.get("armed"):
+        if "stand" in self.completed and fresh.get("bridge") and self.policy_commanding(b):
             return "policy"
-        # 홀드: stage8 이 ARM 되어 스트리밍 중이고 정책은 명령하지 않는 상태
+        # 홀드: stage8 이 ARM 되어 스트리밍 중이고 정책은 명령하지 않는 상태 (1005: 착지 대기 브리지 홀드 포함)
         if ("arm" in self.completed and fresh.get("status")
-                and s.get("armed") and s.get("running") and not b.get("armed")):
+                and s.get("armed") and s.get("running") and not self.policy_commanding(b)):
             return "hold"
         return None
 
@@ -194,11 +212,14 @@ class TrialState:
             return "양발 접촉 확인 필요 (하중 비율은 사용하지 않음)"
         return None
 
-    def reason(self, action):
+    def reason(self, action, _macro=False):
+        """_macro=True: 정책 ON 순서기가 하위 단계를 실행할 때만 — 순서기 진행 중 차단을 건너뛰고 나머지 게이트는 그대로."""
         if action == "estop":
             return None
         if action not in LABELS:
             return "현재 기립 시험에서 제공하지 않는 동작입니다"
+        if self.macro and not _macro and not self.fault and action not in EVENTS | {"support_confirm"}:
+            return (f"정책 ON 자동 진행 중({LABELS.get(self.macro.get('step'), '시작')}) — 중단은 '정지 요청'")
         if self.pending and action not in (EVENTS - {"op_slack_done"}) | {"support_confirm"}:
             return f"{LABELS[self.pending['action']]} 응답 확인 중"
         s, b = self.view.get("stage8", {}), self.view.get("bridge", {})
@@ -258,6 +279,8 @@ class TrialState:
             return "회수 중입니다. 회수 완료 후 새 시험을 준비하세요"
         if external:
             return "콘솔 추적 밖 제어기 감지 — 기존 제어 상태를 확인하세요"
+        if action == "policy_on":
+            return self._policy_on_reason()
         if action in MANUAL:
             # 0914 개별 제어기: 자세 유지 스크립트가 살아 있고 운용 게인(kp150)에 도달한 뒤, 정책 브리지가 없는 동안만.
             proc = self.view.get("procs", {}).get("hang_stand", {})
@@ -315,7 +338,7 @@ class TrialState:
                 return "자세 유지 프로세스의 신선한 상태 확인 필요"
             if action in ("ground", "handoff") and hold.get("kp", 0) < 150:
                 return "실제 운용 게인 도달 확인 필요"
-        if action == "ground" and self.mode == "ground":
+        if action == "ground" and self.mode == "ground" and not self.policy_on:
             return self._contact_reason()
         if action == "handoff" and not (fresh.get("status") and s.get("waiting")):
             return "인수 제어기 대기 상태 확인 필요"
@@ -328,8 +351,59 @@ class TrialState:
         if action == "stand":
             if b.get("loaded_checkpoint") != self.checkpoint:
                 return "실제 로드된 정책이 선택 정책과 다릅니다"
-            if self.mode == "ground":
+            if self.mode == "ground" and not self.policy_on:
                 return self._contact_reason()
+        return None
+
+    def _policy_on_reason(self):
+        """1005 정책 ON 선행조건 — 공중 수평 자세 유지(kp150)·인수 대기 상태에서만. 기존 단계 게이트는 순서기가 단계마다 다시 검사한다."""
+        if "policy_on" in self.completed or self.macro:
+            return "이미 정책 ON 을 실행했습니다"
+        missing = next((k for k in PREP if k not in self.completed), None)
+        if missing:
+            return f"먼저 {LABELS[missing]} 단계를 완료하세요"
+        done = [k for k in POLICY_ON_STEPS if k in self.completed]
+        if done:
+            return f"단계별 절차가 이미 진행 중입니다({LABELS[done[-1]]} 완료) — 그 절차로 계속하세요"
+        if not str(self.checkpoint).startswith("stand"):
+            return "기립 정책만 정책 ON 을 쓸 수 있습니다"
+        if not self.view.get("process_check_ok"):
+            return "잔존 제어 프로세스 확인 필요"
+        r = self._sensor_reason()
+        if r:
+            return r
+        s, fresh = self.view.get("stage8", {}), self.view.get("fresh", {})
+        proc = self.view.get("procs", {}).get("hang_stand", {})
+        hold = proc.get("hold", {})
+        if not proc.get("alive") or self.view.get("server_time", 0) - hold.get("ts", 0) >= 3:
+            return "자세 유지 프로세스의 신선한 상태 확인 필요"
+        if hold.get("kp", 0) < 150:
+            return "운용 게인(kp150) 도달 확인 필요"
+        if not (fresh.get("status") and s.get("waiting")):
+            return "인수 제어기가 실제로 대기 중이어야 합니다"
+        if self.view.get("foot", {}).get("contact") == [True, True]:
+            return "양발 접촉 중 — 정책 ON 은 매달린 상태(발이 바닥에서 떨어짐)에서만. 지상 시작은 기존 단계별 절차를 쓰세요"
+        if self.view.get("demo"):
+            return None
+        hh = self.view.get("hang_hold")
+        if not isinstance(hh, dict):
+            return "자세 유지 상태 파일(관절 조정·보행) 확인 필요"
+        if (hh.get("gait") or {}).get("active"):
+            return "에어 보행 정지 후 정책 ON"
+        jt = hh.get("joint_trim") or {}
+        ref = self.view.get("level_pose_ref") or {}
+        if not ref:
+            return "수평 기준 자세(level_pose) 확인 필요"
+        for j, r in ref.items():
+            v = jt.get(j) or {}
+            req, cur = v.get("req"), v.get("cur")
+            if not (finite(req) and finite(cur)):
+                return f"{j} 개별 조정 상태 확인 필요"
+            if abs(req - cur) > POLICY_ON_RAMP_TOL_DEG:
+                return f"수평 자세 램프 진행 중({j.replace('_joint', '')} {cur:+.1f}→{req:+.1f}°)"
+            if abs(cur - r) > POLICY_ON_LEVEL_TOL_DEG:
+                return (f"수평 기준 자세 적용 필요 — {j.replace('_joint', '')} {cur:+.1f}° vs 기준 {r:+.1f}° "
+                        f"(허용 ±{POLICY_ON_LEVEL_TOL_DEG:g}°)")
         return None
 
     def begin(self, action, wall_time):
@@ -421,13 +495,13 @@ class TrialState:
                 reason = "기록 중단"
             _who = getattr(self, "commander_at_slack", None)
             if _who == "policy":
-                if not s.get("armed") or not s.get("running") or not b.get("armed"):
+                if not s.get("armed") or not s.get("running") or not self.policy_commanding(b):
                     reason = "정책 제어 상태 상실"
             elif _who == "hold":
                 # 홀드 측정 중 정책이 명령을 잡으면 그 시점부터는 다른 시험이다 — 무효 처리.
                 if not s.get("armed") or not s.get("running"):
                     reason = "홀드 제어 상태 상실"
-                elif b.get("armed"):
+                elif self.policy_commanding(b):
                     reason = "측정 중 정책이 명령을 잡음 — 홀드 자립 측정 무효"
             else:
                 reason = "명령 주체 미확인"
@@ -537,6 +611,10 @@ class TrialState:
             phase, owner = "정지·상태 확인 필요", "실제 상태 확인 필요"
         elif self.measurement["state"] == "interrupted":
             phase, owner = "무보조 관찰 중단 · 회수 필요", "정책 실행 상태는 별도 확인"
+        elif self.macro:
+            phase, owner = f"정책 ON 진행 중 · {LABELS.get(self.macro.get('step'), '시작')}", "기존 단계 자동 진행(같은 게이트·응답 확인)"
+        elif fresh.get("bridge") and self.start_gate_waiting(b) and fresh.get("status") and s.get("running"):
+            phase, owner = "착지 대기 · 수평 자세 홀드(정책 미구동)", "브리지 홀드 → 12축 제어기 · 양발 착지 확인 뒤 정책 자동 시작"
         elif fresh.get("bridge") and b.get("armed") and fresh.get("status") and s.get("running"):
             phase, owner = "자립 관찰" if self.slack_at is not None else "정책 제어 · 지지 제거", "정책 → 12축 제어기"
         elif fresh.get("status") and s.get("armed"):
@@ -575,4 +653,5 @@ class TrialState:
                 "fault_hint": getattr(self, "fault_hint", None),
                 "last_result": self.last_result, "next_action": next_action, "allowed": allowed,
                 "measurement": dict(self.measurement), "stop": stop, "support_confirmed": self.support,
+                "macro": (dict(self.macro) if self.macro else None), "policy_on": self.policy_on,
                 "history": list(self.history)}

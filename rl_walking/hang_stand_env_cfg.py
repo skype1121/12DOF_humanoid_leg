@@ -2462,6 +2462,18 @@ class Biped12HangStandG24RaEnvCfg(Biped12HangStandW2eEnvCfg):
 
 
 @configclass
+class Biped12HangStandG24RaD5EnvCfg(Biped12HangStandG24RaEnvCfg):
+    """G24R-a-D5 (1006): G24R-a + **행동 지연 0–3 → 1–5 틱** 단일 변경(이어 학습, 대조 = 같은 경로 G24R-a 0–3 이어 학습).
+    근거: A-DEC(지연 1→4 sf15 낙상 14→41 %)·DSW(착지 앞·뒤 지연 모두 해, fi40 은 착지 뒤 지연 1→4 15→39 %) — 회복 정책은 0–3 만 봤다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        a = self.actions.joint_pos
+        assert a.min_delay_steps == 0 and a.max_delay_steps == 3
+        a.min_delay_steps, a.max_delay_steps = 1, 5
+
+
+@configclass
 class Biped12HangStandW2fEnvCfg(Biped12HangStandW2eEnvCfg):
     """W2-6 (1004): W2-5 + **스텝 모드 요 각속도 명령 ±0.3 rad/s 무작위**(heading 제어 끔, 직접 표본) 단일 변경 — 회전 명령 추종 학습.
     근거: 요 표류(13–19°/8 s)가 보상 변경 4회에 불변, 평가 HeadingHold 명령에도 불응 — 학습 중 요 명령이 항상 0 이었다. 배포 브리지 HeadingHold(kp 1.0·±0.6)가 쓸 수 있게."""
@@ -2788,6 +2800,29 @@ class Biped12HangStandW2qeEnvCfg(Biped12HangStandW2qEnvCfg):
 
 
 @configclass
+class Biped12HangStandW2omEnvCfg(Biped12HangStandW2qEnvCfg):
+    """W2om (1006, 보행 구조 challenger): W2q + **전방향 걷기 모드 게이트**(_walk_mode: |vx|·|vy| ≥ 0.03 또는 |wz| ≥ 0.1) +
+    sb0 변위 축 = 명령 속도 방향(회전 전용은 방향 무관 ≥ 0.5 cm) + cadence 유효 속도 max(‖v‖, 0.25|wz|) + 명령 범주 혼합(앞 35·뒤 15·옆 20·회전 20·앞+회전 10 %).
+    보상 항·가중은 W2q 그대로(게이트만 바뀜). 근거: 전방향 기준선 — 뒤·옆·회전 명령은 |vx| 게이트로 '서기 모드' 채점(서기 보상 + 스텝 사건 0) → 걸음 0;
+    WOM(보상 교체 이어 학습)·WOMS(처음부터) 모두 걸음 미획득. **배포 계약 변경**: 브리지 cadence·모드 식도 같이 바뀌어야 함."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.omni = EventTerm(func=mdp_hang.install_omni_cmd, mode="startup", params={"wz_min": 0.1})
+
+
+@configclass
+class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
+    """W2om 평가용: + 회전 보조 훅(TURN_ALPHA, 0 이면 무동작) — W2qe 와 같은 평가 조건."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.omni = EventTerm(func=mdp_hang.set_omni, mode="startup", params={"wz_min": 0.1})   # 평가: 게이트만(명령 혼합 없음 — --cmd_set 보존)
+        self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={})
+        self.curriculum = None
+
+
+@configclass
 class Biped12HangStandW2q2EnvCfg(Biped12HangStandW2qEnvCfg):
     """W2q2 (1005, 보행 트랙): W2q + **sb0 보폭 기준 = 스윙당 발 이동 |vx|/f(vx)**(0.05→5.6, 0.10→9.1, 0.15→11.5, 0.20→13.3 cm): 진행 포화 = 기준, 착지 창 상한 = max(10 cm, 1.4×기준) — 보폭 기준 한 개념.
     근거(W2q 300 반복 단계 분해): 명령→클록→실제 cadence 는 전달(0.80→1.33 Hz)되나 보폭이 cadence 에 반비례로 줄어 실제 vx 0.061→0.084 고정. 진행 포화 5 cm 고정이 걸음당 보폭 신호를 주지 않는다."""
@@ -2891,3 +2926,12 @@ class Biped12HangStandWOMEnvCfg(Biped12HangStandW2qEnvCfg):
         if hasattr(c, "rel_heading_envs"):
             c.rel_heading_envs = 0.0
         self.curriculum = None
+
+
+class Biped12HangStandWOMXEnvCfg(Biped12HangStandWOMEnvCfg):
+    """WOMX (1006, WOMS KILL 뒤 구조 수정 1개): 스케줄 항을 부호형(l_ok + r_ok − 1)으로 — 서기 0.6 → 0.2.
+    WOMS 1000 반복: 전 명령 제자리 서기(cadence 0, 공중시간 0.0006) = 서기가 스케줄 보상 60 % 를 받는 국소 최적."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.schedule.params = {"signed": True}

@@ -2145,16 +2145,64 @@ def _vx_cmd(env):
     return env.command_manager.get_command("base_velocity")[:, 0]
 
 
+def _walk_mode(env, walk_min: float = 0.03, cmd=None) -> torch.Tensor:
+    """걷기 모드(bool). 종전 = |vx| ≥ walk_min. 1006 W2om: env._omni(시작 이벤트 set_omni)이면 |vx|·|vy| ≥ walk_min 또는 |wz| ≥ env._omni_wz_min
+    (제자리 회전·옆걸음도 걷기 모드 — sb0 계보는 이 게이트 탓에 회전/옆/뒤 명령이 서기 모드로 채점됐다)."""
+    c = cmd if cmd is not None else env.command_manager.get_command("base_velocity")
+    m = c[:, 0].abs() >= walk_min
+    if getattr(env, "_omni", False):
+        m = m | (c[:, 1].abs() >= walk_min) | (c[:, 2].abs() >= env._omni_wz_min)
+    return m
+
+
+def set_omni(env, env_ids, wz_min: float = 0.1):
+    """mode="startup": 전방향 걷기 모드 게이트 켜기(_walk_mode·cadence·sb0 방향)."""
+    env._omni = True; env._omni_wz_min = float(wz_min)
+
+
+_OMNI_MIX = (("fwd", 0.35), ("back", 0.15), ("lat", 0.20), ("turn", 0.20), ("fwd_turn", 0.10))
+
+
+def install_omni_cmd(env, env_ids, wz_min: float = 0.1, mix=_OMNI_MIX):
+    """mode="startup": set_omni + 명령 리샘플 후 범주 혼합(서기 env 는 그대로 0). 균등 독립 표본이면 순수 뒤·옆·제자리 회전이 드물다.
+    fwd vx U(0.05,0.15)·wz U(±0.3) | back vx U(−0.12,−0.05) | lat vy ±U(0.04,0.10) | turn wz ±U(0.2,0.45) | fwd_turn vx U(0.05,0.12)·wz ±U(0.2,0.4)."""
+    set_omni(env, env_ids, wz_min)
+    term = env.command_manager.get_term("base_velocity")
+    orig = term._resample_command
+    names = [m[0] for m in mix]; cp = torch.tensor([m[1] for m in mix], device=env.device).cumsum(0); cp = cp / cp[-1]
+
+    def _resample(ids):
+        orig(ids)
+        ids = torch.as_tensor(ids, device=env.device, dtype=torch.long) if not isinstance(ids, slice) else torch.arange(env.num_envs, device=env.device)
+        n = ids.numel()
+        if n == 0:
+            return
+        cat = torch.searchsorted(cp, torch.rand(n, device=env.device), right=True).clamp(max=len(names) - 1)
+        U = lambda lo, hi: torch.empty(n, device=env.device).uniform_(lo, hi)
+        sg = torch.where(torch.rand(n, device=env.device) < 0.5, -1.0, 1.0)
+        z = torch.zeros(n, device=env.device)
+        vx = torch.stack([U(0.05, 0.15), U(-0.12, -0.05), z, z, U(0.05, 0.12)], 1)
+        vy = torch.stack([z, z, sg * U(0.04, 0.10), z, z], 1)
+        wz = torch.stack([U(-0.3, 0.3), z, z, sg * U(0.2, 0.45), sg * U(0.2, 0.4)], 1)
+        k = cat.unsqueeze(1)
+        c = term.vel_command_b
+        c[ids, 0] = vx.gather(1, k).squeeze(1); c[ids, 1] = vy.gather(1, k).squeeze(1); c[ids, 2] = wz.gather(1, k).squeeze(1)
+        env._omni_cat = getattr(env, "_omni_cat", torch.zeros(env.num_envs, dtype=torch.long, device=env.device))
+        env._omni_cat[ids] = cat
+
+    term._resample_command = _resample
+
+
 def w1_stand_gated(env, func, params: dict | None = None, walk_min: float = 0.03) -> torch.Tensor:
     """func 를 서기 명령(|vx_cmd| < walk_min) 동안만 적용 — G21a 서기 보상(자세·대칭·앵커·회복 등)."""
     val = func(env, **_resolve_nested(env, params))
-    return val * (_vx_cmd(env).abs() < walk_min).to(val.dtype)
+    return val * (~_walk_mode(env, walk_min)).to(val.dtype)
 
 
 def w1_walk_gated(env, func, params: dict | None = None, walk_min: float = 0.03) -> torch.Tensor:
     """func 를 걷기 명령(|vx_cmd| ≥ walk_min) 동안만 적용."""
     val = func(env, **_resolve_nested(env, params))
-    return val * (_vx_cmd(env).abs() >= walk_min).to(val.dtype)
+    return val * _walk_mode(env, walk_min).to(val.dtype)
 
 
 def _w1(env):
@@ -2331,7 +2379,7 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
     u = gait_u(env, freq)
     half = (u >= 0.5).float(); v = torch.remainder(2.0 * u, 1.0)
     sw = half.long(); stc = 1 - sw                                   # 스윙 = 왼(0) 앞 반주기, 오른(1) 뒤 반주기
-    mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
+    mode = _walk_mode(env, walk_min).float()
     new_half = half != st["half"]
     # 1004 A0j: 놓친 스텝 — 스텝 모드에서 끝난 반주기에 유효 착지가 없었으면 1(이벤트). 리셋 전에 계산.
     st["ev_miss"] = (new_half & (st["half"] >= 0) & (st["td_done"] < 0.5) & (mode > 0.5)).float()
@@ -2349,6 +2397,16 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
     q = asset.data.root_quat_w; ex = torch.zeros(N, 3, device=F.device); ex[:, 0] = 1.0
     hx = _quat_apply(q, ex)[:, :2]; hx = hx / hx.norm(dim=-1, keepdim=True).clamp(min=1e-6)
     dfwd = ((fxy - st["lift_xy"]) * hx.unsqueeze(1)).sum(-1)          # (N,2) 이륙 뒤 앞축 변위
+    _lo_t = None
+    if getattr(env, "_omni", False):   # 1006 W2om: 변위 축 = 명령 속도 방향(요 프레임 → 월드), 회전 전용 env 는 방향 무관 수평 이동(하한 0.5 cm)
+        _cv = env.command_manager.get_command("base_velocity")
+        _hy = torch.stack([-hx[:, 1], hx[:, 0]], dim=-1)
+        _vw = _cv[:, 0:1] * hx + _cv[:, 1:2] * _hy; _vn = _vw.norm(dim=-1, keepdim=True)
+        _tr = _vn.squeeze(1) >= walk_min
+        _cd = torch.where(_tr.unsqueeze(1), _vw / _vn.clamp(min=1e-6), hx)
+        dfwd = torch.where(_tr.unsqueeze(1), ((fxy - st["lift_xy"]) * _cd.unsqueeze(1)).sum(-1), (fxy - st["lift_xy"]).norm(dim=-1))
+        _lo_t = torch.where(_tr, torch.full_like(_vn.squeeze(1), disp_lo), torch.full_like(_vn.squeeze(1), 0.005))
+        prog_sat = torch.where(_tr, torch.full_like(_lo_t, prog_sat), torch.full_like(_lo_t, 0.02))
     fz_st, fz_sw = fz[ar, stc], fz[ar, sw]
     ramp = lambda x, a, b: ((x - a) / (b - a)).clamp(0.0, 1.0)
     st["r_transfer"] = ramp(fz_st, fz_st_lo, fz_st_hi) * ramp(fz_sw, fz_sw_hi, fz_sw_lo) * w_tr.float() * mode
@@ -2378,7 +2436,7 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
         _hin = getattr(env, "_hint_on", None)
         if disp_hi_rec is not None and _hin is not None:     # 1005 R1′: 회복 cue(힌트) 중에는 착지 창 상한을 회복 보폭까지(앞 3–35 cm)
             _dh = torch.where(_hin, torch.full_like(dfwd[:, 0], disp_hi_rec), torch.full_like(dfwd[:, 0], disp_hi))
-        disp_ok = (dfwd[ar, sw] >= disp_lo) & (dfwd[ar, sw] <= _dh)
+        disp_ok = (dfwd[ar, sw] >= (disp_lo if _lo_t is None else _lo_t)) & (dfwd[ar, sw] <= _dh)
     if cap_on:      # 1005 R2′: 회복 cue 중 모든 유효 착지(어느 발이든)에 캡처 여유 이벤트
         _hin2 = getattr(env, "_hint_on", None)
         _tdc = landed & (st["valid"] > 0.5) & ((_hin2.unsqueeze(1)) if _hin2 is not None else torch.zeros_like(landed))
@@ -2445,7 +2503,7 @@ def sbi_step(env, env_ids, ref_path: str = "", freq: float = 1.1, walk_min: floa
     c = (sensor.data.net_forces_w[:, fid, :].norm(dim=-1) > threshold).float()
     u = gait_u(env, freq); half = (u >= 0.5).long(); v = torch.remainder(2.0 * u, 1.0)
     k = (v * 23.0).long().clamp(0, 22)
-    mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
+    mode = _walk_mode(env, walk_min).float()
     scale = float(getattr(env, "_sbi_scale", 1.0))
     q_ref = R["q"][half, k]; c_ref = R["c"][half, k]; p_ref = R["foot"][half, k]
     dq = asset.data.joint_pos - q_ref
@@ -2517,7 +2575,7 @@ def install_step_assist(env, env_ids, ref_path: str = "", freq: float = 1.1, wal
             idx = torch.remainder(half * 23 + k + L, 46); half_r = idx // 23; k_r = idx % 23
         else:
             half_r, k_r = half, k
-        mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float().unsqueeze(1)
+        mode = _walk_mode(env, walk_min).float().unsqueeze(1)
         res = R["q"][half_r, k_r] - R["q"][half_r, 0]
         return target + a * mode * res
 
@@ -2548,7 +2606,7 @@ def step_lift_support(env, env_ids, frac: float = 0.2, walk_min: float = 0.03, a
     자세 하네스(롤·피치 PD)는 낙상과 함께 이륙도 줄였다(1004 개루프: k60 이륙 30→13 %) — 몸통 운동을 막지 않고 발 하중만 줄이는 대안.
     frac = env var LIFT_FRAC 로 진단 고정 가능, × env._harness_scale."""
     asset = env.scene[(asset_cfg or _base_cfg()).name]
-    mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
+    mode = _walk_mode(env, walk_min).float()
     if "LIFT_FRAC" in os.environ:
         fr = float(os.environ["LIFT_FRAC"])                                   # 진단 고정
     else:
@@ -2567,7 +2625,7 @@ def step_balance_harness(env, env_ids, k_nm: float = 60.0, c_nms: float = 5.0, w
     낙상 위험을 줄여 '이륙 → 착지' 를 시도할 손익을 바꾸는 균형 보조(OSS 라운드 5 #2, Yu 2018). k = k_nm × env._harness_scale(기본 1).
     참고: 쓰러짐 중력 토크 ≈ m·g·h·θ ≈ 17.6·9.81·0.55 ≈ 95 Nm/rad — k 60 은 그 ~60 %."""
     asset = env.scene[(asset_cfg or _base_cfg()).name]
-    mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
+    mode = _walk_mode(env, walk_min).float()
     k = float(os.environ.get("HARNESS_K", k_nm)) * float(getattr(env, "_harness_scale", 1.0))   # HARNESS_K = 진단용 고정
     if k <= 0.0 or float(mode.sum()) == 0.0:
         return
@@ -2687,7 +2745,7 @@ def recovery_step_hint(env, env_ids, vx_hint: float = 0.05, win_s: float = 1.0, 
     vx = term.vel_command_b[:, 0]
     pg = asset.data.projected_gravity_b; tilt = torch.rad2deg(torch.acos((-pg[:, 2]).clamp(-1.0, 1.0)))
     v = asset.data.root_lin_vel_w[:, :2].norm(dim=1)
-    trig = (~env._hint_on) & (vx.abs() < 0.03) & (hs["dst_F_now"] > 0.0) & ((tilt > tilt_deg) | (v > v_min) | (asset.data.root_ang_vel_b[:, :2].norm(dim=1) > w_min))
+    trig = (~env._hint_on) & ~_walk_mode(env, 0.03) & (hs["dst_F_now"] > 0.0) & ((tilt > tilt_deg) | (v > v_min) | (asset.data.root_ang_vel_b[:, :2].norm(dim=1) > w_min))
     if fwd_only:     # 1005 R1: 배포 cue 규칙(전진 중일 때만) — 몸통 전진속도 > 0
         trig = trig & (asset.data.root_lin_vel_b[:, 0] > 0.0)
     trig = trig & (torch.rand(N, device=dev) < float(env._hint_p))
@@ -2801,7 +2859,7 @@ def track_yaw_rate_halfcycle(env, std: float = 0.5, window_ticks: int = 23, walk
         buf[fresh] = wr[fresh].unsqueeze(1)
     buf[:, env._yaw_hc_i % window_ticks] = wr; env._yaw_hc_i += 1
     cmd = env.command_manager.get_command(command_name)
-    mode = (cmd[:, 0].abs() >= walk_min).float()
+    mode = _walk_mode(env, walk_min, cmd).float()
     err = cmd[:, 2] - buf.mean(1)
     std = float(os.environ.get("YAW_HC_STD", std))      # 진단 전용 덮어쓰기(학습 설정은 cfg 값)
     return torch.exp(-err * err / (std * std)) * mode
@@ -2855,7 +2913,7 @@ def heading_hold_train(env, env_ids, kp: float = 1.0, wz_max: float = 0.6, walk_
         env._hh_tgt = yaw.clone(); env._hh_wz0 = term.vel_command_b[:, 2].clone(); env._hh_tl = term.time_left.clone()
     resampled = (term.time_left > env._hh_tl + 1e-6) | (env.episode_length_buf <= 1)
     env._hh_wz0 = torch.where(resampled, term.vel_command_b[:, 2], env._hh_wz0)
-    walk = (term.vel_command_b[:, 0].abs() >= walk_min) & ~term.is_standing_env
+    walk = _walk_mode(env, walk_min, term.vel_command_b) & ~term.is_standing_env
     env._hh_tgt = torch.where(resampled | ~walk, yaw, env._hh_tgt + env._hh_wz0 * env.step_dt)
     err = torch.atan2(torch.sin(env._hh_tgt - yaw), torch.cos(env._hh_tgt - yaw))
     wz = (env._hh_wz0 + kp * err).clamp(-wz_max, wz_max)
@@ -2874,7 +2932,7 @@ def feet_air_time_biped_walk(env, threshold: float = 0.4, sensor_cfg=None, walk_
     in_mode = torch.where(in_contact, con, air)
     single = torch.sum(in_contact.int(), dim=1) == 1
     r = torch.min(torch.where(single.unsqueeze(-1), in_mode, torch.zeros_like(in_mode)), dim=1)[0].clamp(max=threshold)
-    mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
+    mode = _walk_mode(env, walk_min).float()
     return r * mode
 
 
@@ -2901,8 +2959,12 @@ def gait_phase_update(env, env_ids, f0: float = 1.1, a: float = 0.7, b: float = 
     N, dev = env.num_envs, env.device
     if getattr(env, "_gu", None) is None or env._gu.shape[0] != N:
         env._gu = torch.zeros(N, device=dev); env._gf = torch.full((N,), f0, device=dev)
-    vx = env.command_manager.get_command("base_velocity")[:, 0]
-    env._gf = cadence_of_cmd(vx, f0, a, b, fmin, fmax, walk_min)
+    cmd = env.command_manager.get_command("base_velocity"); vx = cmd[:, 0]
+    if getattr(env, "_omni", False):   # 1006 W2om: 유효 속도 = max(‖v_xy‖, 0.25·|wz|) — 옆·회전 명령도 cadence 를 갖는다(부호 무관)
+        s_eff = torch.maximum(cmd[:, :2].norm(dim=-1), 0.25 * cmd[:, 2].abs())
+        env._gf = torch.where(_walk_mode(env, walk_min), (a + b * s_eff).clamp(fmin, fmax), torch.full_like(vx, f0))
+    else:
+        env._gf = cadence_of_cmd(vx, f0, a, b, fmin, fmax, walk_min)
     fresh = env.episode_length_buf <= 1
     env._gu = torch.where(fresh, torch.zeros_like(env._gu), torch.remainder(env._gu + env._gf * env.step_dt, 1.0))
 
@@ -2916,7 +2978,7 @@ def gait_schedule_walk(env, sensor_cfg=None, walk_min: float = 0.03, threshold: 
     u = gait_u(env, 1.1)
     swingL = u < 0.5
     l_ok = torch.where(swingL, ~c[:, 0], c[:, 0]); r_ok = torch.where(swingL, c[:, 1], ~c[:, 1])
-    mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
+    mode = _walk_mode(env, walk_min).float()
     return 0.5 * (l_ok.float() + r_ok.float()) * mode
 
 
@@ -2927,7 +2989,7 @@ def _moving_cmd(env, vx_min: float = 0.02, vy_min: float = 0.02, wz_min: float =
     return (c[:, 0].abs() >= vx_min) | (c[:, 1].abs() >= vy_min) | (c[:, 2].abs() >= wz_min)
 
 
-def gait_schedule_ds(env, threshold: float = 5.0, ds: float = 0.05) -> torch.Tensor:
+def gait_schedule_ds(env, threshold: float = 5.0, ds: float = 0.05, signed: bool = False) -> torch.Tensor:
     """1005 밤 WOM: 양발 지지가 있는 클록 접촉 일정(humanoid-gym 형) — u∈[ds,0.5−ds) 왼 스윙, [0.5+ds,1−ds) 오른 스윙, 나머지 양발 지지.
     값 = 두 발 접촉 일치 평균 ∈[0,1], 이동 명령일 때만(제자리 회전 포함)."""
     sensor = env.scene.sensors["contact_forces"]; fid = _feet_body_ids(env)
@@ -2935,6 +2997,8 @@ def gait_schedule_ds(env, threshold: float = 5.0, ds: float = 0.05) -> torch.Ten
     u = gait_u(env, 1.1)
     swL = (u >= ds) & (u < 0.5 - ds); swR = (u >= 0.5 + ds) & (u < 1.0 - ds)
     l_ok = torch.where(swL, ~c[:, 0], c[:, 0]); r_ok = torch.where(swR, ~c[:, 1], c[:, 1])
+    if signed:  # 1006 WOMX: 일치 +1·불일치 −1 → 서기 0.2, 완벽 보행 1.0 (구식은 서기 0.6)
+        return (l_ok.float() + r_ok.float() - 1.0) * _moving_cmd(env).float()
     return 0.5 * (l_ok.float() + r_ok.float()) * _moving_cmd(env).float()
 
 

@@ -2762,3 +2762,25 @@ class Biped12HangStandW2oEnvCfg(Biped12HangStandW2hEnvCfg):
             if hasattr(rw, n):
                 setattr(rw, n, None)
         rw.feet_air_time_walk = RewTerm(func=mdp_hang.feet_air_time_biped_walk, weight=1.0, params={"threshold": 0.4})
+
+
+
+@configclass
+class Biped12HangStandW2qEnvCfg(Biped12HangStandW2hEnvCfg):
+    """W2q (1005, 보행 트랙): W2-8 + **명령 연동 cadence** — 보행 위상을 f(vx) = clamp(0.7 + 4·|vx|, 0.8, 1.6) Hz 로 적분(걷기 모드, 서기 1.1 Hz).
+    관측 gait_clock·sb0 일정·보조 훅이 같은 위상을 공유. 사건 보상(sb0) 유지 → 고정 보폭이라도 cadence 로 속도가 변한다(보폭 4 cm 가정 0.07–0.12 m/s).
+    근거: WV1–3·W2o — 보상만으로는 고정 보폭 국소해(사건 보상) 또는 정지(사건 보상 제거). **배포 계약 변경**(브리지 클록 위상 적분)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.gait_phase = EventTerm(func=mdp_hang.gait_phase_update, mode="interval", interval_range_s=(0.0, 0.0), params={})
+
+
+@configclass
+class Biped12HangStandW2qeEnvCfg(Biped12HangStandW2qEnvCfg):
+    """W2q 평가용: + 회전 보조 훅(TURN_ALPHA 로 α, 커리큘럼 없음) — W2i 와 같은 배포 조건."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={})
+        self.curriculum = None

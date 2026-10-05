@@ -30,6 +30,8 @@ def _gait_phase(env, freq: float) -> torch.Tensor:
     관측(gait_clock)과 보상(gait_phase_reward)이 반드시 이 함수를 공유할 것
     (위상 정의가 어긋나면 클록이 무의미해진다).
     """
+    if getattr(env, "_gu", None) is not None:        # 1005 W2q: 명령 연동 cadence — 위상 누적기(주기 단위, mdp_hang.gait_phase_update)
+        return 2.0 * math.pi * env._gu
     t = env.episode_length_buf.to(torch.float32) * env.step_dt
     if os.environ.get("FREEZE_GAIT_CLOCK"):          # 진단 전용(1004): 클록 위상 고정 — 학습·배포 계약 무관
         return torch.zeros_like(t)

@@ -2327,8 +2327,7 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
                 continue                                                  # 감쇠 커리큘럼 전역 누적(리셋 무관)
             val[fresh] = 0.0
         st["prev_c"][fresh] = 1.0; st["half"][fresh] = -1.0
-    t = env.episode_length_buf.to(torch.float32) * dt
-    u = torch.remainder(freq * t, 1.0)
+    u = gait_u(env, freq)
     half = (u >= 0.5).float(); v = torch.remainder(2.0 * u, 1.0)
     sw = half.long(); stc = 1 - sw                                   # 스윙 = 왼(0) 앞 반주기, 오른(1) 뒤 반주기
     mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
@@ -2430,8 +2429,7 @@ def sbi_step(env, env_ids, ref_path: str = "", freq: float = 1.1, walk_min: floa
     asset = env.scene[(asset_cfg or _base_cfg()).name]
     sensor = env.scene.sensors["contact_forces"]; fid = _feet_body_ids(env)
     c = (sensor.data.net_forces_w[:, fid, :].norm(dim=-1) > threshold).float()
-    t = env.episode_length_buf.to(torch.float32) * env.step_dt
-    u = torch.remainder(freq * t, 1.0); half = (u >= 0.5).long(); v = torch.remainder(2.0 * u, 1.0)
+    u = gait_u(env, freq); half = (u >= 0.5).long(); v = torch.remainder(2.0 * u, 1.0)
     k = (v * 23.0).long().clamp(0, 22)
     mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
     scale = float(getattr(env, "_sbi_scale", 1.0))
@@ -2498,8 +2496,7 @@ def install_step_assist(env, env_ids, ref_path: str = "", freq: float = 1.1, wal
             a = float(getattr(env, "_assist_alpha", 0.0))
             if a <= 0.0:
                 return target
-        t = env.episode_length_buf.to(torch.float32) * env.step_dt
-        u = torch.remainder(freq * t, 1.0); half = (u >= 0.5).long(); v = torch.remainder(2.0 * u, 1.0)
+        u = gait_u(env, freq); half = (u >= 0.5).long(); v = torch.remainder(2.0 * u, 1.0)
         k = (v * 23.0).long().clamp(0, 22)
         L = int(os.environ.get("ASSIST_LEAD", lead_ticks))      # 1004 A0g: 보조 기준을 L틱 앞당김(관절 추종 지연 보상) — 반주기 경계를 넘으면 다음 반주기(반대 발) 기준
         if L:
@@ -2745,8 +2742,7 @@ def install_turn_assist(env, env_ids, freq: float = 1.1, walk_min: float = 0.03,
         a = float(getattr(env, "_turn_alpha", 0.0))
         if a <= 0.0:
             return target
-        t = env.episode_length_buf.to(torch.float32) * env.step_dt + lead_ticks * env.step_dt
-        u = torch.remainder(freq * t, 1.0); v = torch.remainder(2.0 * u, 1.0)
+        u = gait_u(env, freq, lead_s=lead_ticks * env.step_dt); v = torch.remainder(2.0 * u, 1.0)
         rise = _ss(v); fall = 1.0 - _ss(v)
         swingL = u < 0.5                           # 앞 반주기 = 왼발 스윙(sb0 규약)
         shL = torch.where(swingL, rise, fall); shR = torch.where(swingL, fall, rise)
@@ -2866,3 +2862,32 @@ def feet_air_time_biped_walk(env, threshold: float = 0.4, sensor_cfg=None, walk_
     r = torch.min(torch.where(single.unsqueeze(-1), in_mode, torch.zeros_like(in_mode)), dim=1)[0].clamp(max=threshold)
     mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
     return r * mode
+
+
+
+def gait_u(env, freq: float, lead_s: float = 0.0) -> torch.Tensor:
+    """보행 위상(주기 단위, [0,1)). 1005 W2q 위상 누적기(env._gu, env._gf)가 있으면 그것을, 없으면 종전 freq·t(에피소드 시간)."""
+    gu = getattr(env, "_gu", None)
+    if gu is not None:
+        return torch.remainder(gu + env._gf * lead_s, 1.0)
+    t = env.episode_length_buf.to(torch.float32) * env.step_dt + lead_s
+    return torch.remainder(freq * t, 1.0)
+
+
+def cadence_of_cmd(vx: torch.Tensor, f0: float = 1.1, a: float = 0.7, b: float = 4.0, fmin: float = 0.8, fmax: float = 1.6,
+                   walk_min: float = 0.03) -> torch.Tensor:
+    """1005 W2q: 명령 → 보행 주파수 [Hz]. 걷기 모드(|vx| ≥ walk_min) f = clamp(a + b·|vx|, fmin, fmax), 서기 모드 f0(종전 클록 그대로).
+    배포 브리지 클록도 같은 식으로 위상을 적분해야 한다(계약)."""
+    w = vx.abs() >= walk_min
+    return torch.where(w, (a + b * vx.abs()).clamp(fmin, fmax), torch.full_like(vx, f0))
+
+
+def gait_phase_update(env, env_ids, f0: float = 1.1, a: float = 0.7, b: float = 4.0, fmin: float = 0.8, fmax: float = 1.6, walk_min: float = 0.03):
+    """mode="interval"(0 s): 위상 누적 u += f(명령)·dt (주기 단위). 에피소드 시작(episode_length_buf ≤ 1)에 0 — 종전 freq·t 와 같은 출발 위상."""
+    N, dev = env.num_envs, env.device
+    if getattr(env, "_gu", None) is None or env._gu.shape[0] != N:
+        env._gu = torch.zeros(N, device=dev); env._gf = torch.full((N,), f0, device=dev)
+    vx = env.command_manager.get_command("base_velocity")[:, 0]
+    env._gf = cadence_of_cmd(vx, f0, a, b, fmin, fmax, walk_min)
+    fresh = env.episode_length_buf <= 1
+    env._gu = torch.where(fresh, torch.zeros_like(env._gu), torch.remainder(env._gu + env._gf * env.step_dt, 1.0))

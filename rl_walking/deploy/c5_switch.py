@@ -39,7 +39,7 @@ class SwitchDetector:
 
     def __init__(self, on_tilt_deg: float = 4.0, on_w: float = 0.5, off_tilt_deg: float = 2.5, off_w: float = 0.3,
                  calm_s: float = 1.0, dwell_s: float = 0.4, dt: float = 1.0 / RATE_HZ, ref_tau_s: float = 0.0, ref_cap_deg: float = 8.0, ref_init_s: float = 0.0, off_contact: str = "both",
-                 early=None, refrac=None):
+                 early=None, refrac=None, in_filt: float = 0.0):
         """ref_tau_s > 0: 기울기를 **기준 자세 대비 편차**로(1004 실물 로그 재생: 실물 서기 기울기 3–4° → 절대 기준이면 회복 모드 70–99 % 체류).
         기준 = 첫 update 의 (롤, 피치), 서기 모드·|ω|<0.1·양발일 때 EMA(τ) 갱신, |ref| ≤ ref_cap_deg. 0 = 절대 기울기(시뮬 SW-1 정의)."""
         self.on_tilt, self.on_w, self.off_tilt, self.off_w = float(on_tilt_deg), float(on_w), float(off_tilt_deg), float(off_w)
@@ -52,6 +52,8 @@ class SwitchDetector:
         self.early = None if early is None else tuple(float(x) for x in early)
         # 1005 kr: 조기 복귀 뒤 불응기 (s, tilt, w) — s 초 동안은 기울기>tilt 또는 |ω_xy|>w 일 때만 재진입(모드 왕복 46 % → 10–18 %). 시뮬 --sw_refrac 와 같은 정의.
         self.refrac = None if refrac is None else tuple(float(x) for x in refrac)
+        # 1005 krF: 감지 입력(중력 단위벡터·자이로) EMA α (0 = 끔). 정책 입력은 불변 — 감지 전용. 시뮬 --det_filt 와 같은 정의(첫 틱 = 입력값으로 초기화).
+        self.in_filt = float(in_filt)
         self.off_contact = off_contact   # 1004 밤: 끄기 조건 접촉 요구 — 실물 패드 0(무응답·무부하)로 회복 모드 고착(시험 4, 검토 7회차)
         self.reset()
 
@@ -65,6 +67,7 @@ class SwitchDetector:
         self.early_hold = 0.0
         self.n_early = 0
         self.t_since_early = 1e9
+        self._fg = None; self._fw = None
 
     @staticmethod
     def tilt_deg(gravity_unit) -> float:
@@ -77,7 +80,19 @@ class SwitchDetector:
         g = np.asarray(gravity_unit, dtype=np.float64).reshape(3)
         return np.degrees(np.array([math.atan2(g[1], -g[2]), math.atan2(g[0], -g[2])]))
 
+    def filtered(self, gravity_unit, gyro_rad_s):
+        """감지 입력 EMA(in_filt > 0) — 중력은 필터 뒤 단위벡터로 정규화. cue 방향(ω_y)도 이 값을 쓴다."""
+        g = np.asarray(gravity_unit, dtype=np.float64).reshape(3); w = np.asarray(gyro_rad_s, dtype=np.float64).reshape(3)
+        if self.in_filt > 0.0:
+            if self._fg is None:
+                self._fg, self._fw = g.copy(), w.copy()
+            self._fg = self._fg + self.in_filt * (g - self._fg); self._fw = self._fw + self.in_filt * (w - self._fw)
+            g, w = self._fg, self._fw
+        return g / max(float(np.linalg.norm(g)), 1e-6), w
+
     def update(self, gravity_unit, gyro_rad_s, contact2) -> int:
+        gravity_unit, gyro_rad_s = self.filtered(gravity_unit, gyro_rad_s)
+        self.last_w = gyro_rad_s
         tilt = self.tilt_deg(gravity_unit)
         w = float(np.linalg.norm(np.asarray(gyro_rad_s, dtype=np.float64).reshape(3)[:2]))
         c = np.asarray(contact2, dtype=np.float64).reshape(2) > 0.5
@@ -161,7 +176,9 @@ class C5Runner:
     def cue_update(self, mode: int, prev: int, gyro_rad_s) -> bool:
         """cue 상태기(로그 재생 대조에서도 단독 호출). 켜짐 틱에 ω_y>0 이면 시작, cue_s 지나면 종료, 서기 모드면 해제."""
         if mode == 1 and prev == 0:          # 이번 틱 켜짐 → 방향 조건 만족 시 cue 시작(활성화당 1회)
-            fwd = (float(np.asarray(gyro_rad_s, dtype=np.float64).reshape(3)[1]) > 0.0) if self.cue_dir_imu else True
+            _wd = getattr(self.det, "last_w", None)          # 1005 krF: 감지기가 쓴(필터된) 자이로 — 시뮬 _gy_det 과 같다
+            _wd = _wd if _wd is not None else np.asarray(gyro_rad_s, dtype=np.float64).reshape(3)
+            fwd = (float(_wd[1]) > 0.0) if self.cue_dir_imu else True
             self.cue_active = bool(fwd); self.cue_t = 0.0
             if fwd:
                 self.n_cue += 1

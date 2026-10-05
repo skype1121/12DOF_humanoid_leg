@@ -287,8 +287,8 @@ CHECKPOINTS = {
     #   근거: reports/gen_c5/REAL_GATE_C5.md (G1 RV3·G2 실물 로그 재생·G3/G4 21793·G5 힙 편향 곡선). 두 정책 관측·액션 계약 env.yaml 동일 확인.
     "stand_c5_g21a_g24ra": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported"),
-    # stand_c5kr_g21a_g24ra (1005, **로컬 준비·실물 미검증·미배포**): C5 + 회복 cue(켜짐 틱 IMU ω_y>0 → 1 s 회복 입력 vx 0.03)
-    #   + 조기 복귀(0.6 s·6°·0.4 rad/s·양발 0.2 s) + 불응기(1 s, 6°/1.0). 근거: reports/gen_c5/imu/{RESULT,REG_RESULT,KR_RESULT}.md.
+    # stand_c5kr_g21a_g24ra (1005, **로컬 준비·실물 미검증·미배포**, 최종 krF): C5 + 감지 입력 EMA α0.33 + 회복 cue(켜짐 틱 필터 ω_y>0 → 1 s 회복 입력 vx 0.03)
+    #   + 조기 복귀(0.6 s·6°·0.4 rad/s·양발 0.2 s) + 불응기(1.5 s, 6°/1.0). 근거: reports/gen_c5/imu/*, reports/gen_c5/kr/KD_PLAN.md.
     "stand_c5kr_g21a_g24ra": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported"),
     # stand_crouch_v2 (0918 저녁, S9d, models/stand_crouch_v2) — **등록 보류**: 기본자세 = 실물 v4 명령 + 무릎 직렬 처짐 편향 DR.
@@ -306,7 +306,8 @@ C5_PAIRS = {"stand_c5_g21a_g24ra": ("stand_crouch_g21a", os.path.join(
             "stand_c5kr_g21a_g24ra": ("stand_crouch_g21a", os.path.join(
     REPO, "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported"))}
 #: 1005 kr: C5 키별 추가 설정(감지기 조기 복귀·불응기, 러너 cue) — 시뮬 --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.0,6,1.0 --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu 와 같은 정의.
-C5_EXTRA = {"stand_c5kr_g21a_g24ra": dict(det=dict(early=(0.6, 6.0, 0.4, 0.2), refrac=(1.0, 6.0, 1.0)),
+#: 1005 최종(krF): 감지 입력 EMA α0.33(관측 신호 잡음 대응) + 불응기 1.5 s — reports/gen_c5/kr/KD_PLAN.md (공정 비교·KDF3).
+C5_EXTRA = {"stand_c5kr_g21a_g24ra": dict(det=dict(early=(0.6, 6.0, 0.4, 0.2), refrac=(1.5, 6.0, 1.0), in_filt=0.33),
                                            runner=dict(cue_vx=0.03, cue_s=1.0, cue_dir_imu=True))}
 C5_DETECTOR_KW = dict(on_tilt_deg=3.0, on_w=0.5, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, ref_tau_s=10.0, ref_init_s=1.5, off_contact="any")   # RV4(1004 밤): RV3 + 끄기 접촉 한 발 이상 — 실물 시험 4 패드 0 고착 19 s 재생 해소·시뮬 RV3 와 동일(짝 불일치 0) — 젯슨 미반영(다음 배포 승인)
 

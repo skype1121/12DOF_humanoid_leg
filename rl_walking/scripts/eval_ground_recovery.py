@@ -829,6 +829,7 @@ for i in range(STEPS):
                 _po_ = obs["policy"]
                 _gy_det = _po_[:, _DET_OFF["base_ang_vel"][1] - 3:_DET_OFF["base_ang_vel"][1]]
                 _pg_det = _po_[:, _DET_OFF["projected_gravity"][1] - 3:_DET_OFF["projected_gravity"][1]]
+                _pg_raw, _gy_raw = _pg_det.clone(), _gy_det.clone()      # 재생 대조용(필터 전 원 감지 입력)
                 if float(args_cli.det_filt) > 0.0:
                     _al_ = float(args_cli.det_filt)
                     if "_DF_G" not in dir() or i == STEPS_PRE:
@@ -954,7 +955,7 @@ for i in range(STEPS):
                 cue_ticks = (cue_ticks if "cue_ticks" in dir() else torch.zeros(N, device=dev)) + (_vxm_ & alive).float()
                 _a2 = policy2(_obs2); _a1 = a
                 if _DUMP:      # 1005 배포 모듈 재생 대조용: 이번 틱 감지기 입력·출력
-                    _PAR = {"par_g": robot.data.projected_gravity_b[:len(_DUMP)].tolist(), "par_w": robot.data.root_ang_vel_b[:len(_DUMP)].tolist(),
+                    _PAR = {"par_g": (_pg_raw if args_cli.det_from_obs else robot.data.projected_gravity_b)[:len(_DUMP)].tolist(), "par_w": (_gy_raw if args_cli.det_from_obs else robot.data.root_ang_vel_b)[:len(_DUMP)].tolist(),
                             "par_c": _cf[:len(_DUMP)].int().tolist(), "par_mode": sw_mode[:len(_DUMP)].int().tolist(), "par_cue": _vxm_[:len(_DUMP)].int().tolist()}
             else:
                 _a2 = policy2(obs); _a1 = a

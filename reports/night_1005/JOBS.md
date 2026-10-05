@@ -36,3 +36,10 @@
 | 1006 | W2qT | — | 시작 전 철회(WT1 중복) | — |
 | 1006 | RH2(rh2.sh PID 2365498: G24RaR4 이어학습 1000 → KE d3·d4 + 22300) | "RH2 끝" in scratchpad/rh2.out | ground_recovery_rh2* | 감시 b1jk9tu6e |
 | 1006 | WSTEER(wsteer.sh PID 2368272): W2qS 학습(05:12 정상) + 25900 평가 + 대조 C(W2q 이어학습, RH2 학습 끝 뒤) + 끝 평가(α1 s1·s2, α0 s1) | "WSTEER 300 평가 끝"·"WSTEER 끝" in scratchpad/wsteer.out | walk_eval_wsteer_*·w2qC_* | 감시 +300 bdtb… (아래) |
+| 1006 | PA1 구현 서브에이전트(worktree 격리 — 실행 중 학습이 쓰는 train.py 보호) | 완료 알림 | 브랜치 커밋 | 검토 후 병합·스모크 확인 |
+| 1006 | WSTEER +300 평가 수동(태그 _s1m) → kill 아님, 계속 | — | walk_eval_wsteer_*_25900_a1.0_s1m | DECISION 기록 |
+| 1006 | 메모리 경합 방지: wsteer.sh 하위 서브셸 2368274(+300 평가 대기)·2368275(대조 C 대기) 명시 PID 종료 → seqC.sh PID 2387614(RH2 끝 → 대조 C 학습 → 평가 α1 s1·s2, α0 s1) | "대조 C 평가 끝" in scratchpad/seqC.out | walk_eval_w2qC_* | 감시 추가 |
+| 1006 | RH2 | — | COMPLETED → KILL(sf15 +13 pp) → H2 기각 → NEXT=PA1 | — |
+| 1006 | PA1 병합(39653e9f, worktree 브랜치 cherry-pick) | — | — | — |
+| 1006 | PA1(pa1.sh PID 2410779: GPU ≤ 7.5 GB 대기 → 학습 1000 → 22300 d3 평가 → 끝 d3·d4) | "PA1 학습 시작/22300 평가 끝/PA1 끝" in scratchpad/pa1.out | ground_recovery_pa1* | 감시 b7zadq0nc(초기 신호), bjdfqw9m0(22300 kill 판정) |
+| 1006 | 대조 C 학습 시작 06:03(seqC.sh) | "대조 C 평가 끝" | walk_eval_w2qC_* | 감시 b0txw20d2(WSTEER·C 최종) |

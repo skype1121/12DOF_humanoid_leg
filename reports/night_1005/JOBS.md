@@ -53,3 +53,6 @@
 | 1006 | HTURN2-C(hturnc.sh PID 2476625: seed 2·3 d3, seed 2 d4·d2) | "HTURN2-C 끝" in scratchpad/hturnc.out | walk_eval_hturn2c_* | 감시 bo5ct7zmi |
 | 1006 | HTURN2-C·CSTAB | — | COMPLETED → ANALYZED → DECISION(견고성 미확인 — 왼 회전 약점 / 확률적 붕괴) → NEXT=WSTEER2 | — |
 | 1006 | WSTEER2(wsteer2.sh PID 2482537: W2qS seed 1·2 × 600 → 선택 평가 26100/26189 seed1 d3) | "WSTEER2 선택 평가 끝" in scratchpad/wsteer2.out | walk_eval_ws2sel_* | 감시 b30dinzhz → 선택 후 확인 4 run 별도 기동 |
+| 1006 | WSTEER2 | — | COMPLETED → KILL(+45° 기준선 미달) | — |
+| 1006 | 지연 감소 구현 병합(73889d5f) | — | 오프라인 검증 완료, 배포 승인 대기 | — |
+| 1006 | DLYGAIN(dlygain.sh PID 2505693: KE d2 전 조건 + d4 fs80·fi40) | "DLYGAIN 끝" in scratchpad/dlygain.out | ground_recovery_fked2_*·fked4_f* | 감시 brb3j51gx |

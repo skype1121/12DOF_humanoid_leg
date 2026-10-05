@@ -2355,7 +2355,7 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
              clr_lo: float = 0.015, clr_hi: float = 0.04, prog_sat: float = 0.05, disp_lo: float = 0.03, disp_hi: float = 0.10,
              load_frac: float = 0.25, load_s: float = 0.10, settle_s: float = 0.06, prem_fz: float = 0.6, td_any_dir: bool = False,
              threshold: float = 5.0, asset_cfg=None, disp_hi_rec: float | None = None, cap_on: bool = False, stride_scale: bool = False,
-             raibert: bool = False, rai_k: float = 0.24, rai_sig: float = 0.03):
+             raibert: bool = False, rai_k: float = 0.24, rai_sig: float = 0.03, omni_inplace: bool = False):
     """mode="interval"(0 s): STEP-B0 접촉 일정 추적·보상 값 계산(스텝 모드에서만 0 아님).
     td_any_dir(1004 A0b): 착지 이벤트 변위 조건을 앞축 [disp_lo, disp_hi] 대신 **방향 무관 수평** [0.02, disp_hi] 로 — primitive 단계에서 제자리·옆 스텝 허용.
     전환: r = ramp(지지 Fz/mg: 0.5→0.85) × ramp(스윙 Fz/mg: 0.5→0.175) — 성공 스텝의 이륙 순간 0.9/0.17 을 목표로.
@@ -2397,7 +2397,7 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
     q = asset.data.root_quat_w; ex = torch.zeros(N, 3, device=F.device); ex[:, 0] = 1.0
     hx = _quat_apply(q, ex)[:, :2]; hx = hx / hx.norm(dim=-1, keepdim=True).clamp(min=1e-6)
     dfwd = ((fxy - st["lift_xy"]) * hx.unsqueeze(1)).sum(-1)          # (N,2) 이륙 뒤 앞축 변위
-    _lo_t = None
+    _lo_t = None; _any_lo = None
     if getattr(env, "_omni", False):   # 1006 W2om: 변위 축 = 명령 속도 방향(요 프레임 → 월드), 회전 전용 env 는 방향 무관 수평 이동(하한 0.5 cm)
         _cv = env.command_manager.get_command("base_velocity")
         _hy = torch.stack([-hx[:, 1], hx[:, 0]], dim=-1)
@@ -2407,6 +2407,8 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
         dfwd = torch.where(_tr.unsqueeze(1), ((fxy - st["lift_xy"]) * _cd.unsqueeze(1)).sum(-1), (fxy - st["lift_xy"]).norm(dim=-1))
         _lo_t = torch.where(_tr, torch.full_like(_vn.squeeze(1), disp_lo), torch.full_like(_vn.squeeze(1), 0.005))
         prog_sat = torch.where(_tr, torch.full_like(_lo_t, prog_sat), torch.full_like(_lo_t, 0.02))
+        if omni_inplace:   # 1006 W2omM: td_any_dir 경로에서도 회전 전용 env 는 제자리 착지(≥ 0.5 cm) 인정 — 종전 ≥ 2 cm 가 제자리 걸음을 사건에서 뺐다(검토자 결함 지적)
+            _any_lo = torch.where(_tr, torch.full_like(_lo_t, 0.02), torch.full_like(_lo_t, 0.005))
     fz_st, fz_sw = fz[ar, stc], fz[ar, sw]
     ramp = lambda x, a, b: ((x - a) / (b - a)).clamp(0.0, 1.0)
     st["r_transfer"] = ramp(fz_st, fz_st_lo, fz_st_hi) * ramp(fz_sw, fz_sw_hi, fz_sw_lo) * w_tr.float() * mode
@@ -2430,7 +2432,7 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
     st["r_prog"] = (dfwd[ar, sw] / prog_sat).clamp(0.0, 1.0) * sw_air.float() * w_sw.float() * mode
     if td_any_dir:
         dh = (fxy[ar, sw] - st["lift_xy"][ar, sw]).norm(dim=-1)
-        disp_ok = (dh >= 0.02) & (dh <= disp_hi)
+        disp_ok = (dh >= (0.02 if _any_lo is None else _any_lo)) & (dh <= disp_hi)
     else:
         _dh = disp_hi
         _hin = getattr(env, "_hint_on", None)
@@ -2836,7 +2838,7 @@ def install_turn_assist(env, env_ids, freq: float = 1.1, walk_min: float = 0.03,
         if prev is not None:
             target = prev(target)
         cmd = env.command_manager.get_command("base_velocity")
-        mode = cmd[:, 0].abs() >= walk_min
+        mode = _walk_mode(env, walk_min, cmd) if getattr(env, "_omni", False) else (cmd[:, 0].abs() >= walk_min)   # 1006: omni env 는 제자리 회전도
         wz = cmd[:, 2]
         sel = mode & (wz.abs() > 0.1)
         if bool(sel.any()):

@@ -2847,6 +2847,20 @@ class Biped12HangStandW2omLEnvCfg(Biped12HangStandW2omAEnvCfg):
 
 
 @configclass
+class Biped12HangStandW2omMEnvCfg(Biped12HangStandW2omAEnvCfg):
+    """W2omM (1006, 제자리 회전 기술): W2omA + ① 회전 범주 제자리 착지 사건(td_any_dir 하한 2 → 0.5 cm, omni_inplace) ② 명령 = 앞 50·제자리 회전 50 %
+    ③ 회전 피드포워드 α 1.5 상시(배포 제어기 일부, omni 게이트로 제자리 회전에도) ④ 굽힘 보조는 회전 범주만(α 감쇠).
+    근거: SRTURN — 회전은 앞 걸음에 묶임(vx 0.03 걸음 없음); W2omA α1 진단에서 회전 범주 걸음 0.45–0.49 Hz 는 나왔으나 사건 하한 2 cm 가 제자리 걸음을 보상하지 않았다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.omni.params = {"wz_min": 0.1, "mix": (("fwd", 0.5), ("back", 0.0), ("lat", 0.0), ("turn", 0.5), ("fwd_turn", 0.0))}
+        self.events.omni_assist.params = {"cats": (3,)}
+        self.events.sb0.params = dict(self.events.sb0.params, omni_inplace=True)
+        self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={"alpha0": 1.5})
+
+
+@configclass
 class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
     """W2om 평가용: + 회전 보조 훅(TURN_ALPHA, 0 이면 무동작) — W2qe 와 같은 평가 조건."""
 

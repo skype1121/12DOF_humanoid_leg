@@ -56,3 +56,6 @@
 | 1006 | WSTEER2 | — | COMPLETED → KILL(+45° 기준선 미달) | — |
 | 1006 | 지연 감소 구현 병합(73889d5f) | — | 오프라인 검증 완료, 배포 승인 대기 | — |
 | 1006 | DLYGAIN(dlygain.sh PID 2505693: KE d2 전 조건 + d4 fs80·fi40) | "DLYGAIN 끝" in scratchpad/dlygain.out | ground_recovery_fked2_*·fked4_f* | 감시 brb3j51gx |
+| 1006 | SRTURN(srturn.sh PID 2506895: vx 0.03/0.05 + HTURN2 ±90°) | "SRTURN 끝" in scratchpad/srturn.out | walk_eval_srturn_v*.txt | 감시 bbrmnuyld |
+| 1006 | SRTURN | — | COMPLETED → 기각 → NEXT=W2omM | — |
+| 1006 | W2omM(w2omm.sh PID 2513099: 600 반복 → 26700·끝 평가 α_turn 1.5) | "W2omM 학습 시작/끝/W2omM 끝" in scratchpad/w2omm.out | walk_eval_w2omM_* | 감시 btopb2u94(+300 블록) |

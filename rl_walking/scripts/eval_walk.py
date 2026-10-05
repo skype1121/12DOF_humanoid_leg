@@ -126,6 +126,9 @@ err_s, err_n = z(), z(); n_td = torch.zeros(N, 2, device=dev); step_len_s, step_
 air_s, air_n = z(), z(); ds_s, ds_n = z(), z(); slip_s, slip_n = z(), z(); alt_n = z()
 had_lift = torch.zeros(N, 2, dtype=torch.bool, device=dev); prev_c = torch.ones(N, 2, device=dev); air_t = torch.zeros(N, 2, device=dev); ds_t = z(); lift_x = torch.zeros(N, 2, device=dev)
 last_td = torch.full((N,), -1.0, device=dev)
+# 1005 유효 스텝(이륙 ≥ 60 ms → 착지 → 0.3 s 안 하중 Fz > 0.3 mg 가 0.1 s 누적) — 단순 착지와 구분
+vs_pend = torch.zeros(N, 2, dtype=torch.bool, device=dev); vs_t = torch.zeros(N, 2, device=dev); vs_load = torch.zeros(N, 2, device=dev); n_valid = torch.zeros(N, device=dev)
+_MG = 9.81 * float(robot.data.default_mass[0].sum())
 yaw0 = None; pos0 = None; yaw_w = z(); lat_w = z()
 settle_t = torch.full((N,), float("nan"), device=dev); quiet_run = z()
 wy_hist = []; pitch_after = []
@@ -243,6 +246,12 @@ for i in range(steps):
         step_len_s += ((fx - lift_x) * (landed & m.unsqueeze(1)).float()).sum(1); step_n += (landed & m.unsqueeze(1)).float().sum(1)
         ended_air = landed & m.unsqueeze(1)
         air_s += (air_t * ended_air.float()).sum(1); air_n += ended_air.float().sum(1)
+        _fzv = sensor.data.net_forces_w[:, fid, 2]
+        _newv = ended_air & (air_t >= 0.06)
+        vs_pend = vs_pend | _newv; vs_t = torch.where(_newv, torch.zeros_like(vs_t), vs_t + dt); vs_load = torch.where(_newv, torch.zeros_like(vs_load), vs_load + dt * (_fzv > 0.3 * _MG).float())
+        _ok = vs_pend & (vs_load >= 0.1) & (vs_t <= 0.3)
+        n_valid += (_ok & m.unsqueeze(1)).float().sum(1)
+        vs_pend = vs_pend & ~_ok & (vs_t <= 0.3)
         foot = torch.where(landed[:, 0] & ~landed[:, 1], 0.0, torch.where(landed[:, 1] & ~landed[:, 0], 1.0, -1.0))
         has = (foot >= 0) & m
         alt_n += (has & (last_td >= 0) & (foot != last_td)).float(); last_td = torch.where(has, foot, last_td)
@@ -306,6 +315,7 @@ if policy_rec is not None:
         L.append(f"- [통합 감시·저역] vx {v:.2f}: 최대 저역 |ω| 중앙/90/99 % {np.percentile(_fwm,50):.2f}/{np.percentile(_fwm,90):.2f}/{np.percentile(_fwm,99):.2f} · 최대 저역 기울기 편차 {np.percentile(_ftm,50):.1f}/{np.percentile(_ftm,90):.1f}/{np.percentile(_ftm,99):.1f}° · 낙상 env 저역 편차 중앙 {float(np.median(_ftm[_fl])) if _fl.any() else float('nan'):.1f}° / 생존 {float(np.median(_ftm[~_fl])) if (~_fl).any() else float('nan'):.1f}°")
         L.append(f"- [통합 감시] vx {v:.2f}: 걷기(1.5 s 뒤) 최대 |ω_xy| 중앙/90/99 % {np.percentile(_wm,50):.2f}/{np.percentile(_wm,90):.2f}/{np.percentile(_wm,99):.2f} rad/s · 최대 기울기 편차 {np.percentile(_tm,50):.1f}/{np.percentile(_tm,90):.1f}/{np.percentile(_tm,99):.1f}°")
         L.append(f"- [통합] vx {v:.2f}: 회복 켜짐 env {int((~np.isnan(_fo[m_])).sum())}/{int(m_.sum())} · 무외란 걷기 중 켜짐 합 {int(r_n_on_walk_nodist[torch.as_tensor(m_, device=dev)].sum())} · 서기 래치 {int(r_latch[torch.as_tensor(m_, device=dev)].sum())} · 첫 켜짐(걷기 기준) 중앙 {float(np.nanmedian(_fo[m_])) if (~np.isnan(_fo[m_])).any() else float('nan'):.2f}s")
+L.append("유효 스텝(1005: 이륙 ≥ 60 ms → 착지 → 0.3 s 안 Fz > 0.3 mg 0.1 s): " + " · ".join(f"vx {v:.2f}: {float(n_valid[torch.as_tensor(gn == k, device=dev)].sum()) / max(1, int((gn == k).sum())):.1f}/env (착지 대비 {100 * float(n_valid[torch.as_tensor(gn == k, device=dev)].sum()) / max(1.0, float(n_td[torch.as_tensor(gn == k, device=dev)].sum())):.0f} %) · 유효 cadence {float(n_valid[torch.as_tensor(gn == k, device=dev)].sum()) / max(1, int((gn == k).sum())) / 2.0 / a.t_walk:.2f} Hz" for k, v in enumerate(speeds) if v > 0))
 L.append("착지 총 10 회 미만 그룹은 왼 착지 %·보폭을 — 로 표시(표본 과소).")
 L.append("추종 오차 = 걷기 시작 2 s 뒤부터 생존 env 의 |요 프레임 전진속도 − 명령|. 서기 그룹(0.00)은 '걷기' 창에도 명령 0 — 무명령 서기 대조.")
 if WZ is not None:

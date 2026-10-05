@@ -94,6 +94,65 @@ STATUS_PERIOD_SEC = 0.01
 MAX_TARGET_STEP_DEG_PER_TICK = 4.0
 #: 0930: 발행 → stage8 처리까지 이보다 늦은 목표 명령을 '늦음'으로 센다. 기록·표시 전용 — 명령 처리 동작은 바꾸지 않는다.
 CMD_STALE_MS = 60.0
+
+# ---------------------------------------------------------------------------
+# 1006 실효 지연 단축 옵션 — 전부 기본 꺼짐(종전 동작 그대로). 배포 시 인자로 선택.
+#   (지연 예산표·측정: jetson/bench/latency_mock/latency_bench.py 머리말, 커밋 메시지)
+#   --feedback-after-send : 명령 프레임을 보낸 '직후' 같은 틱 안에서 그 응답(=피드백)을 최대
+#       FEEDBACK_WAIT_SEC 기다려 읽고 status 를 바로 발행. 종전엔 이번 틱 응답을 다음 틱
+#       (20 ms 뒤) 처음에야 읽었다 → 관측 나이 −1 틱. 송신 전 폴링(종전)은 그대로 둔다.
+#   --send-on-command     : SET_JOINT_TARGETS 를 받은 즉시 송신(종전: 다음 제어 타이머까지
+#       0–20 ms 대기). 명령이 끊기면 배경(감시) 송신이 종전 주기로 이어 받는다(공백 ≤ 30 ms).
+#   --control-hz 100      : 제어(송신) 주기 50 → 100 Hz. 피드백도 10 ms 마다 갱신.
+#   ※ 송신 주기를 바꾸는 옵션(--send-on-command·--control-hz 100)을 켜면 슬루 제한을 '틱당 4°' 대신 '시간당 200°/s(= 4°/20 ms), 틱당 최대 4°'로
+#     적용한다 — 송신이 잦아져도 슬루 상한(가드)은 종전보다 느슨해지지 않는다(같거나 더 엄격).
+# ---------------------------------------------------------------------------
+FEEDBACK_AFTER_SEND = False
+FEEDBACK_WAIT_SEC = 0.004   # 12 명령 + 12 응답 ≈ 24 프레임 × 130 µs ≈ 3.1 ms (1 Mbps) + 여유
+FEEDBACK_WAIT_MIN_SEC = 0.0005
+FEEDBACK_WAIT_MAX_SEC = 0.008
+SEND_ON_COMMAND = False
+#: 명령 즉시 송신 간 최소 간격 — DDS 적체가 한꺼번에 풀릴 때 CAN TX 큐 폭주(송신 블로킹, H-D1) 차단.
+SEND_ON_COMMAND_MIN_INTERVAL_SEC = 0.004
+#: 마지막 명령 즉시 송신 뒤 이 시간 안이면 '명령 스트림 살아 있음'(브리지 20 ms × 1.25).
+#: 살아 있으면 50 Hz 모드의 배경 송신은 쉬고(명령이 송신을 맡음), 끊기면 배경 송신이 종전 주기로 이어 받는다.
+COMMAND_STREAM_ACTIVE_SEC = 0.025
+#: 배경(감시) 송신 판정 해상도·허용 오차 [s] — 5 ms 타이머로 '마지막 송신 뒤 주기 − 2.5 ms' 경과 시 송신.
+BACKGROUND_CHECK_SEC = 0.005
+BACKGROUND_TOL_SEC = 0.0025
+#: 슬루 시간 상한 [deg/s] — 종전 틱당 4°·50 Hz 와 같은 값 (옵션 모드에서만 사용).
+MAX_TARGET_SLEW_DEG_PER_SEC = MAX_TARGET_STEP_DEG_PER_TICK / 0.02
+ALLOWED_CONTROL_HZ = (50, 100)
+
+
+def time_based_slew_enabled():
+    """송신 주기를 바꾸는 옵션(명령 즉시 송신·100 Hz)이 켜졌는가 → 슬루를 시간 기준으로.
+
+    --feedback-after-send 단독은 송신 주기를 바꾸지 않으므로 종전 틱당 4° 그대로."""
+    return bool(SEND_ON_COMMAND or abs(CONTROL_PERIOD_SEC - 0.02) > 1e-9)
+
+
+def latency_options_status():
+    return {"feedback_after_send": bool(FEEDBACK_AFTER_SEND),
+            "feedback_wait_ms": round(FEEDBACK_WAIT_SEC * 1000.0, 3),
+            "send_on_command": bool(SEND_ON_COMMAND),
+            "control_hz": round(1.0 / CONTROL_PERIOD_SEC, 3),
+            "time_based_slew": time_based_slew_enabled(),
+            "slew_deg_per_sec": MAX_TARGET_SLEW_DEG_PER_SEC}
+
+
+def parse_feedback_wait_ms(value):
+    """--feedback-wait-ms 검증 → 초. 범위 밖·비유한값은 ValueError."""
+    try:
+        ms = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"--feedback-wait-ms 숫자 아님: {value!r}")
+    sec = ms / 1000.0
+    if not math.isfinite(sec) or not (FEEDBACK_WAIT_MIN_SEC <= sec <= FEEDBACK_WAIT_MAX_SEC):
+        raise ValueError(
+            f"--feedback-wait-ms 범위 밖: {value!r} "
+            f"({FEEDBACK_WAIT_MIN_SEC * 1000:g}~{FEEDBACK_WAIT_MAX_SEC * 1000:g} ms)")
+    return sec
 FEEDBACK_TIMEOUT_SEC = 3.0
 #: 피드백 공백 무장해제 — armed 상태에서 피드백 두절이 이 시간을 넘으면 자동
 #: 무장해제+베이스라인 폐기 (0802 감사: 세션 중단 후 살아남은 armed 노드가
@@ -424,6 +483,14 @@ class Stage8TwelveAxisMitControlCore:
         self.accepted = False
         self.executed = False
         self.running = False
+        #: 1006 지연 옵션 계측 — 마지막 armed 송신 시각(monotonic)·송신 경로별 횟수·송신 후 피드백 대기.
+        self.last_armed_send_mono = None
+        self.last_command_send_mono = None
+        self._tick_sent_ids = []          # 이번 틱에 명령 프레임을 보낸 모터 ID (송신 후 피드백·즉시 status 발행 판정)
+        self._tick_source = None
+        self.send_counts = {"timer": 0, "command": 0, "watchdog": 0}
+        self.fb_after_send = {"ticks": 0, "complete": 0, "replies": 0,
+                              "last_wait_ms": None, "max_wait_ms": 0.0}
 
         valid, reason = validate_12dof_mapping()
         self.mapping_valid = bool(valid)
@@ -596,7 +663,7 @@ class Stage8TwelveAxisMitControlCore:
         명령을 리셋하는 실측 거동이 있어 금지). ARM 시 정상 경로로 전환.
         """
         if not REAL_CAN_WRITE_ENABLED or self.takeover_hold is None:
-            return
+            return []
         now = self.now_fn()
         if self._takeover_start is None:
             self._takeover_start = now
@@ -638,7 +705,7 @@ class Stage8TwelveAxisMitControlCore:
             self.takeover_hold = None
             self.last_takeover_event = "hold_feedback_gap_cancel"
             self._warn("takeover_hold_feedback_gap_cancel")
-            return
+            return []
         # 실측-홀드 괴리 = 경고만, 캔슬 금지 (0802 밤 붕괴 2건 교훈).
         # 근거: ①상태 파일은 기록 후 수십 ms 내 소비돼 '낡은 파일 대괴리'가
         # 실경로에 없음(절대각·백스톱은 로더가 검증) ②캔슬→침묵→모터 자체
@@ -660,14 +727,22 @@ class Stage8TwelveAxisMitControlCore:
                   f"{worst_dev:+.2f}° ({worst_dev_joint if worst_dev else '-'})",
                   flush=True)
         self._ever_streamed = True
+        sent_ids = []
         for joint, (deg, kp, kd) in self.takeover_hold.items():
             frame = pack_ak_mit_command(
                 math.radians(deg), v_des_rad_s=V_DES_DEFAULT,
                 kp=kp, kd=kd, tau_ff=TAU_FF_DEFAULT)
-            self._maybe_write_frame(CAN_ID_BY_JOINT[joint], frame)
+            if self._maybe_write_frame(CAN_ID_BY_JOINT[joint], frame):
+                sent_ids.append(CAN_ID_BY_JOINT[joint])
+        return sent_ids
 
-    def control_tick(self):
+    def control_tick(self, source="timer"):
+        """제어 틱. source = "timer"(종전 주기 타이머) | "command"(--send-on-command 즉시 송신) |
+        "watchdog"(즉시 송신 모드에서 명령이 끊겼을 때의 감시 송신). 동작은 source 와 무관하게 같고
+        계측(send_counts)만 다르다."""
         self.executed = False
+        self._tick_sent_ids = []
+        self._tick_source = source
         # 선기동 대기: 상태 파일이 나타날 때까지 CAN 완전 침묵 (송신 0 —
         # hang_stand가 아직 버스를 소유·홀드 중이므로 ENTER 폴링도 금지)
         if self._waiting_takeover:
@@ -725,11 +800,13 @@ class Stage8TwelveAxisMitControlCore:
         # 최종점검 S1: 스트리밍 이력이 있으면(홀드 해제·DISARM 후 포함) 폴링을
         # 영구 금지 — 종전엔 홀드 이탈 즉시 폴링 재개 = 하중 하 능동 릴리즈였음.
         if self.takeover_hold is not None:
-            self._takeover_hold_tick()
+            self._tick_sent_ids = self._takeover_hold_tick() or []
         elif not self.armed and not self._ever_streamed:
             self._request_next_readonly_feedback()
         self._poll_can_feedback()
         if not self.armed or not self._has_any_baseline():
+            # 인수 홀드도 명령 프레임 응답이 피드백 — 옵션이 켜졌으면 같은 틱 안에서 읽는다.
+            self._await_feedback_after_send(self._tick_sent_ids)
             return self.get_status()
 
         # 피드백 공백 무장해제 가드 — 장기 두절(모터 전원 오프·분기 사망) 후
@@ -772,6 +849,19 @@ class Stage8TwelveAxisMitControlCore:
         if not self._feedback_is_fresh() and not REAL_CAN_WRITE_ENABLED:
             self._warn("feedback_stale_dry_run")
 
+        # 슬루 상한: 기본(옵션 꺼짐) = 종전 그대로 틱당 4°. 옵션 모드 = 시간 기준 200°/s × 경과,
+        # 틱당 최대 4° — 송신이 잦아져도(명령 즉시 송신·100 Hz) 시간당 슬루는 종전 이하로 유지.
+        now_mono = time.monotonic()
+        step_limit = MAX_TARGET_STEP_DEG_PER_TICK
+        if time_based_slew_enabled():
+            dt = (CONTROL_PERIOD_SEC if self.last_armed_send_mono is None
+                  else max(0.0, now_mono - self.last_armed_send_mono))
+            step_limit = min(MAX_TARGET_STEP_DEG_PER_TICK, MAX_TARGET_SLEW_DEG_PER_SEC * dt)
+        self.last_armed_send_mono = now_mono
+        if source == "command":
+            self.last_command_send_mono = now_mono
+        self.send_counts[source] = self.send_counts.get(source, 0) + 1
+
         for joint in JOINT_NAMES_12DOF:
             if joint not in self.baseline_deg_by_joint:
                 continue
@@ -784,7 +874,7 @@ class Stage8TwelveAxisMitControlCore:
                 next_value = current   # 동결 — 진행 없이 현 목표 재송신
             else:
                 desired = self.desired_relative_deg_by_joint[joint]
-                next_value = self._step_toward(current, desired)
+                next_value = self._step_toward(current, desired, step_limit)
             if next_value != current:
                 moved = True
             self.commanded_relative_deg_by_joint[joint] = next_value
@@ -792,11 +882,84 @@ class Stage8TwelveAxisMitControlCore:
             absolute_target_deg = self.baseline_deg_by_joint[joint] + next_value
             preview = build_12axis_mit_preview(joint, absolute_target_deg)
             self.last_preview_by_joint[joint] = preview
-            self.executed = self._maybe_write_frame(preview.motor_id, preview.frame_bytes) or self.executed
+            sent = self._maybe_write_frame(preview.motor_id, preview.frame_bytes)
+            if sent:
+                self._tick_sent_ids.append(preview.motor_id)
+            self.executed = sent or self.executed
 
+        self._await_feedback_after_send(self._tick_sent_ids)
         if moved and self.last_reject_reason is None:
             self.accepted = True
         return self.get_status()
+
+    def _await_feedback_after_send(self, sent_ids):
+        """--feedback-after-send: 방금 보낸 명령 프레임의 응답을 같은 틱 안에서 읽는다.
+
+        보낸 모터가 모두 응답하거나 FEEDBACK_WAIT_SEC 가 지나면 멈춘다(상한 블로킹 = 대기 시간).
+        응답 해석은 송신 전 폴링과 같은 _handle_can_feedback_message(형상 검증·점프 필터 동일).
+        제때 못 온 응답은 종전처럼 다음 틱의 송신 전 폴링이 읽는다. 옵션 꺼짐이면 아무것도 안 한다."""
+        if (not FEEDBACK_AFTER_SEND or not sent_ids or self.can_bus is None
+                or not READ_ONLY_CAN_ENABLED):
+            return 0
+        pending = set(int(m) for m in sent_ids)
+        t0 = time.monotonic()
+        deadline = t0 + FEEDBACK_WAIT_SEC
+        replies = 0
+        while pending:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.0:
+                break
+            try:
+                message = self.can_bus.recv(timeout=remaining)
+            except Exception as error:
+                self.can_status = "ERROR"
+                self.can_last_error = str(error)
+                self._set_error(f"can_recv_failed:{error}")
+                break
+            if message is None:
+                break
+            if self._handle_can_feedback_message(message):
+                replies += 1
+                pending.discard(int(message.arbitration_id))
+        waited_ms = (time.monotonic() - t0) * 1000.0
+        st = self.fb_after_send
+        st["ticks"] += 1
+        st["replies"] += replies
+        st["complete"] += 0 if pending else 1
+        st["last_wait_ms"] = round(waited_ms, 2)
+        st["max_wait_ms"] = round(max(st["max_wait_ms"], waited_ms), 2)
+        return replies
+
+    def wants_background_send(self, now_mono=None):
+        """--send-on-command 모드의 armed 배경(감시) 송신 판정 — 5 ms 타이머가 묻는다.
+
+        명령 스트림이 살아 있으면(마지막 명령 송신 < 25 ms) 50 Hz 모드에선 송신하지 않는다(명령이 맡음).
+        100 Hz 모드에선 명령 사이 중간 재송신(피드백 10 ms 갱신). 명령이 끊기면 종전 주기로 계속 송신 —
+        모터 명령 공백 상한 ≈ 25 ms + 5 ms(종전 20 ms). 옵션 꺼짐·비무장이면 False(종전 타이머 경로)."""
+        if not SEND_ON_COMMAND or not self.armed:
+            return False
+        now_mono = time.monotonic() if now_mono is None else now_mono
+        since_any = (float("inf") if self.last_armed_send_mono is None
+                     else now_mono - self.last_armed_send_mono)
+        since_cmd = (float("inf") if self.last_command_send_mono is None
+                     else now_mono - self.last_command_send_mono)
+        due = since_any >= CONTROL_PERIOD_SEC - BACKGROUND_TOL_SEC
+        if since_cmd < COMMAND_STREAM_ACTIVE_SEC:
+            return due and CONTROL_PERIOD_SEC < 0.02 - 1e-9
+        return due
+
+    def should_send_on_command(self, now_mono=None):
+        """방금 처리한 명령으로 즉시 송신할지 — 옵션 켜짐·armed·배치 목표 수용·최소 간격 경과."""
+        if not SEND_ON_COMMAND or not self.armed or not self.accepted:
+            return False
+        if self.last_command != COMMAND_SET_JOINT_TARGETS:
+            return False
+        if self.last_command_send_mono is None:
+            return True
+        now_mono = time.monotonic() if now_mono is None else now_mono
+        # 명령 즉시 송신끼리만 최소 간격 — DDS 적체가 한꺼번에 풀린 명령 묶음이 송신 폭주가 되는 것 차단.
+        # 그 사이 명령은 목표만 갱신되고(최신값이 이김) 다음 송신에 실린다.
+        return now_mono - self.last_command_send_mono >= SEND_ON_COMMAND_MIN_INTERVAL_SEC
 
     def _set_baseline_from_current_all(self):
         available = [
@@ -990,12 +1153,13 @@ class Stage8TwelveAxisMitControlCore:
             return "no_feedback"
         return f"feedback_age_sec:{age:.3f}>timeout:{FEEDBACK_TIMEOUT_SEC:.3f}"
 
-    def _step_toward(self, current, desired):
+    def _step_toward(self, current, desired, step_limit=None):
+        limit = MAX_TARGET_STEP_DEG_PER_TICK if step_limit is None else float(step_limit)
         delta = float(desired) - float(current)
-        if abs(delta) <= MAX_TARGET_STEP_DEG_PER_TICK:
+        if abs(delta) <= limit:
             return float(desired)
         direction = 1.0 if delta > 0.0 else -1.0
-        return float(current) + direction * MAX_TARGET_STEP_DEG_PER_TICK
+        return float(current) + direction * limit
 
     def _extract_actuals(self, payload):
         actuals = {}
@@ -1473,6 +1637,10 @@ class Stage8TwelveAxisMitControlCore:
             "isaac_dof_index_by_joint": dict(ISAAC_DOF_INDEX_BY_JOINT),
             "default_limit_gain_by_joint": dict(DEFAULT_LIMIT_GAIN_BY_JOINT),
             "control_period_sec": CONTROL_PERIOD_SEC,
+            # 1006 지연 옵션(기본 전부 꺼짐)과 계측: 송신 경로별 횟수·송신 후 피드백 대기
+            "latency_options": latency_options_status(),
+            "send_counts": dict(self.send_counts),
+            "fb_after_send": dict(self.fb_after_send),
             "max_target_step_deg_per_tick": MAX_TARGET_STEP_DEG_PER_TICK,
             "baseline_set": self._has_any_baseline(),
             "baseline_complete": self._baseline_is_set(),
@@ -1503,17 +1671,33 @@ class Stage8TwelveAxisMitControlNode:
             self._on_joint_states_message,
             10,
         )
+        self._last_status_pub = 0.0
         self.control_timer = self.node.create_timer(CONTROL_PERIOD_SEC, self._on_control_timer)
-        self.status_timer = self.node.create_timer(STATUS_PERIOD_SEC, self.publish_status)
+        if FEEDBACK_AFTER_SEND:
+            self.status_timer = self.node.create_timer(STATUS_PERIOD_SEC, self._on_status_timer)
+        else:
+            self.status_timer = self.node.create_timer(STATUS_PERIOD_SEC, self.publish_status)
+        # 1006 --send-on-command: armed 배경(감시) 송신 판정 타이머 (5 ms 해상도). 옵션 꺼짐이면 만들지 않는다.
+        self.watchdog_timer = (self.node.create_timer(BACKGROUND_CHECK_SEC, self._on_watchdog_timer)
+                               if SEND_ON_COMMAND else None)
 
     def _on_command_message(self, message):
         self.core.handle_command_data(message.data)
+        sent_now = False
+        if self.core.should_send_on_command():
+            # 1006 --send-on-command: 다음 제어 타이머(0–20 ms)를 기다리지 않고 지금 송신.
+            # 검증·슬루(시간 기준)·동결 규칙은 타이머 틱과 같은 control_tick 경로 그대로.
+            self.core.control_tick(source="command")
+            sent_now = bool(self.core._tick_sent_ids)
         # 지연 수술 0803: 종전 '명령마다 status 발행'은 라이브 브리지(12명령/틱)
         # 에서 ~700Hz JSON 직렬화 폭풍이었다 (전체 status ~수 KB — 젯슨 CPU 잠식
         # = 제어 루프 지터 = 실측 루프 지연의 소프트웨어 몫). 5ms 캡 —
         # stage8_cmd 검증 왕복은 100Hz 주기 발행이 어차피 10ms 내 보장.
         now = time.time()
-        if now - self._last_cmd_status_pub >= 0.005:
+        if sent_now and FEEDBACK_AFTER_SEND:
+            self._last_cmd_status_pub = now
+            self.publish_status()          # 방금 읽은 신선한 피드백을 바로 내보낸다
+        elif now - self._last_cmd_status_pub >= 0.005:
             self._last_cmd_status_pub = now
             self.publish_status()
 
@@ -1521,9 +1705,27 @@ class Stage8TwelveAxisMitControlNode:
         self.core.handle_joint_states_data(message.data)
 
     def _on_control_timer(self):
-        self.core.control_tick()
+        if SEND_ON_COMMAND and self.core.armed:
+            return   # armed 송신은 명령 즉시 송신 + 배경(감시) 타이머가 맡는다
+        self._tick_and_maybe_publish("timer")
+
+    def _on_watchdog_timer(self):
+        if self.core.wants_background_send():
+            self._tick_and_maybe_publish("watchdog")
+
+    def _tick_and_maybe_publish(self, source):
+        self.core.control_tick(source=source)
+        if FEEDBACK_AFTER_SEND and self.core._tick_sent_ids:
+            self.publish_status()
+
+    def _on_status_timer(self):
+        # --feedback-after-send 모드: 송신 직후 이미 발행했으면(5 ms 내) 주기 발행 생략 — 직렬화 부하 억제
+        if time.time() - self._last_status_pub < STATUS_PERIOD_SEC * 0.5:
+            return
+        self.publish_status()
 
     def publish_status(self):
+        self._last_status_pub = time.time()
         message = self.String()
         message.data = json.dumps(self.core.get_status(), ensure_ascii=False, sort_keys=True)
         self.status_publisher.publish(message)
@@ -1560,7 +1762,45 @@ def build_arg_parser():
              f"{CAN_SEND_TIMEOUT_MAX_SEC}). 미지정(기본) = 모듈 상수 "
              f"{CAN_SEND_TIMEOUT_SEC} 유지 = 종전과 동일 동작. H-D1 버스 정체 "
              "판별 시에만 낮춘다 (예: --can-send-timeout 0.01)")
+    # 1006 실효 지연 단축 옵션 — 전부 기본 꺼짐 (미지정 = 종전 동작과 동일)
+    parser.add_argument(
+        "--feedback-after-send", action="store_true",
+        help="명령 송신 직후 같은 틱 안에서 응답(피드백)을 읽고 status 를 바로 발행 "
+             "(관측 나이 약 −1 틱). 대기 상한은 --feedback-wait-ms")
+    parser.add_argument(
+        "--feedback-wait-ms", default=None,
+        help=f"--feedback-after-send 응답 대기 상한 ms ({FEEDBACK_WAIT_MIN_SEC * 1000:g}~"
+             f"{FEEDBACK_WAIT_MAX_SEC * 1000:g}, 기본 {FEEDBACK_WAIT_SEC * 1000:g})")
+    parser.add_argument(
+        "--send-on-command", action="store_true",
+        help="SET_JOINT_TARGETS 수신 즉시 CAN 송신 (종전: 다음 제어 타이머까지 0–20 ms 대기). "
+             "슬루는 시간 기준 200°/s 로 유지, 명령이 25 ms 넘게 끊기면 배경 송신이 종전 주기로 이어 받음")
+    parser.add_argument(
+        "--control-hz", type=int, default=None, choices=list(ALLOWED_CONTROL_HZ),
+        help="제어(송신) 주기 Hz (기본 50 = 종전). 100 은 버스 부하 2배·실물 미검증")
     return parser
+
+
+def apply_latency_args(args):
+    """지연 옵션 인자를 모듈 전역에 반영. 잘못된 값은 ValueError (기동 거부)."""
+    global FEEDBACK_AFTER_SEND, FEEDBACK_WAIT_SEC, SEND_ON_COMMAND, CONTROL_PERIOD_SEC
+    wait = FEEDBACK_WAIT_SEC
+    if getattr(args, "feedback_wait_ms", None) is not None:
+        wait = parse_feedback_wait_ms(args.feedback_wait_ms)
+    period = CONTROL_PERIOD_SEC
+    hz = getattr(args, "control_hz", None)
+    if hz is not None:
+        if hz not in ALLOWED_CONTROL_HZ:
+            raise ValueError(f"--control-hz {hz} 불가 (허용 {ALLOWED_CONTROL_HZ})")
+        period = 1.0 / float(hz)
+    fas = bool(getattr(args, "feedback_after_send", False))
+    if fas and wait > 0.5 * period:
+        # 대기가 주기의 절반을 넘으면 단일 스레드 실행기가 명령 콜백을 그만큼 못 받는다
+        raise ValueError(f"--feedback-wait-ms {wait * 1000:g} 가 제어 주기 절반({period * 500:g} ms) 초과")
+    FEEDBACK_AFTER_SEND = fas
+    FEEDBACK_WAIT_SEC = wait
+    SEND_ON_COMMAND = bool(getattr(args, "send_on_command", False))
+    CONTROL_PERIOD_SEC = period
 
 
 def main():
@@ -1579,6 +1819,11 @@ def main():
         except ValueError as error:
             print(f"[Stage8-12Axis] {error}")
             return 1
+    try:
+        apply_latency_args(args)
+    except ValueError as error:
+        print(f"[Stage8-12Axis] {error}")
+        return 1
     CAN_CHANNEL = str(args.can_channel)
     WAIT_TAKEOVER = bool(args.wait_takeover)
 
@@ -1593,6 +1838,7 @@ def main():
     print(f"[Stage8-12Axis] status topic = {STATUS_TOPIC}")
     print(f"[Stage8-12Axis] CAN channel = {CAN_CHANNEL}")
     print(f"[Stage8-12Axis] CAN send timeout = {CAN_SEND_TIMEOUT_SEC} s")
+    print(f"[Stage8-12Axis] latency options = {latency_options_status()}")
     print(f"[Stage8-12Axis] REAL_CAN_WRITE_ENABLED = {REAL_CAN_WRITE_ENABLED}")
     print(f"[Stage8-12Axis] ALLOWED_JOINTS = {ALLOWED_JOINTS}")
     print("[Stage8-12Axis] 12-axis MIT control node started")

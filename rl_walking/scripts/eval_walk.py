@@ -25,7 +25,7 @@ p.add_argument("--seed", type=int, default=1)
 p.add_argument("--t_stand", type=float, default=3.0)
 p.add_argument("--t_walk", type=float, default=8.0)
 p.add_argument("--t_after", type=float, default=4.0)
-p.add_argument("--torsion_r", type=float, default=None, help="1005 진단: 로봇 충돌 형상 비틀림 마찰 패치 반경[m](PhysX torsional_patch_radius) — ⚠1005 WTOR: 이 자산·GPU 경로에서 결과 비트 동일 = 효과 없음 확인, 쓰지 말 것"); p.add_argument("--hipf_deg", type=float, default=None, help="1005: 공유 힙 앞뒤 영점 편향 고정[deg](default_pose_bias.shared_hip_f_rad lo=hi) — 힙 편향 강건성"); p.add_argument("--keep_dist", action="store_true", help="1005: 학습 외란(disturbance·push_robot) 유지 — 걷기 중 외란 강건성"); p.add_argument("--wpush", default="", help="1005: 걷기 중 정의 밀기 'dir:F:dur[:ramp]' (dir f|b|l, 힘 N, 지속 s, ramp=램프 상승 s) — 걷기 시작 3 s 뒤 몸통 프레임으로 모든 env"); p.add_argument("--rec_monitor", action="store_true", help="1005 통합 진단: 감지기만 계산하고 전환하지 않음 — 걷기 중 |ω_xy|·기울기 편차 최대값 분포 기록"); p.add_argument("--rec_walk_f", type=float, default=0.0, help="1005: 걷기 중 감지 = 보행 주기 저역(τ 0.45 s) 기울기 편차 > 값[°] (0 = 원 문턱 사용). 걷기 1.5 s 뒤부터"); p.add_argument("--rec_walk_on", default="3.0,0.5", help="걷기 중 감지기 켜기 문턱 'tilt,w'"); p.add_argument("--rec_policy", default="", help="1005 통합: 'run:model_N.pt' 회복 정책 — 걷기 시작부터 감지기(RV4 상대 3°/0.5, 끄기 1.5°/0.3·calm 1 s·dwell 0.4·접촉 any) + ki cue(ω_y>0 → 1 s vx 0.03) + 조기 복귀(0.6,6,0.4,0.2). 회복 뒤 = 서기(G21a) 래치"); p.add_argument("--stand_policy", default="", help="1005 전환 평가: 'run:model_N.pt' 서기 정책(G21a) — 걷기 명령 전·정지 뒤 stand_after_s 이후에 사용(같은 관측 계약)"); p.add_argument("--stand_after_s", type=float, default=0.5); p.add_argument("--out_tag", default="walk"); p.add_argument("--friction_scale", type=float, default=1.0, help="진단(T4): 발 마찰 범위 배율(학습 설정 불변)"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)"); p.add_argument("--wz_groups", default="", help="진단: 걷기 중 상수 요 명령을 env 묶음별로(예 -0.3,0,0.3) — 회전 명령 추종 확인")
+p.add_argument("--torsion_r", type=float, default=None, help="1005 진단: 로봇 충돌 형상 비틀림 마찰 패치 반경[m](PhysX torsional_patch_radius) — ⚠1005 WTOR: 이 자산·GPU 경로에서 결과 비트 동일 = 효과 없음 확인, 쓰지 말 것"); p.add_argument("--hipf_deg", type=float, default=None, help="1005: 공유 힙 앞뒤 영점 편향 고정[deg](default_pose_bias.shared_hip_f_rad lo=hi) — 힙 편향 강건성"); p.add_argument("--keep_dist", action="store_true", help="1005: 학습 외란(disturbance·push_robot) 유지 — 걷기 중 외란 강건성"); p.add_argument("--wpush", default="", help="1005: 걷기 중 정의 밀기 'dir:F:dur[:ramp]' (dir f|b|l, 힘 N, 지속 s, ramp=램프 상승 s) — 걷기 시작 3 s 뒤 몸통 프레임으로 모든 env"); p.add_argument("--rec_monitor", action="store_true", help="1005 통합 진단: 감지기만 계산하고 전환하지 않음 — 걷기 중 |ω_xy|·기울기 편차 최대값 분포 기록"); p.add_argument("--rec_walk_f", type=float, default=0.0, help="1005: 걷기 중 감지 = 보행 주기 저역(τ 0.45 s) 기울기 편차 > 값[°] (0 = 원 문턱 사용). 걷기 1.5 s 뒤부터"); p.add_argument("--rec_walk_on", default="3.0,0.5", help="걷기 중 감지기 켜기 문턱 'tilt,w'"); p.add_argument("--rec_policy", default="", help="1005 통합: 'run:model_N.pt' 회복 정책 — 걷기 시작부터 감지기(RV4 상대 3°/0.5, 끄기 1.5°/0.3·calm 1 s·dwell 0.4·접촉 any) + ki cue(ω_y>0 → 1 s vx 0.03) + 조기 복귀(0.6,6,0.4,0.2). 회복 뒤 = 서기(G21a) 래치"); p.add_argument("--cmd_set", default="", help="1005 밤 전방향 평가: 'vx,vy,wz;vx,vy,wz;...' 명령 그룹(지정 시 --speeds 대신, 걷기 구간에 적용; HeadingHold 는 0 으로 둘 것)"); p.add_argument("--stand_policy", default="", help="1005 전환 평가: 'run:model_N.pt' 서기 정책(G21a) — 걷기 명령 전·정지 뒤 stand_after_s 이후에 사용(같은 관측 계약)"); p.add_argument("--stand_after_s", type=float, default=0.5); p.add_argument("--out_tag", default="walk"); p.add_argument("--friction_scale", type=float, default=1.0, help="진단(T4): 발 마찰 범위 배율(학습 설정 불변)"); p.add_argument("--heading_hold", type=float, default=0.0, help="배포 브리지 HeadingHold 모사: wz = clip(kp·(요0 − 요), ±0.6), kp 값(0=끔)"); p.add_argument("--wz_groups", default="", help="진단: 걷기 중 상수 요 명령을 env 묶음별로(예 -0.3,0,0.3) — 회전 명령 추종 확인")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
@@ -86,8 +86,15 @@ if a.stand_policy:
     runner_st = OnPolicyRunner(venv, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device); runner_st.load(ck_st); policy_st = runner_st.get_inference_policy(device=dev)
     print(f'[stand_policy] {ck_st} · 정지 뒤 {a.stand_after_s}s 에 인계', flush=True)
 speeds = [0.0] + [float(s) for s in a.speeds.split(",")]
+CS = None
+if a.cmd_set:
+    CS = [tuple(float(x) for x in g.split(",")) for g in a.cmd_set.split(";") if g.strip()]
+    speeds = [c[0] for c in CS]
 grp = torch.arange(N, device=dev) % len(speeds)
 vgrp = torch.tensor(speeds, device=dev)[grp]
+VYG = torch.tensor([c[1] for c in CS], device=dev)[grp] if CS else None
+WZG = torch.tensor([c[2] for c in CS], device=dev)[grp] if CS else None
+om_vx = torch.zeros(N, device=dev); om_vy = torch.zeros(N, device=dev); om_wz = torch.zeros(N, device=dev); om_n = torch.zeros(N, device=dev)
 robot = U.scene["robot"]; sensor = U.scene.sensors["contact_forces"]
 fid = mdp_hang._feet_body_ids(U); bid = mdp_hang._g21_bids(U)
 cmd_term = U.command_manager.get_term("base_velocity")
@@ -98,6 +105,7 @@ WZ = None
 if a.wz_groups:
     _wz = [float(x) for x in a.wz_groups.split(',')]
     WZ = torch.tensor(_wz, device=dev)[(torch.arange(N, device=dev) // len(speeds)) % len(_wz)]
+_walking_now = [False]
 def set_cmd(vx):
     global hh_ref
     cmd_term.vel_command_b[:, 0] = vx; cmd_term.vel_command_b[:, 1] = 0.0; cmd_term.vel_command_b[:, 2] = 0.0
@@ -109,6 +117,9 @@ def set_cmd(vx):
         cmd_term.vel_command_b[:, 2] = (a.heading_hold * err).clamp(-0.6, 0.6)
     if WZ is not None:
         cmd_term.vel_command_b[:, 2] = torch.where(vx > 0, WZ, torch.zeros_like(WZ))
+    if CS is not None:
+        cmd_term.vel_command_b[:, 1] = torch.where(torch.full((N,), _walking_now[0], device=dev), VYG, torch.zeros_like(VYG))
+        cmd_term.vel_command_b[:, 2] = torch.where(torch.full((N,), _walking_now[0], device=dev), WZG, torch.zeros_like(WZG))
     cmd_term.is_standing_env[:] = False
     cmd_term.is_heading_env[:] = False
 
@@ -140,6 +151,7 @@ r_wmax, r_tmax = z(), z(); r_fwmax, r_ftmax = z(), z(); r_frp = torch.zeros(N, 2
 for i in range(steps):
     t = i * dt
     walking = (t >= t_ws) & (t < t_we)
+    _walking_now[0] = bool(walking)
     if policy_rec is not None:
         _walk_env = (~r_mode & ~r_latch) & torch.full((N,), bool(walking), device=dev)
         set_cmd(torch.where(_walk_env, vgrp, torch.zeros_like(vgrp)))
@@ -232,6 +244,9 @@ for i in range(steps):
     if abs(t - t_ws) < dt / 2:
         yaw0 = yaw.clone(); pos0 = robot.data.root_pos_w[:, :2].clone(); h0 = hx.clone()
     win = walking & (t >= t_ws + 2.0)
+    if win and CS is not None:
+        _vy_b = -torch.sin(yaw) * vw[:, 0] + torch.cos(yaw) * vw[:, 1]
+        _mm = alive.float(); om_vx += v_fwd * _mm; om_vy += _vy_b * _mm; om_wz += robot.data.root_ang_vel_w[:, 2] * _mm; om_n += _mm
     if win:
         m = alive & (vgrp > 0)
         err_s += torch.where(m, (v_fwd - vgrp).abs(), torch.zeros_like(v_fwd)); err_n += m.float()
@@ -316,6 +331,12 @@ if policy_rec is not None:
         L.append(f"- [통합 감시] vx {v:.2f}: 걷기(1.5 s 뒤) 최대 |ω_xy| 중앙/90/99 % {np.percentile(_wm,50):.2f}/{np.percentile(_wm,90):.2f}/{np.percentile(_wm,99):.2f} rad/s · 최대 기울기 편차 {np.percentile(_tm,50):.1f}/{np.percentile(_tm,90):.1f}/{np.percentile(_tm,99):.1f}°")
         L.append(f"- [통합] vx {v:.2f}: 회복 켜짐 env {int((~np.isnan(_fo[m_])).sum())}/{int(m_.sum())} · 무외란 걷기 중 켜짐 합 {int(r_n_on_walk_nodist[torch.as_tensor(m_, device=dev)].sum())} · 서기 래치 {int(r_latch[torch.as_tensor(m_, device=dev)].sum())} · 첫 켜짐(걷기 기준) 중앙 {float(np.nanmedian(_fo[m_])) if (~np.isnan(_fo[m_])).any() else float('nan'):.2f}s")
 L.append("유효 스텝(1005: 이륙 ≥ 60 ms → 착지 → 0.3 s 안 Fz > 0.3 mg 0.1 s): " + " · ".join(f"vx {v:.2f}: {float(n_valid[torch.as_tensor(gn == k, device=dev)].sum()) / max(1, int((gn == k).sum())):.1f}/env (착지 대비 {100 * float(n_valid[torch.as_tensor(gn == k, device=dev)].sum()) / max(1.0, float(n_td[torch.as_tensor(gn == k, device=dev)].sum())):.0f} %) · 유효 cadence {float(n_valid[torch.as_tensor(gn == k, device=dev)].sum()) / max(1, int((gn == k).sum())) / 2.0 / a.t_walk:.2f} Hz" for k, v in enumerate(speeds) if v > 0))
+if CS is not None:
+    L.append("전방향 명령 추종(1005 밤, 걷기 2 s 뒤 생존 env-틱 평균): 명령 (vx,vy,wz) → 실제 (vx,vy,wz) · 낙상 % · 유효 cadence Hz")
+    for k, c in enumerate(CS):
+        mk = torch.as_tensor(gn == k, device=dev); nn_ = float(om_n[mk].sum()) or 1.0
+        _vc = float(n_valid[mk].sum()) / max(1, int(mk.sum())) / 2.0 / a.t_walk
+        L.append(f"- ({c[0]:+.2f},{c[1]:+.2f},{c[2]:+.2f}) → ({float(om_vx[mk].sum())/nn_:+.3f},{float(om_vy[mk].sum())/nn_:+.3f},{float(om_wz[mk].sum())/nn_:+.3f}) · 낙상 {100*float((~alive[mk]).float().mean()):.1f} % · 유효 cadence {_vc:.2f} Hz")
 L.append("착지 총 10 회 미만 그룹은 왼 착지 %·보폭을 — 로 표시(표본 과소).")
 L.append("추종 오차 = 걷기 시작 2 s 뒤부터 생존 env 의 |요 프레임 전진속도 − 명령|. 서기 그룹(0.00)은 '걷기' 창에도 명령 0 — 무명령 서기 대조.")
 if WZ is not None:

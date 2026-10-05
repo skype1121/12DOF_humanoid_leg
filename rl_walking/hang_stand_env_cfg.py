@@ -2854,3 +2854,40 @@ class Biped12HangStandW2gseEnvCfg(Biped12HangStandW2gsEnvCfg):
         super().__post_init__()
         self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={})
         self.curriculum = None
+
+
+
+@configclass
+class Biped12HangStandWOMEnvCfg(Biped12HangStandW2qEnvCfg):
+    """WOM (1005 밤, 보행 구조 challenger): W2q 의 DR·관측·cadence 클록은 그대로, **보상 전체를 OSS 형 전방향 세트로 교체** + **명령 노름 게이트**.
+    명령: vx −0.15~0.2, vy ±0.1, yaw ±0.5 rad/s, 서기 10 %(서기 자체는 supervisor G21a 담당), 4–6 s 리샘플.
+    과제: 선속도 추종(요 프레임, std 0.1)×2, 요 추종(std 0.25)×1.5, 공중시간(문턱 0.3)×1, 양발 지지 클록 일정×1. 정규화: 기울기·z 속도·롤피치 각속도·행동 변화·토크·관절 가속·관절 한계·힙 편차·발 미끄럼·종료.
+    근거(서브에이전트 1·5 + 데이터): sb0 계보는 |vx| 게이트라 제자리 회전 = 서기 모드로 스텝이 벌받고, 사건 보상이 보폭을 묶는다(WV1–3·W2q2·WR)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        rw = self.rewards
+        keep = {"termination_penalty"}
+        for n in [k for k in vars(rw) if not k.startswith("_")]:
+            if n not in keep and getattr(rw, n) is not None:
+                setattr(rw, n, None)
+        from isaaclab.envs import mdp as _imdp
+        rw.track_lin = RewTerm(func=mdp_hang.track_lin_vel_xy_yaw_exp, weight=2.0, params={"std": 0.1})
+        rw.track_yaw = RewTerm(func=mdp_hang.track_yaw_rate_exp, weight=1.5, params={"std": 0.25})
+        rw.air_time = RewTerm(func=mdp_hang.feet_air_time_moving, weight=1.0, params={"threshold": 0.3})
+        rw.schedule = RewTerm(func=mdp_hang.gait_schedule_ds, weight=1.0, params={})
+        rw.flat_orient = RewTerm(func=_imdp.flat_orientation_l2, weight=-2.0)
+        rw.lin_vel_z = RewTerm(func=_imdp.lin_vel_z_l2, weight=-0.5)
+        rw.ang_vel_xy = RewTerm(func=_imdp.ang_vel_xy_l2, weight=-0.05)
+        rw.act_rate = RewTerm(func=_imdp.action_rate_l2, weight=-0.2)
+        rw.torques = RewTerm(func=_imdp.joint_torques_l2, weight=-1.0e-5)
+        rw.acc = RewTerm(func=_imdp.joint_acc_l2, weight=-2.5e-7)
+        rw.pos_lim = RewTerm(func=_imdp.joint_pos_limits, weight=-1.0)
+        rw.hip_dev = RewTerm(func=_imdp.joint_deviation_l1, weight=-0.1, params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_a_joint", ".*_hip_r_joint"])})
+        rw.ankle_r_dev = RewTerm(func=_imdp.joint_deviation_l1, weight=-0.3, params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_r_joint"])})
+        c = self.commands.base_velocity
+        c.ranges.lin_vel_x = (-0.15, 0.2); c.ranges.lin_vel_y = (-0.1, 0.1); c.ranges.ang_vel_z = (-0.5, 0.5)
+        c.heading_command = False; c.rel_standing_envs = 0.1
+        if hasattr(c, "rel_heading_envs"):
+            c.rel_heading_envs = 0.0
+        self.curriculum = None

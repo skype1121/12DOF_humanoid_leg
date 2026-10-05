@@ -2918,3 +2918,48 @@ def gait_schedule_walk(env, sensor_cfg=None, walk_min: float = 0.03, threshold: 
     l_ok = torch.where(swingL, ~c[:, 0], c[:, 0]); r_ok = torch.where(swingL, c[:, 1], ~c[:, 1])
     mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
     return 0.5 * (l_ok.float() + r_ok.float()) * mode
+
+
+
+def _moving_cmd(env, vx_min: float = 0.02, vy_min: float = 0.02, wz_min: float = 0.05) -> torch.Tensor:
+    """1005 밤 WOM: 명령 노름 게이트 — vx·vy·yaw 중 하나라도 있으면 '이동' (제자리 회전·옆 이동도 걷기). (N,) bool"""
+    c = env.command_manager.get_command("base_velocity")
+    return (c[:, 0].abs() >= vx_min) | (c[:, 1].abs() >= vy_min) | (c[:, 2].abs() >= wz_min)
+
+
+def gait_schedule_ds(env, threshold: float = 5.0, ds: float = 0.05) -> torch.Tensor:
+    """1005 밤 WOM: 양발 지지가 있는 클록 접촉 일정(humanoid-gym 형) — u∈[ds,0.5−ds) 왼 스윙, [0.5+ds,1−ds) 오른 스윙, 나머지 양발 지지.
+    값 = 두 발 접촉 일치 평균 ∈[0,1], 이동 명령일 때만(제자리 회전 포함)."""
+    sensor = env.scene.sensors["contact_forces"]; fid = _feet_body_ids(env)
+    c = sensor.data.net_forces_w[:, fid, :].norm(dim=-1) > threshold
+    u = gait_u(env, 1.1)
+    swL = (u >= ds) & (u < 0.5 - ds); swR = (u >= 0.5 + ds) & (u < 1.0 - ds)
+    l_ok = torch.where(swL, ~c[:, 0], c[:, 0]); r_ok = torch.where(swR, ~c[:, 1], c[:, 1])
+    return 0.5 * (l_ok.float() + r_ok.float()) * _moving_cmd(env).float()
+
+
+def feet_air_time_moving(env, threshold: float = 0.3) -> torch.Tensor:
+    """1005 밤 WOM: 이족 공중시간(Isaac Lab biped 식, 문턱 상한) — 게이트 = 명령 노름(제자리 회전 포함)."""
+    cs = env.scene.sensors["contact_forces"]; ids = _feet_body_ids(env)
+    air = cs.data.current_air_time[:, ids]; con = cs.data.current_contact_time[:, ids]
+    inc = con > 0.0; mode_t = torch.where(inc, con, air)
+    single = torch.sum(inc.int(), dim=1) == 1
+    r = torch.min(torch.where(single.unsqueeze(-1), mode_t, torch.zeros_like(mode_t)), dim=1)[0].clamp(max=threshold)
+    return r * _moving_cmd(env).float()
+
+
+def track_lin_vel_xy_yaw_exp(env, std: float = 0.1) -> torch.Tensor:
+    """명령 vx·vy vs 요 프레임 몸통 선속도, exp(−‖e‖²/std²)."""
+    asset = env.scene[_base_cfg().name]; c = env.command_manager.get_command("base_velocity")
+    q = asset.data.root_quat_w
+    yaw = torch.atan2(2 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]), 1 - 2 * (q[:, 2] ** 2 + q[:, 3] ** 2))
+    vw = asset.data.root_lin_vel_w[:, :2]
+    vx = torch.cos(yaw) * vw[:, 0] + torch.sin(yaw) * vw[:, 1]; vy = -torch.sin(yaw) * vw[:, 0] + torch.cos(yaw) * vw[:, 1]
+    e = (c[:, 0] - vx) ** 2 + (c[:, 1] - vy) ** 2
+    return torch.exp(-e / std ** 2)
+
+
+def track_yaw_rate_exp(env, std: float = 0.25) -> torch.Tensor:
+    """명령 yaw rate vs 월드 ω_z, exp(−e²/std²)."""
+    asset = env.scene[_base_cfg().name]; c = env.command_manager.get_command("base_velocity")
+    return torch.exp(-((c[:, 2] - asset.data.root_ang_vel_w[:, 2]) ** 2) / std ** 2)

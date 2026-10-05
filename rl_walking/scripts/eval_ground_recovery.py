@@ -1238,6 +1238,8 @@ for i in range(STEPS):
             _ft["tau"] = [round(float(v), 2) for v in robot.data.applied_torque[k]]
             if _LAST_RAW[0] is not None:
                 _ft["raw_deg"] = [round(math.degrees(float(_LAST_RAW[0][k, j])), 2) for j in range(J)]
+            if _LAST_CMD[0] is not None:      # 1005 전환 진단: 체인(슬루·LPF) 통과 뒤 실제 관절 명령
+                _ft["cmd_deg"] = [round(math.degrees(float(_LAST_CMD[0][k, j])), 2) for j in range(J)]
             _ft["eff"] = [round(float(v), 1) for v in _eff[k]]
             _parx = {}
             if "_PAR" in dir() and i >= STEPS_PRE:

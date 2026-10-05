@@ -9,11 +9,12 @@ import c5_switch as C
 tag = sys.argv[1]
 REFRAC = tuple(float(x) for x in (sys.argv[2] if len(sys.argv) > 2 else "1.0,6,1.0").split(","))
 INF = float(sys.argv[3]) if len(sys.argv) > 3 else 0.0      # krF: 감지 입력 EMA α
+EG = tuple(float(x) for x in sys.argv[4].split(",")) if len(sys.argv) > 4 else None   # KE: 조기 복귀 허용 조건
 files = sorted(glob.glob(f"/home/ryu/humanoid_leg_test1/log_picture/recbb_{tag}_env*.jsonl"))
 tot = mism_m = mism_c = 0; n_on = n_cue = 0
 for fp in files:
     det = C.SwitchDetector(on_tilt_deg=3.0, on_w=0.5, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, ref_tau_s=10.0, ref_init_s=1.5,
-                           off_contact="any", early=(0.6, 6.0, 0.4, 0.2), refrac=REFRAC, in_filt=INF)
+                           off_contact="any", early=(0.6, 6.0, 0.4, 0.2), refrac=REFRAC, in_filt=INF, early_gate=EG)
     run = C.C5Runner.__new__(C.C5Runner); run.det = det; run.cue_vx = 0.03; run.cue_s = 1.0; run.cue_dir_imu = True
     run.cue_active = False; run.cue_t = 0.0; run.n_cue = 0
     prev = 0; first = None

@@ -307,7 +307,8 @@ C5_PAIRS = {"stand_c5_g21a_g24ra": ("stand_crouch_g21a", os.path.join(
     REPO, "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported"))}
 #: 1005 kr: C5 키별 추가 설정(감지기 조기 복귀·불응기, 러너 cue) — 시뮬 --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.0,6,1.0 --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu 와 같은 정의.
 #: 1005 최종(krF): 감지 입력 EMA α0.33(관측 신호 잡음 대응) + 불응기 1.5 s — reports/gen_c5/kr/KD_PLAN.md (공정 비교·KDF3).
-C5_EXTRA = {"stand_c5kr_g21a_g24ra": dict(det=dict(early=(0.6, 6.0, 0.4, 0.2), refrac=(1.5, 6.0, 1.0), in_filt=0.33),
+#: 1005 최종 KE: + 조기 복귀는 최대 기울기 편차 ≥ 5° 또는 최대 |ω| ≥ 1.0 이었던 활성화에만(무외란 오탐은 calm 경로) — reports/gen_c5/kr/KE_PLAN.md.
+C5_EXTRA = {"stand_c5kr_g21a_g24ra": dict(det=dict(early=(0.6, 6.0, 0.4, 0.2), refrac=(1.5, 6.0, 1.0), in_filt=0.33, early_gate=(5.0, 1.0)),
                                            runner=dict(cue_vx=0.03, cue_s=1.0, cue_dir_imu=True))}
 C5_DETECTOR_KW = dict(on_tilt_deg=3.0, on_w=0.5, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, ref_tau_s=10.0, ref_init_s=1.5, off_contact="any")   # RV4(1004 밤): RV3 + 끄기 접촉 한 발 이상 — 실물 시험 4 패드 0 고착 19 s 재생 해소·시뮬 RV3 와 동일(짝 불일치 0) — 젯슨 미반영(다음 배포 승인)
 

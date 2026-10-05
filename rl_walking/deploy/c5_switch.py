@@ -39,7 +39,7 @@ class SwitchDetector:
 
     def __init__(self, on_tilt_deg: float = 4.0, on_w: float = 0.5, off_tilt_deg: float = 2.5, off_w: float = 0.3,
                  calm_s: float = 1.0, dwell_s: float = 0.4, dt: float = 1.0 / RATE_HZ, ref_tau_s: float = 0.0, ref_cap_deg: float = 8.0, ref_init_s: float = 0.0, off_contact: str = "both",
-                 early=None, refrac=None, in_filt: float = 0.0):
+                 early=None, refrac=None, in_filt: float = 0.0, early_gate=None):
         """ref_tau_s > 0: 기울기를 **기준 자세 대비 편차**로(1004 실물 로그 재생: 실물 서기 기울기 3–4° → 절대 기준이면 회복 모드 70–99 % 체류).
         기준 = 첫 update 의 (롤, 피치), 서기 모드·|ω|<0.1·양발일 때 EMA(τ) 갱신, |ref| ≤ ref_cap_deg. 0 = 절대 기울기(시뮬 SW-1 정의)."""
         self.on_tilt, self.on_w, self.off_tilt, self.off_w = float(on_tilt_deg), float(on_w), float(off_tilt_deg), float(off_w)
@@ -54,6 +54,8 @@ class SwitchDetector:
         self.refrac = None if refrac is None else tuple(float(x) for x in refrac)
         # 1005 krF: 감지 입력(중력 단위벡터·자이로) EMA α (0 = 끔). 정책 입력은 불변 — 감지 전용. 시뮬 --det_filt 와 같은 정의(첫 틱 = 입력값으로 초기화).
         self.in_filt = float(in_filt)
+        # 1005 KE: 조기 복귀 허용 조건 (tilt, w) — 이번 활성화의 최대 기울기 편차·|ω_xy| 가 문턱 이상이었을 때만(작은 오탐은 calm 경로로만 끔). 시뮬 --early_gate 와 같은 정의.
+        self.early_gate = None if early_gate is None else tuple(float(x) for x in early_gate)
         self.off_contact = off_contact   # 1004 밤: 끄기 조건 접촉 요구 — 실물 패드 0(무응답·무부하)로 회복 모드 고착(시험 4, 검토 7회차)
         self.reset()
 
@@ -68,6 +70,7 @@ class SwitchDetector:
         self.n_early = 0
         self.t_since_early = 1e9
         self._fg = None; self._fw = None
+        self.pk_tilt = 0.0; self.pk_w = 0.0
 
     @staticmethod
     def tilt_deg(gravity_unit) -> float:
@@ -112,6 +115,10 @@ class SwitchDetector:
         if self.early is not None:
             _tm, _tt, _tw, _th = self.early
             ec = self.mode == 1 and self.t_on >= _tm and tilt < _tt and w < _tw and bool(c[0] and c[1])
+            if self.early_gate is not None:
+                self.pk_tilt = max(self.pk_tilt, tilt) if self.mode == 1 else 0.0
+                self.pk_w = max(self.pk_w, w) if self.mode == 1 else 0.0
+                ec = ec and (self.pk_tilt >= self.early_gate[0] or self.pk_w >= self.early_gate[1])
             self.early_hold = self.early_hold + self.dt if ec else 0.0
             if self.mode == 1 and self.early_hold >= _th and not off:
                 off = True; self.n_early += 1; self.t_since_early = -self.dt   # 아래에서 +dt → 이번 틱 0

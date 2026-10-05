@@ -123,6 +123,7 @@ parser.add_argument("--sw_refrac", type=str, default="", help="1005: 조기 복�
 parser.add_argument("--cue_end_back", type=str, default="", help="1005 H-B1: cue 를 몸통이 뒤로 돌아서는 순간 종료 'pitch_deg,wy' — 기준 대비 피치 < −pitch_deg 또는 IMU ω_y < −wy (IMU 만)")
 parser.add_argument("--det_from_obs", action="store_true", help="1005 검토 14: 감지기·cue 방향·조기 복귀 입력을 참값 대신 정책 관측 최신 프레임(지연·잡음 자이로·중력, 실물 계약 패드 0/1)으로 — 배포 브리지 입력과 같은 성질")
 parser.add_argument("--det_filt", type=float, default=0.0, help="1005 KD: --det_from_obs 감지 입력(자이로·중력)에 EMA α (0 = 끔, 0.5 ≈ 2틱) — 브리지 구현 가능한 감지 전용 필터(정책 입력 불변)")
+parser.add_argument("--early_gate", type=str, default="", help="1005 KE: 조기 복귀는 켜진 뒤 최대 기울기 편차 ≥ tilt° 또는 최대 |ω_xy| ≥ w 였던 활성화에만 허용 'tilt,w' — 작은 오탐은 종전 calm 1 s 경로로만 꺼짐(채터 억제)")
 parser.add_argument("--cue_clock", type=str, default="", choices=("", "reset"), help="1005 D: cue 시작 시 회복 정책 관측 gait_clock 을 '하중 적은 발이 바로 스윙' 위상에서 재시작(cue 동안만; 이후 환경 클록)")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
@@ -864,6 +865,12 @@ for i in range(STEPS):
             if args_cli.sw_early_imu:
                 _im, _it, _iw, _ih = [float(x) for x in args_cli.sw_early_imu.split(',')]
                 _ec2 = sw_mode & (sw_t_on >= _im) & (_tilt < _it) & (_w < _iw) & _cf[:, 0] & _cf[:, 1]
+                if args_cli.early_gate:
+                    _gt, _gw = [float(x) for x in args_cli.early_gate.split(",")]
+                    if "eg_pt" not in dir():
+                        eg_pt = torch.zeros(N, device=dev); eg_pw = torch.zeros(N, device=dev)
+                    eg_pt = torch.where(sw_mode, torch.maximum(eg_pt, _tilt), torch.zeros_like(eg_pt)); eg_pw = torch.where(sw_mode, torch.maximum(eg_pw, _w), torch.zeros_like(eg_pw))
+                    _ec2 = _ec2 & ((eg_pt >= _gt) | (eg_pw >= _gw))
                 early_hold = torch.where(_ec2, early_hold + 0.02, torch.zeros_like(early_hold))
                 _eoff = sw_mode & (early_hold >= _ih)
                 _swoff = _swoff | _eoff

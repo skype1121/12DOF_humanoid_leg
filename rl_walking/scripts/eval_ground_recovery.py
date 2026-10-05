@@ -120,6 +120,7 @@ parser.add_argument("--cue_align", type=str, default="", help="1005 (B) 정착: 
 parser.add_argument("--cue_dir_imu", action="store_true", help="1005 배포 가능 신호: cue 방향 = 켜짐 순간 IMU 피치 각속도 ω_y > 0(앞으로 기우는 중) — 참 몸통 속도 대신")
 parser.add_argument("--sw_early_imu", type=str, default="", help="1005 배포 가능 조기 복귀 'tmin,tilt,w,hold': 켜진 뒤 tmin s, 감지기 기울기<tilt°·|ω_xy|<w·양발 접촉(0/1) 이 hold s 유지 → 회복 해제(참 속도·접촉 힘 미사용)")
 parser.add_argument("--sw_refrac", type=str, default="", help="1005: 조기 복귀 뒤 불응기 's,tilt,w' — 조기 복귀 후 s 초 동안은 기울기>tilt° 또는 |ω|>w 일 때만 다시 켬(모드 왕복 억제)")
+parser.add_argument("--cue_end_back", type=str, default="", help="1005 H-B1: cue 를 몸통이 뒤로 돌아서는 순간 종료 'pitch_deg,wy' — 기준 대비 피치 < −pitch_deg 또는 IMU ω_y < −wy (IMU 만)")
 parser.add_argument("--cue_clock", type=str, default="", choices=("", "reset"), help="1005 D: cue 시작 시 회복 정책 관측 gait_clock 을 '하중 적은 발이 바로 스윙' 위상에서 재시작(cue 동안만; 이후 환경 클록)")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
@@ -906,6 +907,10 @@ for i in range(STEPS):
                     _end = cue_act & ((t_rel - cue_t0) >= float(args_cli.sw_rec_vx_s))
                 else:
                     _end = torch.zeros_like(cue_act)
+                if args_cli.cue_end_back:
+                    _bp, _bw = [float(x) for x in args_cli.cue_end_back.split(",")]
+                    _prel = (_rp2[:, 1] - sw_ref[:, 1]) if ("sw_ref" in dir() and "_rp2" in dir()) else _rp()[0]
+                    _end = _end | (cue_act & ((_prel < -_bp) | (robot.data.root_ang_vel_b[:, 1] < -_bw)))
                 cue_end_rec = torch.where(_end & torch.isnan(cue_end_rec), torch.full_like(cue_end_rec, t_rel), cue_end_rec) if "cue_end_rec" in dir() else torch.where(_end, torch.full((N,), t_rel, device=dev), torch.full((N,), float('nan'), device=dev))
                 cue_act = cue_act & ~_end; cue_done = (cue_done | _end) & sw_mode
                 _vxm_ = cue_act & sw_mode

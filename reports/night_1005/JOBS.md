@@ -46,3 +46,5 @@
 | 1006 | PA1 | — | 22300 KILL → H1 미지지 → NEXT=WRAPFIT | — |
 | 1006 | 대조 C | — | 학습 붕괴(대조 무효) → WSTEER KILL 유지 + 사후 진단 26300 | — |
 | 1006 | diag2.sh PID 2446326: PA1 끝 평가 뒤 WRAPFIT(rd3·rh2·pa1 × C5 래퍼 없음) → WS26300(WSTEER·C α1/α0) | "WRAPFIT 끝"·"WS26300 끝" in scratchpad/diag2.out | ground_recovery_wf*·walk_eval_*_26300_* | 감시 bz32m027q, (WS26300) |
+| 1006 | CSTAB(cstab.sh PID 2447388: W2q 이어학습 seed 2, 1000) | "CSTAB 끝" in scratchpad/cstab.out | train_cstab.log 에피소드 길이 | 감시 bs6dp647h |
+| 1006 | 지연 감소 구현 서브에이전트(worktree, 젯슨·실CAN 금지, vcan 벤치) | 완료 알림 | 브랜치 커밋 | 검토 후 병합(배포는 승인 대상) |

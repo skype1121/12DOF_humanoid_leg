@@ -2805,3 +2805,27 @@ class Biped12HangStandW2q2eEnvCfg(Biped12HangStandW2q2EnvCfg):
         super().__post_init__()
         self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={})
         self.curriculum = None
+
+
+
+@configclass
+class Biped12HangStandW2rEnvCfg(Biped12HangStandW2qEnvCfg):
+    """WR (1005, 보행 트랙, 마감 전 마지막 구조 대안): W2q + **Raibert형 몸 기준 착지 목표**(walk-these-ways 형) — 진행 보상(swing_progress, 이륙 기준 5 cm 포화)을 착지 사건 보상으로 교체:
+    착지 스윙발의 골반 기준 앞축 위치 x_l 이 x_t = v_cmd/(4f) + 0.24·(v − v_cmd) 에 가까울수록 exp(−((x_l−x_t)/3 cm)²), 가중 5(착지 사건과 같은 크기).
+    근거(W2q·W2q2 단계 분해): 명령→cadence 는 전달, 스윙당 이동이 cadence 에 반비례(보폭 단계 끊김). 이륙 기준 보폭 기준(W2q2)은 무효 → 몸 기준·속도 피드백 착지 목표."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.sb0.params = dict(self.events.sb0.params, raibert=True)
+        self.rewards.swing_progress = None
+        self.rewards.raibert_land = RewTerm(func=mdp_hang.sb0_value, weight=5.0, params={"name": "ev_rai"})
+
+
+@configclass
+class Biped12HangStandW2reEnvCfg(Biped12HangStandW2rEnvCfg):
+    """WR 평가용 + 회전 보조 훅(TURN_ALPHA)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={})
+        self.curriculum = None

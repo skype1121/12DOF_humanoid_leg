@@ -2297,7 +2297,7 @@ def _sb0(env):
         st = {"prev_c": torch.ones(N, 2, device=dev), "air_t": z(N, 2), "lift_xy": z(N, 2, 2), "lift_z": z(N, 2), "valid": z(N, 2),
               "half": torch.full((N,), -1.0, device=dev), "td_done": z(), "load_done": z(), "settle_done": z(), "load_t": z(), "settle_t": z(),
               "r_transfer": z(), "r_asym": z(), "ev_miss": z(), "r_unload": z(), "r_clear": z(), "r_prog": z(), "ev_td": z(), "ev_load": z(), "ev_settle": z(), "r_prem": z(),
-              "n_sched": z(), "n_td": z(), "ev_cap": z()}
+              "n_sched": z(), "n_td": z(), "ev_cap": z(), "ev_rai": z()}
         env._sb0 = st
     return st
 
@@ -2306,7 +2306,8 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
              fz_sw_hi: float = 0.5, fz_sw_lo: float = 0.175, td_air_s: float = 0.06, lift_dz: float = 0.01,
              clr_lo: float = 0.015, clr_hi: float = 0.04, prog_sat: float = 0.05, disp_lo: float = 0.03, disp_hi: float = 0.10,
              load_frac: float = 0.25, load_s: float = 0.10, settle_s: float = 0.06, prem_fz: float = 0.6, td_any_dir: bool = False,
-             threshold: float = 5.0, asset_cfg=None, disp_hi_rec: float | None = None, cap_on: bool = False, stride_scale: bool = False):
+             threshold: float = 5.0, asset_cfg=None, disp_hi_rec: float | None = None, cap_on: bool = False, stride_scale: bool = False,
+             raibert: bool = False, rai_k: float = 0.24, rai_sig: float = 0.03):
     """mode="interval"(0 s): STEP-B0 접촉 일정 추적·보상 값 계산(스텝 모드에서만 0 아님).
     td_any_dir(1004 A0b): 착지 이벤트 변위 조건을 앞축 [disp_lo, disp_hi] 대신 **방향 무관 수평** [0.02, disp_hi] 로 — primitive 단계에서 제자리·옆 스텝 허용.
     전환: r = ramp(지지 Fz/mg: 0.5→0.85) × ramp(스윙 Fz/mg: 0.5→0.175) — 성공 스텝의 이륙 순간 0.9/0.17 을 목표로.
@@ -2384,6 +2385,15 @@ def sb0_step(env, env_ids, freq: float = 1.1, walk_min: float = 0.03, fz_st_lo: 
         st["ev_cap"] = _capture_margin_ev(asset, _tdc, fp)
     td = landed[ar, sw] & (st["valid"][ar, sw] > 0.5) & disp_ok & (st["td_done"] < 0.5) & (mode > 0.5)
     st["ev_td"] = td.float(); st["td_done"] = torch.maximum(st["td_done"], st["ev_td"]); st["n_td"] += st["ev_td"]
+    if raibert:      # 1005 WR: Raibert형 몸 기준 착지 목표 — 착지 스윙발의 골반 기준 앞축 위치 vs v_cmd/(4f) + k·(v − v_cmd), 가우시안(σ rai_sig)
+        _vc = env.command_manager.get_command("base_velocity")[:, 0]
+        _fq = getattr(env, "_gf", None); _fq = _fq if _fq is not None else torch.full_like(_vc, freq)
+        _vb = (asset.data.root_lin_vel_w[:, :2] * hx).sum(-1)
+        _xt = _vc / (4.0 * _fq) + rai_k * (_vb - _vc)
+        _xl = ((fxy[ar, sw] - asset.data.root_pos_w[:, :2]) * hx).sum(-1)
+        st["ev_rai"] = torch.where(td, torch.exp(-((_xl - _xt) / rai_sig) ** 2), torch.zeros_like(_xl))
+    else:
+        st["ev_rai"] = torch.zeros_like(st["ev_td"])
     st["valid"] = torch.where(landed, torch.zeros_like(st["valid"]), st["valid"])
     ld = (st["td_done"] > 0.5) & (st["load_done"] < 0.5) & (fz_sw > load_frac)
     st["load_t"] = torch.where(ld, st["load_t"] + dt, torch.zeros_like(st["load_t"]))

@@ -702,6 +702,9 @@ _NAN_ = lambda: torch.full((N,), float('nan'), device=dev)
 to_first_t = _NAN_(); td_first_t = _NAN_(); load_first_t = _NAN_(); rec_off_t = _NAN_(); cue_end_rec = _NAN_()
 to_after_cue = torch.zeros(N, device=dev); cue_xy0 = torch.full((N, 2), float('nan'), device=dev); xy_last = torch.zeros(N, 2, device=dev)
 osc_flag_post = torch.zeros(N, dtype=torch.bool, device=dev)
+# 1005 밤 자세 복귀(posture restoration): 기준 = 외란 직전 자세(env 별 정상 서기). 복귀 = 기울기 편차 < 2°·|ω| < 0.2·양발·관절 평균 편차 < 3° 가 0.5 s 유지
+pr_q0 = None; pr_rp0 = None; pr_h0 = None; pr_hold = torch.zeros(N, device=dev); rest_t = torch.full((N,), float('nan'), device=dev)
+end_dq = torch.full((N,), float('nan'), device=dev); end_dh = torch.full((N,), float('nan'), device=dev); end_dt = torch.full((N,), float('nan'), device=dev); end_w = torch.full((N,), float('nan'), device=dev)
 # 1005 ③a 진단: 외란 뒤 1·2번째 착지의 캡처 여유(발 − ξ, 몸통 앞/왼축, cm)·걸음 길이·시각·피치·피치율
 _MASS = robot.root_physx_view.get_masses().to(dev).float(); _MTOT = _MASS.sum(-1, keepdim=True)
 td_k = torch.zeros(N, dtype=torch.long, device=dev)
@@ -1120,6 +1123,16 @@ for i in range(STEPS):
             _n18 = _ok_ & _bothc & (_sep < 0.18) & torch.isnan(t_sep18)
             t_sep18 = torch.where(_n18, torch.full_like(t_sep18, t_rel), t_sep18)
             h_min_post = torch.where(_ok_, torch.minimum(h_min_post, robot.data.root_pos_w[:, 2]), h_min_post)
+            _pp3, _rr3 = _rp(); _rpn = torch.stack([_rr3, _pp3], -1)
+            if pr_q0 is None:
+                pr_q0 = robot.data.joint_pos.clone(); pr_rp0 = _rpn.clone(); pr_h0 = robot.data.root_pos_w[:, 2].clone()
+            _dq3 = torch.rad2deg((robot.data.joint_pos - pr_q0).abs()).mean(-1); _dt3 = (_rpn - pr_rp0).norm(dim=-1)
+            _dh3 = 100.0 * (robot.data.root_pos_w[:, 2] - pr_h0); _w3 = robot.data.root_ang_vel_b[:, :2].norm(dim=-1)
+            _rok = _ok_ & (_dt3 < 2.0) & (_w3 < 0.2) & _bothc & (_dq3 < 3.0)
+            pr_hold = torch.where(_rok, pr_hold + 0.02, torch.zeros_like(pr_hold))
+            if dists and t_rel >= max(d.t0 for d in dists) + 0.3:
+                rest_t = torch.where((pr_hold >= 0.5) & torch.isnan(rest_t), torch.full_like(rest_t, t_rel - min(d.t0 for d in dists)), rest_t)
+            end_dq = torch.where(_ok_, _dq3, end_dq); end_dh = torch.where(_ok_, _dh3, end_dh); end_dt = torch.where(_ok_, _dt3, end_dt); end_w = torch.where(_ok_, _w3, end_w)
             lat_roll_max = torch.where(_ok_, torch.maximum(lat_roll_max, roll.abs()), lat_roll_max)
             _vl = (robot.data.root_lin_vel_w[:, :2] * _fl_[:, :2]).sum(-1).abs()
             lat_v_max = torch.where(_ok_, torch.maximum(lat_v_max, _vl), lat_v_max)
@@ -1361,7 +1374,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s", "cue_end_t", "cue_time_s", "to_first_t", "td_first_t", "load_first_t", "to_after_cue", "drift_after_cue_cm", "rec_off_t", "osc_flag_post"] if policy2 is not None else []) + ["td1_t", "td1_mf_cm", "td1_ml_cm", "td1_len_cm", "td1_pitch", "td1_prate", "td2_t", "td2_mf_cm", "td2_ml_cm", "td2_len_cm", "td2_pitch", "td2_prate"])
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s", "cue_end_t", "cue_time_s", "to_first_t", "td_first_t", "load_first_t", "to_after_cue", "drift_after_cue_cm", "rec_off_t", "osc_flag_post"] if policy2 is not None else []) + ["td1_t", "td1_mf_cm", "td1_ml_cm", "td1_len_cm", "td1_pitch", "td1_prate", "td2_t", "td2_mf_cm", "td2_ml_cm", "td2_len_cm", "td2_pitch", "td2_prate", "rest_t", "end_dq_deg", "end_dh_cm", "end_dtilt_deg", "end_w"])
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -1390,6 +1403,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
             _dr_ = (100.0 * float((xy_last[e] - cue_xy0[e]).norm())) if not math.isnan(float(cue_xy0[e, 0])) else ""
             row += [_fx_(cue_end_rec[e]), round(_ct_, 2), _fx_(to_first_t[e]), _fx_(td_first_t[e]), _fx_(load_first_t[e]), float(to_after_cue[e]), (round(_dr_, 1) if _dr_ != "" else ""), _fx_(rec_off_t[e]), int(osc_flag_post[e])]
         row += [("" if math.isnan(float(TDM[k][e])) else round(float(TDM[k][e]), 2)) for k in ('t1','mf1','ml1','len1','p1','pr1','t2','mf2','ml2','len2','p2','pr2')]
+        row += [("" if math.isnan(float(x[e])) else round(float(x[e]), 3)) for x in (rest_t, end_dq, end_dh, end_dt, end_w)]
         wcsv.writerow(row)
 if _VID is not None and _VID["n"] > 0:
     import subprocess  # noqa: E402

@@ -2861,6 +2861,19 @@ class Biped12HangStandW2omMEnvCfg(Biped12HangStandW2omAEnvCfg):
 
 
 @configclass
+class Biped12HangStandW2omPEnvCfg(Biped12HangStandW2omAEnvCfg):
+    """W2omP (1006, 제자리 걸음(march) 1단계 — cadence 만): W2omA + ① 회전 범주 제자리 착지 사건(omni_inplace, ≥ 0.5 cm) ② 명령 = 앞 50·제자리(회전 범주, wz 는 걷기 모드 신호) 50 %
+    ③ 굽힘 보조는 제자리 범주만(α 감쇠) — **피드포워드 없음**(W2omL·W2omM 의 걸음 억제 원인 후보 제외). 초기화는 STEP 원형 A0m 14299(앞 편향 약함).
+    근거: A0MT — 걸음 촉발 = vx 명령 관측(제자리 명령에 cadence 0); W2omA(사건 ≥ 2 cm)는 0.17 평탄, W2omM(피드포워드 추가)는 억제."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.omni.params = {"wz_min": 0.1, "mix": (("fwd", 0.5), ("back", 0.0), ("lat", 0.0), ("turn", 0.5), ("fwd_turn", 0.0))}
+        self.events.omni_assist.params = {"cats": (3,)}
+        self.events.sb0.params = dict(self.events.sb0.params, omni_inplace=True)
+
+
+@configclass
 class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
     """W2om 평가용: + 회전 보조 훅(TURN_ALPHA, 0 이면 무동작) — W2qe 와 같은 평가 조건."""
 

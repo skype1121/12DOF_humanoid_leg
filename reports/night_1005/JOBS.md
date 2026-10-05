@@ -59,3 +59,9 @@
 | 1006 | SRTURN(srturn.sh PID 2506895: vx 0.03/0.05 + HTURN2 ±90°) | "SRTURN 끝" in scratchpad/srturn.out | walk_eval_srturn_v*.txt | 감시 bbrmnuyld |
 | 1006 | SRTURN | — | COMPLETED → 기각 → NEXT=W2omM | — |
 | 1006 | W2omM(w2omm.sh PID 2513099: 600 반복 → 26700·끝 평가 α_turn 1.5) | "W2omM 학습 시작/끝/W2omM 끝" in scratchpad/w2omm.out | walk_eval_w2omM_* | 감시 btopb2u94(+300 블록) |
+| 1006 | DLYGAIN | — | COMPLETED → ANALYZED → DECISION(지연 단축 배포 근거, 승인 요청 대상) | — |
+| 1006 | 콘솔 STAGE8_LATENCY_OPTS(5814c5c7, 로컬) | — | 테스트 51 passed | — |
+| 1006 | W2omM | — | +300 KILL(걸음 억제), 명시 PID 종료 | — |
+| 1006 | A0MT(a0mt.sh: A0m 14299 × omni 게이트 × α 0/1.5) | "A0MT 끝" in scratchpad/a0mt.out | walk_eval_a0mt_a*.txt | 감시 btqo17yor |
+| 1006 | A0MT | — | 기각(vx 관측이 걸음 촉발) → NEXT=W2omP | — |
+| 1006 | W2omP(w2omp.sh PID 2524339: A0m 14299 → 600 반복 → 끝 평가) | "W2omP 학습 시작/끝/W2omP 끝" | walk_eval_w2omP_* | 감시 bgqzqiv0t(+300 블록) |

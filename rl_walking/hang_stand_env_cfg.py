@@ -2462,6 +2462,18 @@ class Biped12HangStandG24RaEnvCfg(Biped12HangStandW2eEnvCfg):
 
 
 @configclass
+class Biped12HangStandG24RaR4EnvCfg(Biped12HangStandG24RaEnvCfg):
+    """G24R-a-R4 (1006, RH2): G24R-a + **외란 단계 R3 → R4 고정**(앞 램프 12–15 N, 충격 ×1.5 = 18–22.5 N × 0.2–0.4 s ≈ 3.6–9 N·s, 뒤 18 N) 단일 변경.
+    근거(검토자): 평가 sf15(15 N)·fi40/fs80(8 N·s)이 R3 학습 분포(앞 10–12 N, 3–7.2 N·s) 밖 — 이어학습 표류가 '분포 밖 영역 미구속'(H2) 탓인지 가른다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        d = self.events.disturbance
+        assert d.params.get("stage_override") == 2
+        d.params = dict(d.params, stage_override=3)
+
+
+@configclass
 class Biped12HangStandG24RaD5EnvCfg(Biped12HangStandG24RaEnvCfg):
     """G24R-a-D5 (1006): G24R-a + **행동 지연 0–3 → 1–5 틱** 단일 변경(이어 학습, 대조 = 같은 경로 G24R-a 0–3 이어 학습).
     근거: A-DEC(지연 1→4 sf15 낙상 14→41 %)·DSW(착지 앞·뒤 지연 모두 해, fi40 은 착지 뒤 지연 1→4 15→39 %) — 회복 정책은 0–3 만 봤다."""
@@ -2822,6 +2834,19 @@ class Biped12HangStandW2omAEnvCfg(Biped12HangStandW2omEnvCfg):
 
 
 @configclass
+class Biped12HangStandW2omLEnvCfg(Biped12HangStandW2omAEnvCfg):
+    """W2omL (1006, 옆걸음 기술): W2omA + **옆 방향 보조**(hip_a 잔차 ky 2 rad/(m/s), DIRCAL 채택 부호 B = raw (+,+)) + 굽힘 펄스, 둘 다 옆 범주만·같은 α 감쇠
+    + **명령 범주 = 앞 60 %·옆 40 %**(풀 수 없는 뒤·회전 제외 — W2om 대조의 전방향 붕괴 방지).
+    근거: DIRCAL — 옆은 기준 궤적으로 방향이 생김(+0.08→+0.058, −0.08→−0.096), 회전 12–14 %·뒤 0 은 기각."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.omni.params = {"wz_min": 0.1, "mix": (("fwd", 0.6), ("back", 0.0), ("lat", 0.4), ("turn", 0.0), ("fwd_turn", 0.0))}
+        self.events.dir_assist = EventTerm(func=mdp_hang.install_dir_assist, mode="startup", params={"ky": -2.0})
+        self.events.omni_assist.params = {"cats": (2,), "dir_too": True}
+
+
+@configclass
 class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
     """W2om 평가용: + 회전 보조 훅(TURN_ALPHA, 0 이면 무동작) — W2qe 와 같은 평가 조건."""
 
@@ -2840,6 +2865,23 @@ class Biped12HangStandW2omdEnvCfg(Biped12HangStandW2omeEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.dir_assist = EventTerm(func=mdp_hang.install_dir_assist, mode="startup", params={})
+
+@configclass
+class Biped12HangStandW2qSEnvCfg(Biped12HangStandW2qEnvCfg):
+    """WSTEER (1006, 요 조향 기술 — 보행 검토자 제안): W2q + 구조 묶음
+    ① 회전 피드포워드 α 1.0 상시(install_turn_assist, 감쇠 없음 — 배포 제어기 일부) ② joint_deviation_hip 기준점 = 기본자세 + 피드포워드 잔차
+    ③ 걷기 요 추종 = 반주기 평균(track_yaw_rate_halfcycle, std 0.25, 가중 1.5) ④ 명령: vx U(0.05,0.15), wz 50 % ±U(0.15,0.35)·50 % 0, vy 0.
+    근거 STEER(정책 요 무시, 피드포워드 인과 28–59 %) + W2-10 decision(회전 이득 ≈ 정자세 기준 손해). 대조 C = W2q 같은 반복 이어학습."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={"alpha0": 1.0})
+        self.events.steer_cmd = EventTerm(func=mdp_hang.install_steer_cmd, mode="startup", params={})
+        self.curriculum = None
+        t = self.rewards.joint_deviation_hip
+        self.rewards.joint_deviation_hip = RewTerm(func=mdp_hang.joint_deviation_l1_ff, weight=t.weight, params=dict(t.params))
+        self.rewards.track_ang_vel_walk = RewTerm(func=mdp_hang.track_yaw_rate_halfcycle, weight=1.5, params={"std": 0.25})
+
 
 @configclass
 class Biped12HangStandW2q2EnvCfg(Biped12HangStandW2qEnvCfg):

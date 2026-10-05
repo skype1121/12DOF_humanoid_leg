@@ -2602,7 +2602,7 @@ def step_assist_curriculum(env, env_ids, alphas: tuple = (2.0, 1.5, 1.0, 0.5, 0.
 
 
 def omni_assist_update(env, env_ids, alphas: tuple = (1.0, 0.75, 0.5, 0.25, 0.0), cats: tuple = (1, 2, 3), min_sched: float = 20000.0,
-                       min_full: float = 0.5, min_iters: int = 50, steps_per_iter: int = 24):
+                       min_full: float = 0.5, min_iters: int = 50, steps_per_iter: int = 24, dir_too: bool = False):
     """mode="interval"(0 s) — 1006 W2omA: 스텝 보조(install_step_assist 굽힘 펄스)를 **명령 범주 cats(뒤·옆·회전)** env 에만 env 별 α 로.
     감쇠는 그 범주의 블록 하중 수용률(load 사건 / 예정 반주기) ≥ min_full 일 때만(앞 범주는 이미 걷기 때문에 전체 통계로 감쇠하면 안 됨).
     α 가 마지막 단계(0)면 순수 정책. 합격 판정은 평가(α 0)에서."""
@@ -2628,6 +2628,8 @@ def omni_assist_update(env, env_ids, alphas: tuple = (1.0, 0.75, 0.5, 0.25, 0.0)
             g["stage"] += 1; g["since"] = it
         g["n_s"] = g["n_td"] = g["n_ld"] = 0.0
     env._assist_alpha_env = alphas[g["stage"]] * sel.float()
+    if dir_too:     # 1006 W2omL: 방향 보조(install_dir_assist)도 같은 α·같은 범주
+        env._dir_alpha_env = env._assist_alpha_env
 
 
 def step_lift_support(env, env_ids, frac: float = 0.2, walk_min: float = 0.03, asset_cfg=None):
@@ -2851,6 +2853,10 @@ def install_turn_assist(env, env_ids, freq: float = 1.1, walk_min: float = 0.03,
         target = target.clone()
         target[:, iL] = target[:, iL] + amp * shL
         target[:, iR] = target[:, iR] + amp * shR
+        ff = getattr(env, "_ff_res", None)          # 1006 WSTEER: 피드포워드 잔차 기록(편차 벌점 기준점 이동용)
+        if ff is None or ff.shape != target.shape:
+            ff = torch.zeros_like(target); env._ff_res = ff
+        ff.zero_(); ff[:, iL] = amp * shL; ff[:, iR] = amp * shR
         return target
 
     term.pre_delay_hook = hook
@@ -2895,6 +2901,39 @@ def install_dir_assist(env, env_ids, kx: float = 0.0, ky: float = 0.0, kz: float
         return target
 
     term.pre_delay_hook = hook
+
+
+def joint_deviation_l1_ff(env, asset_cfg=None) -> torch.Tensor:
+    """1006 WSTEER: joint_deviation_l1 의 기준점 = 기본자세 + 회전 피드포워드 잔차(env._ff_res, 없으면 0) — 피드포워드가 만든 hip_r 이동은 벌하지 않음."""
+    from isaaclab.managers import SceneEntityCfg as _SEC
+    asset_cfg = asset_cfg or _SEC("robot")
+    asset = env.scene[asset_cfg.name]
+    ids = asset_cfg.joint_ids
+    dev = asset.data.joint_pos - asset.data.default_joint_pos
+    ff = getattr(env, "_ff_res", None)
+    if ff is not None:
+        dev = dev - ff
+    return torch.sum(torch.abs(dev[:, ids]), dim=1)
+
+
+def install_steer_cmd(env, env_ids, p_turn: float = 0.5, vx=(0.05, 0.15), wz=(0.15, 0.35)):
+    """mode="startup" — 1006 WSTEER: 명령 리샘플 후 걷기 env 를 vx U(vx), vy 0, wz = 확률 p_turn 로 ±U(wz) 아니면 0 (서기 env 는 그대로 0)."""
+    term = env.command_manager.get_term("base_velocity")
+    orig = term._resample_command
+
+    def _resample(ids):
+        orig(ids)
+        ids = torch.as_tensor(ids, device=env.device, dtype=torch.long) if not isinstance(ids, slice) else torch.arange(env.num_envs, device=env.device)
+        n = ids.numel()
+        if n == 0:
+            return
+        c = term.vel_command_b
+        c[ids, 0] = torch.empty(n, device=env.device).uniform_(*vx); c[ids, 1] = 0.0
+        sg = torch.where(torch.rand(n, device=env.device) < 0.5, -1.0, 1.0)
+        on = (torch.rand(n, device=env.device) < p_turn).float()
+        c[ids, 2] = on * sg * torch.empty(n, device=env.device).uniform_(*wz)
+
+    term._resample_command = _resample
 
 
 def turn_assist_curriculum(env, env_ids, alphas: tuple = (2.0, 1.5, 1.0, 0.5, 0.25, 0.0), min_samples: float = 2.0e5, min_iters: int = 50,

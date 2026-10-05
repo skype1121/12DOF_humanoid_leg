@@ -24,3 +24,15 @@
 | 1006 | W2omA 2차(정상 기동 04:14) | — | +300 KILL(하중 수용 0.167) → 명시 PID 종료 → DECISION(LOG) | — |
 | 1006 | 평가: w2omA_26400_omni·w2om_27000_omni_ctl(w2oma2.sh) + 진단 α=1 강제 w2omA_26400_a1diag(diag_a1.sh PID 2330665) | "W2omA 평가 끝"·"진단 a1 끝" | walk_eval_*.txt | 감시 bjn2h2llm |
 | 1006 | rd3 학습(rd3.sh, 04:0x 시작) → rd3 KE 평가 → "RD 끝" | rd.out | ground_recovery_rd3d* | 감시 bbk2ox40x(짝 비교) |
+| 1006 | DIRCAL(dircal.sh; 1차는 --cmd_set 음수 인자 argparse 오류로 40분 대기 위험 → PID 종료·수정 재기동) | "DIRCAL 끝" | walk_eval_dircal_{A,B} | COMPLETED → ANALYZED → DECISION(옆 B 채택, 뒤·회전 기각) → NEXT=W2omL |
+| 1006 | W2omL 학습+평가(w2oml.sh PID 2345967, GPU 가드·기동 실패 재시도) | "W2omL 학습 시작(정상)/학습 끝/평가 끝" in scratchpad/w2oml.out | walk_eval_w2omL_*_omni | 감시 bqtx6ccn7(+300 블록) |
+| 1006 | RD | — | COMPLETED → ANALYZED → DECISION(사전 성공 미달·kill 아님, KE 유지; 이어학습 표류 발견) → NEXT=RDS | — |
+| 1006 | RDS 선별(rds.sh PID 2350685: rd5 21900/22100/22300/22500 × sf15·fi40 × seed 1, d3) | "RDS 선별 끝" in scratchpad/rds.out | ground_recovery_rds*d3_* | 감시 bv3w6plul |
+| 1006 | RDS | — | COMPLETED → KILL(통과 0) → RD 계보 종료 | — |
+| 1006 | W2omL | — | +300 KILL(하중 수용 0.001) → 명시 PID 종료(w2oml.sh 는 끝 체크포인트 정보용 평가로 진행) | — |
+| 1006 | 서브에이전트 2(보행 구조 검토 · 회복 파이프라인 정렬 학습 설계) | 완료 알림 | 대화 내 보고 | 결과 대조 후 선별 반영 |
+| 1006 | STEER 진단(steer.sh PID 2358420: W2q 25590 × TURN_ALPHA 0/1/2) | "STEER 끝" in scratchpad/steer.out | walk_eval_steer_a*.txt | 감시 b7vyg0dnk |
+| 1006 | STEER | — | COMPLETED(α0 재실행 포함) → ANALYZED → DECISION(부분 효과, 채택·기각 아님) | — |
+| 1006 | W2qT | — | 시작 전 철회(WT1 중복) | — |
+| 1006 | RH2(rh2.sh PID 2365498: G24RaR4 이어학습 1000 → KE d3·d4 + 22300) | "RH2 끝" in scratchpad/rh2.out | ground_recovery_rh2* | 감시 b1jk9tu6e |
+| 1006 | WSTEER(wsteer.sh PID 2368272): W2qS 학습(05:12 정상) + 25900 평가 + 대조 C(W2q 이어학습, RH2 학습 끝 뒤) + 끝 평가(α1 s1·s2, α0 s1) | "WSTEER 300 평가 끝"·"WSTEER 끝" in scratchpad/wsteer.out | walk_eval_wsteer_*·w2qC_* | 감시 +300 bdtb… (아래) |

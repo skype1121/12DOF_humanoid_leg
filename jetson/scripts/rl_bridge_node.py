@@ -1683,8 +1683,9 @@ class HangGuard:
 #: touchdown_start 가 없으면 이 게이트는 만들어지지도 않는다(종전 동작 불변, 셀프테스트 고정).
 TD_CONFIRM_S = CONTACT_CONFIRM_S   # 양발 접촉 지속 [s] — 행잉 ARM 의 접지 확인과 같은 값
 TD_QUIET_W = 0.3                   # [rad/s] |ω_xy| 정착 문턱 — C5 감지기 off_w 와 같은 값(켜기 0.5 보다 낮다: 시작 직후 오탐 방지)
-TD_QUIET_S = 0.1                   # 정착 연속 시간 [s]
-TD_SETTLE_MAX_S = 1.0              # 양발 확인 뒤 정착 대기 상한 — 넘으면 시작(계속 흔들리면 실제 외란 → 정책·회복이 맡는다)
+TD_QUIET_S = 0.5                   # 정착 연속 시간 [s] (1006 DROP2: 0.1 → 0.5)
+TD_SETTLE_MAX_S = 4.0              # 양발 확인 뒤 정착 대기 상한 — 넘으면 시작(계속 흔들리면 실제 외란 → 정책·회복이 맡는다) (1006: 1.0 → 4.0)
+TD_MIN_AFTER_TOUCH_S = 2.0         # 1006 DROP2(시뮬, KE·지연 3·3 cm 낙하): 착지 1.2 s 뒤 시작 = nd 낙상 3.4 %·오탐 14, 2.0 s = 0 %·4 → 첫 양발 접촉 뒤 최소 대기
 TD_WAIT_MAX_S = HANG_MAX_S         # 무장 뒤 착지 대기 상한 — 초과 시 STOP_ALL(동결 = 같은 홀드 유지) + 정책 비활성
 #: 홀드 자세(래치) vs 정책 기본자세 허용 편차 [deg, 관절 최대]. 넘으면 정책을 시작하지 않고 정지(동결 = 같은 홀드).
 #: 근거: 인수 블렌딩이 홀드→정책 기본자세 이동 명령이 된다 — 0918 실물 낙상(힙 15° 차), 0922 발목 +3.9° 차로 전방 기울기.
@@ -1705,8 +1706,9 @@ class TouchdownGate:
     POLICY = "POLICY"
 
     def __init__(self, t0=None, confirm_s=TD_CONFIRM_S, quiet_w=TD_QUIET_W, quiet_s=TD_QUIET_S,
-                 settle_max_s=TD_SETTLE_MAX_S, max_wait_s=TD_WAIT_MAX_S, require_air=True):
+                 settle_max_s=TD_SETTLE_MAX_S, max_wait_s=TD_WAIT_MAX_S, require_air=True, min_after_touch_s=TD_MIN_AFTER_TOUCH_S):
         self.t0 = t0
+        self.min_after_touch_s = float(min_after_touch_s)
         self.confirm_s, self.quiet_w, self.quiet_s = float(confirm_s), float(quiet_w), float(quiet_s)
         self.settle_max_s, self.max_wait_s = float(settle_max_s), float(max_wait_s)
         self.state = self.AIR_CHECK if require_air else self.WAIT
@@ -1777,14 +1779,15 @@ class TouchdownGate:
                 self.quiet_t0 = (self.quiet_t0 if self.quiet_t0 is not None else now) if quiet else None
                 quiet_ok = self.quiet_t0 is not None and now - self.quiet_t0 >= self.quiet_s - 1e-9
                 capped = now - self.settle_t0 >= self.settle_max_s - 1e-9
-                if grav_ok and (quiet_ok or capped):
+                touch_ok = (now - self.settle_t0 + self.confirm_s) >= self.min_after_touch_s - 1e-9   # 첫 양발 접촉 시각 = settle_t0 − confirm_s
+                if grav_ok and touch_ok and (quiet_ok or capped):
                     self.start_kind = "quiet" if quiet_ok else "settle_cap"
                     self.start_t = now
                     self.why = f"착지 확인 — 정책 시작({self.start_kind})"
                     self._go(self.POLICY, now)
                     return "start", self.why
                 self.why = ("중력 게이트 불통과(기울기 과대) — 홀드 유지" if not grav_ok
-                            else f"착지 정착 대기 |ω_xy| {w:.2f} rad/s")
+                            else (f"착지 뒤 최소 대기 {self.min_after_touch_s:.1f} s" if not touch_ok else f"착지 정착 대기 |ω_xy| {w:.2f} rad/s"))
         if now - self.t0 >= self.max_wait_s:
             return "timeout", (f"touchdown_wait_timeout: 착지 자동 인수 대기 {self.max_wait_s:.0f}s 초과 "
                                f"({self.state}) — 정책 미시작")
@@ -2179,20 +2182,21 @@ def _selftest_touchdown_gate():
                 if act != "hold":
                     return act, why, t
         return act, why, t
-    # (1) 정상: 공중 2 s → 착지(조용) — 양발 0.3 s + 정착 0.1 s 뒤 시작, 그 전엔 hold
+    # (1) 정상: 공중 2 s → 착지(조용) — 첫 양발 접촉 뒤 max(최소 대기 2.0 s, 양발 0.3 s + 정착 0.5 s) 에 시작, 그 전엔 hold
     g = TouchdownGate(t0=0.0)
-    act, _, t = run(g, [(2.0, NONE, Q), (1.0, B, Q)])
-    assert act == "start" and g.started and g.start_kind == "quiet" and abs(t - (2.0 + TD_CONFIRM_S + TD_QUIET_S)) < 0.05, (act, t)
+    act, _, t = run(g, [(2.0, NONE, Q), (4.0, B, Q)])
+    _exp = 2.0 + max(TD_MIN_AFTER_TOUCH_S, TD_CONFIRM_S + TD_QUIET_S)
+    assert act == "start" and g.started and g.start_kind == "quiet" and abs(t - _exp) < 0.05, (act, t, _exp)
     assert [s for s, _ in g.pop_transitions()] == [TouchdownGate.WAIT, TouchdownGate.SETTLE, TouchdownGate.POLICY]
     # (2) 착지 채터(0.2 s 접촉/0.1 s 이탈 반복) → 시작 없음, 이후 연속 접촉이면 시작
     g = TouchdownGate(t0=0.0)
     act, _, t = run(g, [(0.5, NONE, Q)] + [(0.2, B, Q), (0.1, L, Q)] * 10)
     assert act == "hold" and not g.started
-    act, _, _ = run(g, [(1.0, B, Q)], t)
+    act, _, _ = run(g, [(3.0, B, Q)], t)
     assert act == "start"
     # (3) 착지 충격(|ω| 0.8) 지속 → 정착 상한 1.0 s 에서 시작(settle_cap), 그 전엔 hold
     g = TouchdownGate(t0=0.0)
-    act, _, t = run(g, [(0.5, NONE, Q), (3.0, B, W)])
+    act, _, t = run(g, [(0.5, NONE, Q), (6.0, B, W)])
     assert act == "start" and g.start_kind == "settle_cap" and abs(t - (0.5 + TD_CONFIRM_S + TD_SETTLE_MAX_S)) < 0.05, (t, g.start_kind)
     # (4) 중력 게이트 불통과 → 양발·정숙이어도 시작 안 함
     g = TouchdownGate(t0=0.0)
@@ -2211,10 +2215,14 @@ def _selftest_touchdown_gate():
     act, _, t = run(g, [(0.5, NONE, Q), (TD_CONFIRM_S + 0.04, B, W), (0.1, NONE, Q), (2.0, L, Q)])
     assert act == "hold" and g.state == TouchdownGate.WAIT, g.state
     # (8) 시작 뒤 상태 고정(되돌아가지 않음)
-    g = TouchdownGate(t0=0.0); run(g, [(0.2, NONE, Q), (1.0, B, Q)])
+    g = TouchdownGate(t0=0.0); run(g, [(0.2, NONE, Q), (3.0, B, Q)])
     assert g.started and g.update(10.0, NONE, Q, False)[0] == "start" and g.started
-    return (f"공중 확인→양발 {TD_CONFIRM_S}s→정착 {TD_QUIET_S}s 시작 · 채터 무시 · 충격 지속 시 상한 {TD_SETTLE_MAX_S}s · "
-            f"중력 불통과 보류 · 선 채 무장 거부 · 대기 상한 timeout · 접촉 상실 복귀 · 단방향 — 8케이스 통과")
+    # (9) 1006: 조용히 착지해도 첫 양발 접촉 뒤 최소 대기 전에는 시작하지 않음
+    g = TouchdownGate(t0=0.0)
+    act, why, t = run(g, [(0.5, NONE, Q), (TD_MIN_AFTER_TOUCH_S - 0.2, B, Q)])
+    assert act == "hold" and not g.started and "최소 대기" in why, (act, why)
+    return (f"공중 확인→양발 {TD_CONFIRM_S}s→착지 뒤 최소 {TD_MIN_AFTER_TOUCH_S}s·정착 {TD_QUIET_S}s 시작 · 채터 무시 · 충격 지속 시 상한 {TD_SETTLE_MAX_S}s · "
+            f"중력 불통과 보류 · 선 채 무장 거부 · 대기 상한 timeout · 접촉 상실 복귀 · 단방향 · 최소 대기 — 9케이스 통과")
 
 
 def run_selftest(required=()):

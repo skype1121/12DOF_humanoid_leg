@@ -121,6 +121,7 @@ parser.add_argument("--cue_dir_imu", action="store_true", help="1005 배포 가�
 parser.add_argument("--sw_early_imu", type=str, default="", help="1005 배포 가능 조기 복귀 'tmin,tilt,w,hold': 켜진 뒤 tmin s, 감지기 기울기<tilt°·|ω_xy|<w·양발 접촉(0/1) 이 hold s 유지 → 회복 해제(참 속도·접촉 힘 미사용)")
 parser.add_argument("--sw_refrac", type=str, default="", help="1005: 조기 복귀 뒤 불응기 's,tilt,w' — 조기 복귀 후 s 초 동안은 기울기>tilt° 또는 |ω|>w 일 때만 다시 켬(모드 왕복 억제)")
 parser.add_argument("--cue_end_back", type=str, default="", help="1005 H-B1: cue 를 몸통이 뒤로 돌아서는 순간 종료 'pitch_deg,wy' — 기준 대비 피치 < −pitch_deg 또는 IMU ω_y < −wy (IMU 만)")
+parser.add_argument("--det_from_obs", action="store_true", help="1005 검토 14: 감지기·cue 방향·조기 복귀 입력을 참값 대신 정책 관측 최신 프레임(지연·잡음 자이로·중력, 실물 계약 패드 0/1)으로 — 배포 브리지 입력과 같은 성질")
 parser.add_argument("--cue_clock", type=str, default="", choices=("", "reset"), help="1005 D: cue 시작 시 회복 정책 관측 gait_clock 을 '하중 적은 발이 바로 스윙' 위상에서 재시작(cue 동안만; 이후 환경 클록)")
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
@@ -814,6 +815,22 @@ for i in range(STEPS):
             _pg = robot.data.projected_gravity_b
             _tilt = torch.rad2deg(torch.acos((-_pg[:, 2]).clamp(-1.0, 1.0))); _w = robot.data.root_ang_vel_b[:, :2].norm(dim=-1)
             _cf = _cs.data.net_forces_w[:, [_fl, _fr], :].norm(dim=-1) > 5.0
+            _gy_det = robot.data.root_ang_vel_b; _pg_det = _pg
+            if args_cli.det_from_obs:
+                if "_DET_OFF" not in dir():
+                    _nmo = list(uenv.observation_manager.active_terms["policy"]); _dmo = uenv.observation_manager.group_obs_term_dim["policy"]
+                    _oo = 0; _DET_OFF = {}
+                    for _n_, _d_ in zip(_nmo, _dmo):
+                        _sz_ = 1
+                        for _v_ in (_d_ if isinstance(_d_, (tuple, list)) else (_d_,)): _sz_ *= int(_v_)
+                        _DET_OFF[_n_] = (_oo, _oo + _sz_); _oo += _sz_
+                    print(f"[det_from_obs] 자이로 {_DET_OFF['base_ang_vel']} 중력 {_DET_OFF['projected_gravity']} 접촉 {_DET_OFF['feet_contact']} 최신 프레임 사용", flush=True)
+                _po_ = obs["policy"]
+                _gy_det = _po_[:, _DET_OFF["base_ang_vel"][1] - 3:_DET_OFF["base_ang_vel"][1]]
+                _pg_det = _po_[:, _DET_OFF["projected_gravity"][1] - 3:_DET_OFF["projected_gravity"][1]]
+                _pg_det = _pg_det / _pg_det.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+                _cf = _po_[:, _DET_OFF["feet_contact"][1] - 2:_DET_OFF["feet_contact"][1]] > 0.5
+                _tilt = torch.rad2deg(torch.acos((-_pg_det[:, 2]).clamp(-1.0, 1.0))); _w = _gy_det[:, :2].norm(dim=-1)
             if args_cli.contact_drop:      # 1004 밤: 패드 고장은 감지기 접촉에도 같게(실물 감지기 = 패드 비트)
                 for _cols, _t0, _d in _CD:
                     if _t0 <= t_rel < _t0 + _d:
@@ -821,6 +838,8 @@ for i in range(STEPS):
                             _cf[:, _c] = False
             if float(args_cli.sw_ref_tau) > 0.0:      # 1004 상대 기울기 감지기(실물 서기 기울기 3–4° 대응)
                 _pp_, _rr_ = _rp(); _rp2 = torch.stack([_rr_, _pp_], -1)
+                if args_cli.det_from_obs:
+                    _rp2 = torch.rad2deg(torch.stack([torch.atan2(_pg_det[:, 1], -_pg_det[:, 2]), torch.atan2(_pg_det[:, 0], -_pg_det[:, 2])], -1))
                 if i == STEPS_PRE or "sw_ref" not in dir():
                     sw_ref = _rp2.clone()
                 if t_rel < float(args_cli.sw_ref_init_s):
@@ -884,7 +903,7 @@ for i in range(STEPS):
                 # cue 상태기: 감지기 새로 켜짐 → 활성, 종료 조건 → 래치 해제(감지기 꺼지면 리셋)
                 _st_on = _new_on & ~cue_act & ~cue_done
                 if args_cli.cue_dir_imu:
-                    _fwd_ = robot.data.root_ang_vel_b[:, 1] > 0.0
+                    _fwd_ = _gy_det[:, 1] > 0.0
                     cue_done = cue_done | (_st_on & ~_fwd_); _st_on = _st_on & _fwd_
                 elif args_cli.cue_dir is not None:
                     _fwd_ = robot.data.root_lin_vel_b[:, 0] > float(args_cli.cue_dir)

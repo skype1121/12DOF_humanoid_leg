@@ -51,3 +51,5 @@
 | 1006 | HTURN(hturn.sh PID 2470347: W2q 25590 + HeadingHold 목표 ±45/±90° × α 1.5/0) | "HTURN 끝" in scratchpad/hturn.out | walk_eval_hturn_a*.txt | 감시 bvdj5x2ml |
 | 1006 | HTURN·HTURN2 | — | COMPLETED → ANALYZED → HTURN2 통과(후보) → NEXT=HTURN2-C | — |
 | 1006 | HTURN2-C(hturnc.sh PID 2476625: seed 2·3 d3, seed 2 d4·d2) | "HTURN2-C 끝" in scratchpad/hturnc.out | walk_eval_hturn2c_* | 감시 bo5ct7zmi |
+| 1006 | HTURN2-C·CSTAB | — | COMPLETED → ANALYZED → DECISION(견고성 미확인 — 왼 회전 약점 / 확률적 붕괴) → NEXT=WSTEER2 | — |
+| 1006 | WSTEER2(wsteer2.sh PID 2482537: W2qS seed 1·2 × 600 → 선택 평가 26100/26189 seed1 d3) | "WSTEER2 선택 평가 끝" in scratchpad/wsteer2.out | walk_eval_ws2sel_* | 감시 b30dinzhz → 선택 후 확인 4 run 별도 기동 |

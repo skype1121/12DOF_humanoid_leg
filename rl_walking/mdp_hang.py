@@ -2905,3 +2905,16 @@ def gait_phase_update(env, env_ids, f0: float = 1.1, a: float = 0.7, b: float = 
     env._gf = cadence_of_cmd(vx, f0, a, b, fmin, fmax, walk_min)
     fresh = env.episode_length_buf <= 1
     env._gu = torch.where(fresh, torch.zeros_like(env._gu), torch.remainder(env._gu + env._gf * env.step_dt, 1.0))
+
+
+
+def gait_schedule_walk(env, sensor_cfg=None, walk_min: float = 0.03, threshold: float = 5.0) -> torch.Tensor:
+    """1005 W2c: 클록 접촉 일정 보상(Siekmann 형, 걷기 모드만) — 위상 u∈[0,0.5) 왼발 스윙(오른 지지), [0.5,1) 오른발 스윙(sb0 규약).
+    값 = (지지발 접촉 일치 + 스윙발 비접촉 일치)/2 ∈ [0,1]. 위상은 gait_u(명령 연동 cadence 가 있으면 그것). 보폭은 구속하지 않는다."""
+    sensor = env.scene.sensors["contact_forces"]; fid = _feet_body_ids(env)
+    c = sensor.data.net_forces_w[:, fid, :].norm(dim=-1) > threshold          # (N,2) [L,R]
+    u = gait_u(env, 1.1)
+    swingL = u < 0.5
+    l_ok = torch.where(swingL, ~c[:, 0], c[:, 0]); r_ok = torch.where(swingL, c[:, 1], ~c[:, 1])
+    mode = (env.command_manager.get_command("base_velocity")[:, 0].abs() >= walk_min).float()
+    return 0.5 * (l_ok.float() + r_ok.float()) * mode

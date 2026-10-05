@@ -2829,3 +2829,28 @@ class Biped12HangStandW2reEnvCfg(Biped12HangStandW2rEnvCfg):
         super().__post_init__()
         self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={})
         self.curriculum = None
+
+
+
+@configclass
+class Biped12HangStandW2gsEnvCfg(Biped12HangStandW2qEnvCfg):
+    """W2gs (1005 밤, 보행 challenger): W2q(명령 연동 cadence) + **걷기 모드 sb0 사건·스윙 보상 9종 → 클록 접촉 일정 보상**(gait_schedule_walk, 가중 2).
+    근거: 사건 보상의 고정 착지 창(2–10 cm)·놓친 스텝 벌점이 고정 보폭 국소해(W2q·W2q2·WR), 사건 제거만 하면 정지(W2o). 일정은 걸음을 강제하되 보폭은 자유."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        rw = self.rewards
+        for n in _SB0_WALK_TERMS:
+            if hasattr(rw, n):
+                setattr(rw, n, None)
+        rw.gait_schedule = RewTerm(func=mdp_hang.gait_schedule_walk, weight=2.0, params={})
+
+
+@configclass
+class Biped12HangStandW2gseEnvCfg(Biped12HangStandW2gsEnvCfg):
+    """W2gs 평가용 + 회전 보조 훅(TURN_ALPHA)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.turn_assist = EventTerm(func=mdp_hang.install_turn_assist, mode="startup", params={})
+        self.curriculum = None

@@ -774,3 +774,20 @@ def test_policy_on_level_pose_and_ramp_preconditions():
     assert "에어 보행" in reason(dict(ref), gait=True)
     assert reason(dict(ref, left_knee_joint=-35.0)) is None             # 미세 조정(±5° 이내)은 허용
     assert "level_pose" in reason(dict(ref), ref_override=None)          # level_pose.json 없음 → 거부(0914 상수 폴백을 기준으로 쓰지 않음)
+
+
+# 1006: stage8 지연 단축 옵션 전달 — 기본(빈 값)은 종전 기동 인자와 같아야 한다
+def test_stage8_latency_args_default_empty(monkeypatch):
+    monkeypatch.delenv("STAGE8_LATENCY_OPTS", raising=False)
+    assert c.stage8_latency_args() == []
+    assert c.stage8_latency_args("") == []
+
+
+def test_stage8_latency_args_allowlist():
+    import pytest
+    assert c.stage8_latency_args("fas") == ["--feedback-after-send"]
+    assert c.stage8_latency_args("fas,soc") == ["--feedback-after-send", "--send-on-command"]
+    assert c.stage8_latency_args("fas, w4") == ["--feedback-after-send", "--feedback-wait-ms", "4"]
+    for bad in ("hz100", "--control-hz 100", "w20", "x"):
+        with pytest.raises(ValueError):
+            c.stage8_latency_args(bad)

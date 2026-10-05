@@ -815,6 +815,28 @@ def act_can_up():
     return p.returncode == 0, "\n".join(tail) or "완료"
 
 
+# 1006: stage8 실효 지연 단축 옵션(73889d5f, 기본 꺼짐) — 환경변수 STAGE8_LATENCY_OPTS 에 허용 목록 키만(쉼표 구분).
+#   fas = --feedback-after-send, soc = --send-on-command, w<ms> = --feedback-wait-ms <ms>(0.5–8). 비우면 종전 기동 인자 그대로.
+#   권장 단계(승인 후): "fas" → "fas,soc". 100 Hz(--control-hz)는 여기서 켜지 않는다(별도 승인).
+_STAGE8_LAT_FLAGS = {"fas": ["--feedback-after-send"], "soc": ["--send-on-command"]}
+
+
+def stage8_latency_args(raw=None):
+    raw = os.environ.get("STAGE8_LATENCY_OPTS", "") if raw is None else raw
+    out = []
+    for tok in [t.strip() for t in raw.split(",") if t.strip()]:
+        if tok in _STAGE8_LAT_FLAGS:
+            out += _STAGE8_LAT_FLAGS[tok]
+        elif tok.startswith("w"):
+            ms = float(tok[1:])
+            if not (0.5 <= ms <= 8.0):
+                raise ValueError(f"STAGE8_LATENCY_OPTS 대기 범위 밖: {tok}")
+            out += ["--feedback-wait-ms", f"{ms:g}"]
+        else:
+            raise ValueError(f"STAGE8_LATENCY_OPTS 허용되지 않은 키: {tok}")
+    return out
+
+
 def act_gate(key, argv, timeout=300):
     ok, msg = RUN.start(key, argv)
     return ok, msg
@@ -1206,7 +1228,7 @@ ACTIONS = {
     # 스택
     "stage8":     (lambda p: RUN.start("stage8", [
         sys.executable, os.path.join(SCRIPTS, "stage8_12axis_mit_control_node.py"),
-        "--can-channel", "can1", "--wait-takeover"]), "stage8 선기동(인수대기)"),
+        "--can-channel", "can1", "--wait-takeover"] + stage8_latency_args()), "stage8 선기동(인수대기)"),
     "hang_stand": (lambda p: RUN.start("hang_stand", [
         sys.executable, os.path.join(CALIB, "hang_stand.py")]), "기립 스크립트"),
     # 트림 — hang_stand 의 3채널을 콘솔에서 직접. 부호를 손으로 계산하다

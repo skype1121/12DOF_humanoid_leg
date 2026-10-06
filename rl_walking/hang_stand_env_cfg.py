@@ -3610,3 +3610,53 @@ class Biped12HangStandW3S3dC2EnvCfg(Biped12HangStandW3S3dEnvCfg):
         super().__post_init__()
         _c2_apply(self, "v_box_s=0.909,stop_w=2.0,stop_tilt=12.5,tilt_ref_tau=10,cancel_calm=1,kv_bias=0.03,kv_lf=0.02,stop_td_k=2",
                   keep_on_rec=_C2_KEEP_ON_REC, cap_mode="diff")
+
+
+
+# ================================================================ W3D (1007) — 걷는 중 외란 → 회복 스텝 → 정상 WALK/STAND 복귀. 기본 꺼짐(이 클래스를 고를 때만) ================================================================
+# 설계·반사실 단위시험·사전 통과 기준: reports/gen_w3/WD_DESIGN.md · 코어 rl_walking/w3_dist.py · CPU 단위시험 rl_walking/scripts/unit_w3d.py.
+from rl_walking import w3_dist as _w3d  # noqa: E402
+
+
+@configclass
+class Biped12HangStandW3DEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3D (1007): W3S3d 상속(관측 actor 320·critic 335 불변 → W3S3d-15800 에서 --resume, 학습 지연 1–5 유지, 명령 분포·기존 보상 그대로).
+    - 외란(ev.disturbance 자리 — 평가기가 지우면 같이 꺼짐): 에피소드 50 % 에 1–2 회, t0 U(3, 15) s(보행 위상 균일 분산), 충격 70 %(0.2–0.4 s)·짧은 램프 30 %,
+      방향 = 발생 순간 몸통 앞 .35·뒤 .25·왼 .2·오른 .2, **걷는 env 만**(발생 직전 STAND 면 취소). 충격 크기 단계 6–10 → 14 → 18 → 22 N
+      (w3d_curriculum: 낙상 ≤ 25 %·≥ 1500 에피소드·체류 ≥ 100 반복). 외란 에피소드의 30 % 는 외란 끝 + 0–1 s 에 정지 명령(에피소드 끝까지) → STAND 복귀.
+    - 보상 추가(전부 가산, 기존 걷기 항 유지; 가중 단위는 기존 W3 항과 같음 — place 10 = 착지 사건당 10·dt):
+      회복 착지 포획 차분형 v2 +W_CAP, 착지·보폭 손해 보전(place·stride 와 같은 가중), WALK 복귀 1 회 +W_RET, STAND 복귀 1 회 +W_SRET.
+      외란 없는 env 에서 새 항 = 0."""
+
+    WD_P = 0.5              # 비주석 클래스 상수(설정 필드 아님): 외란 에피소드 비율(0 = W3S3d 와 학습 전체 비트 동일)
+    W_CAP = 10.0
+    W_RET = 20.0
+    W_SRET = 20.0
+    WD_LEVEL = 0            # 충격 크기 시작 단계
+    CUR2 = False            # True: vy 커리큘럼 판정을 주기 평균 가로 이득(w3_cur2)으로·wz 부호 문턱 0.85 — 기본 False(종전 판정 그대로). WD_DESIGN.md §6
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev = self.events; rw = self.rewards
+        ev.disturbance = EventTerm(func=_w3d.w3d_dist_reset, mode="reset", params={"p_dist": float(self.WD_P)})
+        ev.w3_gait.func = _w3d.w3d_gait_update                      # 같은 자리: 정지 시나리오 명령 덮기 → W3 엔진(대상 없으면 w3_gait_update 그대로)
+        ev.w3d_step = EventTerm(func=_w3d.w3d_dist_step, mode="interval", interval_range_s=(0.0, 0.0), params={})   # w3_track·w3_lat·w3_turn 뒤(정의 순서)
+        ev.w3d_track = EventTerm(func=_w3d.w3d_tracker, mode="interval", interval_range_s=(0.0, 0.0), params={})
+        rw.w3d_cap = RewTerm(func=_w3d.w3d_cap, weight=float(self.W_CAP))
+        rw.w3d_rplace = RewTerm(func=_w3d.w3d_relief_place, weight=float(rw.w3_place.weight), params={"sig": 0.04})
+        rw.w3d_rstride = RewTerm(func=_w3d.w3d_relief_stride, weight=float(rw.w3_stride.weight))
+        rw.w3d_ret = RewTerm(func=_w3d.w3d_value, weight=float(self.W_RET), params={"name": "ev_ret"})
+        rw.w3d_sret = RewTerm(func=_w3d.w3d_value, weight=float(self.W_SRET), params={"name": "ev_sret"})
+        self.curriculum.w3d = _CurrTerm(func=_w3d.w3d_curriculum, params={"start_level": int(self.WD_LEVEL)})
+        if self.CUR2:
+            from rl_walking import w3_cur2 as _wc2
+            ev.w3_latgain = EventTerm(func=_wc2.w3_lat_gain_tracker, mode="interval", interval_range_s=(0.0, 0.0), params={})
+            self.curriculum.w3_vy = _CurrTerm(func=_wc2.w3_vy_curriculum2, params=dict(self.curriculum.w3_vy.params or {}))
+            self.curriculum.w3_wz.params = dict(self.curriculum.w3_wz.params or {}, min_sign=0.85)
+
+
+@configclass
+class Biped12HangStandW3D0EnvCfg(Biped12HangStandW3DEnvCfg):
+    """W3D0: 외란 비율 0 — 비트 동일 대조(새 항·이벤트는 있으나 값 0, 난수 소비 0)."""
+
+    WD_P = 0.0

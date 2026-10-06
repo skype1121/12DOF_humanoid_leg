@@ -171,7 +171,7 @@ for i in range(steps):
     ev = t > a.warmup
     q = robot.data.root_quat_w; yaw = yaw_of(q)
     if ev and pos0 is None:
-        pos0 = robot.data.root_pos_w[:, :2].clone(); yaw0 = yaw.clone()
+        pos0 = robot.data.root_pos_w[:, :2].clone(); yaw0 = yaw.clone(); yaw_acc = torch.zeros_like(yaw); yaw_prev = yaw.clone()
     cc = sensor.data.net_forces_w[:, fid, :].norm(dim=-1) > 5.0
     fzv = sensor.data.net_forces_w[:, fid, 2]
     fpos = robot.data.body_pos_w[:, bid, :]
@@ -286,6 +286,8 @@ for i in range(steps):
             ref_ss += float((rr ** 2 * am).sum()); ref_n += int(alive.sum()) * rr.shape[1]
     if ev:
         yaw_end = yaw.clone(); pos_end = robot.data.root_pos_w[:, :2].clone()
+        _dy = torch.atan2(torch.sin(yaw - yaw_prev), torch.cos(yaw - yaw_prev))   # 1006 감사 D4: 틱별 누적(±180° 감싸기 없음)
+        yaw_acc = torch.where(alive, yaw_acc + _dy, yaw_acc); yaw_prev = yaw.clone()
 print(f"[eval_w3] {steps} 틱 완료 · {time.time() - t0:.0f} s", flush=True)
 
 # ───────────── 집계 ─────────────
@@ -307,7 +309,7 @@ dpos = pos_end - pos0
 c0, s0 = torch.cos(yaw0), torch.sin(yaw0)
 dx = dpos[:, 0] * c0 + dpos[:, 1] * s0; dy = -dpos[:, 0] * s0 + dpos[:, 1] * c0
 res_v = torch.stack([dx / T - CMD[0], dy / T - CMD[1]], -1).norm(dim=-1)
-dyaw = torch.rad2deg(torch.atan2(torch.sin(yaw_end - yaw0), torch.cos(yaw_end - yaw0)))
+dyaw = torch.rad2deg(yaw_acc)                      # 감싸지 않은 누적 요(구버전은 ±180° 감싸기 → 장시간 과소추정)
 mA = lambda x: float(x[al].mean()) if al.any() else float("nan")
 drift_v = mA(res_v); disp = mA(dpos.norm(dim=-1)); fwd_v = mA(dx / T); lat_v = mA(dy / T)
 yaw_drift = mA((dyaw - math.degrees(CMD[2] * T)).abs())
@@ -337,7 +339,7 @@ crit = [
     ("이륙 > 90 %", lift_rate > 0.90, f"{100 * lift_rate:.1f} %"),
     ("착지 > 90 %", td_rate > 0.90 and S(n_lift) > 0, f"{100 * td_rate:.1f} %"),
     ("하중 ≥ 85 %", load_rate >= 0.85 and S(n_td) > 0, f"{100 * load_rate:.1f} %"),
-    ("낙상 < 5 %", fall_rate < 0.05, f"{100 * fall_rate:.1f} %"),
+    ("채점 구간 낙상 < 2 % (시작 과도 제외 — 1006 판정 정의)", n_fall_score / max(1, N - n_fall_warm) < 0.02, f"{n_fall_score}/{N - n_fall_warm}"),
     ("표류 ≤ 0.03 m/s", drift_v <= 0.03, f"{drift_v:.3f} m/s"),
     ("장시간 붕괴 없음", (not collapse) and w_cad[0] > 0, "창 " + "/".join(f"{x:.2f}" for x in w_cad) + " Hz"),
 ]

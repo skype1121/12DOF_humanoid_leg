@@ -95,3 +95,6 @@
 | 1006 | ARREST-HO | — | COMPLETED → ANALYZED → DECISION(채택 아님, 정지는 학습 능력 문제) | — |
 | 1006 | 트랙 B SWMON(swmon.sh PID 2682338: d4·d3 반복 전환 감시) | "SWMON 끝" | ground_recovery_smon*_* | 감시 bqgpkea6v |
 | 1006 | 서브에이전트: 회복 정지 구조(포획점) 설계 | 완료 알림 | — | — |
+| 1006 | W3-C 400 | — | COMPLETED → ANALYZED(참조 켬 교대 93 %·참조 0 소멸) → NEXT = W3-CI | — |
+| 1006 | W3-A 재실행(w3A_rerun.sh PID 2684025, 1차 GPU 할당 실패) | "W3A 끝" | w3eval_w3A_400 | 감시 b9p9vakrk(+U) |
+| 1006 | W3-CI(w3ci.sh PID 2685179: W3-C 400 → 1000, 참조 내재화) | "W3CI 500 끝"·"W3CI 끝" | w3eval_w3CI_* | 감시 bq1w4g1x1 |

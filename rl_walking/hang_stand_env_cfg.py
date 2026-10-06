@@ -3178,3 +3178,20 @@ class Biped12HangStandW3UEnvCfg(Biped12HangStandW3BaseEnvCfg):
     """W3-U: OSS형 — 모드 플래그 없음(항상 STEP, 클록 상시), 참조·보조·모방 없음, 보상만. STAND 는 G21a 로 supervisor 전환."""
 
     p_step: float = 1.0
+
+
+@configclass
+class _W3CICurriculumCfg:
+    w3_ref = _CurrTerm(func=_w3.w3_ref_curriculum)
+
+
+@configclass
+class Biped12HangStandW3CIEnvCfg(Biped12HangStandW3CEnvCfg):
+    """W3-CI (1006): W3-C 이어학습 + ① 참조 내재화 — 참조 배율 1 → 0.75 → 0.5 → 0.25 → 0(A0m 절대 문턱: 유효 스텝률 ≥ 0.6 회복 뒤, 체류 ≥ 60) + 모방(스윙발 굽힘·창 가운데, 참조 = 굽힘 펄스)
+    ② 요 표류 벌점 −0.5·|ω_z − wz_cmd|(빠진 항 보완). 목표: 참조 0 평가에서도 제자리 교대(사용자 Stage 0 기준)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.w3_imit = RewTerm(func=_w3.w3_imitation, weight=1.5, params={"ref_path": _W3_REF})
+        self.rewards.w3_yaw = RewTerm(func=_w3.w3_yaw_drift, weight=-0.5)
+        self.curriculum = _W3CICurriculumCfg()

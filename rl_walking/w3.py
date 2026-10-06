@@ -117,7 +117,7 @@ def install_w3_ref(env, env_ids, ref_path: str = "", ref_scale: float = 1.0, fle
         if prev is not None:
             target = prev(target)
         ge = _ge(env).float().unsqueeze(1)
-        rs = float(os.environ.get("W3_REF_SCALE", ref_scale))
+        rs = float(os.environ.get("W3_REF_SCALE", ref_scale * float(getattr(env, "_w3_ref_alpha", 1.0))))   # _w3_ref_alpha: 참조 내재화 커리큘럼
         a_s = float(os.environ.get("STEP_ASSIST_ALPHA", getattr(env, "_w3_alpha", 0.0)))
         u = env._gu if getattr(env, "_gu", None) is not None else torch.zeros(env.num_envs, device=env.device)
         ul = torch.remainder(u + lead_ticks * env.step_dt * getattr(env, "_gf", torch.zeros_like(u)), 1.0)
@@ -132,6 +132,33 @@ def install_w3_ref(env, env_ids, ref_path: str = "", ref_scale: float = 1.0, fle
         return target + ref + assist
 
     term.pre_delay_hook = hook
+
+
+def w3_ref_curriculum(env, env_ids, alphas: tuple = (1.0, 0.75, 0.5, 0.25, 0.0), min_full: float = 0.6, min_iters: int = 60,
+                      min_sched: float = 20000.0, steps_per_iter: int = 24, start_stage: int = 0):
+    """1006 W3-CI: 참조 잔차 배율 감쇠(내재화) — A0m 규칙(절대 문턱: 블록 유효 스텝률 ≥ min_full 이 회복돼야 다음 단계, 체류 ≥ min_iters).
+    마지막(0)에서 계속 학습. 상대 규칙(톱니) 금지."""
+    s = _st(env); g = getattr(env, "_w3_rcur", None)
+    if g is None:
+        g = {"stage": int(start_stage), "since": 0, "base_s": 0.0, "base_v": 0.0, "last": float("nan")}; env._w3_rcur = g
+        env._w3_ref_alpha = alphas[g["stage"]]
+    n_s = float(s["n_sched"].sum()); n_v = float(s["n_valid"].sum())
+    it = int(env.common_step_counter) // steps_per_iter
+    if n_s - g["base_s"] >= min_sched:
+        r = (n_v - g["base_v"]) / (n_s - g["base_s"]); g["last"] = r
+        ok = r >= min_full and it - g["since"] >= min_iters and g["stage"] < len(alphas) - 1
+        print(f"[W3 참조 블록] 반복 {it} 참조={alphas[g['stage']]}: 유효 스텝률 {r:.3f}" + (" → 감쇠" if ok else ""), flush=True)
+        if ok:
+            g["stage"] += 1; g["since"] = it; env._w3_ref_alpha = alphas[g["stage"]]
+        g["base_s"], g["base_v"] = n_s, n_v
+    return {"ref_alpha": float(env._w3_ref_alpha), "block_valid": g["last"]}
+
+
+def w3_yaw_drift(env) -> torch.Tensor:
+    """STEP 명령 요 0 의 실제 요 각속도 |ω_z| — 벌점 크기(양수). 1006 W3-C 400: 30 s 에 요 70° 표류."""
+    asset = env.scene[H._base_cfg().name]
+    c = env.command_manager.get_command("base_velocity")
+    return (asset.data.root_ang_vel_w[:, 2] - c[:, 2]).abs() * _ge(env).float()
 
 
 def w3_assist_curriculum(env, env_ids, alphas: tuple = (1.0, 0.75, 0.5, 0.25, 0.0), min_full: float = 0.25, min_iters: int = 50,

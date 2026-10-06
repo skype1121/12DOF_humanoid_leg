@@ -488,7 +488,7 @@ class Stage8TwelveAxisMitControlCore:
         self.last_command_send_mono = None
         self._tick_sent_ids = []          # 이번 틱에 명령 프레임을 보낸 모터 ID (송신 후 피드백·즉시 status 발행 판정)
         self._tick_source = None
-        self.send_counts = {"timer": 0, "command": 0, "watchdog": 0}
+        self.send_counts = {"timer": 0, "command": 0, "watchdog": 0, "hold": 0}
         self.fb_after_send = {"ticks": 0, "complete": 0, "replies": 0,
                               "last_wait_ms": None, "max_wait_ms": 0.0}
 
@@ -820,6 +820,8 @@ class Stage8TwelveAxisMitControlCore:
         # 영구 금지 — 종전엔 홀드 이탈 즉시 폴링 재개 = 하중 하 능동 릴리즈였음.
         if self.takeover_hold is not None:
             self._tick_sent_ids = self._takeover_hold_tick() or []
+            if self._tick_sent_ids:   # 1006 계측(읽기 전용): 인수 홀드 송신 틱 수 — latency_check 송신 주기 판정용
+                self.send_counts["hold"] = self.send_counts.get("hold", 0) + 1
         elif not self.armed and not self._ever_streamed:
             self._request_next_readonly_feedback()
         self._poll_can_feedback()

@@ -21,6 +21,8 @@
 사용:
   python3 jetson/bench/latency_mock/latency_bench.py --variants base,fas,soc,fas_soc,fas_soc_100 \\
       --duration 20 --out <디렉터리>
+  판정기 도구 검증(1006): --latcheck 를 붙이면 base·fas·fas_soc 변형마다 jetson/scripts/latency_check.py 를
+        스트리밍 구간에 붙여 <out>/latcheck_<변형>.json·.log 를 남긴다(읽기 전용 구독).
   변형: base(옵션 없음=종전) · fas(--feedback-after-send) · soc(--send-on-command) ·
         fas_soc(둘 다) · fas_soc_100(둘 다 + --control-hz 100) · hz100(--control-hz 100 만)
 """
@@ -44,6 +46,8 @@ VARIANT_ARGS = {
     "fas_soc_100": ["--feedback-after-send", "--send-on-command", "--control-hz", "100"],
     "hz100": ["--control-hz", "100"],
 }
+#: --latcheck 로 판정기를 붙일 때 기대 옵션(latency_check --expect). 그 외 변형은 판정기 생략.
+LATCHECK_EXPECT = {"base": "off", "fas": "fas", "fas_soc": "fas,soc"}
 VCHAN = "latbench_virtual"
 FRAME_WIRE_S = 130e-6
 MOTOR_TURNAROUND_S = 100e-6
@@ -319,6 +323,8 @@ def main():
     ap.add_argument("--compute-ms", type=float, default=1.0, help="브리지 틱 계산 시간 모사 ms")
     ap.add_argument("--phase-drift-ms", type=float, default=0.05,
                     help="브리지 주기 어긋남 ms (위상 쓸기). 0 = 기동 위상 고정(실물 세션 1회와 같음)")
+    ap.add_argument("--latcheck", action="store_true",
+                    help="1006: 변형마다 jetson/scripts/latency_check.py 를 스트리밍 구간에 붙여 판정 JSON 저장(도구 검증)")
     ap.add_argument("--domain", default="87")
     ap.add_argument("--out", required=True)
     ap.add_argument("--role", default=None, help=argparse.SUPPRESS)
@@ -344,8 +350,18 @@ def main():
         p8 = subprocess.Popen(common + ["--role", "stage8", "--file", str(mot)], env=env,
                               stdout=open(out / f"s8_{v}.log", "w"), stderr=subprocess.STDOUT)
         time.sleep(1.0)
-        pb = subprocess.run(common + ["--role", "bridge", "--file", str(drv)], env=env,
-                            stdout=open(out / f"br_{v}.log", "w"), stderr=subprocess.STDOUT)
+        pbp = subprocess.Popen(common + ["--role", "bridge", "--file", str(drv)], env=env,
+                               stdout=open(out / f"br_{v}.log", "w"), stderr=subprocess.STDOUT)
+        lc = None
+        if args.latcheck and v in LATCHECK_EXPECT:
+            # 1006: 판정기(latency_check.py, 읽기 전용 구독)를 스트리밍 구간에 같은 도메인으로 붙인다.
+            time.sleep(5.5)          # 브리지: 3 s 대기 + 베이스라인 1 s + ARM 1 s 뒤 스트리밍 시작
+            lc = subprocess.run([sys.executable, str(REPO / "jetson/scripts/latency_check.py"),
+                                 "--expect", LATCHECK_EXPECT[v], "--duration", str(max(1.0, args.duration - 1.0)),
+                                 "--json", str(out / f"latcheck_{v}.json")], env=env,
+                                stdout=open(out / f"latcheck_{v}.log", "w"), stderr=subprocess.STDOUT)
+        pbp.wait()
+        pb = pbp
         try:
             p8.wait(timeout=30)          # stage8 은 스스로 duration+8 s 뒤 종료
         except subprocess.TimeoutExpired:
@@ -355,6 +371,9 @@ def main():
             results[v] = {"error": f"실행 실패 rc={pb.returncode} (로그 {out})"}
             continue
         results[v] = analyze(drv, mot)
+        if lc is not None:
+            results[v]["latency_check"] = {"rc": lc.returncode, "log": str(out / f"latcheck_{v}.log"),
+                                           "json": str(out / f"latcheck_{v}.json")}
         r = results[v]
         print(f"[{v}] 명령→CAN p50 {r['cmd_to_can_ms']['p50']} ms (평균 {r['cmd_to_can_ms']['mean']}, p95 "
               f"{r['cmd_to_can_ms']['p95']}) | 관측 나이 p50 {r['obs_age_ms']['p50']} ms (평균 "

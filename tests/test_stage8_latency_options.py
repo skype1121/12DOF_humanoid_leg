@@ -123,6 +123,20 @@ class LatencyOptionsTest(unittest.TestCase):
         self.assertTrue(all(to == 0.0 for to in self.bus.recv_timeouts))   # 종전 비블로킹 폴링만
         self.assertEqual(self.core.fb_after_send["ticks"], 0)
 
+    def test_hold_send_ticks_counted(self):
+        """1006 계측: 인수 홀드 송신 틱은 send_counts['hold'] 로 센다(동작 불변 — 같은 홀드 프레임 12개)."""
+        self.apply([])
+        self.core.handle_command({"command": s8.COMMAND_DISARM_ALL})
+        self.core.armed = False
+        self.core.takeover_hold = {j: (mid_soft_motor_deg(j), 150.0, 4.0) for j in s8.JOINT_NAMES_12DOF}
+        before = dict(self.core.send_counts)
+        self.bus.sent.clear()
+        self.core.control_tick()
+        self.assertEqual(len(self.bus.sent), 12)
+        self.assertEqual(self.core.send_counts["hold"], before.get("hold", 0) + 1)
+        self.assertEqual(self.core.send_counts["timer"], before["timer"])
+        self.assertIn("hold", self.core.get_status()["send_counts"])
+
     # 2. 송신 직후 피드백
     def test_feedback_after_send_reads_replies_same_tick(self):
         self.apply(["--feedback-after-send"])

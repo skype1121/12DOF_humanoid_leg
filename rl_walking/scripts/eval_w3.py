@@ -307,6 +307,9 @@ q_lift = robot.data.body_quat_w[:, bid, :].clone(); q_prevf = q_lift.clone(); pe
 dpsis, dpsi_feet = [], []
 piv_abs, piv_sgn, sw_abs, sw_sgn = fz(N), fz(N), fz(N), fz(N)
 tw_s, tw_ss, hlwz_s, hlwz_ss = fz(N), fz(N), fz(N), fz(N)
+# 1006 Stage 4 혼합 명령 지표: 본체 프레임 병진 속도 시간 평균(원호 위에서도 명령과 직접 비교 가능 — 시작 요 프레임 변위 기반 표류는 곡선에서 무의미)
+MIX_ON = sum(abs(x) > 1e-6 for x in CMD) >= 2
+vbs, vbn = fz(N, 2), fz(N)
 # 자세
 pit_s, pit_ss, pit_n = fz(N), fz(N), fz(N); wy_ss = fz(N)
 pos0 = yaw0 = None
@@ -479,6 +482,8 @@ for i in range(steps):
             if HL["wz"] is not None:
                 hlwz_s += HL["wz"] * af; hlwz_ss += HL["wz"] * HL["wz"] * af
         wy_ss += robot.data.root_ang_vel_b[:, 1] ** 2 * af
+        if MIX_ON:
+            vbs += robot.data.root_lin_vel_b[:, :2] * af.unsqueeze(1); vbn += af
         a_raw = act_.detach()
         am = alive.unsqueeze(1).float()
         act_ss += float((a_raw ** 2 * am).sum()); act_n += int(alive.sum()) * a_raw.shape[1]
@@ -715,6 +720,16 @@ if a.stop_at > 0 and st_xy0 is not None:
               "lifts_after_latch_med": mS(st_lat_lifts), "falls_after_stop": n_fall_after_stop, "alive_at_stop": n_alive_at_stop}
 else:
     J_stop = None
+J_mix = None
+if MIX_ON:                                   # 1006 Stage 4: 축별 이득(본체 프레임 평균 속도 / 명령), 본체 프레임 잔차 — 기존 지표·판정 불변
+    _vb = vbs / vbn.clamp(min=1).unsqueeze(1)
+    _g = lambda k: (mA(_vb[:, k]) / CMD[k]) if abs(CMD[k]) > 1e-6 else float('nan')
+    J_mix = {"vx_b": mA(_vb[:, 0]), "vy_b": mA(_vb[:, 1]), "gain_x": _g(0), "gain_y": _g(1),
+             "res_b_mps": mA((_vb - torch.tensor(CMD[:2], device=_vb.device)).norm(dim=-1)),
+             "yaw_gain": (yaw_rate / math.degrees(CMD[2])) if abs(CMD[2]) > 1e-6 else float('nan')}
+    L += ["", f"## 혼합 명령 지표(Stage 4 — 본체 프레임 평균, 명령 ({CMD[0]:+.2f},{CMD[1]:+.2f},{CMD[2]:+.2f}))",
+          f"- 본체 vx {J_mix['vx_b']:+.3f} (이득 {J_mix['gain_x']:.2f}) · vy {J_mix['vy_b']:+.3f} (이득 {J_mix['gain_y']:.2f}) · 요 이득 {J_mix['yaw_gain']:.2f}"
+          f" · 본체 프레임 잔차 {J_mix['res_b_mps']:.3f} m/s (곡선에서는 위 '표류' 대신 이 값)"]
 J_turn = None
 if TURN_ON:
     J_turn, _rows = turn_summary(); L += _rows
@@ -803,7 +818,7 @@ L += ["", "주: 접촉 = 발 링크 |F| > 5 N. 유효 cadence = 유효 스텝/(�
 txt = "\n".join(L); print(txt, flush=True)
 out_dir = os.path.join(REPO, "log_picture"); os.makedirs(out_dir, exist_ok=True)
 open(os.path.join(out_dir, f"w3eval_{a.out_tag}.txt"), "w").write(txt + "\n")
-J = {"ramp_off": a.ramp_off, "turn": J_turn, "heading_loop": a.heading_loop, "hl_wzmax": a.hl_wzmax, "lateral": {"lat_sign_rate": lat_sign_rate, "width_viol": width_viol, "cross_rate": cross_rate, "lr_ratio": lr_ratio, "roll_mean": roll_mean,
+J = {"ramp_off": a.ramp_off, "mix": J_mix, "turn": J_turn, "heading_loop": a.heading_loop, "hl_wzmax": a.hl_wzmax, "lateral": {"lat_sign_rate": lat_sign_rate, "width_viol": width_viol, "cross_rate": cross_rate, "lr_ratio": lr_ratio, "roll_mean": roll_mean,
                "lat_p50_cm": (float(np.median(Y_)) if len(Y_) else None), "width_p50_cm": (float(np.median(W_)) if len(W_) else None)}, "stop": J_stop, "fall_t_hist": fall_t_hist, "fall_t": [round(float(x), 2) for x in _tfv], "fall_warm": n_fall_warm, "fall_score": n_fall_score, "stand_first": a.stand_first, "task": a.task, "checkpoint": ck, "num_envs": N, "seed": a.seed, "delay": a.delay, "warmup_s": a.warmup, "seconds": T, "long": a.long,
      "cmd": CMD, "gait_enable": a.gait_enable, "assist_alpha": a.assist_alpha, "ref_off": a.ref_off, "turn_alpha": os.environ.get("TURN_ALPHA"),
      "phase_source": phase_src, "steps_done": steps,

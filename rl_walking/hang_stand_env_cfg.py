@@ -3452,3 +3452,44 @@ class Biped12HangStandW3S2dEnvCfg(Biped12HangStandW3S2EnvCfg):
         super().__post_init__()
         self.actions.joint_pos.min_delay_steps = 1
         self.actions.joint_pos.max_delay_steps = 5
+
+
+# ================================================================ W3 Stage 4 (1006) — 혼합 명령(vx·vy·wz 동시, 곡선 보행). 기본 꺼짐(이 클래스를 고를 때만 적용) ================================================================
+# 설계·반사실 단위시험·사전 통과 기준: reports/gen_w3/S4_DESIGN.md. CPU 단위시험: rl_walking/scripts/unit_w3_s4.py.
+@configclass
+class _W3S4CurriculumCfg:
+    w3_assist = _CurrTerm(func=_w3.w3_assist_curriculum, params={"start_stage": 4})
+    w3_vy = _CurrTerm(func=_w3.w3_vy_curriculum)
+    w3_wz = _CurrTerm(func=_w3.w3_wz_curriculum)
+    w3_mix = _CurrTerm(func=_w3.w3_mix_curriculum)
+
+
+@configclass
+class Biped12HangStandW3S4EnvCfg(Biped12HangStandW3S3s2EnvCfg):
+    """W3 Stage 4 (1006): W3S3s2 끝에서 이어 학습(관측 actor 320·critic 335 불변 → --resume 그대로; vx·vy·wz 는 이미 velocity_commands 채널).
+    - 명령: STAND 30 % / STEP(제자리 0.2·앞뒤 0.15·옆 0.15·회전 0.2(단일 축 리허설, Stage 3 식)·혼합 0.3). 혼합 안 조합 = 앞뒤+회전 0.4·앞뒤+옆 0.2·
+      옆+회전 0.15·셋 다 0.25, 축별 부호 독립. 크기 = lo + s·U·(hi − lo)(단일 축 현재 범위 기준), s 0 → 0.5 → 1(w3_mix_curriculum:
+      활성 축 부호 정답 ≥ 90 %·폭 위반 < 2 %·체류 ≥ 100 반복).
+    - 리드 발: 코드 변경 없음(W3S3 규칙 그대로) — |vy| ≥ 0.02 면 vy 부호가 정함(옆 우선), 옆 없고 wz < −0.08 이면 오른발. 충돌 해소 근거 S4_DESIGN §2.
+    - 보상 교체 3개(회전 + 병진 명령에서만 값이 달라짐 — 그 밖 기존 함수 값 그대로): w3_stride → w3_stride4(곡선 착지 목표),
+      w3_track → w3_track_rel4, w3_drift → w3_drift_net4(창 동안 실제 요 경로로 명령 적분). 발 요 착지(w3_turn)·순 요(w3_yaw_net)·발 연결선 추종(w3_ytrack) 불변.
+    - vy·wz 단일 축 커리큘럼 시작 단계는 S3s2 결과(도달 상한)에 맞춰 덮어쓸 것(커리큘럼 상태는 체크포인트에 저장되지 않음 — 기본 = 최대 단계 가정)."""
+
+    VY_STAGE = 2            # 비주석 클래스 상수(설정 필드 아님): w3_vy_curriculum start_stage(0.08)
+    WZ_STAGE = 2            # w3_wz_curriculum start_stage(0.4)
+    W_HALF4 = 0.144         # 곡선 지레 항 발 횡 오프셋(W3S2 W_HALF 와 같은 값)
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev = self.events; rw = self.rewards
+        p = dict(ev.w3_cmd.params)
+        p.update({"stage": 4, "mix4": (0.2, 0.15, 0.15, 0.2, 0.3), "mix_pat": (0.4, 0.2, 0.15, 0.25), "mix_scale": 0.0})
+        ev.w3_cmd.params = p
+        ev.w3_mix = EventTerm(func=_w3.w3_mix_tracker, mode="interval", interval_range_s=(0.0, 0.0),
+                              params={"cmin": 0.02, "wcmin": 0.08, "nominal_half_width": float(self.W_HALF4)})   # w3_turn 뒤(정의 순서)
+        rw.w3_stride = RewTerm(func=_w3.w3_stride4, weight=10.0, params={"nominal_half_width": float(self.W_HALF4)})
+        rw.w3_track = RewTerm(func=_w3.w3_track_rel4, weight=3.0)
+        rw.w3_drift = RewTerm(func=_w3.w3_drift_net4, weight=-3.0)
+        self.curriculum = _W3S4CurriculumCfg()
+        self.curriculum.w3_vy.params = {"start_stage": int(self.VY_STAGE)}
+        self.curriculum.w3_wz.params = {"start_stage": int(self.WZ_STAGE)}

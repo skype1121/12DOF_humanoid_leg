@@ -42,13 +42,18 @@ def _ge(env):
 # ---------------------------------------------------------------- 명령 + gait_enable ----------------------------------------------------------------
 def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple = (0.43, 0.285, 0.285), vx_range: tuple = (0.03, 0.10),
                    vx_back_range: tuple | None = None, mix2: tuple = (0.3, 0.3, 0.4), vy_range: tuple = (0.03, 0.04),
-                   mix3: tuple = (0.3, 0.3, 0.0, 0.4), wz_range: tuple = (0.1, 0.2), p_hloop: float = 0.0):
+                   mix3: tuple = (0.3, 0.3, 0.0, 0.4), wz_range: tuple = (0.1, 0.2), p_hloop: float = 0.0,
+                   mix4: tuple = (0.2, 0.15, 0.15, 0.2, 0.3), mix_pat: tuple = (0.4, 0.2, 0.15, 0.25), mix_scale: float = 0.0):
     """mode="startup": 명령 리샘플 패치 — Stage 0 = STAND(ge 0, 명령 0) / STEP0(ge 1, 명령 0). 서기 env(is_standing_env)도 ge 로 덮는다.
     Stage 1 = STEP 중 제자리 / 앞 / 뒤(vx). Stage 2(1006 W3S2) = STEP 중 제자리 mix2[0] / 앞뒤 mix2[1](반반) / 옆 mix2[2](±vy, |vy| ∈ env._w3_vy_range —
     w3_vy_curriculum 이 상한을 넓힌다). Stage 0/1 경로는 종전과 비트 동일(난수 소비 순서 포함).
     Stage 3(1006 W3S3) = STEP 중 제자리 mix3[0] / 앞뒤 mix3[1] / 옆 mix3[2] / 제자리 회전 mix3[3](±wz, |wz| ∈ env._w3_wz_range — w3_wz_curriculum).
     Stage 3 은 리샘플 원래 wz 를 env._w3_wz0 에, 외부 헤딩 고리 표시(확률 p_hloop, STEP·비회전 명령만)를 env._w3_hl 에 남긴다(w3_heading_loop 가 읽음).
     **Stage 3 은 command term 의 heading_command 를 꺼야 한다**(켜 두면 _update_command 가 매 틱 wz 를 clip(·, ang_vel_z 범위) 로 덮음 — 1006 측정 사실).
+    Stage 4(1006 W3S4, 혼합) = STEP 중 제자리 mix4[0] / 앞뒤 mix4[1] / 옆 mix4[2] / 회전 mix4[3](단일 축 — Stage 3 과 같은 범위·부호 규칙) /
+    혼합 mix4[4]. 혼합 안 조합 = mix_pat(앞뒤+회전 · 앞뒤+옆 · 옆+회전 · 셋 다), 축마다 부호 독립 반반, 크기 = lo + s·U·(hi − lo)
+    (단일 축 범위 env._w3_vx_range/_vx_back/_vy_range/_wz_range 를 따름, s = env._w3_mix_scale — w3_mix_curriculum 이 0 → 0.5 → 1).
+    헤딩 고리 표시는 Stage 3 과 같다(STEP·wz 0 명령 — 혼합 앞뒤+옆 포함). reports/gen_w3/S4_DESIGN.md.
     평가 고정: W3_GAIT_ENABLE=0|1, W3_CMD='vx,vy,wz'."""
     N, dev = env.num_envs, env.device
     env._ge = torch.zeros(N, dtype=torch.bool, device=dev)
@@ -60,6 +65,8 @@ def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple
     if int(stage) >= 3:                                                   # Stage 3 상태(그 밖 stage 는 속성도 만들지 않음 — 비트 동일)
         env._w3_mix3 = tuple(mix3); env._w3_wz_range = tuple(wz_range); env._w3_p_hloop = float(p_hloop)
         env._w3_wz0 = torch.zeros(N, device=dev); env._w3_hl = torch.zeros(N, dtype=torch.bool, device=dev)
+    if int(stage) >= 4:                                                   # Stage 4 상태(stage 0–3 은 만들지 않음 — 비트 동일)
+        env._w3_mix4 = tuple(mix4); env._w3_mix_pat = tuple(mix_pat); env._w3_mix_scale = float(mix_scale)
     term = env.command_manager.get_term("base_velocity")
     orig = term._resample_command
 
@@ -95,7 +102,36 @@ def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple
             vy = torch.where(lat, torch.where(neg, -magy, magy), torch.zeros_like(magy))
             c[ids, 0] = torch.where(want, vx, torch.zeros_like(vx))
             c[ids, 1] = torch.where(want, vy, torch.zeros_like(vy))
-        elif env._w3_stage >= 3:    # Stage 3(1006 W3S3): 제자리 / 앞뒤 / 옆 / 제자리 회전(±wz, 부호 반반) — 대각·이동+회전 없음
+        elif env._w3_stage >= 4:    # Stage 4(1006 W3S4): 단일 축 4 범주(Stage 3 과 같은 식) + 혼합(축별 독립 부호, 크기 커리큘럼)
+            m4 = env._w3_mix4; mp = env._w3_mix_pat
+            r = torch.rand(n, device=dev); r2 = torch.rand(n, device=dev); r3 = torch.rand(n, device=dev)
+            rp = torch.rand(n, device=dev); sg = torch.rand(n, 3, device=dev) < 0.5; uu = torch.rand(n, 3, device=dev)
+            e1 = m4[0]; e2 = e1 + m4[1]; e3 = e2 + m4[2]; e4 = e3 + m4[3]
+            fb = (r >= e1) & (r < e2); lat = (r >= e2) & (r < e3); turn = (r >= e3) & (r < e4); mixd = r >= e4
+            p1 = mp[0]; p2 = p1 + mp[1]; p3 = p2 + mp[2]
+            # 조합: rp < p1 앞뒤+회전 · p1–p2 앞뒤+옆 · p2–p3 옆+회전 · ≥ p3 셋 다
+            mx = mixd & ((rp < p2) | (rp >= p3))
+            my = mixd & (rp >= p1)
+            mw = mixd & ((rp < p1) | (rp >= p2))
+            mag = torch.empty(n, device=dev).uniform_(*env._w3_vx_range)
+            magb = torch.empty(n, device=dev).uniform_(*env._w3_vx_back)
+            magy = torch.empty(n, device=dev).uniform_(*env._w3_vy_range)
+            magw = torch.empty(n, device=dev).uniform_(*env._w3_wz_range)
+            neg = r2 < 0.5
+            s_ = float(env._w3_mix_scale)
+            lohi = lambda rg, k: rg[0] + s_ * uu[:, k] * (rg[1] - rg[0])
+            hx = torch.where(sg[:, 0], -lohi(env._w3_vx_back, 0), lohi(env._w3_vx_range, 0))
+            hy = torch.where(sg[:, 1], -lohi(env._w3_vy_range, 1), lohi(env._w3_vy_range, 1))
+            hw = torch.where(sg[:, 2], -lohi(env._w3_wz_range, 2), lohi(env._w3_wz_range, 2))
+            zero = torch.zeros(n, device=dev)
+            vx = torch.where(fb, torch.where(neg, -magb, mag), torch.where(mx, hx, zero))
+            vy = torch.where(lat, torch.where(neg, -magy, magy), torch.where(my, hy, zero))
+            wz = torch.where(turn, torch.where(neg, -magw, magw), torch.where(mw, hw, zero))
+            c[ids, 0] = torch.where(want, vx, zero)
+            c[ids, 1] = torch.where(want, vy, zero)
+            c[ids, 2] = torch.where(want, wz, zero)
+            env._w3_hl[ids] = want & (wz == 0) & (r3 < env._w3_p_hloop)      # 외부 헤딩 고리: STEP·wz 0 명령의 일부(Stage 3 과 같은 규약)
+        elif env._w3_stage == 3:    # Stage 3(1006 W3S3): 제자리 / 앞뒤 / 옆 / 제자리 회전(±wz, 부호 반반) — 대각·이동+회전 없음
             m3 = env._w3_mix3
             r = torch.rand(n, device=dev); r2 = torch.rand(n, device=dev); r3 = torch.rand(n, device=dev)
             e1 = m3[0]; e2 = e1 + m3[1]; e3 = e2 + m3[2]
@@ -810,3 +846,197 @@ def w3_wz_curriculum(env, env_ids, vmax: tuple = (0.2, 0.3, 0.4), vmin: float = 
             g["stage"] += 1; g["since"] = it; env._w3_wz_range = (vmin, vmax[g["stage"]])
         g["b_td"], g["b_ok"], g["b_gn"], g["b_gd"], g["b_pa"], g["b_sa"] = n_td, n_ok, gn, gd, pa, sa
     return {"wz_max": float(env._w3_wz_range[1]), "turn_sign_ok": g["sign"], "yaw_gain": g["gain"], "pivot_frac": g["pivot_frac"]}
+
+
+# ================================================================ Stage 4(1006 W3S4) — 혼합 명령(vx·vy·wz 동시, 곡선 보행). 기본 꺼짐(W3S4 설정을 고를 때만) ================================================================
+# 설계·반사실 단위시험·사전 통과 기준: reports/gen_w3/S4_DESIGN.md. CPU 단위시험: rl_walking/scripts/unit_w3_s4.py.
+# 기존 함수·상태(env._w3·_w3lat·_w3turn)는 손대지 않는다(install_w3_cmd 의 stage 4 분기만 추가). 새 상태 env._w3mix, 후행 추적기 w3_mix_tracker
+# (w3_turn_tracker **뒤** 정의 순서). 새 보상(w3_stride4·w3_track_rel4·w3_drift_net4)은 |wz| < wcmin 또는 병진 명령 없음이면 기존 함수 값을 그대로
+# 돌려준다(torch.where 로 기존 텐서 원소 선택 → Stage 1–3 명령에서 비트 동일).
+#
+# 곡선 착지 목표(정상 상태 강체 운동학): 몸이 본체 프레임 일정 속도 (vx, vy)·요 속도 wz 로 움직이고 발이 매 주기 같은 본체 프레임 위치 p 에 착지하면,
+# 같은 발의 연속 착지 변위(= 이륙→착지 변위, 지지 중 미끄럼 없음)는 **직전 착지 순간 골반 요 프레임**에서
+#     ΔP* = R(θ/2)·sinc(θ/2)·(vx, vy)/f  +  (R(θ) − I)·p,      θ = wz/f,  sinc(x) = sin x / x,   p = (0, ±w)(왼 +, 오 −)
+# 첫 항 = 몸 경로 현(chord)(방향은 반주기 회전분 θ/2 만큼 돌아감), 둘째 항 = 발 횡 오프셋의 회전(안쪽 발은 덜, 바깥 발은 더 감 — 지레 항).
+# 이 프레임은 그 발이 놓인 순간의 몸 방향이고, 지지 중 발 피벗이 없으면 = 이륙 순간 그 발의 요 → 브리프의 "이륙 요 프레임" 해석.
+# (이륙 순간 **골반** 요는 주기 중간이라 이미 θ/2 를 돌아 있어, 그 프레임에서 θ/2 를 또 돌리면 이중 회전 — 단위시험 [B] 변형 비교.)
+# 발 요 목표 Δψ* = wz/f 는 Stage 3 w3_turn_stride 그대로(곡선에서도 같은 식).
+def _mix(env):
+    M = getattr(env, "_w3mix", None)
+    if M is None or M["psi_td"].shape[0] != env.num_envs:
+        N, dev = env.num_envs, env.device
+        z = lambda *sh: torch.zeros(*sh, device=dev)
+        M = {"psi_td": z(N, 2), "psi_ref": z(N, 2), "psi_lo": z(N, 2), "c_prev": torch.ones(N, 2, device=dev), "td_d": z(N, 2, 2), "init": False,
+             # 누적(커리큘럼·로그, 리셋 안 함): 혼합 명령 착지 수 · 축별 활성 착지 수/부호 정답(지레·회전 보정 뒤) · 폭 위반
+             "n_td": z(1), "n_x": z(1), "ok_x": z(1), "n_y": z(1), "ok_y": z(1), "n_w": z(1), "ok_w": z(1), "n_bad": z(1)}
+        env._w3mix = M
+    return M
+
+
+def _rot2(a, v):
+    """각 a(…) 로 (…,2) 벡터 회전."""
+    c, s = torch.cos(a), torch.sin(a)
+    return torch.stack([c * v[..., 0] - s * v[..., 1], s * v[..., 0] + c * v[..., 1]], -1)
+
+
+def _sinc(x):
+    small = x.abs() < 1e-6
+    return torch.where(small, torch.ones_like(x), torch.sin(x) / torch.where(small, torch.ones_like(x), x))
+
+
+def w3_curve_target(cmd, f, nominal_half_width: float = 0.144, rot_frac: float = 0.5, lever: bool = True, sinc: bool = True):
+    """곡선 착지 목표 ΔP*(N, 2발, 2) — 측정 프레임이 '직전 착지 골반 요 + (0.5 − rot_frac)·θ' 일 때의 식.
+    기본(rot_frac 0.5·lever·sinc) = 직전 착지 골반 요 프레임의 정확한 강체 운동학. rot_frac 0 = 주기 중간(이륙 순간 골반) 프레임용.
+    lever=False·sinc=False·rot_frac 0.5 = 브리프 문자식 R(θ/2)·(vx, vy)/f. wz 0 이면 (vx, vy)/f(Stage 2 w3_stride2 와 같은 목표)."""
+    fc = f.clamp(min=0.5)
+    th = cmd[:, 2] / fc
+    v = torch.stack([cmd[:, 0] / fc, cmd[:, 1] / fc], -1)
+    if sinc:
+        v = v * _sinc(0.5 * th).unsqueeze(-1)
+    T = _rot2(rot_frac * th, v).unsqueeze(1).repeat(1, 2, 1)
+    if lever:
+        p = torch.tensor([[0.0, nominal_half_width], [0.0, -nominal_half_width]], device=cmd.device, dtype=cmd.dtype).unsqueeze(0).expand(cmd.shape[0], 2, 2)
+        th2 = th.unsqueeze(1).expand(-1, 2)
+        T = T + _rot2(-(0.5 - rot_frac) * th2, _rot2(th2, p) - p)
+    return T
+
+
+def w3_mix_tracker(env, env_ids, threshold: float = 5.0, cmin: float = 0.02, wcmin: float = 0.08, nominal_half_width: float = 0.144):
+    """mode="interval"(0 s), **w3_turn_tracker 뒤**: 발별
+    - psi_td = 마지막 착지(접촉 0→1) 순간 골반 요(에피소드 시작 = 그때 요), psi_ref = 이륙 순간 고정한 psi_td(= 이번 스윙의 측정 프레임),
+      psi_lo = 이륙 순간 골반 요(변형 비교용).
+    - td_d = 유효 착지(_st.ev_td) 사건의 이륙→착지 **월드** 변위(N,2,2), 그 외 0.
+    - 혼합 명령(활성 축 ≥ 2: |vx|·|vy| ≥ cmin, |wz| ≥ wcmin) STEP 착지의 축별 부호 정답: u = R(−θ/2)·(Δp_ref − 지레 항)
+      의 x·y 부호 vs vx·vy(θ = **측정** 착지 발 요 변화 _w3turn.td_dpsi — 회전 오류와 병진 부호를 분리), 발 요 Δψ 부호 vs wz. 폭 위반은 _w3lat.width_bad. 상태 env._w3mix(기존 키 불변)."""
+    s = _st(env); M = _mix(env)
+    asset = env.scene[H._base_cfg().name]
+    psi = _yaw_of(asset.data.root_quat_w)
+    sensor = env.scene.sensors["contact_forces"]; fid = H._feet_body_ids(env)
+    c = (sensor.data.net_forces_w[:, fid, :].norm(dim=-1) > threshold).float()
+    fresh = env.episode_length_buf <= 1
+    if not M["init"]:
+        M["psi_td"] = psi.unsqueeze(1).repeat(1, 2).clone(); M["psi_ref"] = M["psi_td"].clone(); M["psi_lo"] = M["psi_td"].clone(); M["init"] = True
+    if bool(fresh.any()):
+        p2 = psi[fresh].unsqueeze(1).expand(-1, 2)
+        M["psi_td"][fresh] = p2; M["psi_ref"][fresh] = p2; M["psi_lo"][fresh] = p2; M["c_prev"][fresh] = 1.0
+    lifted = s["ev_takeoff"] > 0.5
+    M["psi_ref"] = torch.where(lifted, M["psi_td"], M["psi_ref"])
+    M["psi_lo"] = torch.where(lifted, psi.unsqueeze(1).expand(-1, 2), M["psi_lo"])
+    td = s["ev_td"] > 0.5
+    bid = H._g21_bids(env); fxy = asset.data.body_pos_w[:, bid, :2]
+    d = fxy - s["lift_xy"]
+    M["td_d"] = torch.where(td.unsqueeze(-1), d, torch.zeros_like(d))
+    landed = (M["c_prev"] < 0.5) & (c > 0.5) & ~fresh.unsqueeze(1)
+    # 축별 부호(혼합 명령 STEP 착지만) — psi_td 갱신 전(이번 스윙의 측정 프레임 = psi_ref)
+    cmd = env.command_manager.get_command("base_velocity")
+    f_ = env._gf if getattr(env, "_gf", None) is not None else torch.full((env.num_envs,), 1.1, device=env.device)
+    ax = cmd[:, 0].abs() >= cmin; ay = cmd[:, 1].abs() >= cmin; aw = cmd[:, 2].abs() >= wcmin
+    mixd = (ax.float() + ay.float() + aw.float()) >= 2.0
+    tdm = td & (mixd & _ge(env)).unsqueeze(1)
+    if bool(tdm.any()):
+        dl = _rot2(-M["psi_ref"], M["td_d"])
+        T_ = getattr(env, "_w3turn", None)
+        # 지레·현 회전 보정은 **측정** 발 요 변화로(회전이 틀려도 병진 부호를 따로 판정 — 명령 θ 로 보정하면 회전 반대 착지의 지레 오차 2w·sinθ 가 x 부호를 뒤집음)
+        th = T_["td_dpsi"] if T_ is not None else (cmd[:, 2] / f_.clamp(min=0.5)).unsqueeze(1).expand(-1, 2)
+        p = torch.tensor([[0.0, nominal_half_width], [0.0, -nominal_half_width]], device=dl.device, dtype=dl.dtype).unsqueeze(0)
+        u = _rot2(-0.5 * th, dl - (_rot2(th, p) - p))
+        tx = tdm & ax.unsqueeze(1); ty = tdm & ay.unsqueeze(1); tw = tdm & aw.unsqueeze(1)
+        M["n_td"] += tdm.float().sum()
+        M["n_x"] += tx.float().sum(); M["ok_x"] += (tx & (u[..., 0] * torch.sign(cmd[:, 0]).unsqueeze(1) > 0)).float().sum()
+        M["n_y"] += ty.float().sum(); M["ok_y"] += (ty & (u[..., 1] * torch.sign(cmd[:, 1]).unsqueeze(1) > 0)).float().sum()
+        if T_ is not None:
+            M["n_w"] += tw.float().sum(); M["ok_w"] += (tw & (T_["td_dpsi"] * torch.sign(cmd[:, 2]).unsqueeze(1) > 0)).float().sum()
+        L = getattr(env, "_w3lat", None)
+        if L is not None:
+            M["n_bad"] += (L["width_bad"] * tdm.float()).sum()
+    M["psi_td"] = torch.where(landed, psi.unsqueeze(1).expand(-1, 2), M["psi_td"])
+    M["c_prev"] = c
+
+
+def w3_stride4(env, sig: float = 0.03, cmin: float = 0.02, wcmin: float = 0.08, width_gate: bool = True, k_opp: float = 0.5,
+               nominal_half_width: float = 0.144, frame: str = "td", rot_frac: float = 0.5, lever: bool = True, sinc: bool = True) -> torch.Tensor:
+    """Stage 4: 회전 + 병진 명령(|wz| ≥ wcmin 이고 |vx| 또는 |vy| ≥ cmin)이면 곡선 착지 목표(w3_curve_target; 측정 프레임 frame="td" = 직전 착지 골반 요,
+    "lo" = 이륙 순간 골반 요)로 w3_stride2 와 같은 식: 폭 게이트·[exp(−‖Δp − ΔP*‖²/σ²) − exp(−‖ΔP*‖²/σ²)] + k_opp·clip(Δp·ΔP*/‖ΔP*‖², −1, 0).
+    그 밖(단일 축·제자리 회전·명령 0)은 **w3_stride2 값 그대로**(Stage 1–3 비트 동일)."""
+    base = w3_stride2(env, sig=sig, cmin=cmin, width_gate=width_gate, k_opp=k_opp)
+    M = getattr(env, "_w3mix", None)
+    if M is None:
+        return base
+    s = _st(env)
+    cmd = env.command_manager.get_command("base_velocity")
+    f_ = env._gf if getattr(env, "_gf", None) is not None else torch.full((env.num_envs,), 1.1, device=env.device)
+    T = w3_curve_target(cmd, f_, nominal_half_width, rot_frac=rot_frac, lever=lever, sinc=sinc)
+    yf = M["psi_ref"] if frame == "td" else M["psi_lo"]
+    dl = _rot2(-yf, M["td_d"])
+    e2 = ((dl - T) ** 2).sum(-1); n2 = (T ** 2).sum(-1)
+    r = (torch.exp(-e2 / sig ** 2) - torch.exp(-n2 / sig ** 2)) * s["ev_td"]
+    L = getattr(env, "_w3lat", None)
+    if width_gate and L is not None:
+        r = r * (1.0 - L["width_bad"])
+    r = r + k_opp * ((dl * T).sum(-1) / n2.clamp(min=1e-8)).clamp(-1.0, 0.0) * s["ev_td"]
+    cur = r.sum(1) * _ge(env).float()
+    on = (cmd[:, 2].abs() >= wcmin) & ((cmd[:, 0].abs() >= cmin) | (cmd[:, 1].abs() >= cmin))
+    return torch.where(on, cur, base)
+
+
+def _v_err_curve(env):
+    """회전 중 병진 추종 오차: 한 주기 이동 평균 속도(_v_box) vs 명령 (vx, vy) 를 **같은 창의 실제 몸 요 경로**로 적분한 평균
+    R(ψ_mid)·sinc(Δψ/2)·(vx, vy), ψ_mid = ψ − Δψ/2, Δψ = 창 동안 순 요 변화(_yaw_box × 창 길이). 현재 요로 돌린 명령(_v_err)은
+    곡선에서 반 창만큼 늦은 방향을 비교해 |v|·Δψ/2 수준의 체계 오차를 만든다(단위시험 [C])."""
+    asset = env.scene[H._base_cfg().name]
+    psi = _yaw_of(asset.data.root_quat_w)
+    vb = _v_box(env); wb = _yaw_box(env)
+    K = max(2, int(round((1.0 / 1.1) / env.step_dt)))
+    n = env.episode_length_buf.clamp(min=1, max=K).float()
+    dpsi = wb * n * env.step_dt
+    cmd = env.command_manager.get_command("base_velocity")
+    cw = _rot2(psi - 0.5 * dpsi, cmd[:, :2] * _sinc(0.5 * dpsi).unsqueeze(1))
+    return (vb - cw).norm(dim=-1), cmd[:, :2].norm(dim=-1)
+
+
+def w3_track_rel4(env, sig: float = 0.05, cmin: float = 0.02, wcmin: float = 0.08) -> torch.Tensor:
+    """Stage 4: 회전 + 병진 명령(|wz| ≥ wcmin 이고 |vx| 또는 |vy| ≥ cmin)이면 곡선 보정 추종 개선분(_v_err_curve),
+    그 밖은 **w3_track_rel 값 그대로**(비트 동일). 병진 추종은 실제 요 경로 기준이라 회전과 분리된다(회전은 w3_yaw_net·w3_ytrack·w3_turn 이 채점)."""
+    base = w3_track_rel(env, sig=sig, cmin=cmin)
+    e, cn = _v_err_curve(env)
+    cur = (torch.exp(-(e / sig) ** 2) - torch.exp(-(cn / sig) ** 2)) * (cn >= cmin).float() * _ge(env).float()
+    c = env.command_manager.get_command("base_velocity")
+    on = (c[:, 2].abs() >= wcmin) & ((c[:, 0].abs() >= cmin) | (c[:, 1].abs() >= cmin))
+    return torch.where(on, cur, base)
+
+
+def w3_drift_net4(env, cmin: float = 0.02, wcmin: float = 0.08) -> torch.Tensor:
+    """Stage 4: 회전 + 병진 명령(|wz| ≥ wcmin 이고 |vx| 또는 |vy| ≥ cmin)이면 곡선 보정 순 표류 |v_T − 곡선 명령 평균|,
+    그 밖은 **w3_drift_net 값 그대로**(비트 동일)."""
+    base = w3_drift_net(env)
+    e, _ = _v_err_curve(env)
+    c = env.command_manager.get_command("base_velocity")
+    on = (c[:, 2].abs() >= wcmin) & ((c[:, 0].abs() >= cmin) | (c[:, 1].abs() >= cmin))
+    return torch.where(on, e * _ge(env).float(), base)
+
+
+def w3_mix_curriculum(env, env_ids, scales: tuple = (0.0, 0.5, 1.0), min_sign: float = 0.90, max_bad: float = 0.02, min_iters: int = 100,
+                      min_mix_td: float = 3000.0, steps_per_iter: int = 24, start_stage: int = 0):
+    """혼합 크기 커리큘럼(env._w3_mix_scale 0 → 0.5 → 1: 각 축 크기 = lo + s·U·(hi − lo)). 블록(혼합 착지 ≥ min_mix_td) 판정 —
+    활성 축마다 부호 정답(지레·회전 보정 뒤 x·y, 발 요) ≥ min_sign 이고 폭 위반률 < max_bad, 체류 ≥ min_iters 면 다음 단계. 절대 문턱(톱니 금지)."""
+    M = _mix(env); g = getattr(env, "_w3_mixcur", None)
+    keys = ("n_td", "n_x", "ok_x", "n_y", "ok_y", "n_w", "ok_w", "n_bad")
+    if g is None:
+        g = {"stage": int(start_stage), "since": 0, "b": {k: 0.0 for k in keys}, "sx": float("nan"), "sy": float("nan"), "sw": float("nan"), "bad": float("nan")}
+        env._w3_mixcur = g
+        env._w3_mix_scale = float(scales[g["stage"]])
+    cur = {k: float(M[k].sum()) for k in keys}
+    it = int(env.common_step_counter) // steps_per_iter
+    dd = {k: cur[k] - g["b"][k] for k in keys}
+    if dd["n_td"] >= min_mix_td:
+        rate = lambda ok, nn: dd[ok] / dd[nn] if dd[nn] > 0 else float("nan")
+        g["sx"], g["sy"], g["sw"] = rate("ok_x", "n_x"), rate("ok_y", "n_y"), rate("ok_w", "n_w")
+        g["bad"] = dd["n_bad"] / max(dd["n_td"], 1.0)
+        vals = [x for x in (g["sx"], g["sy"], g["sw"]) if x == x]
+        adv = bool(vals) and min(vals) >= min_sign and g["bad"] < max_bad and it - g["since"] >= min_iters and g["stage"] < len(scales) - 1
+        print(f"[W3S4 혼합 블록] 반복 {it} 크기 s={scales[g['stage']]}: 부호 x {g['sx']:.3f} · y {g['sy']:.3f} · 요 {g['sw']:.3f} · 폭 위반 {g['bad']:.3f}"
+              + (" → 크기 확대" if adv else ""), flush=True)
+        if adv:
+            g["stage"] += 1; g["since"] = it; env._w3_mix_scale = float(scales[g["stage"]])
+        g["b"] = cur
+    return {"mix_scale": float(env._w3_mix_scale), "mix_sign_x": g["sx"], "mix_sign_y": g["sy"], "mix_sign_w": g["sw"], "mix_width_bad": g["bad"]}

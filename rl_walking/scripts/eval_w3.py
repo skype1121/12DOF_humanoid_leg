@@ -59,6 +59,11 @@ p.add_argument("--walk_tol_ang", type=float, default=2.0, help="창 평균 피�
 p.add_argument("--walk_rate_frac", type=float, default=0.6, help="창 유효 스텝률 ≥ 외란 전 × 이 값")
 p.add_argument("--dist_jitter", type=float, default=0.0,
                help="env 별 외란 시각 오프셋 U[0,J) s — 0(기본)이면 모든 env 가 같은 보행 위상에서 맞는다. 0.91(= 1.1 Hz 한 주기)이면 위상 전체 표본 + 위상 구간별 낙상 표")
+p.add_argument("--trace_n", type=int, default=0,
+               help="1007 대비책 보정: 앞 N env 의 틱별 신호(지연 앞 목표·적용 목표·관절·자이로·중력·요·접촉·ge·생존)를 log_picture/w3trace_<tag>.npz 로")
+p.add_argument("--monitor", default="",
+               help="1007 2 차 대비책 폐루프 A/B: rl_walking/deploy/w3_contingency.W3WalkMonitor 를 env 마다 실행('on'|'note'|JSON). "
+                    "act 정지 판정 → 그 env 명령 0 + ge 0(실물 브리지와 같은 계약, 이후 그 env 는 서기 유지). 빈 값(기본) = 종전과 같음")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
@@ -275,6 +280,31 @@ if DG:
         return _walk_parts(wm, nsum).all(-1)
     print("[eval_w3] --dist 그룹: " + " | ".join(f"G{k}={g[0]}({'STAND' if g[2] is not None else 'WALK'})" for k, g in enumerate(DG)), flush=True)
 
+# ── 1007 대비책: 추적·감시(기본 꺼짐 — 두 인자가 없으면 아래 블록은 아무것도 만들지 않는다) ──
+_ACT = U.action_manager.get_term("joint_pos")
+TR = None
+if a.trace_n > 0 or a.monitor.strip():
+    _pre = {"t": None}
+
+    def _cap_pre(tg):
+        _pre["t"] = tg.detach().clone()
+        return tg
+    _ACT.pre_delay_hook = _cap_pre                                        # 지연 버퍼 앞 목표(정책 → 스케일·오프셋) — 값은 바꾸지 않는다
+    _AJ = list(_ACT._joint_names) if hasattr(_ACT, "_joint_names") else None
+    _AJID = _ACT._joint_ids
+    _sent_prev = None; _sent_lpf = None                                    # 실물 브리지 '송출 목표' 모사 = 러너 슬루 4°/틱 → LPF β0.27 (지연 없음)
+if a.trace_n > 0:
+    NT = min(a.trace_n, N)
+    TR = {k: [] for k in ("pre", "app", "sent", "q", "gyro", "grav", "yaw", "cc", "ge", "want", "alive", "vb")}
+MON = None
+if a.monitor.strip():
+    from rl_walking.deploy import w3_contingency as _WC  # noqa: E402
+    MCFG = _WC.parse_w3_monitor(a.monitor)
+    MON = [_WC.W3WalkMonitor(MCFG, _AJ) for _ in range(N)]
+    mon_stop = torch.zeros(N, dtype=torch.bool, device=dev); mon_stop_t = torch.full((N,), float("nan"), device=dev)
+    mon_kind = [None] * N; mon_note = {}; mon_first_note_t = [None] * N
+    print(f"[eval_w3] --monitor {_WC.config_dict(MCFG)}", flush=True)
+
 obs = venv.get_observations()
 if isinstance(obs, tuple):
     obs = obs[0]
@@ -325,6 +355,10 @@ for i in range(steps):
     if a.stop_at > 0 and getattr(U, "_ge_cmd", None) is not None and t > a.stop_at:
         U._ge_cmd[:] = False
         cmd_term.vel_command_b[:] = 0.0                                      # 정지 = 명령 0 + ge 0 (실물 stop 과 같은 계약)
+    if MON is not None and bool(mon_stop.any()):                         # 1007 감시 정지 env: 명령 0 + ge 0 유지(실물: 정지 래치, rearm 전 재개 없음)
+        cmd_term.vel_command_b[mon_stop] = 0.0
+        if getattr(U, "_ge_cmd", None) is not None:
+            U._ge_cmd[mon_stop] = False
     if DG:
         if DG_HAS_CMD:
             cmd_term.vel_command_b[:] = CMD3                                  # 그룹별 명령(덮기 없는 그룹 = --cmd)
@@ -353,6 +387,39 @@ for i in range(steps):
     obs, _, dones, _ = venv.step(act_)
     if isinstance(obs, tuple):
         obs = obs[0]
+    if TR is not None or MON is not None:                                   # 1007 대비책 신호(이 틱 끝 상태)
+        _ptg = _pre["t"]
+        _sent_prev = _ptg.clone() if _sent_prev is None else _sent_prev + (_ptg - _sent_prev).clamp(-0.06981317007977318, 0.06981317007977318)
+        _sent_lpf = _sent_prev.clone() if _sent_lpf is None else 0.27 * _sent_prev + 0.73 * _sent_lpf
+        _q = robot.data.joint_pos[:, _AJID]
+        _cc_ = (sensor.data.net_forces_w[:, fid, :].norm(dim=-1) > 5.0)
+        _yaw_ = yaw_of(robot.data.root_quat_w)
+        _ge_ = U._ge.clone() if getattr(U, "_ge", None) is not None else torch.zeros(N, dtype=torch.bool, device=dev)
+        _gw_ = U._ge_cmd.clone() if getattr(U, "_ge_cmd", None) is not None else torch.zeros(N, dtype=torch.bool, device=dev)
+        if TR is not None:
+            for _k, _v in (("pre", _ptg), ("app", _ACT.processed_actions), ("sent", _sent_lpf), ("q", _q), ("gyro", robot.data.root_ang_vel_b),
+                           ("grav", robot.data.projected_gravity_b), ("yaw", _yaw_), ("cc", _cc_), ("ge", _ge_), ("want", _gw_), ("vb", robot.data.root_lin_vel_b)):
+                TR[_k].append(_v[:NT].detach().float().cpu().numpy())
+        if MON is not None:
+            _al_ = (alive & ~dones.bool() if torch.is_tensor(dones) else alive).cpu().numpy()
+            _np = {k_: v_.detach().float().cpu().numpy() for k_, v_ in (("cc", _cc_), ("gy", robot.data.root_ang_vel_b), ("gr", robot.data.projected_gravity_b),
+                                                                      ("yaw", _yaw_), ("s", _sent_lpf), ("q", _q))}
+            _wk = (_ge_ | _gw_).cpu().numpy()
+            for e in range(N):
+                if not _al_[e]:
+                    continue
+                m_ = MON[e]
+                m_.tick(walking=bool(_wk[e]), contact2=_np["cc"][e], gyro=_np["gy"][e], grav=_np["gr"][e], yaw=float(_np["yaw"][e]),
+                        hl_latched=bool(a.heading_loop > 0 and _wk[e]))
+                m_.track(_np["s"][e], _np["q"][e])
+                while m_.events:
+                    _ev = m_.events.pop(0)
+                    mon_note[_ev["kind"]] = mon_note.get(_ev["kind"], 0) + 1
+                    if mon_first_note_t[e] is None:
+                        mon_first_note_t[e] = (_ev["kind"], _ev["t"])
+                _st = m_.take_stop()
+                if _st is not None and not bool(mon_stop[e]):
+                    mon_stop[e] = True; mon_stop_t[e] = t; mon_kind[e] = _st[0]
     d = dones.bool() if torch.is_tensor(dones) else torch.as_tensor(dones, device=dev).bool()
     tm = getattr(U, "termination_manager", None)
     if tm is not None and hasattr(tm, "terminated"):
@@ -575,6 +642,27 @@ for i in range(steps):
         if t > _tau_end + 0.1:
             dg_resid_F = max(dg_resid_F, float(robot.permanent_wrench_composer.composed_force_as_torch[:, dg_base, :2].norm(dim=-1).max()))
 print(f"[eval_w3] {steps} 틱 완료 · {time.time() - t0:.0f} s", flush=True)
+if TR is not None:
+    np.savez_compressed(os.path.join(REPO, "log_picture", f"w3trace_{a.out_tag}.npz"), dt=dt, delay=a.delay, cmd=np.array(CMD), seed=a.seed,
+                        joint_names=np.array(_AJ if _AJ is not None else []), t_fall=t_fall[:NT].cpu().numpy(),
+                        **{k_: np.stack(v_, 0) for k_, v_ in TR.items()})
+    print(f"[eval_w3] 추적 저장: log_picture/w3trace_{a.out_tag}.npz ({NT} env × {len(TR['q'])} 틱)", flush=True)
+J_MON = None
+if MON is not None:
+    _ms = mon_stop.cpu().numpy(); _fa = (~alive).cpu().numpy(); _tf = t_fall.cpu().numpy(); _mt = mon_stop_t.cpu().numpy()
+    _kinds = {}
+    for e in range(N):
+        if _ms[e]:
+            _kinds[mon_kind[e]] = _kinds.get(mon_kind[e], 0) + 1
+    J_MON = {"cfg": _WC.config_dict(MCFG), "n_stop": int(_ms.sum()), "stop_kinds": _kinds, "events_by_kind": mon_note,
+             "fall_stopped": int((_fa & _ms).sum()), "fall_not_stopped": int((_fa & ~_ms).sum()),
+             "fall_before_stop": int((_fa & _ms & (_tf <= _mt)).sum()),
+             "stop_t_p10_50_90": [float(x) for x in np.nanpercentile(_mt, [10, 50, 90])] if _ms.any() else None,
+             "stopped_env_ids": [int(e) for e in np.nonzero(_ms)[0]],
+             "first_event": {str(e): mon_first_note_t[e] for e in range(N) if mon_first_note_t[e] is not None},
+             "lat_est_p10_50_90": [float(x) for x in np.nanpercentile([m_.lat_est if m_.lat_est is not None else np.nan for m_ in MON], [10, 50, 90])]
+             if any(m_.lat_est is not None for m_ in MON) else None}
+    print(f"[eval_w3] 감시: 정지 env {J_MON['n_stop']}/{N} {_kinds} · 사건 {mon_note} · 낙상(정지 env) {J_MON['fall_stopped']} / (미정지) {J_MON['fall_not_stopped']} · 지연 추정 {J_MON['lat_est_p10_50_90']}", flush=True)
 
 # ───────────── 집계 ─────────────
 al = alive; T = a.seconds
@@ -831,6 +919,9 @@ J = {"ramp_off": a.ramp_off, "mix": J_mix, "turn": J_turn, "heading_loop": a.hea
      "per_foot": per_foot, "criteria": [{"name": nm, "pass": bool(ok), "value": val} for nm, ok, val in crit], "pass": all_pass}
 if DG:
     J["dist"] = J_dist
+if J_MON is not None:
+    J["monitor"] = J_MON
+J["fall_env_ids"] = [int(e) for e in torch.nonzero(~alive).flatten().cpu().tolist()]   # 1007: 짝 비교(같은 seed A/B)용
 json.dump(J, open(os.path.join(out_dir, f"w3eval_{a.out_tag}.json"), "w"), ensure_ascii=False, indent=1)
 print(f"[eval_w3] 저장: log_picture/w3eval_{a.out_tag}.txt/.json", flush=True)
 sys.stdout.flush(); os._exit(0)   # app.close() 가 종료에서 멈추는 경우가 있어(1006 스모크: 300 s 타임아웃) 산출물 저장 뒤 즉시 종료

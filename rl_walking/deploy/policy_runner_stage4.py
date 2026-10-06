@@ -70,6 +70,15 @@ else:  # 파일 직접 실행 (--selftest)
 
 __all__ = ["PolicyRunnerStage4", "JOINT_ORDER"]
 
+
+def _hturn2_mod():
+    """1006 HTURN2 실험 모듈 지연 import — 플래그가 꺼져 있으면 import 자체가 일어나지 않는다."""
+    if __package__:
+        from . import hturn2
+    else:  # 파일 직접 실행 (--selftest)
+        import hturn2  # type: ignore
+    return hturn2
+
 # ---------------------------------------------------------------------------
 # Stage4 확정 상수 (stage4_env_cfg / mdp_stage4 / symmetry.py와 동기 — 변경 금지)
 # ---------------------------------------------------------------------------
@@ -260,7 +269,8 @@ class PolicyRunnerStage4:
     def __init__(self, model_path=DEFAULT_MODEL_DIR_STAGE4, backend: str = "auto",
                  gait_freq: float = GAIT_FREQ_HZ, obs_dim: int | None = None,
                  default_pose_rad=None, jvel_ema_mode: str = "v2",
-                 act_obs_ema_beta: float | None = None, jvel_obs_ema_beta: float | None = None):
+                 act_obs_ema_beta: float | None = None, jvel_obs_ema_beta: float | None = None,
+                 hturn2=None):
         """model_path: exported/ 디렉토리 또는 .onnx/.pt 파일 경로 (callable=스텁).
         backend: 'auto'(onnx 우선→torch 폴백) | 'onnx' | 'torch'.
         gait_freq: 클록 주파수 [Hz] — 반드시 체크포인트의 학습 클록과 일치
@@ -274,6 +284,9 @@ class PolicyRunnerStage4:
         jvel_obs_ema_beta: (1003 G19v~G21a 계약) 관측 'joint_vel' = 관절속도의 EMA(β) — 학습 env mdp_hang.encoder_joint_vel_lpf.
             None = 원시 관절속도(종전). ⚠ joint_vel_ema(α0.1) 채널은 여전히 **원시** 속도에서 계산(학습 encoder_joint_vel_ema_v2 와 동일).
         두 상태는 _ema 에 있고 reset() 이 비운다(정책 전환 시 BridgeCore 가 러너를 새로 만든다).
+        hturn2: (1006 **실험 플래그, 기본 None = 종전과 비트 동일**) rl_walking.deploy.hturn2.Hturn2Config — 켜면
+            ① 관측 gait_clock = 명령 연동 cadence 위상 누적(W2q 계약, gait_freq 무시) ② 러너 target 직후·슬루 앞에
+            회전 피드포워드 hip_r 잔차(install_turn_assist 식). 브리지가 --experimental-hturn2 + HTURN2 키일 때만 넘긴다.
         """
         for _b in (act_obs_ema_beta, jvel_obs_ema_beta):
             if _b is not None and not (0.0 < float(_b) <= 1.0):
@@ -321,6 +334,15 @@ class PolicyRunnerStage4:
         self.last_obs: np.ndarray | None = None
         self._prev_emitted = None        # 슬루 기준점 — 첫 step()에서 qpos로 초기화
         self._tick = 0                   # 클록 틱 (env episode_length_buf 대응)
+        # 1006 HTURN2 실험 플래그 — None 이면 아래 상태는 전혀 쓰이지 않는다(종전 경로 그대로).
+        self.hturn2 = hturn2
+        self._h2_clock = None
+        self.last_ff = None              # 이번 틱 피드포워드 잔차 (left_hip_r, right_hip_r) [rad] — 블랙박스 진단용
+        if hturn2 is not None:
+            self._h2_clock = _hturn2_mod().CadenceClock(hturn2)
+            self._h2_iL = JOINT_ORDER.index("left_hip_r_joint")
+            self._h2_iR = JOINT_ORDER.index("right_hip_r_joint")
+            self._h2_cmd = (0.0, 0.0, 0.0)
 
     def reset(self) -> None:
         """에피소드/세션 초기화 — tick=0, 이력 비움(다음 step에서 백필), last_action=0."""
@@ -332,6 +354,9 @@ class PolicyRunnerStage4:
         self.last_jvel_ema = None
         for h in self._hist.values():
             h.reset()
+        if self._h2_clock is not None:   # 1006 HTURN2 (실험 플래그 켜짐에만)
+            self._h2_clock.reset()
+            self.last_ff = None
 
     # ---------- 관측 ----------
 
@@ -364,7 +389,8 @@ class PolicyRunnerStage4:
             "joint_pos": vec(qpos_rad, 12, "qpos_rad") - self.default_pose,
             "joint_vel": qvel_raw,
             "actions": self.last_action,
-            "gait_clock": gait_clock_stage4(self._tick, self.gait_freq),
+            "gait_clock": (gait_clock_stage4(self._tick, self.gait_freq) if self._h2_clock is None
+                           else self._h2_clock_frame(cmd)),
             "feet_contact": self._contact2(contact2),
         }
         # 1003 관측 필터 계약(체크포인트별, 학습 env.yaml 로 결정) — 첫 틱 = 현재값(학습 env 의 fresh 초기화와 같은 수열)
@@ -392,6 +418,13 @@ class PolicyRunnerStage4:
         obs = np.concatenate([self._hist[name].flat() for name, _ in self.terms])
         assert obs.shape == (self.obs_dim,) and obs.dtype == np.float32
         return obs
+
+    def _h2_clock_frame(self, cmd) -> np.ndarray:
+        """1006 HTURN2: 이번 틱 명령으로 cadence 위상을 한 틱 누적하고 클록 관측을 낸다(조립 전 tick = env episode_length_buf)."""
+        c = PolicyRunner._vec(cmd, 3, "cmd")
+        self._h2_cmd = (float(c[0]), float(c[1]), float(c[2]))
+        self._h2_clock.update(self._tick, c[0])
+        return self._h2_clock.clock_obs()
 
     # ---------- 스텝 ----------
 
@@ -426,6 +459,13 @@ class PolicyRunnerStage4:
         # 위치 안전 울타리는 Stage8 노드의 절대각(soft/hard) 검사가 '방출 명령'
         # 기준으로 담당한다 — cansend 사고 후속 보호는 그 계층에서 유지됨.
         target = self.default_pose + ACTION_SCALE * raw
+        if self._h2_clock is not None:
+            # 1006 HTURN2 회전 피드포워드 — 시뮬 pre_delay_hook 위치(target 직후, 지연·슬루·LPF 앞) = 러너 슬루 앞.
+            vx, _vy, wz = self._h2_cmd
+            rl, rr = _hturn2_mod().turn_ff_residual(self._h2_clock.u, self._h2_clock.f, vx, wz, self.hturn2)
+            target[self._h2_iL] = target[self._h2_iL] + rl
+            target[self._h2_iR] = target[self._h2_iR] + rr
+            self.last_ff = (float(rl), float(rr))
         if self._prev_emitted is None:
             self._prev_emitted = qpos.copy()
         emitted = self._prev_emitted + np.clip(

@@ -90,6 +90,7 @@ from rl_walking.deploy.policy_runner import (  # noqa: E402
     DEFAULT_POSE_RAD, JOINT_ORDER, SLEW_RAD)
 from rl_walking.deploy.c5_switch import C5Runner, SwitchDetector  # noqa: E402 — 1004 C5(서기+회복 전환), 미배포
 from rl_walking.deploy import deploy_chain as _DC  # noqa: E402 — 배포 경로 상수·함수의 단일 원본 (판정 스크립트와 공유)
+from rl_walking.deploy import hturn2 as _H2  # noqa: E402 — 1006 HTURN2 실험 플래그(기본 꺼짐, 순수 numpy 상수·함수)
 
 RATE_HZ = 50.0
 TICK_SEC = 1.0 / RATE_HZ
@@ -323,12 +324,13 @@ def _make_runner(checkpoint):
                         default_pose_rad=CKPT_DEFAULT_POSE.get(stand),
                         jvel_ema_mode=ckpt_jvel_ema_mode(stand),
                         act_obs_ema_beta=ckpt_obs_filter(stand)[0], jvel_obs_ema_beta=ckpt_obs_filter(stand)[1])
+    _h2 = {"hturn2": HTURN2_CKPTS[checkpoint]} if checkpoint in HTURN2_CKPTS else {}   # 1006 실험 플래그 켜짐 + HTURN2 키에만
     return PolicyRunnerStage4(
         CHECKPOINTS[checkpoint],
         gait_freq=CKPT_GAIT_FREQ.get(checkpoint, CKPT_GAIT_FREQ_DEFAULT),
         default_pose_rad=CKPT_DEFAULT_POSE.get(checkpoint),
         jvel_ema_mode=ckpt_jvel_ema_mode(checkpoint),
-        act_obs_ema_beta=ckpt_obs_filter(checkpoint)[0], jvel_obs_ema_beta=ckpt_obs_filter(checkpoint)[1])
+        act_obs_ema_beta=ckpt_obs_filter(checkpoint)[0], jvel_obs_ema_beta=ckpt_obs_filter(checkpoint)[1], **_h2)
 
 
 #: 0918 체크포인트별 기본자세 [rad, JOINT_ORDER 순]. 미등록 = 학습 공통 DEFAULT_POSE_RAD.
@@ -383,6 +385,64 @@ CKPT_REQUIRE_ENV_YAML = {"stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr
 #: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).
 #: 대체는 경고 로그로 드러낸다 (0905 감사 A1: 무언 대체 'stand_v7' = 10.49kg 자산 정책 탑승 경로).
 STAND_DEFAULT = "stand_v18b"
+
+# ---------------------------------------------------------------------------
+# 1006 HTURN2 실험 플래그 (**기본 꺼짐 · 실물 미검증 · 젯슨 미배포**) — reports/HTURN2_BRIDGE_FLAG_1006.md
+# 앞 보행 W2q 25590 + 명령 연동 cadence 클록 + 회전 피드포워드(hip_r) + HeadingHold 목표 각(|wz| ≤ 0.3).
+# 켜는 길은 기동 인자 --experimental-hturn2 하나뿐(enable_experimental_hturn2). 꺼져 있으면 아래 HTURN2_CKPTS 가 비어
+# CHECKPOINTS·CKPT_*·LPF 분기·HeadingHold 상수·명령 처리 전부가 종전과 비트 동일하다(selftest 'HTURN2 실험 플래그' 가 고정).
+# 플래그를 켜도 HTURN2 키(_H2.HTURN2_CKPT_KEY)를 --checkpoint 로 고른 경우에만 러너 계약이 바뀐다(체크포인트별 설정 + 명시 플래그).
+# ---------------------------------------------------------------------------
+EXPERIMENTAL_HTURN2 = False
+HTURN2_CKPTS = {}          # 켜졌을 때만 {키: Hturn2Config}
+HH_DEFAULT_KP, HH_DEFAULT_WZ_MAX = 1.0, 0.6    # 종전 BridgeCore HeadingHold 상수(HTURN2 키가 아니면 항상 이것)
+
+
+def enable_experimental_hturn2():
+    """HTURN2 키 등록 — 경로 = W2q run 의 exported/(없으면 selftest 가 SKIP, 기동 --checkpoint 로 고르면 필수 파일 FAIL).
+    계약: 기본자세 = CROUCH_V5(학습 env.yaml init_state), 클록 f0 1.1, 관측 필터 env.yaml 필수(act EMA·jvel LPF), LPF β0.27 적용."""
+    global EXPERIMENTAL_HTURN2
+    k = _H2.HTURN2_CKPT_KEY
+    CHECKPOINTS[k] = os.path.join(REPO, _H2.HTURN2_RUN_REL, "exported")
+    CKPT_GAIT_FREQ[k] = _H2.HTURN2_DEFAULT.f0
+    CKPT_DEFAULT_POSE[k] = [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
+    CKPT_REQUIRE_ENV_YAML.add(k)
+    HTURN2_CKPTS[k] = _H2.HTURN2_DEFAULT
+    EXPERIMENTAL_HTURN2 = True
+
+
+def disable_experimental_hturn2():
+    """등록 되돌림(selftest 격리용) — 꺼진 상태 = 위 레지스트리에 키가 하나도 없다."""
+    global EXPERIMENTAL_HTURN2
+    k = _H2.HTURN2_CKPT_KEY
+    for reg in (CHECKPOINTS, CKPT_GAIT_FREQ, CKPT_DEFAULT_POSE, HTURN2_CKPTS):
+        reg.pop(k, None)
+    CKPT_REQUIRE_ENV_YAML.discard(k)
+    EXPERIMENTAL_HTURN2 = False
+
+
+def hturn2_target_rad(x):
+    """목표 요 변화[deg] → rad. |x| ≤ 180, 유한값만."""
+    x = float(x)
+    if not (math.isfinite(x) and abs(x) <= 180.0):
+        raise ValueError(f"HTURN2: heading_target_deg {x} 는 ±180 밖")
+    return math.radians(x)
+
+
+def hturn2_validate_walk(d):
+    """HTURN2 키의 walk 명령 검증 → (cmd, heading_target_rad) 또는 ValueError(거부 사유).
+    앞 보행 한정: 0 ≤ vx ≤ vx_max(학습 범위 상한 0.15), vy = 0, wz = 0(회전은 heading_target_deg 로만), heading_hold 필수, vx 명시 필수."""
+    c = _H2.HTURN2_DEFAULT
+    if "vx" not in d:
+        raise ValueError("HTURN2: vx 명시 필수(종전 기본 0.3 은 학습 범위 밖)")
+    vx, vy, wz = float(d.get("vx")), float(d.get("vy", 0.0)), float(d.get("wz", 0.0))
+    if not (math.isfinite(vx) and 0.0 <= vx <= c.vx_max):
+        raise ValueError(f"HTURN2: vx {vx} 는 [0, {c.vx_max}] 밖(앞 보행 한정)")
+    if vy != 0.0 or wz != 0.0:
+        raise ValueError("HTURN2: vy·wz 는 0 이어야 함 — 회전은 heading_target_deg(HeadingHold) 로만")
+    if not bool(d.get("heading_hold", True)):
+        raise ValueError("HTURN2: heading_hold 끔 불가(회전 명령 경로가 HeadingHold 뿐)")
+    return (vx, 0.0, 0.0), hturn2_target_rad(d.get("heading_target_deg", 0.0))
 
 # ---------------------------------------------------------------------------
 # 프레임 변환 (2026-07-27 실측 캘리브레이션 확정)
@@ -854,15 +914,36 @@ class BridgeCore:
     모터 인코더 프레임 변환은 코어 밖(FrameMap) 담당 — 코어 입출력은 전부 관절 프레임.
     """
 
-    def __init__(self, checkpoint="walk"):
-        self.runner = _make_runner(checkpoint)
+    def __init__(self, checkpoint="walk", runner=None):
+        # runner: selftest 전용 주입(스텁 정책) — None(기본·실행 경로)이면 종전대로 _make_runner
+        self.runner = _make_runner(checkpoint) if runner is None else runner
         self.ckpt_name = checkpoint
-        self.hh = HeadingHold(kp=1.0, wz_limit=0.6)
+        self.hh = HeadingHold(kp=HH_DEFAULT_KP, wz_limit=HH_DEFAULT_WZ_MAX)
         self.hh_ref_set = False
+        self.hh_target = 0.0         # 1006 HTURN2: 목표 요 변화[rad] (시작 요 기준). HTURN2 키가 아니면 늘 0
+        self.hh_yaw0 = None          # 1006 HTURN2: HeadingHold 기준을 잡은 시작 요
         self.cmd = (0.0, 0.0, 0.0)
         self.heading_hold = True
         self.active = False          # stand/walk/march 시작 여부
         self.last_grav = None        # 이번 틱에 정책이 받은 투영중력(장착 편향 보정 후) — roll_comp 가 같은 벡터를 쓴다
+        self._apply_hh_cfg()
+
+    @property
+    def hturn2(self):
+        """이 코어가 HTURN2 계약으로 도는지(실험 플래그 켜짐 + HTURN2 키)."""
+        return self.ckpt_name in HTURN2_CKPTS
+
+    def _apply_hh_cfg(self):
+        c = HTURN2_CKPTS.get(self.ckpt_name)
+        self.hh.kp, self.hh.wz_limit = (c.hh_kp, c.hh_wz_max) if c is not None else (HH_DEFAULT_KP, HH_DEFAULT_WZ_MAX)
+
+    def set_heading_target(self, rad):
+        """1006 HTURN2: 목표 요 = 시작 요 + rad (eval_walk --heading_target 와 같은 정의). 기준을 잡기 전이면 첫 틱에 반영."""
+        if not self.hturn2:
+            raise ValueError("HTURN2 키가 아님 — 목표 각 입력 불가")
+        self.hh_target = float(rad)
+        if self.hh_ref_set and self.hh_yaw0 is not None:
+            self.hh.set_ref(self.hh_yaw0 + self.hh_target)
 
     def reset(self, checkpoint=None):
         if checkpoint and checkpoint != self.ckpt_name:
@@ -870,6 +951,9 @@ class BridgeCore:
             self.ckpt_name = checkpoint
         self.runner.reset()
         self.hh_ref_set = False
+        self.hh_target = 0.0
+        self.hh_yaw0 = None
+        self._apply_hh_cfg()
 
     def tick(self, gyro, quat_wxyz, qpos_rad, qvel_rad_s, contact2):
         """관측 → 목표각 12 [rad, 절대] (JOINT_ORDER 순)."""
@@ -880,7 +964,8 @@ class BridgeCore:
         if self.heading_hold and abs(wz) < 1e-6:
             yaw = yaw_from_quat_wxyz(w, x, y, z)
             if not self.hh_ref_set:
-                self.hh.set_ref(yaw)
+                self.hh_yaw0 = yaw
+                self.hh.set_ref(yaw if self.hh_target == 0.0 else yaw + self.hh_target)   # 목표 0 = 종전 그대로
                 self.hh_ref_set = True
             wz = self.hh.update(yaw)
         return self.runner.step(gyro, grav, (vx, vy, wz),
@@ -1015,7 +1100,7 @@ def _selftest_policy(required=()):
     0905 감사 A5: 파일이 없는 등록 항목(미배포 세대)은 FAIL 이 아니라 SKIP 으로 집계 — 단 `required`
     (기동 --checkpoint 와 STAND_DEFAULT)가 없으면 FAIL (배포 패키지 누락).
     """
-    names = ["walk"] + [k for k in CHECKPOINTS if k.startswith("stand_")]
+    names = ["walk"] + [k for k in CHECKPOINTS if k.startswith("stand_")] + [k for k in required if k in HTURN2_CKPTS]
     missing_freq = [k for k in names if k.startswith("stand_") and k not in CKPT_GAIT_FREQ]
     assert not missing_freq, f"CKPT_GAIT_FREQ 누락: {missing_freq}"
     assert STAND_DEFAULT in CHECKPOINTS and STAND_DEFAULT in CKPT_GAIT_FREQ, f"STAND_DEFAULT 미등록: {STAND_DEFAULT}"
@@ -2217,6 +2302,120 @@ def _selftest_touchdown_gate():
             f"중력 불통과 보류 · 선 채 무장 거부 · 대기 상한 timeout · 접촉 상실 복귀 · 단방향 — 8케이스 통과")
 
 
+def _selftest_hturn2():
+    """1006 HTURN2 실험 플래그: ① 꺼짐 = 레지스트리·HeadingHold(1.0/0.6)·LPF 분기·러너 계약이 종전 그대로(키 없음·피드포워드 없음)
+    ② 켜짐 = 키 등록 계약(경로·f0·기본자세·env.yaml 필수), HeadingHold kp 1·|wz|≤0.3·목표 = 시작 요 + 목표,
+    walk 명령 검증(앞 보행 한정), cadence 클록·hip_r 피드포워드가 독립 float64 식과 일치, 슬루가 피드포워드 뒤에 걸림
+    ③ 되돌림 = 꺼짐 상태 복원. 시뮬 원본 함수와의 비트 동치는 PC 스크립트 rl_walking/deploy/selftest_hturn2_equiv.py(torch)."""
+    import numpy as np
+    was_on = EXPERIMENTAL_HTURN2
+    k = _H2.HTURN2_CKPT_KEY
+    cfg = _H2.HTURN2_DEFAULT
+    if was_on:
+        disable_experimental_hturn2()
+    try:
+        # ① 꺼짐
+        regs = (CHECKPOINTS, CKPT_GAIT_FREQ, CKPT_DEFAULT_POSE, CKPT_REQUIRE_ENV_YAML, HTURN2_CKPTS)
+        assert not EXPERIMENTAL_HTURN2 and not HTURN2_CKPTS and all(k not in r for r in regs), "꺼짐인데 HTURN2 키가 등록돼 있음"
+        snap = [sorted(r) for r in regs]
+        stub = lambda obs: np.zeros(12, np.float32)  # noqa: E731
+        core = BridgeCore("walk", runner=PolicyRunnerStage4(model_path=stub))
+        assert not core.hturn2 and (core.hh.kp, core.hh.wz_limit) == (1.0, 0.6) and core.runner.hturn2 is None
+        ref_hh = HeadingHold(kp=1.0, wz_limit=0.6)
+        core.reset(); core.cmd = (0.2, 0.0, 0.0)
+        q = np.array(DEFAULT_POSE_RAD, dtype=np.float32)
+        for i in range(60):
+            yaw = 0.3 + 0.02 * i
+            quat = (math.cos(yaw / 2), 0.0, 0.0, math.sin(yaw / 2))
+            core.tick((0.0, 0.0, 0.0), quat, q, np.zeros(12), [1.0, 1.0])
+            if i == 0:
+                ref_hh.set_ref(yaw_from_quat_wxyz(*quat))
+            want = ref_hh.update(yaw_from_quat_wxyz(*quat))
+            got = float(core.runner.last_obs[30 + 4 * 3 + 2])           # velocity_commands 최신 프레임 wz
+            assert got == np.float32(want), f"꺼짐 HeadingHold wz {got} ≠ 종전 {want} (틱 {i})"
+            assert core.runner.last_ff is None
+        try:
+            core.set_heading_target(0.5)
+            raise AssertionError("꺼짐인데 목표 각 입력이 받아들여짐")
+        except ValueError:
+            pass
+        # ② 켜짐
+        enable_experimental_hturn2()
+        assert EXPERIMENTAL_HTURN2 and k in CHECKPOINTS and CHECKPOINTS[k].endswith(os.path.join(_H2.HTURN2_RUN_REL, "exported"))
+        assert CKPT_GAIT_FREQ[k] == 1.1 and k in CKPT_REQUIRE_ENV_YAML and not k.startswith(("stand", "march"))
+        assert CKPT_DEFAULT_POSE[k] == [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
+        r = PolicyRunnerStage4(model_path=lambda obs: np.full(12, 3.0, np.float32), obs_dim=320, gait_freq=1.1,
+                               default_pose_rad=CKPT_DEFAULT_POSE[k], act_obs_ema_beta=0.27, jvel_obs_ema_beta=0.25, hturn2=cfg)
+        core = BridgeCore(k, runner=r)
+        assert core.hturn2 and (core.hh.kp, core.hh.wz_limit) == (cfg.hh_kp, 0.3)
+        # walk 명령 검증
+        for bad in ({}, {"vx": 0.2}, {"vx": -0.05}, {"vx": 0.1, "vy": 0.05}, {"vx": 0.1, "wz": 0.1},
+                    {"vx": 0.1, "heading_hold": False}, {"vx": 0.1, "heading_target_deg": 200}, {"vx": float("nan")}):
+            try:
+                hturn2_validate_walk(bad)
+                raise AssertionError(f"거부돼야 할 walk 명령 통과: {bad}")
+            except ValueError:
+                pass
+        cmd, tgt = hturn2_validate_walk({"vx": 0.1, "heading_target_deg": -90})
+        assert cmd == (0.1, 0.0, 0.0) and abs(tgt + math.pi / 2) < 1e-12
+        # 시나리오: 서기 40틱 → vx 0.1 목표 +45° → 문턱 0.029/0.03 → vx 0.15
+        core.reset(); core.heading_hold = True; core.set_heading_target(math.radians(45.0))
+        q = np.array(CKPT_DEFAULT_POSE[k], dtype=np.float32)
+        yaw0, u64, n_nz, worst_u, worst_ff = 0.7, 0.0, 0, 0.0, 0.0
+        prev_out = None
+        for n in range(400):
+            vx = 0.0 if n < 40 else (0.1 if n < 200 else (0.029 if n < 240 else (0.03 if n < 280 else 0.15)))
+            core.cmd = (vx, 0.0, 0.0)
+            yaw = yaw0 + 0.004 * max(0, n - 40)
+            quat = (math.cos(yaw / 2), 0.0, 0.0, math.sin(yaw / 2))
+            out = core.tick((0.0, 0.0, 0.0), quat, q, np.zeros(12), [1.0, 1.0])
+            if n == 0:
+                assert abs(core.hh.ref - (yaw_from_quat_wxyz(*quat) + math.radians(45.0))) < 1e-12, "목표 = 시작 요 + 45° 아님"
+            wz = float(core.runner.last_obs[30 + 4 * 3 + 2])
+            assert abs(wz) <= 0.3 + 1e-7, f"|wz| {wz} > 0.3"
+            # 독립 float64 기준: cadence·위상
+            f64 = (min(max(0.7 + 4.0 * abs(vx), 0.8), 1.6) if abs(vx) >= 0.03 else 1.1)
+            u64 = 0.0 if n <= 1 else (u64 + f64 * 0.02) % 1.0
+            u32 = float(core.runner._h2_clock.u)
+            du = min(abs(u32 - u64), 1.0 - abs(u32 - u64))
+            worst_u = max(worst_u, du)
+            assert du < 1e-4, f"틱 {n} 위상 {u32} vs 기준 {u64}"
+            clk = core.runner.last_obs[225 + 4 * 2: 225 + 5 * 2]
+            assert abs(clk[0] - math.sin(2 * math.pi * u32)) < 1e-6 and abs(clk[1] - math.cos(2 * math.pi * u32)) < 1e-6
+            # 독립 float64 기준: 피드포워드(러너 위상 u32 사용)
+            ul = (u32 + float(core.runner._h2_clock.f) * 0.12) % 1.0
+            v = (2.0 * ul) % 1.0
+            ss = v * v * (3.0 - 2.0 * v)
+            shl, shr = (ss, 1.0 - ss) if ul < 0.5 else (1.0 - ss, ss)
+            amp = 1.5 * -0.455 * wz * (1.0 if abs(vx) >= 0.03 else 0.0)
+            fl, fr = core.runner.last_ff
+            e = max(abs(fl - amp * shl), abs(fr - amp * shr))
+            worst_ff = max(worst_ff, e)
+            assert e < 1e-6, f"틱 {n} 피드포워드 {core.runner.last_ff} vs 기준 {(amp * shl, amp * shr)}"
+            n_nz += int(fl != 0.0 or fr != 0.0)
+            if abs(vx) < 0.03:
+                assert fl == 0.0 and fr == 0.0, "서기 모드에서 피드포워드"
+            # 슬루는 피드포워드 뒤(러너 슬루 앞에 더함): 방출 변화 ≤ 4°/틱
+            if prev_out is not None:
+                assert float(np.abs(out - prev_out).max()) <= SLEW_RAD * 1.001 + 1e-6, "피드포워드가 슬루를 우회"
+            prev_out = out
+            q = out
+        assert n_nz > 150, f"0 아닌 피드포워드 틱 {n_nz} — 시나리오 점검"
+        core.set_heading_target(math.radians(-30.0))
+        assert abs(core.hh.ref - (core.hh_yaw0 + math.radians(-30.0))) < 1e-12, "turn: 목표 = 시작 요 − 30° 아님"
+        # ③ 되돌림
+        disable_experimental_hturn2()
+        assert [sorted(r) for r in regs] == snap and not EXPERIMENTAL_HTURN2, "되돌림 뒤 레지스트리가 꺼짐 상태와 다름"
+    finally:
+        if was_on and not EXPERIMENTAL_HTURN2:
+            enable_experimental_hturn2()
+        elif not was_on and EXPERIMENTAL_HTURN2:
+            disable_experimental_hturn2()
+    return (f"꺼짐: 키 0·HeadingHold 1.0/0.6 종전 wz 60틱 일치·피드포워드 없음 / 켜짐: 키 계약(exported·f0 1.1·CROUCH_V5·env.yaml 필수)·"
+            f"|wz|≤0.3·목표=시작요+목표·walk 검증 8종 거부·400틱 위상 오차 {worst_u:.1e}·피드포워드 오차 {worst_ff:.1e}(0 아님 {n_nz})·"
+            f"슬루 뒤 4°/틱 / 되돌림 복원" + (" (기동 플래그 켜짐 상태 복원)" if was_on else ""))
+
+
 def run_selftest(required=()):
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 게이트 + 정책 500틱.
     required: 파일이 반드시 있어야 하는 체크포인트(기동 --checkpoint, STAND_DEFAULT) — 없으면 FAIL."""
@@ -2239,6 +2438,7 @@ def run_selftest(required=()):
              ("관측 필터 계약(1003)", _selftest_obs_filter),
              ("C5 전환 경로(1004)", _selftest_c5),
              ("C5 kr 경로(1005)", _selftest_c5kr),
+             ("HTURN2 실험 플래그(1006)", _selftest_hturn2),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:
@@ -2269,10 +2469,19 @@ def main():
     ap.add_argument("--frame-max-age", type=float,
                     default=FRAME_MAX_AGE_DEFAULT_S,
                     help="프레임 게이트 허용 최고령(초). 기본 3600")
-    ap.add_argument("--checkpoint", default=STAND_DEFAULT, choices=list(CHECKPOINTS),
+    ap.add_argument("--experimental-hturn2", action="store_true",
+                    help="1006 실험(기본 꺼짐·실물 미검증): HTURN2 키 등록(W2q 25590 + cadence 클록 + 회전 피드포워드 + "
+                         "HeadingHold 목표 각 |wz|≤0.3). 켜도 --checkpoint " + _H2.HTURN2_CKPT_KEY + " 일 때만 계약이 바뀐다")
+    ap.add_argument("--checkpoint", default=STAND_DEFAULT, choices=list(CHECKPOINTS) + [_H2.HTURN2_CKPT_KEY],
                     help="기본값은 배포 데뷔 정책(STAND_DEFAULT). 0907: 구 walk 는 젯슨에서 삭제돼 "
                          "기본값으로 두면 selftest 가 필수 파일 없음으로 실패한다")
     args = ap.parse_args()
+    if args.checkpoint == _H2.HTURN2_CKPT_KEY and not args.experimental_hturn2:
+        print(f"[거부] --checkpoint {args.checkpoint} 는 --experimental-hturn2 를 명시해야 선택 가능", file=sys.stderr)
+        return 2
+    if args.experimental_hturn2:
+        enable_experimental_hturn2()
+        print(f"[경고] --experimental-hturn2: 실험 기능 켜짐(실물 미검증) — 키 {_H2.HTURN2_CKPT_KEY}", file=sys.stderr)
     if args.selftest:
         return run_selftest(required=(args.checkpoint, STAND_DEFAULT))
 
@@ -2559,6 +2768,20 @@ def main():
             if c == "stop":
                 self.core.cmd = (0.0, 0.0, 0.0)   # walk 정책 능동 서기 = 정지
                 return
+            if c == "turn":
+                # 1006 HTURN2 실험: 목표 요 변화만 바꾼다(정책·러너 리셋 없음). 플래그 꺼짐/다른 키면 무시(종전에도 모르는 명령은 무시).
+                if not (self.core.active and self.core.hturn2):
+                    self.get_logger().warn(f"turn 명령은 --experimental-hturn2 + {_H2.HTURN2_CKPT_KEY} 실행 중에만 — 무시: {d}")
+                    return
+                try:
+                    self.core.set_heading_target(hturn2_target_rad(d.get("heading_target_deg", 0.0)))
+                except (ValueError, TypeError) as e:
+                    self.get_logger().warn(f"turn 거부: {e}")
+                    return
+                self._bb_write({"timestamp": time.time(), "event": "hturn2_turn",
+                                "heading_target_deg": round(math.degrees(self.core.hh_target), 2)})
+                self.get_logger().info(f"HTURN2 목표 요 변화 {math.degrees(self.core.hh_target):+.1f}° (시작 요 기준)")
+                return
             if c in ("stand", "walk", "march"):
                 if c in ("stand", "march"):
                     cmd = (0.0, 0.0, 0.0)
@@ -2592,6 +2815,13 @@ def main():
                         if args.checkpoint in (
                             set(CHECKPOINTS) - march_family - stand_family) \
                         else "drv2"
+                _h2_target = None
+                if c == "walk" and ck in HTURN2_CKPTS:   # 1006 HTURN2 실험(플래그 켜짐 + 키)에서만
+                    try:
+                        cmd, _h2_target = hturn2_validate_walk(d)
+                    except (ValueError, TypeError) as e:
+                        self.get_logger().error(f"[거부] {e} — 무시: {d}")
+                        return
                 # 1005 착지 자동 인수(touchdown_start): stand 전용, 행잉 ARM 과 동시 금지(공중 정책 경로와 섞지 않는다).
                 _td = bool(d.get("touchdown_start", False))
                 if _td and (c != "stand" or bool(d.get("hang_arm", False))):
@@ -2634,6 +2864,8 @@ def main():
                     self.core.heading_hold = False
                 else:
                     self.core.heading_hold = bool(d.get("heading_hold", True))
+                if _h2_target is not None:   # 1006 HTURN2: 목표 각(시작 요 기준) — reset() 뒤에 설정
+                    self.core.set_heading_target(_h2_target)
                 self.core.active = True
                 self.stopped_for_stale = False
                 # 인계 워밍업 시작 — stage8 status 스트림이 붙을 때까지 정책 구동 보류(홀드-프라임만).
@@ -2883,7 +3115,7 @@ def main():
                         f"발진 가드 트리거 — {why}. 줄 재인장 후 release_all 실행!")
                     return
             targets_rad = self.core.tick(gyro, quat, qpos, qvel, contact2)
-            if self.core.ckpt_name.startswith("stand"):
+            if self.core.ckpt_name.startswith("stand") or self.core.hturn2:   # 1006 HTURN2: 평가 조건(LPF β0.27) 그대로
                 self.tgt_filt = lpf_step(self.tgt_filt, targets_rad)
                 targets_rad = self.tgt_filt
             # 타깃 측 발진 가드 (0803 분석: 두 발진 모두 타깃이 몸을 80~100ms
@@ -3029,6 +3261,12 @@ def main():
                 dbg["guard_mode"] = self.guard_mode
             if self.td_gate is not None:   # 1005: touchdown_start 경로에서만 필드 추가(종전 스키마 불변)
                 dbg["start_gate"] = self.td_gate.snapshot(now)
+            if self.core.hturn2:           # 1006 HTURN2 실험 경로에서만 필드 추가(종전 스키마 불변)
+                _r = self.core.runner
+                dbg["hturn2"] = {"u": float(_r._h2_clock.u), "f": float(_r._h2_clock.f),
+                                 "ff_hip_r": (None if _r.last_ff is None else [round(v, 5) for v in _r.last_ff]),
+                                 "hh_target_deg": round(math.degrees(self.core.hh_target), 2),
+                                 "hh_ref": (None if not self.core.hh_ref_set else round(self.core.hh.ref, 5))}
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
             if not (self.live and self.armed):

@@ -2604,7 +2604,8 @@ def step_assist_curriculum(env, env_ids, alphas: tuple = (2.0, 1.5, 1.0, 0.5, 0.
 
 
 def omni_assist_update(env, env_ids, alphas: tuple = (1.0, 0.75, 0.5, 0.25, 0.0), cats: tuple = (1, 2, 3), min_sched: float = 20000.0,
-                       min_full: float = 0.5, min_iters: int = 50, steps_per_iter: int = 24, dir_too: bool = False, start_stage: int = 0):
+                       min_full: float = 0.5, min_iters: int = 50, steps_per_iter: int = 24, dir_too: bool = False, start_stage: int = 0,
+                       rel: bool = False, rel_alpha0: float = 0.5, rel_step: float = 0.1, keep_ratio: float = 0.7, revert_ratio: float = 0.4, rel_min_iters: int = 30):
     """mode="interval"(0 s) — 1006 W2omA: 스텝 보조(install_step_assist 굽힘 펄스)를 **명령 범주 cats(뒤·옆·회전)** env 에만 env 별 α 로.
     감쇠는 그 범주의 블록 하중 수용률(load 사건 / 예정 반주기) ≥ min_full 일 때만(앞 범주는 이미 걷기 때문에 전체 통계로 감쇠하면 안 됨).
     α 가 마지막 단계(0)면 순수 정책. 합격 판정은 평가(α 0)에서."""
@@ -2622,6 +2623,24 @@ def omni_assist_update(env, env_ids, alphas: tuple = (1.0, 0.75, 0.5, 0.25, 0.0)
     f = getattr(env, "_gf", None); f = f if f is not None else torch.full((env.num_envs,), 1.1, device=env.device)
     g["n_s"] += float((sel.float() * 2.0 * f * env.step_dt).sum()); g["n_td"] += float((st["ev_td"] * sel.float()).sum()); g["n_ld"] += float((st["ev_load"] * sel.float()).sum())
     it = int(env.common_step_counter) // steps_per_iter
+    if rel:     # 1006 W2omP3: A0m 의 상대 미세 감쇠(step_assist_curriculum_rel) — 그 α 첫 블록 r0 의 keep_ratio 유지면 α −= step, revert_ratio 미만이면 되돌림
+        if "a" not in g:
+            g["a"] = float(rel_alpha0); g["r0"] = None
+        if g["n_s"] >= min_sched:
+            r = g["n_ld"] / g["n_s"]; td = g["n_td"] / g["n_s"]
+            if g["r0"] is None:
+                g["r0"] = r
+            a0 = g["a"]; msg = ""
+            if r >= keep_ratio * g["r0"] and it - g["since"] >= rel_min_iters and a0 > 0.0:
+                g["a"] = max(0.0, round(a0 - rel_step, 3)); g["since"] = it; g["r0"] = None; msg = " → 감쇠"
+            elif r < revert_ratio * g["r0"] and a0 < float(alphas[0]):
+                g["a"] = min(float(alphas[0]), round(a0 + rel_step, 3)); g["since"] = it; g["r0"] = None; msg = " → 되돌림"
+            print(f"[W2omA 보조 블록] 반복 {it} α={a0:.2f}: 뒤·옆·회전 착지 {td:.3f} · 하중 수용 {r:.3f}{msg}", flush=True)
+            g["n_s"] = g["n_td"] = g["n_ld"] = 0.0
+        env._assist_alpha_env = g["a"] * sel.float()
+        if dir_too:
+            env._dir_alpha_env = env._assist_alpha_env
+        return
     if g["n_s"] >= min_sched:
         td, ld = g["n_td"] / g["n_s"], g["n_ld"] / g["n_s"]
         ok = ld >= min_full and it - g["since"] >= min_iters and g["stage"] < len(alphas) - 1

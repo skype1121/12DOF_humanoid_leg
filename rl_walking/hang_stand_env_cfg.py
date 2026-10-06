@@ -2883,6 +2883,16 @@ class Biped12HangStandW2omP2EnvCfg(Biped12HangStandW2omPEnvCfg):
 
 
 @configclass
+class Biped12HangStandW2omP3EnvCfg(Biped12HangStandW2omPEnvCfg):
+    """W2omP3 (1006): W2omP + **보조 감쇠 규칙 = 상대 미세 감쇠**(A0m 이 α 0 에 도달한 규칙: 0.1 단계, 그 α 첫 블록의 70 % 유지 시 감쇠, 40 % 미만 되돌림) 단일 변경, α 0.5 에서 시작.
+    근거: W2omP·W2omP2·W2omP-s2 모두 α 0.5 에서 하중 수용 0.37–0.43 평탄 — 절대 문턱 0.5 가 내재화를 막는다(가설)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.omni_assist.params = {"cats": (3,), "rel": True, "rel_alpha0": 0.5}
+
+
+@configclass
 class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
     """W2om 평가용: + 회전 보조 훅(TURN_ALPHA, 0 이면 무동작) — W2qe 와 같은 평가 조건."""
 

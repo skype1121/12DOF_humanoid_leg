@@ -67,3 +67,5 @@
 | 1006 | W2omP(w2omp.sh PID 2524339: A0m 14299 → 600 반복 → 끝 평가) | "W2omP 학습 시작/끝/W2omP 끝" | walk_eval_w2omP_* | 감시 bgqzqiv0t(+300 블록) |
 | 1006 | W2omP | — | 끝 KILL(α 0 제자리 cadence 0; α 0.5 진단 0.36–0.49 Hz) → NEXT=W2omP2 | — |
 | 1006 | W2omP2(w2omp2.sh PID 2534312: W2omP 14898 → 1000, α 단계 이어받기) | "W2omP2 학습 시작/끝/W2omP2 끝" | walk_eval_w2omP2_* | 감시 bdpihsz6f(+500 블록) |
+| 1006 | W2omP-s2 재현(w2omps2.sh PID 2535099) | "W2omP-s2 학습 시작/끝" | train_w2omPs2.log 블록 | 감시 bkcne9ndn(+300) |
+| 1006 | W2omP3(w2omp3.sh PID 2544606: GPU 슬롯 대기 → 1000 반복 상대 미세 감쇠) | "W2omP3 학습 시작/끝/W2omP3 끝" | walk_eval_w2omP3_* | 감시 buoofsyit(+500) |

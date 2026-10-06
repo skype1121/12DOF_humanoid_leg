@@ -1472,3 +1472,10 @@ vx .053/.073/.078/.090(기울기 0.25), 뒤 명령 낙상 54 %·걸음 없음, �
 - 루트 디스크 99 %(.claude/worktrees 130 GB — 끝난 에이전트 작업 사본 15 개×10 GB). W3S4d 학습이 15934 에서 오류 메시지 없이 종료. 내용 기준(git cherry) 반영 확인한 worktree 11 개 삭제 → 여유 114 GB(74 %). 진행 중 에이전트 4 개 worktree 유지.
 - W3S4d 를 15900 체크포인트에서 400 반복 이어 학습(w3s4d2.sh), 15900 은 기존 평가 사용.
 - 반복 실수: 스크립트 파생 sed 가 실행 이름 패턴과 함께 시작 체크포인트(PN)까지 치환 — 2 회. 잘못된 실행은 학습 시작 전 PID 종료. 이후 파생 스크립트는 PN 줄을 따로 확인 후 기동.
+
+## W3S3d-15800 export + 배포 러너/브리지 반영(로컬, 젯슨 미배포) (02:13)
+- export: logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/(policy.pt·policy.onnx, md5 deploy/w3s3d_1007.md5), actor 직접 계산과 jit 차 1.8e-4(float32 수준). GPU 없이 export_ckpt_offline.py.
+- 러너 W3GaitClock 리드 발 규칙(vy·wz 부호) — 시뮬 소스와 비트 일치. 브리지 W3 키 stand_w3s3d_15800(--experimental-w3): step 명령에 vx·vy·wz(학습 범위 기본, 범위 밖·다축·0–하한 사이 거부, 변경 최소 1 s 간격 — 값 램프는 학습 밖 값을 지나므로 금지), 헤딩 고리(eval --heading_loop 와 동치, ψ* = 걷기 시작 IMU 요, 오차 15° 또는 120 s 초과 시 걷기 정지 → 서기, --w3-heading-loop off). 정지 래치·seq 계약 유지.
+- 셀프테스트(본 트리 재확인): selftest_w3_equiv·selftest_w3_bridge_node ALL PASS, 정책 500 틱 실모델 계약 시험 통과(폐루프 성능 증명 아님).
+- 현장 확인 필요: 실물 IMU 요 표류율(고리 문턱 15°/120 s 는 가정), 실효 지연, 젯슨 onnxruntime 수치. 다음 현장 실험(승인 필요): 줄 건 서기에서 IMU 요만 기록 → 지원 상태에서 제자리 step on/off.
+- 주의: W3S3d 학습 커리큘럼이 진급 안 해 학습 범위가 |vy| 0.04·|wz| 0.2 → 배포 기본 범위도 그만큼으로 묶음.

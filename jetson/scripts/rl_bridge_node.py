@@ -91,6 +91,7 @@ from rl_walking.deploy.policy_runner import (  # noqa: E402
 from rl_walking.deploy.c5_switch import C5Runner, SwitchDetector  # noqa: E402 — 1004 C5(서기+회복 전환), 미배포
 from rl_walking.deploy import deploy_chain as _DC  # noqa: E402 — 배포 경로 상수·함수의 단일 원본 (판정 스크립트와 공유)
 from rl_walking.deploy import hturn2 as _H2  # noqa: E402 — 1006 HTURN2 실험 플래그(기본 꺼짐, 순수 numpy 상수·함수)
+from rl_walking.deploy import w3_deploy as _W3  # noqa: E402 — 1006 W3 실험 플래그(기본 꺼짐, 순수 numpy 상수·함수)
 
 RATE_HZ = 50.0
 TICK_SEC = 1.0 / RATE_HZ
@@ -325,6 +326,8 @@ def _make_runner(checkpoint):
                         jvel_ema_mode=ckpt_jvel_ema_mode(stand),
                         act_obs_ema_beta=ckpt_obs_filter(stand)[0], jvel_obs_ema_beta=ckpt_obs_filter(stand)[1])
     _h2 = {"hturn2": HTURN2_CKPTS[checkpoint]} if checkpoint in HTURN2_CKPTS else {}   # 1006 실험 플래그 켜짐 + HTURN2 키에만
+    if checkpoint in W3_CKPTS:                                                          # 1006 W3 실험 플래그 켜짐 + W3 키에만
+        _h2 = {"w3": W3_CKPTS[checkpoint]}
     return PolicyRunnerStage4(
         CHECKPOINTS[checkpoint],
         gait_freq=CKPT_GAIT_FREQ.get(checkpoint, CKPT_GAIT_FREQ_DEFAULT),
@@ -443,6 +446,53 @@ def hturn2_validate_walk(d):
     if not bool(d.get("heading_hold", True)):
         raise ValueError("HTURN2: heading_hold 끔 불가(회전 명령 경로가 HeadingHold 뿐)")
     return (vx, 0.0, 0.0), hturn2_target_rad(d.get("heading_target_deg", 0.0))
+
+
+# ---------------------------------------------------------------------------
+# 1006 W3 실험 플래그 (**기본 꺼짐 · 실물 미검증 · 젯슨 미배포**) — reports/W3_BRIDGE_FLAG_1006.md
+# W3-A 400 제자리 교대 스텝 엔진: 관측 클록 = [sin 2πu, cos 2πu] × ge_obs(gait_enable 래치·0.2 s 램프), 명령 (0,0,0) + gait_enable.
+# 켜는 길은 기동 인자 --experimental-w3 하나뿐(enable_experimental_w3). 꺼져 있으면 W3_CKPTS 가 비어 레지스트리·명령 처리·
+# 블랙박스 스키마 전부 종전과 같다(selftest 'W3 실험 플래그' 가 고정). 켜도 --checkpoint 로 W3 키를 고른 경우에만 계약이 바뀐다.
+# 키는 stand 가족(stand_ 접두사): 시작 = stand 명령(ge 0 서기, heading_hold 강제 OFF, LPF β0.27), 스텝 = {"cmd":"step","enable":true}.
+# ---------------------------------------------------------------------------
+EXPERIMENTAL_W3 = False
+W3_CKPTS = {}              # 켜졌을 때만 {키: W3Config}
+
+
+def enable_experimental_w3():
+    """W3 키 등록 — 경로 = W3-A run 의 exported/(없으면 selftest '정책 500틱' SKIP, 기동 --checkpoint 로 고르면 필수 파일 FAIL).
+    계약: 기본자세 = CROUCH_V5(학습 env.yaml init_state, G21a 와 같음), env.yaml 필수(관측 필터 act EMA·jvel LPF), LPF β0.27(stand 경로).
+    CKPT_GAIT_FREQ 는 stand 가족 레지스트리 요건으로만 둔다(W3 클록은 gait_freq 를 쓰지 않는다)."""
+    global EXPERIMENTAL_W3
+    k = _W3.W3_CKPT_KEY
+    CHECKPOINTS[k] = os.path.join(REPO, _W3.W3_RUN_REL, "exported")
+    CKPT_GAIT_FREQ[k] = _W3.W3_DEFAULT.f_step
+    CKPT_DEFAULT_POSE[k] = [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
+    CKPT_REQUIRE_ENV_YAML.add(k)
+    W3_CKPTS[k] = _W3.W3_DEFAULT
+    EXPERIMENTAL_W3 = True
+
+
+def disable_experimental_w3():
+    """등록 되돌림(selftest 격리용) — 꺼진 상태 = 레지스트리에 W3 키가 하나도 없다."""
+    global EXPERIMENTAL_W3
+    k = _W3.W3_CKPT_KEY
+    for reg in (CHECKPOINTS, CKPT_GAIT_FREQ, CKPT_DEFAULT_POSE, W3_CKPTS):
+        reg.pop(k, None)
+    CKPT_REQUIRE_ENV_YAML.discard(k)
+    EXPERIMENTAL_W3 = False
+
+
+def w3_parse_step(d):
+    """{"cmd":"step","enable":bool} → bool. enable 은 반드시 명시(bool 또는 0/1)."""
+    if "enable" not in d:
+        raise ValueError("W3: step 명령은 enable 명시 필수")
+    v = d["enable"]
+    if isinstance(v, bool):
+        return v
+    if v in (0, 1):
+        return bool(v)
+    raise ValueError(f"W3: enable 은 true/false 또는 0/1 (받음 {v!r})")
 
 # ---------------------------------------------------------------------------
 # 프레임 변환 (2026-07-27 실측 캘리브레이션 확정)
@@ -927,6 +977,17 @@ class BridgeCore:
         self.active = False          # stand/walk/march 시작 여부
         self.last_grav = None        # 이번 틱에 정책이 받은 투영중력(장착 편향 보정 후) — roll_comp 가 같은 벡터를 쓴다
         self._apply_hh_cfg()
+
+    @property
+    def w3(self):
+        """이 코어가 W3 계약으로 도는지(실험 플래그 켜짐 + W3 키)."""
+        return self.ckpt_name in W3_CKPTS
+
+    def set_gait_enable(self, want):
+        """1006 W3: 명령이 원하는 gait_enable. 실제 전이는 러너 래치(0→1 다음 틱, 1→0 반주기 경계)."""
+        if not self.w3:
+            raise ValueError("W3 키가 아님 — gait_enable 입력 불가")
+        self.runner.set_gait_enable(bool(want))
 
     @property
     def hturn2(self):
@@ -2416,6 +2477,97 @@ def _selftest_hturn2():
             f"슬루 뒤 4°/틱 / 되돌림 복원" + (" (기동 플래그 켜짐 상태 복원)" if was_on else ""))
 
 
+def _selftest_w3():
+    """1006 W3 실험 플래그: ① 꺼짐 = 레지스트리에 키 없음·러너 w3 None·gait_enable 입력 거부 ② 켜짐 = 키 계약(stand 가족·exported·
+    CROUCH_V5·env.yaml 필수·학습 env.yaml 관측 필터/기본자세 일치), step 명령 파싱·선행조건, 래치(0→1 다음 틱·1→0 반주기 경계)·
+    클록 = [sin,cos]×ge_obs 가 독립 float64 식과 일치, 명령 관측 0, 리셋 = 서기 ③ 되돌림. 시뮬 원본과의 비트 동치는
+    PC 스크립트 rl_walking/deploy/selftest_w3_equiv.py(torch)."""
+    import numpy as np
+    was_on = EXPERIMENTAL_W3
+    k = _W3.W3_CKPT_KEY
+    if was_on:
+        disable_experimental_w3()
+    try:
+        regs = (CHECKPOINTS, CKPT_GAIT_FREQ, CKPT_DEFAULT_POSE, CKPT_REQUIRE_ENV_YAML, W3_CKPTS)
+        assert not EXPERIMENTAL_W3 and not W3_CKPTS and all(k not in r for r in regs), "꺼짐인데 W3 키가 등록돼 있음"
+        snap = [sorted(r) for r in regs]
+        stub = lambda obs: np.zeros(12, np.float32)  # noqa: E731
+        core = BridgeCore("stand_crouch_g21a", runner=PolicyRunnerStage4(model_path=stub, obs_dim=320))
+        assert not core.w3 and core.runner.w3 is None and core.runner._w3_clock is None
+        try:
+            core.set_gait_enable(True)
+            raise AssertionError("꺼짐인데 gait_enable 입력이 받아들여짐")
+        except ValueError:
+            pass
+        # ② 켜짐
+        enable_experimental_w3()
+        assert EXPERIMENTAL_W3 and CHECKPOINTS[k].endswith(os.path.join(_W3.W3_RUN_REL, "exported"))
+        assert k.startswith("stand_") and k in CKPT_REQUIRE_ENV_YAML and CKPT_GAIT_FREQ[k] == 1.1
+        assert CKPT_DEFAULT_POSE[k] == [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
+        yml = _ckpt_env_yaml(k)
+        env_note = "env.yaml 없음(SKIP)"
+        if os.path.isfile(yml):
+            c = _parse_env_contract(yml)
+            for j, want in zip(JOINT_ORDER, CKPT_DEFAULT_POSE[k]):
+                assert abs(c["joint_pos"][j] - want) < 1e-6, f"W3 env.yaml 기본자세 {j} 불일치"
+            assert ckpt_obs_filter(k) == (0.27, 0.25), f"W3 관측 필터 {ckpt_obs_filter(k)} ≠ (0.27, 0.25)"
+            env_note = "env.yaml 기본자세 CROUCH_V5·관측 필터 (0.27, 0.25) 일치"
+        for bad in ({}, {"enable": "yes"}, {"enable": 2}):
+            try:
+                w3_parse_step(bad)
+                raise AssertionError(f"거부돼야 할 step 명령 통과: {bad}")
+            except ValueError:
+                pass
+        assert w3_parse_step({"enable": True}) is True and w3_parse_step({"enable": 0}) is False
+        assert not _W3.step_enable_allowed(False, True, True)[0] and not _W3.step_enable_allowed(True, False, True)[0]
+        assert not _W3.step_enable_allowed(True, True, False)[0] and _W3.step_enable_allowed(True, True, True)[0]
+        r = PolicyRunnerStage4(model_path=lambda obs: np.full(12, 0.5, np.float32), obs_dim=320, gait_freq=1.1,
+                               default_pose_rad=CKPT_DEFAULT_POSE[k], act_obs_ema_beta=0.27, jvel_obs_ema_beta=0.25, w3=W3_CKPTS[k])
+        core = BridgeCore(k, runner=r)
+        assert core.w3 and not core.hturn2
+        core.reset(); core.heading_hold = False; core.cmd = (0.0, 0.0, 0.0)   # stand 가족 경로와 같은 설정
+        q = np.array(CKPT_DEFAULT_POSE[k], dtype=np.float32)
+        want_at = lambda n: (30 <= n < 77) or (110 <= n < 111) or (150 <= n < 240)   # noqa: E731 — 반주기 중간·1틱 펄스
+        ge, u, go, flips, worst = False, 0.0, 0.0, [], 0.0
+        for n in range(320):
+            if n == 280:                       # 중간 리셋(정책 재시작) — 서기·위상 0 으로
+                core.reset(); core.heading_hold = False; ge, u, go = False, 0.0, 0.0
+                n0 = n
+            core.set_gait_enable(want_at(n))
+            w = core.runner._w3_clock.want
+            quat = (1.0, 0.0, 0.0, 0.0)
+            core.tick((0.0, 0.0, 0.0), quat, q, np.zeros(12), [1.0, 1.0])
+            t = n - (n0 if n >= 280 else 0)
+            fresh = t <= 1
+            un = u + 1.1 * 0.02
+            cross = (u < 0.5 and un >= 0.5) or un >= 1.0
+            on = w and not ge
+            g2 = w if fresh else (True if on else (False if ((not w) and ge and cross) else ge))
+            if g2 != ge:
+                flips.append((n, int(g2)))
+            u = 0.0 if (fresh or on or not g2) else un % 1.0
+            go = (1.0 if g2 else 0.0) if fresh else min(max(go + (0.1 if g2 else -0.1), 0.0), 1.0)
+            ge = g2
+            obs = core.runner.last_obs
+            clk = obs[225 + 4 * 2: 225 + 5 * 2]
+            e = max(abs(clk[0] - math.sin(2 * math.pi * u) * go), abs(clk[1] - math.cos(2 * math.pi * u) * go))
+            worst = max(worst, e)
+            assert core.runner._w3_clock.ge == ge and e < 1e-5, f"틱 {n} ge/클록 불일치 (ge {core.runner._w3_clock.ge} vs {ge}, 오차 {e})"
+            assert np.all(obs[30:45] == 0.0), "W3 Stage 0 명령 관측이 0 이 아님(heading_hold?)"
+        assert len(flips) >= 5, flips
+        # ③ 되돌림
+        disable_experimental_w3()
+        assert [sorted(r) for r in regs] == snap and not EXPERIMENTAL_W3, "되돌림 뒤 레지스트리가 꺼짐 상태와 다름"
+    finally:
+        if was_on and not EXPERIMENTAL_W3:
+            enable_experimental_w3()
+        elif not was_on and EXPERIMENTAL_W3:
+            disable_experimental_w3()
+    return (f"꺼짐: 키 0·러너 w3 None·gait_enable 거부 / 켜짐: stand 가족 키·exported·CROUCH_V5·{env_note}·step 파싱 3종 거부·"
+            f"선행조건(정책·워밍업·블렌딩)·래치 전이 {flips}·클록 오차 {worst:.1e}·명령 관측 0·리셋=서기 / 되돌림 복원"
+            + (" (기동 플래그 켜짐 상태 복원)" if was_on else ""))
+
+
 def run_selftest(required=()):
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 게이트 + 정책 500틱.
     required: 파일이 반드시 있어야 하는 체크포인트(기동 --checkpoint, STAND_DEFAULT) — 없으면 FAIL."""
@@ -2439,6 +2591,7 @@ def run_selftest(required=()):
              ("C5 전환 경로(1004)", _selftest_c5),
              ("C5 kr 경로(1005)", _selftest_c5kr),
              ("HTURN2 실험 플래그(1006)", _selftest_hturn2),
+             ("W3 실험 플래그(1006)", _selftest_w3),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:
@@ -2472,13 +2625,25 @@ def main():
     ap.add_argument("--experimental-hturn2", action="store_true",
                     help="1006 실험(기본 꺼짐·실물 미검증): HTURN2 키 등록(W2q 25590 + cadence 클록 + 회전 피드포워드 + "
                          "HeadingHold 목표 각 |wz|≤0.3). 켜도 --checkpoint " + _H2.HTURN2_CKPT_KEY + " 일 때만 계약이 바뀐다")
-    ap.add_argument("--checkpoint", default=STAND_DEFAULT, choices=list(CHECKPOINTS) + [_H2.HTURN2_CKPT_KEY],
+    ap.add_argument("--experimental-w3", action="store_true",
+                    help="1006 실험(기본 꺼짐·실물 미검증): W3 키 등록(W3-A 400 제자리 교대 스텝 엔진 — gait_enable 래치 클록). "
+                         "켜도 --checkpoint " + _W3.W3_CKPT_KEY + " 일 때만 계약이 바뀐다. 시작 = stand(서기), 스텝 = {\"cmd\":\"step\",\"enable\":true}")
+    ap.add_argument("--checkpoint", default=STAND_DEFAULT, choices=list(CHECKPOINTS) + [_H2.HTURN2_CKPT_KEY, _W3.W3_CKPT_KEY],
                     help="기본값은 배포 데뷔 정책(STAND_DEFAULT). 0907: 구 walk 는 젯슨에서 삭제돼 "
                          "기본값으로 두면 selftest 가 필수 파일 없음으로 실패한다")
     args = ap.parse_args()
     if args.checkpoint == _H2.HTURN2_CKPT_KEY and not args.experimental_hturn2:
         print(f"[거부] --checkpoint {args.checkpoint} 는 --experimental-hturn2 를 명시해야 선택 가능", file=sys.stderr)
         return 2
+    if args.checkpoint == _W3.W3_CKPT_KEY and not args.experimental_w3:
+        print(f"[거부] --checkpoint {args.checkpoint} 는 --experimental-w3 를 명시해야 선택 가능", file=sys.stderr)
+        return 2
+    if args.experimental_hturn2 and args.experimental_w3:
+        print("[거부] --experimental-hturn2 와 --experimental-w3 는 함께 켤 수 없음", file=sys.stderr)
+        return 2
+    if args.experimental_w3:
+        enable_experimental_w3()
+        print(f"[경고] --experimental-w3: 실험 기능 켜짐(실물 미검증) — 키 {_W3.W3_CKPT_KEY}", file=sys.stderr)
     if args.experimental_hturn2:
         enable_experimental_hturn2()
         print(f"[경고] --experimental-hturn2: 실험 기능 켜짐(실물 미검증) — 키 {_H2.HTURN2_CKPT_KEY}", file=sys.stderr)
@@ -2767,6 +2932,31 @@ def main():
                 return
             if c == "stop":
                 self.core.cmd = (0.0, 0.0, 0.0)   # walk 정책 능동 서기 = 정지
+                if self.core.w3:                  # 1006 W3: 정지 = gait_enable 0(반주기 경계에서 서기로)
+                    self.core.set_gait_enable(False)
+                    self._bb_write({"timestamp": time.time(), "event": "w3_step", "enable": False, "by": "stop"})
+                return
+            if c == "step":
+                # 1006 W3 실험: gait_enable 만 바꾼다(정책·러너 리셋 없음). 플래그 꺼짐/다른 키면 무시(종전에도 모르는 명령은 무시).
+                if not self.core.w3:
+                    self.get_logger().warn(f"step 명령은 --experimental-w3 + {_W3.W3_CKPT_KEY} 실행 중에만 — 무시: {d}")
+                    return
+                try:
+                    want = w3_parse_step(d)
+                except (ValueError, TypeError) as e:
+                    self.get_logger().warn(f"step 거부: {e}")
+                    return
+                if want:
+                    _now = time.time()
+                    _bd = BLEND_S <= 0.0 or (self.blend_t0 is not None and _now - self.blend_t0 >= BLEND_S)
+                    ok, why = _W3.step_enable_allowed(self.core.active, self.warmed, _bd)
+                    if not ok:
+                        self.get_logger().warn(f"step 켜기 거부: {why}")
+                        self._bb_write({"timestamp": _now, "event": "w3_step_rejected", "why": why})
+                        return
+                self.core.set_gait_enable(want)
+                self._bb_write({"timestamp": time.time(), "event": "w3_step", "enable": bool(want), "by": "cmd"})
+                self.get_logger().info(f"W3 gait_enable 요청 {int(want)} (켜기=다음 틱 위상 0·왼발 스윙, 끄기=반주기 경계)")
                 return
             if c == "turn":
                 # 1006 HTURN2 실험: 목표 요 변화만 바꾼다(정책·러너 리셋 없음). 플래그 꺼짐/다른 키면 무시(종전에도 모르는 명령은 무시).
@@ -2824,6 +3014,9 @@ def main():
                         return
                 # 1005 착지 자동 인수(touchdown_start): stand 전용, 행잉 ARM 과 동시 금지(공중 정책 경로와 섞지 않는다).
                 _td = bool(d.get("touchdown_start", False))
+                if ck in W3_CKPTS and bool(d.get("hang_arm", False)):   # 1006 W3: 학습 분포는 지면 시작뿐
+                    self.get_logger().error(f"[거부] W3 키는 hang_arm 불가(지면 시작 학습) — 무시: {d}")
+                    return
                 if _td and (c != "stand" or bool(d.get("hang_arm", False))):
                     self.get_logger().error(
                         f"[거부] touchdown_start 는 stand 전용이며 hang_arm 과 함께 쓸 수 없음 — 무시: {d}")
@@ -3267,6 +3460,8 @@ def main():
                                  "ff_hip_r": (None if _r.last_ff is None else [round(v, 5) for v in _r.last_ff]),
                                  "hh_target_deg": round(math.degrees(self.core.hh_target), 2),
                                  "hh_ref": (None if not self.core.hh_ref_set else round(self.core.hh.ref, 5))}
+            if self.core.w3:               # 1006 W3 실험 경로에서만 필드 추가(종전 스키마 불변)
+                dbg["w3"] = self.core.runner._w3_clock.snapshot()
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
             if not (self.live and self.armed):

@@ -79,6 +79,15 @@ def _hturn2_mod():
         import hturn2  # type: ignore
     return hturn2
 
+
+def _w3_mod():
+    """1006 W3 실험 모듈 지연 import — 플래그가 꺼져 있으면 import 자체가 일어나지 않는다."""
+    if __package__:
+        from . import w3_deploy
+    else:  # 파일 직접 실행 (--selftest)
+        import w3_deploy  # type: ignore
+    return w3_deploy
+
 # ---------------------------------------------------------------------------
 # Stage4 확정 상수 (stage4_env_cfg / mdp_stage4 / symmetry.py와 동기 — 변경 금지)
 # ---------------------------------------------------------------------------
@@ -270,7 +279,7 @@ class PolicyRunnerStage4:
                  gait_freq: float = GAIT_FREQ_HZ, obs_dim: int | None = None,
                  default_pose_rad=None, jvel_ema_mode: str = "v2",
                  act_obs_ema_beta: float | None = None, jvel_obs_ema_beta: float | None = None,
-                 hturn2=None):
+                 hturn2=None, w3=None):
         """model_path: exported/ 디렉토리 또는 .onnx/.pt 파일 경로 (callable=스텁).
         backend: 'auto'(onnx 우선→torch 폴백) | 'onnx' | 'torch'.
         gait_freq: 클록 주파수 [Hz] — 반드시 체크포인트의 학습 클록과 일치
@@ -287,7 +296,12 @@ class PolicyRunnerStage4:
         hturn2: (1006 **실험 플래그, 기본 None = 종전과 비트 동일**) rl_walking.deploy.hturn2.Hturn2Config — 켜면
             ① 관측 gait_clock = 명령 연동 cadence 위상 누적(W2q 계약, gait_freq 무시) ② 러너 target 직후·슬루 앞에
             회전 피드포워드 hip_r 잔차(install_turn_assist 식). 브리지가 --experimental-hturn2 + HTURN2 키일 때만 넘긴다.
+        w3: (1006 **실험 플래그, 기본 None = 종전과 비트 동일**) rl_walking.deploy.w3_deploy.W3Config — 켜면 관측 gait_clock =
+            W3 계약([sin 2πu, cos 2πu] × ge_obs, gait_enable 래치·0.2 s 램프, gait_freq 무시). ge 는 set_gait_enable() 로 준다
+            (reset 뒤 기본 False = 서기). 행동 잔차는 없다(보조·참조는 배포에 없음). hturn2 와 동시 사용 불가.
         """
+        if hturn2 is not None and w3 is not None:
+            raise ValueError("hturn2 와 w3 는 동시에 켤 수 없다")
         for _b in (act_obs_ema_beta, jvel_obs_ema_beta):
             if _b is not None and not (0.0 < float(_b) <= 1.0):
                 raise ValueError(f"관측 EMA β 는 (0,1] (받음 {_b})")
@@ -343,6 +357,9 @@ class PolicyRunnerStage4:
             self._h2_iL = JOINT_ORDER.index("left_hip_r_joint")
             self._h2_iR = JOINT_ORDER.index("right_hip_r_joint")
             self._h2_cmd = (0.0, 0.0, 0.0)
+        # 1006 W3 실험 플래그 — None 이면 아래 상태는 전혀 쓰이지 않는다(종전 경로 그대로).
+        self.w3 = w3
+        self._w3_clock = _w3_mod().W3GaitClock(w3) if w3 is not None else None
 
     def reset(self) -> None:
         """에피소드/세션 초기화 — tick=0, 이력 비움(다음 step에서 백필), last_action=0."""
@@ -357,6 +374,14 @@ class PolicyRunnerStage4:
         if self._h2_clock is not None:   # 1006 HTURN2 (실험 플래그 켜짐에만)
             self._h2_clock.reset()
             self.last_ff = None
+        if self._w3_clock is not None:   # 1006 W3 (실험 플래그 켜짐에만) — want 도 False(서기)로
+            self._w3_clock.reset()
+
+    def set_gait_enable(self, want: bool) -> None:
+        """1006 W3: 명령이 원하는 gait_enable(시뮬 env._ge_cmd). 실제 ge 는 다음 관측 조립 때 래치 규칙으로 바뀐다."""
+        if self._w3_clock is None:
+            raise ValueError("W3 러너가 아님 — gait_enable 입력 불가")
+        self._w3_clock.set_want(want)
 
     # ---------- 관측 ----------
 
@@ -389,8 +414,9 @@ class PolicyRunnerStage4:
             "joint_pos": vec(qpos_rad, 12, "qpos_rad") - self.default_pose,
             "joint_vel": qvel_raw,
             "actions": self.last_action,
-            "gait_clock": (gait_clock_stage4(self._tick, self.gait_freq) if self._h2_clock is None
-                           else self._h2_clock_frame(cmd)),
+            "gait_clock": (self._h2_clock_frame(cmd) if self._h2_clock is not None
+                           else self._w3_clock_frame() if self._w3_clock is not None
+                           else gait_clock_stage4(self._tick, self.gait_freq)),
             "feet_contact": self._contact2(contact2),
         }
         # 1003 관측 필터 계약(체크포인트별, 학습 env.yaml 로 결정) — 첫 틱 = 현재값(학습 env 의 fresh 초기화와 같은 수열)
@@ -425,6 +451,11 @@ class PolicyRunnerStage4:
         self._h2_cmd = (float(c[0]), float(c[1]), float(c[2]))
         self._h2_clock.update(self._tick, c[0])
         return self._h2_clock.clock_obs()
+
+    def _w3_clock_frame(self) -> np.ndarray:
+        """1006 W3: 래치·위상·램프를 한 틱 갱신(조립 전 tick = env episode_length_buf)하고 게이트된 클록 관측을 낸다."""
+        self._w3_clock.update(self._tick)
+        return self._w3_clock.clock_obs()
 
     # ---------- 스텝 ----------
 
@@ -796,6 +827,56 @@ def _selftest_ema0() -> str:
 
 
 
+def _selftest_w3() -> str:
+    """(1006 W3 실험) 독립 float64 기준: 래치(0→1 즉시·1→0 반주기 경계)·위상·0.2 s 램프·클록 = [sin,cos]×ge_obs, 꺼짐 러너 무영향.
+    시뮬 원본 소스와의 비트 동치는 rl_walking/deploy/selftest_w3_equiv.py(torch)."""
+    stub = lambda obs: np.zeros(ACT_DIM, np.float32)  # noqa: E731
+    w3m = _w3_mod()
+    r = PolicyRunnerStage4(model_path=stub, obs_dim=320, gait_freq=1.1, w3=w3m.W3_DEFAULT)
+    try:
+        PolicyRunnerStage4(model_path=stub, w3=w3m.W3_DEFAULT, hturn2=object())
+        raise AssertionError("hturn2+w3 동시 허용")
+    except ValueError:
+        pass
+    r.reset()
+    want_at = lambda n: (60 <= n < 113) or (150 <= n < 151) or (200 <= n < 330)   # noqa: E731 — 반주기 중간·경계·1틱 펄스
+    ge, u, go = False, 0.0, 0.0
+    flips = []
+    q = DEFAULT_POSE_RAD.copy()
+    for n in range(400):
+        w = want_at(n)
+        r.set_gait_enable(w)
+        r.step((0, 0, 0), (0, 0, -1), (0, 0, 0), q, np.zeros(12), (1.0, 1.0))
+        fresh = n <= 1
+        un = u + 1.1 * 0.02
+        cross = (u < 0.5 and un >= 0.5) or un >= 1.0
+        on = w and not ge
+        off = (not w) and ge and cross
+        g2 = w if fresh else (True if on else (False if off else ge))
+        if g2 != ge:
+            flips.append((n, g2))
+        u = 0.0 if (fresh or on or not g2) else un % 1.0
+        go = (1.0 if g2 else 0.0) if fresh else min(max(go + (0.1 if g2 else -0.1), 0.0), 1.0)
+        ge = g2
+        c = r._w3_clock
+        assert c.ge == ge, f"틱 {n} ge {c.ge} vs 기준 {ge}"
+        assert abs(float(c.u) - u) < 1e-5 and abs(float(c.ge_obs) - go) < 1e-5, f"틱 {n} u/ge_obs {c.u},{c.ge_obs} vs {u},{go}"
+        clk = r.last_obs[225 + 4 * 2: 225 + 5 * 2]
+        assert abs(clk[0] - math.sin(2 * math.pi * u) * go) < 1e-5 and abs(clk[1] - math.cos(2 * math.pi * u) * go) < 1e-5
+    assert [f for f, _ in flips] == [t for t, _ in c.events] and len(flips) >= 4, flips
+    off_ticks = [t for t, g in flips if not g]
+    # 끄기는 반주기 경계에서만: 끈 틱 직전 위상 + du 가 0.5 또는 1 을 넘는다(기준식 cross) — 위 일치로 이미 보장, 여기선 지연만 기록
+    r2 = PolicyRunnerStage4(model_path=stub, obs_dim=320, gait_freq=1.1)
+    r2.reset()
+    r2.step((0, 0, 0), (0, 0, -1), (0, 0, 0), q, np.zeros(12), (1.0, 1.0))
+    try:
+        r2.set_gait_enable(True)
+        raise AssertionError("W3 아닌 러너가 gait_enable 을 받음")
+    except ValueError:
+        pass
+    return f"래치 전이 {flips} (끄기 틱 {off_ticks}) 기준식 일치·클록=[sin,cos]×ge_obs·램프 0.2 s·hturn2 동시 거부"
+
+
 def _selftest_obsfilter() -> str:
     """(i) 1003 관측 필터 계약: β 없음 = 종전과 비트 동일(G12 무영향) / β 있음 = actions·joint_vel 블록이 EMA 수열,
     joint_vel_ema 는 원시 속도 EMA(α0.1), 나머지 블록 비트 동일 / reset() 이 필터 상태를 비움."""
@@ -845,7 +926,8 @@ def _run_selftest() -> int:
              ("S8a 320 조립", _selftest_s8a),
              ("G13 512 조립", _selftest_g13),
              ("EMA0 계약 모드", _selftest_ema0),
-             ("관측 필터 계약(1003)", _selftest_obsfilter)]
+             ("관측 필터 계약(1003)", _selftest_obsfilter),
+             ("W3 클록 실험 플래그(1006)", _selftest_w3)]
     failed = 0
     for name, fn in tests:
         try:

@@ -61,7 +61,7 @@ def _st(env):
              "td_rec": b(N, 2), "cap_df": z(N, 2), "gain": z(N, 2), "phi_b": z(N, 2), "phi_a": z(N, 2), "last_xy": None,
              # 복귀(외란 단위)
              "r_on": b(N), "r_t0": z(N), "r_tend": z(N), "r_run": z(N), "r_done": b(N), "ev_ret": z(N),
-             "s_run": z(N), "s_done": b(N), "ev_sret": z(N), "pre": z(N, 3), "pre_n": z(N), "pre_f": z(N, 3), "post": z(N, 3),
+             "s_run": z(N), "s_done": b(N), "ev_sret": z(N), "pre": z(N, 3), "pre_n": z(N), "pre_f": z(N, 3), "post": z(N, 3), "spost": z(N, 3),
              # 에피소드 기록(커리큘럼)
              "ep_imp": b(N), "ep_lvl": torch.zeros(N, dtype=torch.long, device=dev),
              "lvl": 0, "stats": {k: 0.0 for k in ("imp_ep", "imp_fall", "applied", "canceled", "rec_td", "cap_sum", "ret_paid", "ret_due",
@@ -138,7 +138,7 @@ def w3d_dist_reset(env, env_ids, p_dist: float = 0.5, n_range: tuple = (1, 2), t
         s[k_][ids] = False
     for k_ in ("w_t0", "w_ntd", "r_t0", "r_tend", "r_run", "s_run", "ev_ret", "ev_sret", "pre_n"):
         s[k_][ids] = 0.0
-    s["pre"][ids] = 0.0; s["pre_f"][ids] = 0.0
+    s["pre"][ids] = 0.0; s["pre_f"][ids] = 0.0; s["spost"][ids] = 0.0
     s["w_F"][ids] = 0.0; s["ph_on"][ids] = -1.0
     s["td_rec"][ids] = False; s["cap_df"][ids] = 0.0; s["gain"][ids] = 0.0; s["phi_b"][ids] = 0.0; s["phi_a"][ids] = 0.0
     s["ep_lvl"][ids] = int(s["lvl"])
@@ -168,7 +168,7 @@ def w3d_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, lead
 
 # ---------------------------------------------------------------- 틱 갱신(interval) ----------------------------------------------------------------
 def w3d_dist_step(env, env_ids, win_s: float = 1.2, max_td: int = 3, ret_after: float = 0.3, ret_tol_v: float = 0.03, ret_tilt: float = 2.0,
-                  ret_w: float = 0.05, pre_tau: float = 2.0, ret_hold: float = 0.5, ret_T: float = 4.0, sret_tilt: float = 3.0, sret_w: float = 0.2, sret_v: float = 0.08,
+                  ret_w: float = 0.05, pre_tau: float = 2.0, ret_hold: float = 0.5, ret_T: float = 4.0, sret_tilt: float = 4.0, sret_w: float = 0.6, sret_v: float = 0.2,
                   sret_hold: float = 0.5, sret_T: float = 4.0):
     """mode="interval"(0 s), **w3_gait·w3_track 뒤**(정의 순서): ① 발생 전 슬롯 방향을 현재 몸통 요로 갱신(발생 틱엔 직전 틱 방향으로 고정)
     ② 다음 틱 발생인데 STAND 면 취소 ③ 발생 기록(충격 → 회복 창) ④ 복귀 판정(1 회/외란 보상 사건). 정지 명령은 w3d_gait_update 가 건다."""
@@ -248,7 +248,13 @@ def w3d_dist_step(env, env_ids, win_s: float = 1.2, max_td: int = 3, ret_after: 
         sensor = env.scene.sensors["contact_forces"]
         both = (sensor.data.net_forces_w[:, H._feet_body_ids(env), :].norm(dim=-1) > 5.0).all(dim=1)
         v = asset.data.root_lin_vel_w[:, :2].norm(dim=1)
-        ok = sw & ~ge & both & (tilt < sret_tilt) & (w < sret_w) & (v < sret_v)
+        # 1007 학습 결함: 순간값 문턱(3°·0.2·0.08)은 학습의 확률적 행동(탐색 잡음)으로 0 지급(같은 seed 결정적 102/154 vs 확률적 0/119)
+        # → 한 주기 EMA 값(정지 래치 뒤부터 누적)으로 판정. 평가(eval_w3 STAND 정상)는 절대 순간 기준 그대로.
+        c_ = torch.stack([tilt, w, v], 1)
+        k_ = min(1.0, dt / 0.91)
+        s["spost"] = torch.where((sw & ge).unsqueeze(1), c_, s["spost"] + k_ * (c_ - s["spost"]))
+        sp = s["spost"]
+        ok = sw & ~ge & both & (sp[:, 0] < sret_tilt) & (sp[:, 1] < sret_w) & (sp[:, 2] < sret_v)
         s["s_run"] = torch.where(ok, s["s_run"] + dt, torch.zeros_like(s["s_run"]))
         pay = sw & (s["s_run"] >= sret_hold)
         tout = sw & ~pay & (t - s["t_stop_on"] > sret_T)

@@ -28,6 +28,8 @@ p.add_argument("--level", type=int, default=2, help="충격 크기 단계 고정
 p.add_argument("--p_dist", type=float, default=1.0)
 p.add_argument("--seed", type=int, default=1)
 p.add_argument("--tag", default="s3d15800")
+p.add_argument("--stochastic", action="store_true", help="학습과 같은 확률적 행동(탐색 잡음)")
+p.add_argument("--keep_cur", action="store_true", help="커리큘럼 켠 채(학습과 같은 경로)")
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
 app = AppLauncher(a).app
@@ -43,7 +45,10 @@ from rsl_rl.runners import OnPolicyRunner  # noqa: E402
 env_cfg = load_cfg_from_registry(a.task, "env_cfg_entry_point")
 agent_cfg = load_cfg_from_registry(a.task, "rsl_rl_cfg_entry_point")
 env_cfg.scene.num_envs = a.num_envs; env_cfg.seed = a.seed
-env_cfg.curriculum = None                                   # 단계 고정(커리큘럼 진급 없음)
+if not a.keep_cur:
+    env_cfg.curriculum = None                               # 단계 고정(커리큘럼 진급 없음)
+else:
+    env_cfg.curriculum.w3d.params = dict(env_cfg.curriculum.w3d.params, start_level=a.level, n_levels=a.level + 1)
 L = WD.LEVELS[a.level]
 env_cfg.events.disturbance.params = dict(env_cfg.events.disturbance.params, p_dist=float(a.p_dist), levels=(L, L, L, L))
 env = gym.make(a.task, cfg=env_cfg)
@@ -63,11 +68,11 @@ dir_first = torch.full((N,), -1, dtype=torch.long, device=dev); stop_iss = torch
 ret_paid = torch.zeros(N, dtype=torch.bool, device=dev); sret_paid = torch.zeros(N, dtype=torch.bool, device=dev)
 rec_td = torch.zeros(N, device=dev); cap_s = torch.zeros(N, device=dev); gain_s = torch.zeros(N, device=dev); canceled = torch.zeros(N, dtype=torch.bool, device=dev)
 t0w = time.time()
-DIAG = []; rrun_max = torch.zeros(N, device=dev)
+DIAG = []; rrun_max = torch.zeros(N, device=dev); SR_ALL = 0; SDIAG = []
 steps = int(round(a.seconds / dt))
 for i in range(steps):
     with torch.inference_mode():
-        act = policy(obs)
+        act = runner.alg.policy.act(obs) if a.stochastic else policy(obs)
     obs, rew, dones, _ = venv.step(act)
     obs = obs[0] if isinstance(obs, tuple) else obs
     nonfinite += int((~torch.isfinite(rew)).sum())
@@ -93,7 +98,9 @@ for i in range(steps):
             pg_ = U.scene["robot"].data.projected_gravity_b
             tl_ = torch.rad2deg(torch.acos((-pg_[:, 2]).clamp(-1, 1))); w_ = U.scene["robot"].data.root_ang_vel_b[:, :2].norm(dim=1)
             DIAG.append(torch.stack([e_[wk], tl_[wk], w_[wk]], 1).cpu())
-        rrun_max = torch.maximum(rrun_max, s["r_run"])
+        rrun_max = torch.maximum(rrun_max, s["r_run"]); SR_ALL += int((s["ev_sret"] > 0).sum())
+        _sm = s["stop_on"] & ~W3._ge(U) & ~s["s_done"] & s["r_on"]
+        if bool(_sm.any()): SDIAG.append(s["spost"][_sm].cpu())
     d = dones.bool()
     term = U.termination_manager.terminated.bool()
     fell |= d & term & first
@@ -117,6 +124,10 @@ if DIAG:
     res["ret_window_ticks"] = int(D.shape[0]); res["ret_verr_p10_50_90"] = q(0); res["ret_tilt_p10_50_90"] = q(1); res["ret_w_p10_50_90"] = q(2)
     res["ret_each_ok_frac"] = [round(float((D[:, 0] <= 0.05).float().mean()), 3), round(float((D[:, 1] <= 4.0).float().mean()), 3), round(float((D[:, 2] <= 0.5).float().mean()), 3)]
 res["r_run_max_p90"] = float(torch.quantile(rrun_max[applied_any], 0.9)) if bool(applied_any.any()) else 0.0
+res["stats_all"] = dict(U._w3d["stats"])
+if SDIAG:
+    SD = torch.cat(SDIAG); res["spost_tilt_w_v_p10_50_90"] = [[round(float(torch.quantile(SD[:, c], x)), 3) for x in (0.1, 0.5, 0.9)] for c in range(3)]
+res["sret_all_ticks_paid"] = int(SR_ALL)
 print(json.dumps(res, ensure_ascii=False, indent=1), flush=True)
 os.makedirs(os.path.join(REPO, "log_picture"), exist_ok=True)
 with open(os.path.join(REPO, "log_picture", f"smoke_w3d_{a.tag}.json"), "w") as f:

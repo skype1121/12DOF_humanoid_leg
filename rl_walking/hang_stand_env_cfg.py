@@ -3660,3 +3660,38 @@ class Biped12HangStandW3D0EnvCfg(Biped12HangStandW3DEnvCfg):
     """W3D0: 외란 비율 0 — 비트 동일 대조(새 항·이벤트는 있으나 값 0, 난수 소비 0)."""
 
     WD_P = 0.0
+
+
+@configclass
+class Biped12HangStandW3S4dDEnvCfg(Biped12HangStandW3S4dEnvCfg):
+    """W3S4dD (1007): W3S4d(혼합 vx·vy·wz, 지연 1–5) 위에 W3D 가산 묶음(외란·정지 시나리오·포획 착지·손해 보전·복귀 1 회). W3S4d-16299 에서 --resume.
+    W3D 와 다른 점 1 개: 보폭 보전이 w3_stride4(곡선 착지 목표) 기준(w3d_relief_stride4). CUR2 없음(단일 변경). 외란 없는 env 에서 새 항 = 0."""
+
+    WD_P = 0.5
+    W_CAP = 10.0
+    W_RET = 20.0
+    W_SRET = 20.0
+    WD_LEVEL = 0
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev = self.events; rw = self.rewards
+        assert rw.w3_stride.func is _w3.w3_stride4 and ev.w3_gait.func is _w3.w3_gait_update
+        ev.disturbance = EventTerm(func=_w3d.w3d_dist_reset, mode="reset", params={"p_dist": float(self.WD_P)})
+        ev.w3_gait.func = _w3d.w3d_gait_update
+        ev.w3d_step = EventTerm(func=_w3d.w3d_dist_step, mode="interval", interval_range_s=(0.0, 0.0), params={})   # w3_mix 뒤(정의 순서)
+        ev.w3d_track = EventTerm(func=_w3d.w3d_tracker, mode="interval", interval_range_s=(0.0, 0.0), params={})
+        rw.w3d_cap = RewTerm(func=_w3d.w3d_cap, weight=float(self.W_CAP))
+        rw.w3d_rplace = RewTerm(func=_w3d.w3d_relief_place, weight=float(rw.w3_place.weight), params={"sig": 0.04})
+        rw.w3d_rstride = RewTerm(func=_w3d.w3d_relief_stride4, weight=float(rw.w3_stride.weight),
+                                 params={"nominal_half_width": float(rw.w3_stride.params.get("nominal_half_width", 0.144))})
+        rw.w3d_ret = RewTerm(func=_w3d.w3d_value, weight=float(self.W_RET), params={"name": "ev_ret"})
+        rw.w3d_sret = RewTerm(func=_w3d.w3d_value, weight=float(self.W_SRET), params={"name": "ev_sret"})
+        self.curriculum.w3d = _CurrTerm(func=_w3d.w3d_curriculum, params={"start_level": int(self.WD_LEVEL)})
+
+
+@configclass
+class Biped12HangStandW3S4dD0EnvCfg(Biped12HangStandW3S4dDEnvCfg):
+    """W3S4dD0: 외란 비율 0 — W3S4d 와 비트 동일 대조."""
+
+    WD_P = 0.0

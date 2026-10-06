@@ -141,11 +141,13 @@ def _set_body(env, foot_xyz, com_xy, com_v, com_z=0.55):
 
 
 def _rewards(env, out):
-    vals = {"w3_valid": W3.w3_value(env, "ev_valid"), "w3_place": W3.w3_place_reward(env), "w3_stride": W3.w3_stride2(env),
+    s4 = out.get("s4", False)
+    vals = {"w3_valid": W3.w3_value(env, "ev_valid"), "w3_place": W3.w3_place_reward(env),
+            "w3_stride": W3.w3_stride4(env, nominal_half_width=W_HALF) if s4 else W3.w3_stride2(env),
             "w3_miss": W3.w3_value(env, "ev_miss"), "w3_wrong": W3.w3_value(env, "ev_wrong"), "w3_periodic": W3.w3_periodic_contact(env),
             "w3_height": W3.w3_swing_height(env), "w3_width": W3.w3_width_pen(env)}
     if out.get("wd", True):
-        vals.update({"w3d_cap": WD.w3d_cap(env), "w3d_rplace": WD.w3d_relief_place(env), "w3d_rstride": WD.w3d_relief_stride(env),
+        vals.update({"w3d_cap": WD.w3d_cap(env), "w3d_rplace": WD.w3d_relief_place(env), "w3d_rstride": WD.w3d_relief_stride4(env, nominal_half_width=W_HALF) if s4 else WD.w3d_relief_stride(env),
                      "w3d_ret": WD.w3d_value(env, "ev_ret"), "w3d_sret": WD.w3d_value(env, "ev_sret")})
     for k, v in vals.items():
         out.setdefault(k, torch.zeros(env.num_envs)); out[k] = out[k] + v * WEIGHTS[k] * DT
@@ -155,7 +157,7 @@ def _rewards(env, out):
 LIFT, LAND, TAIL = 4, 18, 12
 
 
-def swing(cmd, land_off, push=None, xi_off=None, wd=True, freeze=False, ticks=None, t0=0.02, sched=True, win_s=1.2, max_td=3):
+def swing(cmd, land_off, push=None, xi_off=None, wd=True, freeze=False, ticks=None, t0=0.02, sched=True, win_s=1.2, max_td=3, s4=False):
     """왼발(0) LIFT 틱 이륙 → LAND 틱 착지(명목 착지 + land_off(N,2)), 오른발 고정. 몸: 골반·CoM 이 명령 속도로 진행.
     push = (N,2) 단위 방향(월드, 몸통 요 0)·충격 18 N 0.3 s(t0) — 회복 창 무장용. xi_off(N,2) = 착지 순간 ICP − CoM(동역학 발산 결과를 직접 지정).
     freeze = 스윙 없음(양발 고정). 반환 = 항별 가중 합(dict), env."""
@@ -176,8 +178,17 @@ def swing(cmd, land_off, push=None, xi_off=None, wd=True, freeze=False, ticks=No
     P_land = (pel_land + tgt_land).expand(N, 2) + land_off
     P_lift = (pel_land + tgt_land - torch.tensor([tx, 0.0])).expand(N, 2)
     P_R = torch.tensor([vx * t_land * 0.5, -W_HALF]).expand(N, 2)
+    vy = cmd[1]; dps = cmd[2] / F_STEP
+    if s4:                                                                    # W3S4d: 명목 착지 = 곡선 목표 변위(골반 요 0 근사 — 몸 요 회전 생략, 발 요만 wz/f)
+        tgt_land = torch.tensor([vx / (4 * F_STEP), W_HALF + vy / (4 * F_STEP)])
+        pel_land = torch.tensor([vx * t_land, vy * t_land])
+        Tc = W3.w3_curve_target(torch.tensor([cmd]), torch.full((1,), F_STEP), W_HALF)[0, 0]
+        P_land = (pel_land + tgt_land).expand(N, 2) + land_off
+        P_lift = (pel_land + tgt_land - Tc).expand(N, 2)
+        P_R = torch.tensor([vx * t_land * 0.5, -W_HALF + vy * t_land * 0.5]).expand(N, 2)
+        env.data.body_quat_w = qz(torch.zeros(N, 3)).reshape(N, 3, 4)
     xi_off = torch.zeros(N, 2) if xi_off is None else xi_off
-    out = {"wd": wd}
+    out = {"wd": wd, "s4": s4}
     mg = sum(MASS) * 9.81
     T = ticks or (LAND + TAIL)
     for k in range(T):
@@ -193,9 +204,12 @@ def swing(cmd, land_off, push=None, xi_off=None, wd=True, freeze=False, ticks=No
             F[:, 0, 2] = 0.0; F[:, 1, 2] = mg; fx[:, 0, 2] = 0.05 * math.sin(math.pi * s)
         elif not freeze and k >= LAND:
             F[:, 0, 2] = 0.6 * mg; F[:, 1, 2] = 0.4 * mg
-        pel = torch.tensor([vx * min(k, LAND) * DT, 0.0]).expand(N, 2)
+        pel = torch.tensor([vx * min(k, LAND) * DT, (vy * min(k, LAND) * DT) if s4 else 0.0]).expand(N, 2)
+        if s4:
+            fy = torch.zeros(N, 3); fy[:, 0] = s * dps
+            env.data.body_quat_w = qz(fy)
         om = math.sqrt(9.81 / 0.55)
-        com_v = torch.tensor([vx, 0.0]).expand(N, 2) + (xi_off * om if k >= LAND - 1 else torch.zeros(N, 2))
+        com_v = torch.tensor([vx, vy if s4 else 0.0]).expand(N, 2) + (xi_off * om if k >= LAND - 1 else torch.zeros(N, 2))
         _set_body(env, fx, pel.clone(), com_v.clone())
         env.sensor.data.net_forces_w = F
         if wd:
@@ -204,11 +218,13 @@ def swing(cmd, land_off, push=None, xi_off=None, wd=True, freeze=False, ticks=No
             W3.w3_gait_update(env, None, f_step=F_STEP, lead_vy_cmin=0.02, lead_wz_cmin=0.08)
         W3.w3_step_tracker(env, None)
         W3.w3_lat_tracker(env, None, nominal_half_width=W_HALF, width_margin=0.05)
+        if s4:
+            W3.w3_turn_tracker(env, None, cmin=0.08); W3.w3_mix_tracker(env, None, nominal_half_width=W_HALF)
         if wd:
             WD.w3d_dist_step(env, None, win_s=win_s, max_td=max_td)
             WD.w3d_tracker(env, None)
         _rewards(env, out)
-    out.pop("wd"); out["env"] = env
+    out.pop("wd"); out.pop("s4"); out["env"] = env
     return out
 
 
@@ -399,8 +415,40 @@ def test_F():
         check(int(round(out["vy_max"] / 0.02)) - 2 == expect, f"실제 이득 {gain_true}: 단계 {out['vy_max']:.2f}(기대 단계 {expect}) · 블록 이득 {out['lat_gain']:.3f}")
 
 
+def test_A4():
+    print("[A4] W3S4dD 무외란 불변(혼합 명령, 곡선 착지 목표·혼합 추적기 동반)")
+    for cmd in ((0.06, 0.0, 0.2), (0.06, 0.0, -0.3), (-0.04, 0.0, 0.2), (0.0, 0.05, 0.2), (0.06, 0.05, 0.0), (0.05, -0.05, -0.2), (0.0, 0.0, 0.3), (0.06, 0.0, 0.0)):
+        off = torch.randn(16, 2) * 0.03
+        a = swing(cmd, off, wd=False, s4=True); b = swing(cmd, off, wd=True, s4=True)
+        sa = all(torch.equal(a["env"]._w3[k], b["env"]._w3[k]) for k in a["env"]._w3) and all(torch.equal(a["env"]._w3mix[k], b["env"]._w3mix[k]) for k in a["env"]._w3mix if torch.is_tensor(a["env"]._w3mix[k]))
+        eq = all(torch.equal(a[k], b[k]) for k in a if k != "env")
+        z = all(float(b[k].abs().max()) == 0.0 for k in ("w3d_cap", "w3d_rplace", "w3d_rstride", "w3d_ret", "w3d_sret"))
+        check(sa and eq and z, f"명령 {cmd}: 기존 상태·보상(stride4) 비트 동일, 새 항 0 (기존 합 {float(total(b)[0]):+.3f})")
+        o = swing(cmd, off[:8], ticks=LAND + 1, s4=True); env = o["env"]
+        r, sm = WD.stride4_per_foot(env, nominal_half_width=W_HALF)
+        d = (r.sum(1) * W3._ge(env).float() - W3.w3_stride4(env, nominal_half_width=W_HALF)).abs().max()
+        check(float(d) == 0.0 and float(env._w3["ev_td"].sum()) > 0, f"명령 {cmd} 착지 틱: Σ발 stride4_per_foot = w3_stride4 (차 {float(d):.1e})")
+
+
+def test_B4():
+    print("[B4] W3S4dD 반사실 회복 착지(가중 합, W3S4d 항 + W3D 항) — 단일 축 6 조합 + 혼합 명령")
+    cmds = [(0.06, 0.0, 0.0), (0.0, 0.0, 0.0), (0.06, 0.0, 0.2), (0.06, 0.0, -0.2), (0.0, 0.05, 0.2), (0.06, 0.05, 0.0), (-0.04, 0.0, 0.2)]
+    for cmd in cmds:
+        for name, d in (("앞", (1.0, 0.0)), ("뒤", (-1.0, 0.0)), ("왼", (0.0, 1.0))):
+            if cmd[:2] != (0.06, 0.0) and cmd[:2] != (0.0, 0.0) and name == "뒤":
+                continue
+            dv = torch.tensor([d]); X = 0.13 if name != "왼" else 0.22
+            res = {}
+            for lab, off in (("방향", dv * 0.08), ("원래", torch.zeros(1, 2)), ("반대", -dv * 0.06)):
+                o = swing(cmd, off, push=dv, xi_off=dv * X, s4=True)
+                res[lab] = float(total(o)[0])
+            fz = float(total(swing(cmd, torch.zeros(1, 2), push=dv, xi_off=dv * X, freeze=True, s4=True))[0])
+            print(f"    명령 {cmd} 밀기 {name}: 방향 {res['방향']:+.3f} · 원래 {res['원래']:+.3f} · 반대 {res['반대']:+.3f} · 얼어붙기 {fz:+.3f}")
+            check(res["방향"] > res["원래"] + 0.03 and res["원래"] > res["반대"] + 0.03 and fz < res["원래"], f"{cmd}·{name}: 방향 > 원래 > 반대, 얼어붙기 < 원래")
+
+
 def main():
-    test_A(); test_B(); test_C(); test_D(); test_E(); test_F()
+    test_A(); test_B(); test_C(); test_D(); test_E(); test_F(); test_A4(); test_B4()
     print(f"\n결과: 실패 {len(FAILS)}")
     for f in FAILS:
         print("  - " + f)

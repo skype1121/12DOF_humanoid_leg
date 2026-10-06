@@ -368,6 +368,40 @@ def w3d_relief_stride(env, sig: float = 0.03, cmin: float = 0.02, width_gate: bo
     return ((s["gain"] * smax.unsqueeze(1) - r).clamp(min=0.0) * s["td_rec"].float()).sum(1)
 
 
+def stride4_per_foot(env, sig: float = 0.03, cmin: float = 0.02, wcmin: float = 0.08, width_gate: bool = True, k_opp: float = 0.5,
+                     nominal_half_width: float = 0.144, frame: str = "td", rot_frac: float = 0.5, lever: bool = True, sinc: bool = True):
+    """(N,2) 발별 w3_stride4 값(같은 식: 회전 + 병진 명령이면 곡선 착지 목표, 그 밖은 stride2_per_foot)과 (N,2) 발별 명목 최대점
+    s_max = 1 − exp(−‖ΔP*‖²/σ²)(곡선 목표는 발마다 다름 — 안쪽/바깥 발). 단위시험 [A4] 가 Σ발·ge = w3_stride4 를 확인한다."""
+    rb, sb = stride2_per_foot(env, sig=sig, cmin=cmin, width_gate=width_gate, k_opp=k_opp)
+    sb = sb.unsqueeze(1).expand(-1, 2)
+    M = getattr(env, "_w3mix", None)
+    if M is None:
+        return rb, sb
+    s3 = W3._st(env)
+    cmd = env.command_manager.get_command("base_velocity")
+    f_ = env._gf if getattr(env, "_gf", None) is not None else torch.full((env.num_envs,), 1.1, device=env.device)
+    T = W3.w3_curve_target(cmd, f_, nominal_half_width, rot_frac=rot_frac, lever=lever, sinc=sinc)
+    yf = M["psi_ref"] if frame == "td" else M["psi_lo"]
+    dl = W3._rot2(-yf, M["td_d"])
+    e2 = ((dl - T) ** 2).sum(-1); n2 = (T ** 2).sum(-1)
+    r = (torch.exp(-e2 / sig ** 2) - torch.exp(-n2 / sig ** 2)) * s3["ev_td"]
+    L = getattr(env, "_w3lat", None)
+    if width_gate and L is not None:
+        r = r * (1.0 - L["width_bad"])
+    r = r + k_opp * ((dl * T).sum(-1) / n2.clamp(min=1e-8)).clamp(-1.0, 0.0) * s3["ev_td"]
+    on = ((cmd[:, 2].abs() >= wcmin) & ((cmd[:, 0].abs() >= cmin) | (cmd[:, 1].abs() >= cmin))).unsqueeze(1)
+    return torch.where(on, r, rb), torch.where(on, 1.0 - torch.exp(-n2 / sig ** 2), sb)
+
+
+def w3d_relief_stride4(env, sig: float = 0.03, cmin: float = 0.02, wcmin: float = 0.08, nominal_half_width: float = 0.144) -> torch.Tensor:
+    """W3S4d 용 보폭 손해 보전(w3_stride4 와 같은 가중): 회복 착지마다 max(0, gain·s_max − stride4_발) — 곡선 착지 목표와 일관."""
+    s = _st(env)
+    if not bool(s["td_rec"].any()):
+        return torch.zeros(env.num_envs, device=env.device)
+    r, smax = stride4_per_foot(env, sig=sig, cmin=cmin, wcmin=wcmin, nominal_half_width=nominal_half_width)
+    return ((s["gain"] * smax - r).clamp(min=0.0) * s["td_rec"].float()).sum(1)
+
+
 def w3d_value(env, name: str) -> torch.Tensor:
     return _st(env)[name]
 

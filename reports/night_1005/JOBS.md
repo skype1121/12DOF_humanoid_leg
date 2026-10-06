@@ -82,3 +82,9 @@
 | 1006 | W2omF | — | KILL(학습 붕괴), 새 방향 이어학습 계열 중단 | — |
 | 1006 | LANDSCAPE(landscape.sh PID 2612777: 5 정책 반사실 보상 재생) | "LANDSCAPE 끝" | log_picture/landscape_*.{txt,csv} | 감시 bw9xzexcn |
 | 1006 | 서브에이전트 5(감사·구조조사✓·A0m 분석·지연 배포 준비·HTURN2 플래그) | 완료 알림 | — | — |
+| 1006 | 보상 지형 배치 | — | COMPLETED → ANALYZED → DECISION(W3 착수) | — |
+| 1006 | 클록 대조(G21a 서기: 정상/0,0/정지) | — | 57/57/58 % — 서기 = (0,0) 게이트 안전 | — |
+| 1006 | 병합: 지연 1단계 도구(517aed4d)·HTURN2 플래그(6b21120f)·확장 로더(aa39791f)·W3 코어(8a4a8885) | — | — | — |
+| 1006 | 트랙 B LPFR(lpfr.sh PID 2639886: KE × 체인 β 0.5/0.4/1.0 × d3 × 7조건) | "LPFR 끝" | ground_recovery_lpf*d3_* | 감시 bk7i8t3zn |
+| 1006 | 트랙 A W3 단위시험(w3unit.sh PID 2640739) | "W3UNIT 끝" | landscape_u_* | 감시 bj54x9yd2 |
+| 1006 | 서브에이전트: 회복 병목(진행)·W3 채점표 도구(진행) | 완료 알림 | — | — |

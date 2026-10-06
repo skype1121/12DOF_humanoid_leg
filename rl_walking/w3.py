@@ -27,7 +27,7 @@ def _st(env):
         z = lambda *sh: torch.zeros(*(sh or (N,)), device=dev)
         s = {"prev_c": torch.ones(N, 2, device=dev), "air_t": z(N, 2), "lift_z": z(N, 2), "apex": z(N, 2), "lift_xy": z(N, 2, 2),
              "lift_half": torch.full((N, 2), -1.0, device=dev), "valid_swing": z(N, 2), "load_t": z(N, 2), "load_win": z(N, 2), "pending": z(N, 2),
-             "ev_takeoff": z(N, 2), "ev_td": z(N, 2), "ev_valid": z(N, 2), "ev_wrong": z(N, 2), "td_err": z(N, 2), "half": torch.full((N,), -1.0, device=dev),
+             "ev_takeoff": z(N, 2), "ev_td": z(N, 2), "ev_valid": z(N, 2), "ev_wrong": z(N, 2), "td_err": z(N, 2), "td_dx": z(N, 2), "half": torch.full((N,), -1.0, device=dev),
              "valid_in_half": z(), "ev_miss": z(), "last_valid_foot": torch.full((N,), -1.0, device=dev), "ev_alt": z(),
              "n_valid": z(N, 2), "n_sched": z(), "n_alt": z()}
         env._w3 = s
@@ -40,7 +40,8 @@ def _ge(env):
 
 
 # ---------------------------------------------------------------- 명령 + gait_enable ----------------------------------------------------------------
-def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple = (0.43, 0.285, 0.285), vx_range: tuple = (0.03, 0.10)):
+def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple = (0.43, 0.285, 0.285), vx_range: tuple = (0.03, 0.10),
+                   vx_back_range: tuple | None = None):
     """mode="startup": 명령 리샘플 패치 — Stage 0 = STAND(ge 0, 명령 0) / STEP0(ge 1, 명령 0). 서기 env(is_standing_env)도 ge 로 덮는다.
     평가 고정: W3_GAIT_ENABLE=0|1, W3_CMD='vx,vy,wz'."""
     N, dev = env.num_envs, env.device
@@ -48,6 +49,7 @@ def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple
     env._ge_cmd = torch.zeros(N, dtype=torch.bool, device=dev)      # 명령이 원하는 ge(래치 전)
     env._ge_obs = torch.zeros(N, device=dev)
     env._w3_stage = int(stage); env._w3_mix = tuple(mix); env._w3_vx_range = tuple(vx_range)
+    env._w3_vx_back = tuple(vx_back_range) if vx_back_range else tuple(vx_range)
     term = env.command_manager.get_term("base_velocity")
     orig = term._resample_command
 
@@ -68,7 +70,8 @@ def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple
             r = torch.rand(n, device=dev)
             fwd = r >= mix[0]; back = r >= mix[0] + mix[1]
             mag = torch.empty(n, device=dev).uniform_(*getattr(env, "_w3_vx_range", (0.03, 0.10)))
-            vx = torch.where(back, -mag, torch.where(fwd, mag, torch.zeros_like(mag)))
+            magb = torch.empty(n, device=dev).uniform_(*getattr(env, "_w3_vx_back", getattr(env, "_w3_vx_range", (0.03, 0.10))))
+            vx = torch.where(back, -magb, torch.where(fwd, mag, torch.zeros_like(mag)))
             c[ids, 0] = torch.where(want, vx, torch.zeros_like(vx))
         fc = os.environ.get("W3_CMD")
         if fc:
@@ -240,6 +243,9 @@ def w3_step_tracker(env, env_ids, threshold: float = 5.0, min_air_s: float = 0.1
     td_ok = landed & (s["valid_swing"] > 0.5)
     s["ev_td"] = td_ok.float()
     s["td_err"] = torch.where(td_ok, err, torch.zeros_like(err))
+    d = fxy - s["lift_xy"]                                                # 스윙발 이륙→착지 월드 변위(요 프레임 x) — 몸 기울임으로 못 만드는 진행량
+    dx = d[..., 0] * cy.unsqueeze(1) + d[..., 1] * sy.unsqueeze(1)
+    s["td_dx"] = torch.where(td_ok, dx, torch.zeros_like(dx))
     s["pending"] = torch.where(td_ok, torch.ones_like(s["pending"]), s["pending"])
     s["load_win"] = torch.where(td_ok, torch.zeros_like(s["load_win"]), s["load_win"] + dt * s["pending"])
     s["load_t"] = torch.where(td_ok, torch.zeros_like(s["load_t"]), s["load_t"] + dt * ((fz > load_frac) & (s["pending"] > 0.5)).float())
@@ -365,6 +371,23 @@ def w3_track(env, sig: float = 0.05, cmin: float = 0.02) -> torch.Tensor:
     """Stage 1+: 명령 ≠ 0 일 때만 exp(−|v − v_cmd|²/σ²), σ 0.05(작은 속도에서 부호 구분 — 넓은 σ 는 서기에 공짜 점수)."""
     e, cn = _v_err(env)
     return torch.exp(-(e / sig) ** 2) * (cn >= cmin).float() * _ge(env).float()
+
+
+def w3_track_rel(env, sig: float = 0.05, cmin: float = 0.02) -> torch.Tensor:
+    """Stage 1 v2: 서기 대비 개선분 exp(−e²/σ²) − exp(−|c|²/σ²) — 서기(v 0) = 0 점, 반대 방향 < 0. 명령 0 은 0(Stage 0 과 같음)."""
+    e, cn = _v_err(env)
+    return (torch.exp(-(e / sig) ** 2) - torch.exp(-(cn / sig) ** 2)) * (cn >= cmin).float() * _ge(env).float()
+
+
+def w3_stride(env, sig: float = 0.03, cmin: float = 0.02) -> torch.Tensor:
+    """Stage 1 v2: 유효 착지 사건마다 스윙발 변위 x 가 ΔX* = vx/f 에 맞는 정도 − 제자리 디딤(Δx 0)의 점수 → 제자리 = 0, 반대 = 음수.
+    명령 0 은 0(Stage 0 과 같음). 지지발 미끄럼·몸 기울임으로는 못 얻음(스윙발 자체 변위)."""
+    s = _st(env)
+    cmd = env.command_manager.get_command("base_velocity")
+    f_ = env._gf if getattr(env, "_gf", None) is not None else torch.full((env.num_envs,), 1.1, device=env.device)
+    tx = (cmd[:, 0] / f_.clamp(min=0.5)).unsqueeze(1)
+    r = (torch.exp(-((s["td_dx"] - tx) / sig) ** 2) - torch.exp(-(tx / sig) ** 2)) * s["ev_td"]
+    return r.sum(1) * (cmd[:, 0].abs() >= cmin).float() * _ge(env).float()
 
 
 def w3_stand_gated(env, func, params: dict | None = None) -> torch.Tensor:

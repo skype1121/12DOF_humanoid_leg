@@ -3217,3 +3217,16 @@ class Biped12HangStandW3S1EnvCfg(Biped12HangStandW3A2EnvCfg):
         self.events.w3_cmd.params = {"p_step": 0.7, "stage": 1}
         self.rewards.w3_track = RewTerm(func=_w3.w3_track, weight=2.0)
         self.curriculum.w3_assist.params = {"start_stage": 4}
+
+
+@configclass
+class Biped12HangStandW3S1bEnvCfg(Biped12HangStandW3S1EnvCfg):
+    """W3 Stage 1 v2 (1006, 단위시험 2차 + 적대검토): 서기가 0 아닌 명령에서 공짜 점수(−0.28 → −0.17)를 받던 w3_track 을
+    서기 대비 개선분(w3_track_rel)으로, 진행량은 스윙발 이륙→착지 변위(w3_stride, ΔX* = vx/f, σ 0.03, 사건당 +10) — 몸 기울임·지지발 미끄럼 해킹 차단.
+    뒤 범위 축소(−0.03 – −0.06: 실물 CoM 뒤 여유 작음)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.w3_cmd.params = {"p_step": 0.7, "stage": 1, "vx_back_range": (0.03, 0.06)}
+        self.rewards.w3_track = RewTerm(func=_w3.w3_track_rel, weight=3.0)
+        self.rewards.w3_stride = RewTerm(func=_w3.w3_stride, weight=10.0)

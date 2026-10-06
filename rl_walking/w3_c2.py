@@ -412,6 +412,8 @@ def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: d
         st["since_rtd"] = torch.where(rtd, torch.zeros_like(st["since_rtd"]), st["since_rtd"] + env.step_dt)
         st["since_rtd"] = torch.where(fresh, torch.full_like(st["since_rtd"], 1e9), st["since_rtd"])
         orc = (st["since_rtd"] <= 0.5) & (st["vtbuf"].mean(1).norm(dim=-1) < 0.07)
+        if P.stop_oracle >= 3.0:                                # 1006 밤 v2: 평균 창이 켜짐 이후 표본만(켜짐 뒤 ≥ 한 주기) — v1 은 외란 전 서기 표본이 섞여 첫 착지에서 늘 발동
+            orc = orc & (st["mode"] == REC) & (st["t"] >= st["vtbuf"].shape[1] * env.step_dt)
     want = c2_core(st, tilt, w, armed, td_any, env.step_dt, P, v_est, oracle_ok=orc)
     if getattr(env, "_c2_march", False):
         want = torch.ones_like(want) if en is None else en.clone()     # 홀드(인계 전) 구간은 ge 0

@@ -6,8 +6,8 @@ import sys, os
 import numpy as np
 LP = os.environ.get("C2_LP", "/home/ryu/humanoid_leg_test1/log_picture")
 pfx = sys.argv[1]; seeds = sys.argv[2:] or ["1"]
-STOPS = ("k1", "k2", "k3", "k4", "or", "ov")
-REF = os.environ.get("SWEEP_REF", "ov")      # 1006 밤: 기준 오라클 = 속도 오라클(ov) — 종전 or(지지영역 포함)은 언제나 첫 착지로 약함
+STOPS = ("k1", "k2", "k3", "k4", "or", "ov", "ov3")
+REF = os.environ.get("SWEEP_REF", "ov3")      # 1006 밤: 기준 오라클 = 속도 오라클(ov) — 종전 or(지지영역 포함)은 언제나 첫 착지로 약함
 
 
 def load(cue, stp):
@@ -46,7 +46,7 @@ for cue in ("B3", "B6"):
             d = f - fo; idx = np.arange(n); bs = np.array([d[rng.choice(idx, n)].mean() for _ in range(2000)])
             lo, hi = np.percentile(bs, [2.5, 97.5])
             row.append(f"{s}: 낙상 {100*f.mean():5.1f} % (Δ오라클 {100*d.mean():+5.1f} %p, 95 % {100*lo:+.1f}~{100*hi:+.1f}) · 정착 {X['settle_ev_w'][m].mean():.2f} · 요청 시 착지 {np.nanmedian(np.where(X['req_w'][m] + X['timeout_w'][m] > 0, X['n_td_req'][m], np.nan)) if (X['req_w'][m] + X['timeout_w'][m]).sum() else float('nan'):.0f} · 시간 초과 {X['timeout_w'][m].mean():.2f} · 표류 {np.nanmedian(X['drift_w'][m]):.0f} cm")
-            if s not in ("or", "ov") and (best is None or d.mean() < best[1]):
+            if s not in ("or", "ov", "ov3") and (best is None or d.mean() < best[1]):
                 best = (s, d.mean(), hi)
         ok = best is not None and best[1] <= 0.03 and best[2] <= 0.05
         verdict[(cue, lab)] = (ok, best)

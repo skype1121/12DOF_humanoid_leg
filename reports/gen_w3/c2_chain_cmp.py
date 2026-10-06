@@ -28,7 +28,11 @@ def stages(r, nd):
     s2 = (ac < 2) and (dr is None or dr <= 10.0)
     s3 = r.get("end_both") in ("1", "1.0")
     abn = f(r.get("abn_frac"))
-    s4 = f(r.get("nrm_t")) is not None and (abn is None or abn <= 0.10)
+    if nd:      # nd: 평가기가 nrm_t 를 외란 조건에서만 계산 → 끝 자세(수평·명목 관절·양발)와 abn_frac 로 판정(같은 문턱)
+        ap, ar, dq = f(r.get("abs_pitch")), f(r.get("abs_roll")), f(r.get("dq_nom_deg"))
+        s4 = (ap is not None and abs(ap) < 3.0 and abs(ar) < 3.0 and dq < 5.0) and (abn is None or abn <= 0.10)
+    else:
+        s4 = f(r.get("nrm_t")) is not None and (abn is None or abn <= 0.10)
     s5 = True if nd else f(r.get("rec_off_t")) is not None
     st = [s1, s2, s3, s4, s5]
     return st, all(st)

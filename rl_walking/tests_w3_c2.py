@@ -372,7 +372,23 @@ def t_order():
     check("14e 상관 잡음 파라미터(kv_bias·kv_lf) 해석", P.kv_bias == 0.03 and P.kv_lf == 0.02)
 
 
+# ---------------------------------------------------------------- 15. 차분형 v2: 전 = 직전 양발 지지영역 ----------------------------------------------------------------
+def t_diff_v2():
+    yaw = torch.zeros(1)
+    xi = torch.tensor([[0.20, 0.0]])                       # 앞으로 밀린 ICP, 두 발 사이(횡)
+    prev = C.foot_corners(torch.tensor([[[0.0, 0.18], [0.0, -0.18]]]), yaw)
+    cont = torch.tensor([[False, True]]); td = torch.tensor([[True, False]])
+    same = C.foot_corners(torch.tensor([[[0.0, 0.18], [0.0, -0.18]]]), yaw)
+    fwd = C.foot_corners(torch.tensor([[[0.18, 0.18], [0.0, -0.18]]]), yaw)
+    s_same, _, _ = C.capture_diff_score(xi, same, cont, td, corners_prev=prev)
+    s_fwd, _, _ = C.capture_diff_score(xi, fwd, cont, td, corners_prev=prev)
+    s_v1, _, _ = C.capture_diff_score(xi, same, cont, td)
+    check("15a v2: 제자리 되딛기 = 0 점", float(s_same[0, 0]) == 0.0, f"{float(s_same[0, 0]):.3f}")
+    check("15b v2: ICP 쪽으로 딛기 > 0", float(s_fwd[0, 0]) > 0.3, f"{float(s_fwd[0, 0]):.3f}")
+    check("15c v1(다른 발만) 은 제자리도 점수 받음 — 결함 재현", float(s_v1[0, 0]) > 0.5, f"{float(s_v1[0, 0]):.3f}")
+
+
 if __name__ == "__main__":
-    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt(); t_cancel_calm(); t_margin(); t_diff_sweep(); t_order()
+    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt(); t_cancel_calm(); t_margin(); t_diff_sweep(); t_order(); t_diff_v2()
     print(f"\n결과: 실패 {len(FAIL)}" + (f" {FAIL}" if FAIL else " — 전부 통과"))
     sys.exit(1 if FAIL else 0)

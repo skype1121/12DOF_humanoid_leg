@@ -242,8 +242,11 @@ def support_dist(p: torch.Tensor, corners: torch.Tensor, mask: torch.Tensor, K: 
     return torch.where(mask.any(1), d, torch.full_like(d, float("inf")))
 
 
-def capture_diff_score(xi: torch.Tensor, corners: torch.Tensor, cont: torch.Tensor, td: torch.Tensor, margin: float = 0.01, scale: float = 0.05):
-    """발별(N,2) 차분형 포획 점수와 (Φ_전, Φ_후). 착지 발 c: 전 = 다른 발(접촉 시)만의 지지영역, 후 = 다른 발 + 착지 발.
+def capture_diff_score(xi: torch.Tensor, corners: torch.Tensor, cont: torch.Tensor, td: torch.Tensor, margin: float = 0.01, scale: float = 0.05,
+                       corners_prev: torch.Tensor | None = None):
+    """발별(N,2) 차분형 포획 점수와 (Φ_전, Φ_후). 착지 발 c: 후 = 다른 발(접촉 시) + 착지 발(현재 위치).
+    전 = corners_prev 가 있으면 **직전 양발 지지영역**(다른 발 + 착지 발의 이륙 전 위치) — 제자리로 되딛으면 0 점(1006 v2: 다른 발만을 '전'으로
+    쓰면 ξ 가 두 발 사이(횡)에 있을 때 어떤 착지든 만점 → 스윕 오라클·2d 가 무의미해진 결함), 없으면 다른 발만(v1).
     Φ = max(0, dist − margin). 이미 포획(Φ_전 = 0) → 0 점, 지지 없던 착지(전 = 공집합) → 0 점(정의 불가)."""
     N = xi.shape[0]
     out = torch.zeros(N, 2, device=xi.device); pb = torch.zeros(N, 2, device=xi.device); pa = torch.zeros(N, 2, device=xi.device)
@@ -252,7 +255,13 @@ def capture_diff_score(xi: torch.Tensor, corners: torch.Tensor, cont: torch.Tens
         o = 1 - c
         mb = torch.zeros(N, 2, dtype=torch.bool, device=xi.device); mb[:, o] = cont[:, o]
         ma = mb.clone(); ma[:, c] = True
-        db = support_dist(xi, flat, mb.repeat_interleave(4, dim=1)); da = support_dist(xi, flat, ma.repeat_interleave(4, dim=1))
+        if corners_prev is not None:
+            fb = torch.cat([corners[:, o], corners_prev[:, c]], 1)                     # (N,8,2) 다른 발 현재 + 착지 발 이륙 전
+            mbb = torch.cat([cont[:, o:o + 1].expand(-1, 4), torch.ones(N, 4, dtype=torch.bool, device=xi.device)], 1)
+            db = support_dist(xi, fb, mbb)
+        else:
+            db = support_dist(xi, flat, mb.repeat_interleave(4, dim=1))
+        da = support_dist(xi, flat, ma.repeat_interleave(4, dim=1))
         phb = (db - margin).clamp(min=0.0); pha = (da - margin).clamp(min=0.0)
         ok = td[:, c] & torch.isfinite(phb)
         sc = ((phb - pha) / scale).clamp(0.0, 1.0)
@@ -426,9 +435,14 @@ def c2_tracker(env, env_ids, nominal_half_width: float = 0.10, cap_half_width: f
     from . import mdp_hang as H
     st = _c2(env); s3 = W3._st(env)
     td = s3["ev_td"] > 0.5
-    if not bool(td.any()):
-        st["td_rec"] = torch.zeros_like(st["td_rec"]); st["oracle_ok"] = torch.zeros_like(st["oracle_ok"]); return
     asset = env.scene["robot"]
+    _fp0 = asset.data.body_pos_w[:, H._g21_bids(env), :2]
+    _cont0 = env.scene.sensors["contact_forces"].data.net_forces_w[:, H._feet_body_ids(env), :].norm(dim=-1) > 5.0
+    if "last_xy" not in st or st["last_xy"].shape[0] != env.num_envs:
+        st["last_xy"] = _fp0.clone()
+    if not bool(td.any()):
+        st["td_rec"] = torch.zeros_like(st["td_rec"]); st["oracle_ok"] = torch.zeros_like(st["oracle_ok"])
+        st["last_xy"] = torch.where(_cont0.unsqueeze(-1), _fp0, st["last_xy"]); return
     bid = H._g21_bids(env); fp = asset.data.body_pos_w[:, bid, :]
     q = asset.data.root_quat_w
     yaw = torch.atan2(2 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]), 1 - 2 * (q[:, 2] ** 2 + q[:, 3] ** 2))
@@ -464,10 +478,12 @@ def c2_tracker(env, env_ids, nominal_half_width: float = 0.10, cap_half_width: f
     sensor = env.scene.sensors["contact_forces"]
     cont = sensor.data.net_forces_w[:, H._feet_body_ids(env), :].norm(dim=-1) > 5.0
     corners = foot_corners(fp[..., :2], yaw)
-    df, pb, pa = capture_diff_score(xi_eq, corners, cont, td, margin=df_margin, scale=df_scale)
+    corners_prev = foot_corners(st["last_xy"], yaw)                     # 착지 발의 이륙 전(마지막 접촉) 위치
+    df, pb, pa = capture_diff_score(xi_eq, corners, cont, td, margin=df_margin, scale=df_scale, corners_prev=corners_prev)
     st["cap_df"] = torch.where(st["td_rec"], df, torch.zeros_like(df))
     st["phi_b"] = torch.where(st["td_rec"], pb, torch.zeros_like(pb)); st["phi_a"] = torch.where(st["td_rec"], pa, torch.zeros_like(pa))
     st["oracle_ok"] = (st["td_rec"] & (pa <= 0.0)).any(1)
+    st["last_xy"] = torch.where(cont.unsqueeze(-1) & ~td.unsqueeze(-1), fp[..., :2], st["last_xy"])   # 착지 틱 발은 다음 틱부터 갱신
 
 
 # ---------------------------------------------------------------- 보상 ----------------------------------------------------------------

@@ -3331,14 +3331,16 @@ def _selftest_w3_monitor():
                                                          for e in c2.w3hl_events), c2.w3hl_events
             if t_stop is not None and t_ge0 is None and not clk.ge:
                 t_ge0 = n
-        assert t_stop is not None and abs((t_stop - 50) * 0.02 - 0.2) < 0.05, t_stop
+        _mc = M.W3MonitorConfig()
+        _exp = 0.2 - _mc.walk_tau_s * math.log(1.0 - _mc.walk_tilt_deg / 14.0)   # 저역(EMA) 도달 + 지속 0.2 s
+        assert t_stop is not None and abs((t_stop - 50) * 0.02 - _exp) < 0.06, (t_stop, _exp)
         assert t_ge0 is not None and (t_ge0 - t_stop) * 0.02 <= 0.455 + 0.02 + 1e-9, (t_stop, t_ge0)
         S = _W3.W3Supervisor(cmd_limits=W3_CMD_LIMITS[k])
         w3_monitor_latch(S, "monitor tilt: 시험")
         r = S.handle({"cmd": "step", "enable": True, "req_id": "a", "seq": 1, "vx": 0.04}, 0.0, active=True, warmed=True,
                      blend_done=True, ge_now=False, want_now=False, cmd_now=(0.0, 0.0, 0.0))
         assert not r["accepted"] and "정지 래치" in r["why"], r
-        notes.append(f"위반 0.2 s 뒤 want 0·명령 0, ge 0 까지 {(t_ge0 - t_stop) * 0.02:.2f}s(≤ 반주기), 정지 래치 → 켜기 거부")
+        notes.append(f"피치 14° 계단 {(t_stop - 50) * 0.02:.2f}s 뒤(저역 도달 + 0.2 s) want 0·명령 0, ge 0 까지 {(t_ge0 - t_stop) * 0.02:.2f}s(≤ 반주기), 정지 래치 → 켜기 거부")
         # ⑤ 요 표류 → 고리 금지
         c3 = mk(M.W3MonitorConfig())
         rate = math.radians(6.0) / 60.0
@@ -3365,8 +3367,9 @@ def _selftest_w3_monitor():
         notes.append("병진 중 고리 wz 0.105 → 상한 0.1")
         # ⑦ 켜기 거부(센서 나이) — 감독기 수락 뒤 감시기 판정으로만 거부
         c5 = mk(M.W3MonitorConfig())
-        c5.tick((0.0, 0.0, 0.0), yq(0.4), q, np.zeros(12), [1.0, 1.0])
-        c5.w3mon.health(foot_age_s=0.3)
+        for n in range(20):                                # 0.3 s 지속해야 판정(health_hold_s)
+            c5.tick((0.0, 0.0, 0.0), yq(0.4), q, np.zeros(12), [1.0, 1.0])
+            c5.w3mon.health(foot_age_s=0.3, fb_age_s=0.01, s8_p50_ms=1.0)
         d2 = w3_monitor_gate(dict(dec), c5.w3mon)
         assert not d2["accepted"] and d2["action"] == "none" and "센서 나이" in d2["why"], d2
         assert w3_monitor_gate({"accepted": True, "action": "set_want", "want": False}, c5.w3mon)["accepted"], "끄기는 막지 않음"
@@ -4308,7 +4311,10 @@ def main():
                 else:                           # w3_mon(판정 기록)·w3_hl_banned
                     self.get_logger().warn(f"W3 감시 {_e.get('kind', _ev)} — {_e.get('why')} [{_e.get('action', '')}]")
             if self.core.w3mon is not None:   # 1007 감시: 발 센서 나이(접촉 신선도) — 정책 입력은 건드리지 않는다
-                self.core.w3mon.health(foot_age_s=now - self.foot_ts)
+                _s8 = (self.s8_cmd_timing or {}).get("p50_age_ms_1s") if isinstance(self.s8_cmd_timing, dict) else None
+                self.core.w3mon.health(foot_age_s=now - self.foot_ts,
+                                       fb_age_s=(now - self.status_ts) if self.status_ts > 0.0 else None,
+                                       s8_p50_ms=(float(_s8) if isinstance(_s8, (int, float)) else None))
             if C5_OVERTIME is not None and isinstance(self.core.runner, C5Runner):   # 1007 회복 모드 체류 상한(기본 꺼짐)
                 _m = int(self.core.runner.last_mode)
                 _ov = C5_OVERTIME.update(_m)

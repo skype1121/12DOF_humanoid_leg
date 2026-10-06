@@ -295,7 +295,7 @@ if a.trace_n > 0 or a.monitor.strip():
     _sent_prev = None; _sent_lpf = None                                    # 실물 브리지 '송출 목표' 모사 = 러너 슬루 4°/틱 → LPF β0.27 (지연 없음)
 if a.trace_n > 0:
     NT = min(a.trace_n, N)
-    TR = {k: [] for k in ("pre", "app", "sent", "q", "gyro", "grav", "yaw", "cc", "ge", "want", "alive", "vb")}
+    TR = {k: [] for k in ("pre", "app", "sent", "q", "gyro", "grav", "yaw", "cc", "ge", "want", "vb")}
 MON = None
 if a.monitor.strip():
     from rl_walking.deploy import w3_contingency as _WC  # noqa: E402

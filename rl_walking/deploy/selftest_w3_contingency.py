@@ -84,15 +84,27 @@ def t_tilt_w():
                 assert st is not None and st[0] == kind and ev[0]["action"] == "stop_walk", st
             else:
                 assert st is None and ev[0]["action"] == "note:stop_walk"
-            # 정지 시각: 위반 시작(틱 150 → t 2.02 s) + 지속 0.2 s
-            assert abs(ev[0]["t"] - (151 * DT + 0.2)) < 0.03, ev[0]
+            # 정지 시각: 위반 시작(틱 150 → t 3.02 s, 걷기 시작 틱 50) + 저역 도달 + 지속 0.2 s
+            cfg = C.W3MonitorConfig()
+            if kind == "tilt":     # 서기 0° 기준, 걷는 중 2° → 14° 계단(EMA ≈ 2°): 편차 14 − 12·e^{−t/τ} > 8
+                t_cross = -cfg.walk_tau_s * math.log((14.0 - cfg.walk_tilt_deg) / 12.0)
+            else:                  # |ω| 0.1 → 2.0: RMS² EMA 0.01 → 4: √(4 − 3.99 e^{−t/τ}) > 1.8
+                t_cross = -cfg.walk_tau_s * math.log((4.0 - cfg.walk_w ** 2) / 3.99)
+            assert abs(ev[0]["t"] - (151 * DT + t_cross + 0.2)) < 0.06, (ev[0], t_cross)
         out.append(kind)
-    # 기울기는 걷기 시작 자세 기준: 서기 6° 로 시작하면 6°+9° 까지 허용(문턱 10°)
+    # 기울기는 걷기 전 서기 평균 기준: 서기 6° 로 시작하면 6°+7.5° 까지 허용(문턱 8°)
     m = C.W3WalkMonitor(C.W3MonitorConfig())
-    run(m, 50, walking=False, grav_fn=lambda k: grav_rp(0, 6.0))
-    run(m, 200, walking=True, contact_fn=walk_contacts, k0=50, grav_fn=lambda k: grav_rp(0, 6.0 if k < 52 else 15.0))
+    run(m, 200, walking=False, grav_fn=lambda k: grav_rp(0, 6.0))
+    run(m, 300, walking=True, contact_fn=walk_contacts, k0=200, grav_fn=lambda k: grav_rp(0, 6.0 if k < 202 else 13.5))
     assert not m.events, m.events
-    return "기울기·|ω_xy| 경계 → act 정지 요청/note 기록, 시각 = 위반 + 0.2 s, 기준 = 걷기 시작 자세"
+    # 걸음 롤 흔들림 ±12°(1.1 Hz)·|ω_x| 진폭 1.5 rad/s 는 저역 뒤 문턱 아래(순간값이면 트립)
+    m = C.W3WalkMonitor(C.W3MonitorConfig())
+    run(m, 200, walking=False)
+    run(m, 1500, walking=True, contact_fn=walk_contacts, k0=200,
+        grav_fn=lambda k: grav_rp(12.0 * math.sin(2 * math.pi * 1.1 * k * DT), 0.0),
+        gyro_fn=lambda k: (1.5 * math.cos(2 * math.pi * 1.1 * k * DT), 0.0, 0.0))
+    assert not m.events, m.events
+    return "저역 기울기·|ω_xy| RMS 경계 → act 정지 요청/note 기록, 시각 = 위반 + 저역 도달 + 0.2 s, 기준 = 걷기 전 서기 평균, 걸음 롤 ±12° 무트립"
 
 
 def t_contact():
@@ -118,23 +130,35 @@ def t_contact():
     assert not ok and "채터" in why, why
     run(m, 120, walking=False, k0=k)
     assert m.enable_gate()[0]
-    # 센서 나이
+    # 센서 나이(발·피드백·stage8 명령 처리) — 0.3 s 지속해야 판정, 정상이면 즉시 해제
+    for kw in ({"foot_age_s": 0.25}, {"fb_age_s": 0.12}, {"s8_p50_ms": 120.0}):
+        m = C.W3WalkMonitor(C.W3MonitorConfig())
+        run(m, 10, walking=False)
+        m.health(foot_age_s=0.05, fb_age_s=0.01, s8_p50_ms=1.0)
+        assert m.enable_gate()[0]
+        for k in range(10, 40):
+            run(m, 1, walking=False, k0=k)
+            m.health(**dict({"foot_age_s": 0.05, "fb_age_s": 0.01, "s8_p50_ms": 1.0}, **kw))
+            if k == 20:
+                assert m.enable_gate()[0], "0.3 s 전 판정"
+        assert not m.enable_gate()[0], kw
+        run(m, 5, walking=True, k0=40, contact_fn=walk_contacts)
+        assert m.take_stop()[0] == "health"
+        m.health(foot_age_s=0.05)
+        assert m.enable_gate()[0]
+    # 한 틱 튐은 무시
     m = C.W3WalkMonitor(C.W3MonitorConfig())
-    run(m, 10, walking=False)
-    m.health(foot_age_s=0.05)
-    assert m.enable_gate()[0]
-    m.health(foot_age_s=0.25)
-    assert not m.enable_gate()[0]
-    run(m, 5, walking=True, k0=10, contact_fn=walk_contacts)
-    assert m.take_stop()[0] == "health"
-    m.health(foot_age_s=0.05)
-    assert m.enable_gate()[0]
+    for k in range(40):
+        run(m, 1, walking=False, k0=k)
+        m.health(s8_p50_ms=150.0 if k % 10 == 0 else 2.0)
+    assert m.enable_gate()[0] and not m.events
     # note 모드는 켜기를 막지 않는다
     m = C.W3WalkMonitor(C.W3MonitorConfig(mode="note"))
-    run(m, 10, walking=False)
-    m.health(foot_age_s=0.25)
+    for k in range(30):
+        run(m, 1, walking=False, k0=k)
+        m.health(foot_age_s=0.25)
     assert m.enable_gate()[0] and any(e["kind"] == "health" for e in m.events)
-    return "한발 0.8 s·양발 0.2 s·채터 → 정지 / 서기 채터·센서 나이 → 켜기 거부(해제 확인) / note 는 거부 안 함"
+    return "한발 0.8 s·양발 0.2 s·채터 → 정지 / 서기 채터·센서 나이 3 종(0.3 s 지속) → 켜기 거부(해제 확인)·한 틱 튐 무시 / note 는 거부 안 함"
 
 
 def t_yaw():
@@ -158,7 +182,7 @@ def t_yaw():
     run(m, 50, walking=False)
     for k in range(50, 80):
         m.tick(walking=True, contact2=walk_contacts(k), gyro=(0.0, 0.0, 0.0), grav=G0,
-               yaw=0.3 + (math.radians(3.0) if k >= 70 else 0.0), hl_latched=True)
+               yaw=0.3 + (math.radians(5.0) if k >= 70 else 0.0), hl_latched=True)
     assert not m.hl_allowed()[0] and m.take_stop()[0] == "yaw_jump"
     # 실제 회전(자이로가 설명하는 변화)은 점프 아님
     m = C.W3WalkMonitor(C.W3MonitorConfig())
@@ -205,23 +229,41 @@ def t_latency():
     m.lat_idx = [0, 1, 2, 3]
     sig = np.cumsum(rng.normal(0, 0.01, (2000, 4)), axis=0) + 0.2 * np.sin(np.arange(2000)[:, None] * 0.14 + np.arange(4))
     for k in range(20, 400):
+        m.tick(walking=True, contact2=walk_contacts(k), gyro=(0, 0, 0), grav=G0, yaw=0.0)
+        m.track(np.r_[sig[k], np.zeros(8)], np.r_[sig[k - 8], np.zeros(8)])
+    assert m.lat_bad and m.lat_est == 8, (m.lat_est, m.lat_bad)
+    assert m.take_stop()[0] == "latency"
+    for k in range(400, 420):                        # 서기로 돌아와도 켜기 거부 유지(서기에선 추정 안 함)
         m.tick(walking=False, contact2=(1, 1), gyro=(0, 0, 0), grav=G0, yaw=0.0)
         m.track(np.r_[sig[k], np.zeros(8)], np.r_[sig[k - 8], np.zeros(8)])
-    assert m.lat_bad and m.lat_est == 8 and not m.enable_gate()[0], (m.lat_est, m.lat_bad)
-    m.tick(walking=True, contact2=(1, 1), gyro=(0, 0, 0), grav=G0, yaw=0.0)
-    assert m.take_stop()[0] == "latency"
-    # 지연 3 틱이면 정상
+    assert not m.enable_gate()[0] and len(m._lat_buf) == 0
+    # 서기 신호만으로는 추정하지 않는다(lat_walk_only)
     m = C.W3WalkMonitor(C.W3MonitorConfig(lat_max_ticks=6))
     m.lat_idx = [0, 1, 2, 3]
     for k in range(20, 400):
         m.tick(walking=False, contact2=(1, 1), gyro=(0, 0, 0), grav=G0, yaw=0.0)
+        m.track(np.r_[sig[k], np.zeros(8)], np.r_[sig[k - 8], np.zeros(8)])
+    assert m.lat_est is None and m.enable_gate()[0]
+    # 들뜸 관절 수 부족(2 < 3) → 추정 없음
+    sig2 = sig.copy(); sig2[:, 2:] = 0.0
+    m = C.W3WalkMonitor(C.W3MonitorConfig(lat_max_ticks=6))
+    m.lat_idx = [0, 1, 2, 3]
+    for k in range(20, 400):
+        m.tick(walking=True, contact2=walk_contacts(k), gyro=(0, 0, 0), grav=G0, yaw=0.0)
+        m.track(np.r_[sig2[k], np.zeros(8)], np.r_[sig2[k - 8], np.zeros(8)])
+    assert m.lat_est is None
+    # 지연 3 틱이면 정상
+    m = C.W3WalkMonitor(C.W3MonitorConfig(lat_max_ticks=6))
+    m.lat_idx = [0, 1, 2, 3]
+    for k in range(20, 400):
+        m.tick(walking=True, contact2=walk_contacts(k), gyro=(0, 0, 0), grav=G0, yaw=0.0)
         m.track(np.r_[sig[k], np.zeros(8)], np.r_[sig[k - 3], np.zeros(8)])
     assert not m.lat_bad and m.lat_est == 3 and m.enable_gate()[0]
     # 꺼짐(lat_max_ticks 0) 은 버퍼도 안 쌓는다
     m = C.W3WalkMonitor(C.W3MonitorConfig())
     m.track(np.zeros(12), np.zeros(12))
     assert len(m._lat_buf) == 0
-    return "교차상관 지연 0–11 틱 정확 추정·정지 None·8 틱 3 회 → 켜기 거부·걷기 정지·3 틱 정상·꺼짐 무연산"
+    return "교차상관 지연 0–11 틱 정확 추정·정지 None·걷는 중 8 틱 3 회 → 정지·서기 뒤 켜기 거부 유지·3 틱 정상·서기 신호 무추정·관절 수 부족 무추정·꺼짐 무연산"
 
 
 def t_overtime():

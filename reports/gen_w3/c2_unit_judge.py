@@ -80,6 +80,25 @@ if all(R[a] is not None for a in ("B2", "B3", "B6")):
     L.append(f"[기준 2 포획 배치] {'PASS' if ok2 else 'FAIL'} — 회복 착지당 포획 raw B6 {c6:.3f}(n {k6}) · B3 {c3:.3f}(n {k3}) · B2 {c2_:.3f}(n {k2}) · 순서 B6>B3≥B2 {'예' if order else '아니오'}"
              f" · B6−B2 raw {d:+.3f} → ×가중 {10*d:+.3f}(≥0.15 필요) · 엄격 해석 ×가중×dt {0.2*d:+.3f}(≥0.15: {'예' if 0.2*d >= 0.15 else '아니오'})")
     L.append(f"    진단(R0 명목 착지 raw): B6 {n6:.3f} · B3 {n3:.3f} · B2 {n2:.3f} — 기대 B6 ≤ B2(현행 보상이 포획 배치를 벌함): {'예' if n6 <= n2 else '아니오'}")
+# 2m. (1006 재설계, 실행 전 등록) 이동 방향 포획 여유 점수 — 회복 착지당 평균(외란 env 전체 착지, 생존 선택 편향 회피),
+#     통과 = B6 − B2 > 0 이고 env 부트스트랩(2000) 95 % 하한 > 0. 보조 = 생존 env 만·B3 위치(참고).
+if all(R[a] is not None for a in ("B2", "B6")) and "mg_raw_rec" in R["B2"]:
+    rng = np.random.default_rng(0)
+    def ratio(a, m):
+        X = R[a]; return X["mg_raw_rec"][m].sum() / max(X["n_rec_td"][m].sum(), 1)
+    def boot(a, m):
+        X = R[a]; idx = np.where(m)[0]; out = np.empty(2000)
+        for k in range(2000):
+            j = rng.choice(idx, idx.size); out[k] = X["mg_raw_rec"][j].sum() / max(X["n_rec_td"][j].sum(), 1)
+        return out
+    m_all = dist
+    d = boot("B6", m_all) - boot("B2", m_all); lo, hi = np.percentile(d, [2.5, 97.5])
+    s6, s2 = ratio("B6", m_all), ratio("B2", m_all); s3_ = ratio("B3", m_all) if R["B3"] is not None and "mg_raw_rec" in R["B3"] else float("nan")
+    ok2m = (s6 - s2 > 0) and (lo > 0)
+    ok_all["2m"] = ok2m
+    sv = lambda a: ratio(a, dist & (R[a]["fell_w"] < 0.5))
+    L.append(f"[기준 2m 포획 여유형] {'PASS' if ok2m else 'FAIL'} — 회복 착지당 여유 점수 B6 {s6:+.3f} · B3 {s3_:+.3f} · B2(제자리) {s2:+.3f} · B6−B2 {s6-s2:+.3f} (95 % {lo:+.3f}~{hi:+.3f}, 하한 > 0 필요)"
+             f" · 생존 env 만 B6 {sv('B6'):+.3f} · B2 {sv('B2'):+.3f} · 착지 수 B6 {int(R['B6']['n_rec_td'][m_all].sum())} B2 {int(R['B2']['n_rec_td'][m_all].sum())}")
 # 3. 멈추는 것이 이긴다
 if all(R[a] is not None for a in ("B2", "B3", "B5")):
     m = dist
@@ -107,8 +126,17 @@ if all(R[a] is not None for a in ("B3", "B4")):
     ok_all[5] = ok5
     L.append(f"[기준 5 이른 정지] {'PASS' if ok5 else 'FAIL'} — R1 B4−B3 짝 {d43:+.3f} ± {se43:.3f}(≤ 0 필요) · 외란 창 낙상 B4 {100*R['B4']['fell_w'][dist].mean():.1f} % vs B3 {100*R['B3']['fell_w'][dist].mean():.1f} %")
 ok_all = {k: bool(v) for k, v in ok_all.items()}
+if "capm_w" in base:      # 여유형 보상으로 기준 3·5 재판정(같은 궤적)
+    r1m = lambda X: X["other_w"] + X["capm_w"] + X["settle_w"]
+    if all(R[a] is not None for a in ("B2", "B3", "B4", "B5")):
+        v3, v5, v2 = r1m(R["B3"])[dist].mean(), r1m(R["B5"])[dist].mean(), r1m(R["B2"])[dist].mean()
+        d32, se32 = pdiff("B3", "B2", r1m, dist); d43, se43 = pdiff("B4", "B3", r1m, dist)
+        ok_all["3m"] = bool((v3 > v5 > v2) and d32 >= 1.0); ok_all["5m"] = bool(d43 <= 0.0)
+        L.append(f"[기준 3m·5m 여유형 R1] 3m {'PASS' if ok_all['3m'] else 'FAIL'}: B3 {v3:+.3f} · B5 {v5:+.3f} · B2 {v2:+.3f} · B3−B2 {d32:+.3f} ± {se32:.3f} | "
+                 f"5m {'PASS' if ok_all['5m'] else 'FAIL'}: B4−B3 {d43:+.3f} ± {se43:.3f}")
+        L.append("여유형 설정(W3C2vm) 학습 시작 조건(1·2m·3m·4·5m): " + ("충족" if all(ok_all.get(k) for k in (1, "2m", "3m", 4, "5m")) else "미충족"))
 kill = (2 in ok_all and not ok_all[2]) and (3 in ok_all and not ok_all[3])
 L.append(f"종합: 통과 {[k for k, v in ok_all.items() if v]} · 실패 {[k for k, v in ok_all.items() if not v]} → " +
-         ("Kill(기준 2·3 모두 실패: c2 보상 설계 폐기)" if kill else ("C2 학습 시작 조건 충족" if all(ok_all.get(k) for k in (1, 2, 3, 4, 5)) else "학습 시작 조건 미충족(실패 기준 수정 뒤 재시험)")))
+         ("Kill(기준 2·3 모두 실패: c2 보상 설계 폐기)" if kill else ("C2 학습 시작 조건 충족" if all(ok_all.get(k) for k in ((1, "2m", 3, 4, 5) if "2m" in ok_all else (1, 2, 3, 4, 5))) else "학습 시작 조건 미충족(실패 기준 수정 뒤 재시험)")))
 txt = "\n".join(L); print(txt)
 open(f"{LP}/c2unit_judge_{pfx}.txt", "w").write(txt + "\n")

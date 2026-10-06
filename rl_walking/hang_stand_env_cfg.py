@@ -3305,6 +3305,16 @@ class Biped12HangStandW3C2vEnvCfg(Biped12HangStandW3C2EnvCfg):
 
 
 @configclass
+class Biped12HangStandW3C2vmEnvCfg(Biped12HangStandW3C2vEnvCfg):
+    """c2vm (1006, C2UNIT 기준 2 재설계): c2v + 회복 착지 점수 = 이동 방향 포획 여유 clip((발 − ξ)·v̂ / 5 cm, ±1)(|v| ≤ 0.10 이면 0).
+    근거: 오차형 exp(−e²/σ²)는 제자리 걸음 착지에도 0.69 를 줘 방향 스텝(B6)을 구별 못 함(c2v S1c B6 0.66 < B2 0.69). 비회복 착지·무외란은 W3 와 비트 동일."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.w3_place.params = dict(self.rewards.w3_place.params, cap_mode="margin")
+
+
+@configclass
 class Biped12HangStandW3C2iEnvCfg(Biped12HangStandW3C2EnvCfg):
     """c2i 변형: critic 에 ICP−CoM(요 프레임 2차원, 이력 5) 추가 — critic 입력 335 → 345, **--init_expand 필요**(resume 불가). actor 불변."""
 

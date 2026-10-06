@@ -86,7 +86,7 @@ def new_state(N: int, dev, P: C2Params, dt: float) -> dict:
             # 이번 틱 사건(0/1)
             "ev_trig": z(N), "ev_req": z(N), "ev_timeout": z(N), "ev_cancel": z(N), "ev_latch": z(N), "ev_settle": z(N),
             # 착지 사건 보조(발별): 회복 중 착지였는지, 포획 목표 오차
-            "td_rec": torch.zeros(N, 2, dtype=torch.bool, device=dev), "cap_err": z(N, 2),
+            "td_rec": torch.zeros(N, 2, dtype=torch.bool, device=dev), "cap_err": z(N, 2), "cap_mg": z(N, 2),
             "gref": torch.zeros(N, 3, device=dev), "en_t": z(N), "K": K, "D": D,
             "vbuf": z(N, max(1, int(round(P.v_box_s / dt))), 2), "vi": 0}
 
@@ -198,11 +198,22 @@ def capture_target_rel(nom_x: torch.Tensor, nom_y: torch.Tensor, v_yaw: torch.Te
     return nom_x + off[:, :1], nom_y + off[:, 1:2]
 
 
+def capture_margin_score(foot_xy: torch.Tensor, xi_xy: torch.Tensor, v_xy: torch.Tensor, scale: float = 0.05, v_min: float = 0.10) -> torch.Tensor:
+    """(N,2) 이동 방향 포획 여유 점수(1006 기준 2 재설계): m = (발 − ξ)·v̂ (ξ = ICP = CoM + v/ω0, 월드 수평), 점수 = clip(m/scale, −1, 1).
+    발이 이동 방향으로 ICP 보다 앞(m > 0) = 포획 → +, 뒤 = 넘어지는 쪽 → −. |v| ≤ v_min 이면 0(운동량 없음 — 제자리 디딤이 공짜 점수를 받지 않음).
+    R2(G24Rcap) _capture_margin_ev 와 같은 정의(발별)."""
+    vn = v_xy.norm(dim=-1, keepdim=True)
+    vh = v_xy / vn.clamp(min=1e-9)
+    m = ((foot_xy - xi_xy.unsqueeze(1)) * vh.unsqueeze(1)).sum(-1)
+    return torch.where(vn > v_min, (m / scale).clamp(-1.0, 1.0), torch.zeros_like(m))
+
+
 def place_value(ev_td: torch.Tensor, td_err: torch.Tensor, td_rec: torch.Tensor, cap_err: torch.Tensor, ge: torch.Tensor,
-                sig: float = 0.04, sig_cap: float = 0.05) -> torch.Tensor:
-    """(N,) 착지 보상 값. 회복 착지가 아니면 W3 w3_place_reward 와 같은 식(같은 σ) → 무외란 env 는 값이 완전히 같다."""
+                sig: float = 0.04, sig_cap: float = 0.05, cap_score: torch.Tensor | None = None) -> torch.Tensor:
+    """(N,) 착지 보상 값. 회복 착지가 아니면 W3 w3_place_reward 와 같은 식(같은 σ) → 무외란 env 는 값이 완전히 같다.
+    cap_score 를 주면 회복 착지 점수를 그것으로(여유형), 없으면 포획 목표 오차형 exp(−e²/σ²)(종전)."""
     r_nom = torch.exp(-(td_err / sig) ** 2)
-    r_cap = torch.exp(-(cap_err / sig_cap) ** 2)
+    r_cap = torch.exp(-(cap_err / sig_cap) ** 2) if cap_score is None else cap_score
     return (torch.where(td_rec, r_cap, r_nom) * ev_td).sum(1) * ge.float()
 
 
@@ -334,7 +345,8 @@ def _com_state(asset):
     return com, vc
 
 
-def c2_tracker(env, env_ids, nominal_half_width: float = 0.10, b: float = 0.02, v_ref: float = 0.05, max_off: float = 0.25):
+def c2_tracker(env, env_ids, nominal_half_width: float = 0.10, b: float = 0.02, v_ref: float = 0.05, max_off: float = 0.25,
+               mg_scale: float = 0.05, mg_vmin: float = 0.10):
     """mode="interval"(0 s), **w3_step_tracker 뒤**: 이번 틱 유효 착지(ev_td)마다 회복 중 여부·포획 목표 오차 기록(특권 CoM — 보상 전용)."""
     from . import mdp_hang as H
     st = _c2(env); s3 = W3._st(env)
@@ -362,13 +374,17 @@ def c2_tracker(env, env_ids, nominal_half_width: float = 0.10, b: float = 0.02, 
     rec = ((st["mode"] == REC) | (st["mode"] == STOPREQ)) & W3._ge(env) & _c2_mask(env)
     st["td_rec"] = td & rec.unsqueeze(1)
     st["cap_err"] = torch.where(st["td_rec"], err, torch.zeros_like(err))
+    xi = com[:, :2] + vc[:, :2] / om.unsqueeze(1)                 # 여유형(보상 옵션·진단용으로 항상 기록)
+    mg = capture_margin_score(fp[..., :2], xi, vc[:, :2], scale=mg_scale, v_min=mg_vmin)
+    st["cap_mg"] = torch.where(st["td_rec"], mg, torch.zeros_like(mg))
 
 
 # ---------------------------------------------------------------- 보상 ----------------------------------------------------------------
-def c2_place_reward(env, sig: float = 0.04, sig_cap: float = 0.05) -> torch.Tensor:
-    """w3_place_reward 대체: 회복 착지 = 포획 목표, 나머지 = W3 명목(같은 값)."""
+def c2_place_reward(env, sig: float = 0.04, sig_cap: float = 0.05, cap_mode: str = "err") -> torch.Tensor:
+    """w3_place_reward 대체: 회복 착지 = 포획 점수(cap_mode "err" = 목표 오차형(종전 기본) / "margin" = 이동 방향 포획 여유형), 나머지 = W3 명목(같은 값)."""
     s3 = W3._st(env); st = _c2(env)
-    return place_value(s3["ev_td"], s3["td_err"], st["td_rec"], st["cap_err"], W3._ge(env), sig, sig_cap)
+    cs = st["cap_mg"] if cap_mode == "margin" else None
+    return place_value(s3["ev_td"], s3["td_err"], st["td_rec"], st["cap_err"], W3._ge(env), sig, sig_cap, cap_score=cs)
 
 
 def c2_value(env, name: str) -> torch.Tensor:

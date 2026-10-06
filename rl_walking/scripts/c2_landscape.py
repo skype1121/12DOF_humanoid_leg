@@ -62,7 +62,7 @@ RM = U.reward_manager; names = list(RM._term_names)
 i_place = names.index("w3_place"); i_settle = names.index("c2_settle")
 other_mask = torch.ones(len(names), dtype=torch.bool, device=dev); other_mask[i_place] = False; other_mask[i_settle] = False
 W_PLACE = float(RM._term_cfgs[i_place].weight); W_SETTLE = float(RM._term_cfgs[i_settle].weight)
-_pp = RM._term_cfgs[i_place].params; SIG, SIG_CAP = float(_pp.get("sig", 0.04)), float(_pp.get("sig_cap", 0.05))
+_pp = RM._term_cfgs[i_place].params; SIG, SIG_CAP = float(_pp.get("sig", 0.04)), float(_pp.get("sig_cap", 0.05)); CAP_MODE = str(_pp.get("cap_mode", "err"))
 # velocity_commands 위치(B6)
 _nm = list(U.observation_manager.active_terms["policy"]); _dm = U.observation_manager.group_obs_term_dim["policy"]
 _o = 0; LAY = {}
@@ -77,8 +77,8 @@ print(f"[c2unit] {a.task} · {ck} · 팔 {a.arm} {ARM_ENV} · env {N} · seed {a
 z = lambda *s: torch.zeros(*s, device=dev)
 first_ep = torch.ones(N, dtype=torch.bool, device=dev)       # 첫 에피소드 진행 중
 fell = torch.zeros(N, dtype=torch.bool, device=dev); t_fall = torch.full((N,), float("nan"), device=dev)
-S = {k: z(N) for k in ("other_w", "nom_w", "cap_w", "settle_w", "nom_all", "cap_all", "settle_all", "rm_place_all",
-                       "n_rec_td", "cap_raw_rec", "nom_raw_rec", "n_td_w", "n_valid_w", "trig_w", "req_w", "timeout_w", "cancel_w", "latch_w",
+S = {k: z(N) for k in ("other_w", "nom_w", "cap_w", "capm_w", "settle_w", "nom_all", "cap_all", "settle_all", "rm_place_all",
+                       "n_rec_td", "cap_raw_rec", "nom_raw_rec", "mg_raw_rec", "n_td_w", "n_valid_w", "trig_w", "req_w", "timeout_w", "cancel_w", "latch_w",
                        "settle_ev_w", "trig_all", "rec_ticks_w", "fell_w", "fell_pre", "drift_w", "to_after_req", "req_first_t", "latch_first_t")}
 S["req_first_t"][:] = float("nan"); S["latch_first_t"][:] = float("nan")
 xy0 = torch.full((N, 2), float("nan"), device=dev); xy_req = torch.full((N, 2), float("nan"), device=dev); xy_last = z(N, 2)
@@ -116,10 +116,11 @@ for i in range(T_STEPS):
         oth = (sr * other_mask.float()).sum(1)
         s3 = W3._st(U); st = C._c2(U); ge = W3._ge(U)
         nom = W3.w3_place_reward(U, sig=SIG) * W_PLACE
-        cap = C.c2_place_reward(U, sig=SIG, sig_cap=SIG_CAP) * W_PLACE
+        cap = C.c2_place_reward(U, sig=SIG, sig_cap=SIG_CAP, cap_mode=CAP_MODE) * W_PLACE
         stl = st["ev_settle"] * W_SETTLE
+        capm = C.c2_place_reward(U, sig=SIG, sig_cap=SIG_CAP, cap_mode="margin") * W_PLACE     # 여유형 흐름(설정과 무관하게 함께 채점)
         m = inw.float()
-        S["other_w"] += oth * m * dt; S["nom_w"] += nom * m * dt; S["cap_w"] += cap * m * dt; S["settle_w"] += stl * m * dt
+        S["other_w"] += oth * m * dt; S["nom_w"] += nom * m * dt; S["cap_w"] += cap * m * dt; S["capm_w"] += capm * m * dt; S["settle_w"] += stl * m * dt
         lv = live.float()
         S["nom_all"] += nom * lv * dt; S["cap_all"] += cap * lv * dt; S["settle_all"] += stl * lv * dt; S["rm_place_all"] += sr[:, i_place] * lv * dt
         S["trig_all"] += st["ev_trig"] * lv
@@ -127,6 +128,7 @@ for i in range(T_STEPS):
         S["n_rec_td"] += tdr.float().sum(1) * m
         S["cap_raw_rec"] += (torch.exp(-(st["cap_err"] / SIG_CAP) ** 2) * tdr.float()).sum(1) * m
         S["nom_raw_rec"] += (torch.exp(-(s3["td_err"] / SIG) ** 2) * tdr.float()).sum(1) * m
+        S["mg_raw_rec"] += (st["cap_mg"] * tdr.float()).sum(1) * m              # 여유형 점수(설정과 무관하게 항상 기록)
         S["n_td_w"] += s3["ev_td"].sum(1) * m; S["n_valid_w"] += s3["ev_valid"].sum(1) * m
         for k_, e_ in (("trig_w", "ev_trig"), ("req_w", "ev_req"), ("timeout_w", "ev_timeout"), ("cancel_w", "ev_cancel"), ("latch_w", "ev_latch"), ("settle_ev_w", "ev_settle")):
             S[k_] += st[e_] * m
@@ -148,7 +150,7 @@ S["drift_w"] = torch.where(torch.isnan(xy0[:, 0]), torch.full_like(S["drift_w"],
 S["drift_after_req"] = torch.where(torch.isnan(xy_req[:, 0]), torch.full((N,), float("nan"), device=dev), 100.0 * (xy_last - xy_req).norm(dim=-1))
 out = {k: v.cpu().numpy() for k, v in S.items()}
 out.update(cat=cat.cpu().numpy(), kind0=kind0.cpu().numpy(), t0=t0.cpu().numpy(), kind1=kind1.cpu().numpy(), t01=t01.cpu().numpy(), t_fall=t_fall.cpu().numpy(), arm=a.arm, seed=a.seed, ckpt=str(ck),
-           w_place=W_PLACE, w_settle=W_SETTLE, window=a.window)
+           w_place=W_PLACE, w_settle=W_SETTLE, cap_mode=CAP_MODE, window=a.window)
 os.makedirs(os.path.join(DATA, "log_picture"), exist_ok=True)
 np.savez_compressed(os.path.join(DATA, "log_picture", f"c2unit_{a.out_tag}.npz"), **out)
 L = [f"C2UNIT 팔 {a.arm} · {ck} · seed {a.seed} · env {N}"]

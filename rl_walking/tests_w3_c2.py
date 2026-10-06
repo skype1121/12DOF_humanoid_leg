@@ -290,7 +290,27 @@ def t_cancel_calm():
     check("11b cancel_calm: 정지 문턱 초과면 취소", int(st["mode"][0]) == C.REC)
 
 
+# ---------------------------------------------------------------- 12. 이동 방향 포획 여유 점수(cap_mode margin) ----------------------------------------------------------------
+def t_margin():
+    v = torch.tensor([[0.4, 0.0]]); xi = torch.tensor([[0.10, 0.0]])
+    f = lambda x: torch.tensor([[[x, 0.10], [x, -0.10]]])
+    s_ahead = C.capture_margin_score(f(0.13), xi, v); s_under = C.capture_margin_score(f(0.0), xi, v); s_far = C.capture_margin_score(f(0.40), xi, v)
+    check("12a 이동 방향으로 ICP 보다 앞 = +", float(s_ahead[0, 0]) > 0.5, f"{float(s_ahead[0, 0]):+.2f}")
+    check("12b 제자리(골반 밑, ICP 뒤) = −", float(s_under[0, 0]) < 0, f"{float(s_under[0, 0]):+.2f}")
+    check("12c 포화 +1", abs(float(s_far[0, 0]) - 1.0) < 1e-6)
+    s_slow = C.capture_margin_score(f(0.13), xi, torch.tensor([[0.05, 0.0]]))
+    check("12d |v| ≤ 0.10 이면 0(운동량 없음)", float(s_slow.abs().max()) == 0.0)
+    s_back = C.capture_margin_score(torch.tensor([[[-0.13, 0.1], [-0.13, -0.1]]]), -xi, -v)
+    check("12e 뒤 방향 대칭", abs(float(s_back[0, 0]) - float(s_ahead[0, 0])) < 1e-6)
+    g = torch.Generator().manual_seed(1)
+    ev_td = (torch.rand(64, 2, generator=g) < 0.3).float(); td_err = torch.rand(64, 2, generator=g) * 0.1; ge = torch.ones(64, dtype=torch.bool)
+    ref = C.place_value(ev_td, td_err, torch.zeros(64, 2, dtype=torch.bool), td_err, ge)
+    mg = C.place_value(ev_td, td_err, torch.zeros(64, 2, dtype=torch.bool), td_err, ge, cap_score=torch.rand(64, 2, generator=g))
+    check("12f 여유형도 비회복 착지는 W3 와 비트 동일", torch.equal(ref, mg))
+    check("12g c2_place_reward 기본 cap_mode = err(종전 비트 동일)", C.c2_place_reward.__defaults__[-1] == "err")
+
+
 if __name__ == "__main__":
-    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt(); t_cancel_calm()
+    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt(); t_cancel_calm(); t_margin()
     print(f"\n결과: 실패 {len(FAIL)}" + (f" {FAIL}" if FAIL else " — 전부 통과"))
     sys.exit(1 if FAIL else 0)

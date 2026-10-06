@@ -3536,3 +3536,17 @@ class Biped12HangStandW3S3dEnvCfg(Biped12HangStandW3S3s2EnvCfg):
         super().__post_init__()
         self.actions.joint_pos.min_delay_steps = 1
         self.actions.joint_pos.max_delay_steps = 5
+
+
+@configclass
+class Biped12HangStandW3S4dEnvCfg(Biped12HangStandW3S4EnvCfg):
+    """W3S4 d (1007 새벽): Stage 4 혼합(vx·vy·wz) + 학습 지연 1–5 틱, 시작 = W3S3d-15800(헤딩 고리 120 s 2.2°, 회전 이득 0.84–0.91).
+    S3d 학습 중 vy·wz 커리큘럼은 상한 0.04·0.2 에서 진급하지 않았음(로그 지표 nan — 별도 점검 과제) — 평가상 vy 0.05–0.08·wz 0.3 추종하므로 시작 단계 1(vy 0.06·wz 0.3)."""
+
+    VY_STAGE = 1
+    WZ_STAGE = 1
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.min_delay_steps = 1
+        self.actions.joint_pos.max_delay_steps = 5

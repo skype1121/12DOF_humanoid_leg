@@ -89,3 +89,6 @@
 | 1006 | 트랙 A W3 단위시험(w3unit.sh PID 2640739) | "W3UNIT 끝" | landscape_u_* | 감시 bj54x9yd2 |
 | 1006 | 서브에이전트: 회복 병목(진행)·W3 채점표 도구(진행) | 완료 알림 | — | — |
 | 1006 | 트랙 B ARREST-HO(arrest.sh PID 2642866: LPFR 끝 뒤 aho3·aho2) | "ARREST 끝" | ground_recovery_aho*_* | 감시 b8wsu9ivx(stages_cmp) |
+| 1006 | W3 단위시험 1·2차 | — | COMPLETED → ANALYZED → DECISION(높이 공중 한정·가중 3, 토너먼트 착수) | — |
+| 1006 | W3 Stage0 토너먼트(w3tour.sh PID 2662103: C·A 병렬 → U, 각 400 → eval_w3) | "W3TOUR 끝" | log_picture/w3eval_w3{C,A,U}_400*.txt | 감시 bidpc106v |
+| 1006 | LPFR | — | COMPLETED → KILL(LPF 완화 전 조건 악화) → NEXT = ARREST-HO(자동 대기 중) | — |

@@ -22,16 +22,107 @@ import sys
 import numpy as np
 
 try:      # 패키지 경로(브리지: rl_walking.deploy.c5_switch) — 러너 모듈을 한 번만 로드
-    from .policy_runner_stage4 import (ACT_DIM, ACTION_SCALE, SLEW_RAD, PolicyRunner,  # noqa: F401
+    from .policy_runner_stage4 import (ACT_DIM, ACTION_SCALE, JOINT_ORDER, SLEW_RAD, PolicyRunner,  # noqa: F401
                                        PolicyRunnerStage4, _load_backend)
 except ImportError:   # 단독 실행(--selftest)
     _HERE = os.path.dirname(os.path.abspath(__file__))
     if _HERE not in sys.path:
         sys.path.insert(0, _HERE)
-    from policy_runner_stage4 import (ACT_DIM, ACTION_SCALE, SLEW_RAD, PolicyRunner,  # noqa: E402
+    from policy_runner_stage4 import (ACT_DIM, ACTION_SCALE, JOINT_ORDER, SLEW_RAD, PolicyRunner,  # noqa: E402
                                       PolicyRunnerStage4, _load_backend)
 
 RATE_HZ = 50.0
+
+#: 1007 병목 2 odic 기본 설정(reports/gen_w3/STOPEST.md §8–§9 승격 후보 = 시뮬 --settle_judge odo --settle_v 0.07 --settle_ds 0.3
+#: --settle_min 0.9 --settle_knee_comp 42 [+ --settle_knee_inject 42 플랜트]). k_hat = 0919 무릎 처짐 역산 k 35–45 의 중앙(가정값 —
+#: 실물 k 식별 전). tau_ref "handover" = 시뮬 odic 과 같은 기준(인계 첫 틱 토크), "absolute" = 처짐 τ/k̂ 전부(엔코더 = 링크 + τ/k 모형).
+ODIC_DEFAULT = dict(v_thr=0.07, ds_s=0.3, min_s=0.9, min_frac=0.5, window_s=0.9, k_hat=42.0, tau_ref="handover")
+
+
+def _leg_odometry_cls():
+    """leg_odometry 지연 import — odic 를 켜지 않으면 import 자체가 일어나지 않는다(기본 경로 불변)."""
+    try:
+        from .leg_odometry import LegOdometry
+    except ImportError:
+        from leg_odometry import LegOdometry  # type: ignore
+    return LegOdometry
+
+
+class OdicSettle:
+    """1007 병목 2: KE 조기 복귀 판정 odic — 다리 운동학 오도메트리 0.9 s 주기 평균 속도 + 무릎 토크 처짐 보상.
+
+    시뮬 eval_ground_recovery.py `--settle_judge odo --settle_knee_comp k̂` 블록(odo_spd·odo_frac·odo_ds)의 배포판.
+    수치 계약(시뮬과 같은 판정·같은 시각 — selftest_odic_equiv.py 가 시뮬 소스를 그대로 실행해 대조):
+      enc = qpos(float32, JOINT_ORDER, URDF 관절 절대각) ; 무릎 enc −= (τ − τ_ref) / k̂ (float32) ;
+      LegOdometry.step(enc, 자이로 원값, 중력 원값(필터 전), 접촉 0/1) → |v̄|·유효비를 float32 로 ; 양발 연속 시간 float32 누적.
+    입력 τ = 무릎 2 개 관절 프레임 토크 [N·m] (왼, 오른) — 브리지가 tau_est_nm(모터 프레임)×direction 으로 바꾸고, 미수신·신선도 초과면 None.
+    고장 처리(조용한 대체 금지): τ 가 None/비유한이면 이번 틱 '판정 불가'(ok False → 조기 복귀 막힘, calm 경로·불응기는 그대로)이고
+    오도메트리에는 마지막 유효 τ 를 유지해 넣는다(창 연속성). 유효 τ 를 한 번도 못 받았으면 보상 없이 넣고 판정 불가.
+    k_hat ≤ 0 → 보상 끔(= 시뮬 odo/odi 팔, τ 불필요).
+    """
+
+    def __init__(self, v_thr=0.07, ds_s=0.3, min_s=0.9, min_frac=0.5, window_s=0.9, k_hat=42.0, tau_ref="handover",
+                 dt: float = 1.0 / RATE_HZ, joint_order=None):
+        if tau_ref not in ("handover", "absolute"):
+            raise ValueError(f"tau_ref {tau_ref!r} — handover|absolute")
+        for nm, v, lo, hi in (("v_thr", v_thr, 0.01, 0.3), ("ds_s", ds_s, 0.0, 2.0), ("min_s", min_s, 0.0, 5.0), ("min_frac", min_frac, 0.0, 1.0),
+                              ("window_s", window_s, 0.2, 3.0), ("k_hat", k_hat, 0.0, 1000.0)):
+            if not (math.isfinite(float(v)) and lo <= float(v) <= hi):
+                raise ValueError(f"odic {nm}={v} 범위 [{lo}, {hi}] 밖")
+        self.v_thr, self.ds_s, self.min_s, self.min_frac = float(v_thr), float(ds_s), float(min_s), float(min_frac)
+        self.k_hat, self.tau_ref, self.dt = float(k_hat), tau_ref, float(dt)
+        self.joint_order = list(JOINT_ORDER if joint_order is None else joint_order)
+        self.ik = [self.joint_order.index("left_knee_joint"), self.joint_order.index("right_knee_joint")]
+        self.odo = _leg_odometry_cls()(self.joint_order, n=1, dt=self.dt, window_s=float(window_s))
+        self.reset()
+
+    def reset(self) -> None:
+        self.odo.reset()
+        self.ds = np.float32(0.0); self.spd = np.float32(np.nan); self.frac = np.float32(0.0)
+        self.tau0 = None; self.tau_last = None; self.tau_ok = self.k_hat <= 0.0
+        self.n_tau_bad = 0
+
+    @property
+    def needs_tau(self) -> bool:
+        return self.k_hat > 0.0
+
+    def update(self, qpos_rad, gyro_raw, grav_raw, contact2, tau_knee_nm=None) -> None:
+        enc = np.asarray(qpos_rad, dtype=np.float32).reshape(1, len(self.joint_order)).copy()
+        if self.needs_tau:
+            tk = None
+            if tau_knee_nm is not None:
+                try:
+                    tk = np.asarray([float(v) for v in tau_knee_nm], dtype=np.float32).reshape(2)
+                except (TypeError, ValueError):
+                    tk = None
+                if tk is not None and not np.all(np.isfinite(tk)):
+                    tk = None
+            self.tau_ok = tk is not None
+            if tk is None:
+                self.n_tau_bad += 1
+                tk = self.tau_last
+            if tk is not None:
+                self.tau_last = tk
+                if self.tau0 is None:
+                    self.tau0 = tk.copy()
+                tq = (tk - self.tau0) if self.tau_ref == "handover" else tk
+                enc[0, self.ik] = enc[0, self.ik] - tq / self.k_hat
+        c = np.asarray(contact2, dtype=np.float32).reshape(1, 2)
+        out = self.odo.step(enc, np.asarray(gyro_raw, dtype=np.float32).reshape(1, 3),
+                            np.asarray(grav_raw, dtype=np.float32).reshape(1, 3), c)
+        self.spd = np.float32(out["speed_bar"][0]); self.frac = np.float32(out["frac"][0])
+        both = bool(c[0, 0] > 0.5) and bool(c[0, 1] > 0.5)
+        self.ds = np.float32(self.ds + np.float32(self.dt)) if both else np.float32(0.0)
+
+    def ok(self, t_on) -> bool:
+        """시뮬 _ec2(odo) 의 판정부(모드·early_gate 제외): 켜진 뒤 ≥ min_s & |v̄| < v_thr & 유효비 ≥ min_frac & 양발 ≥ ds_s & τ 유효."""
+        return bool(self.tau_ok and (np.float32(t_on) >= np.float32(self.min_s - 1e-6)) and (self.spd < np.float32(self.v_thr))
+                    and (self.frac >= np.float32(self.min_frac)) and (self.ds >= np.float32(self.ds_s - 1e-6)))
+
+    def blackbox(self) -> dict:
+        return {"spd": (None if not np.isfinite(self.spd) else round(float(self.spd), 4)), "frac": round(float(self.frac), 3),
+                "ds": round(float(self.ds), 3), "tau_ok": int(self.tau_ok), "n_tau_bad": int(self.n_tau_bad),
+                "k_hat": self.k_hat, "tau_ref": self.tau_ref}
 
 
 class SwitchDetector:
@@ -39,7 +130,7 @@ class SwitchDetector:
 
     def __init__(self, on_tilt_deg: float = 4.0, on_w: float = 0.5, off_tilt_deg: float = 2.5, off_w: float = 0.3,
                  calm_s: float = 1.0, dwell_s: float = 0.4, dt: float = 1.0 / RATE_HZ, ref_tau_s: float = 0.0, ref_cap_deg: float = 8.0, ref_init_s: float = 0.0, off_contact: str = "both",
-                 early=None, refrac=None, in_filt: float = 0.0, early_gate=None):
+                 early=None, refrac=None, in_filt: float = 0.0, early_gate=None, settle=None):
         """ref_tau_s > 0: 기울기를 **기준 자세 대비 편차**로(1004 실물 로그 재생: 실물 서기 기울기 3–4° → 절대 기준이면 회복 모드 70–99 % 체류).
         기준 = 첫 update 의 (롤, 피치), 서기 모드·|ω|<0.1·양발일 때 EMA(τ) 갱신, |ref| ≤ ref_cap_deg. 0 = 절대 기울기(시뮬 SW-1 정의)."""
         self.on_tilt, self.on_w, self.off_tilt, self.off_w = float(on_tilt_deg), float(on_w), float(off_tilt_deg), float(off_w)
@@ -57,6 +148,16 @@ class SwitchDetector:
         # 1005 KE: 조기 복귀 허용 조건 (tilt, w) — 이번 활성화의 최대 기울기 편차·|ω_xy| 가 문턱 이상이었을 때만(작은 오탐은 calm 경로로만 끔). 시뮬 --early_gate 와 같은 정의.
         self.early_gate = None if early_gate is None else tuple(float(x) for x in early_gate)
         self.off_contact = off_contact   # 1004 밤: 끄기 조건 접촉 요구 — 실물 패드 0(무응답·무부하)로 회복 모드 고착(시험 4, 검토 7회차)
+        # 1007 병목 2: 조기 복귀 판정기. None(기본) = 현행 IMU 규칙(아래 update 경로 그대로 — 비트 동일).
+        # dict/OdicSettle = odic: 조기 복귀 조건을 오도메트리 판정으로 바꾸고, 감지기 한 틱 전체를 시뮬 eval_ground_recovery 의
+        # float32 순서로 계산한다(_update_odic). early 의 hold(4 번째 값)·early_gate·불응기·calm 경로·켜기 규칙은 그대로.
+        self.settle = None
+        if settle is not None:
+            if self.early is None:
+                raise ValueError("odic 는 조기 복귀(early) 설정이 있는 감지기에만(유지 시간 = early[3]) — 시뮬 --sw_early_imu 필수와 같음")
+            if self.ref_tau_s <= 0.0:
+                raise ValueError("odic 경로는 상대 기울기 감지기(ref_tau_s > 0, 시뮬 --sw_ref_tau)만 지원")
+            self.settle = settle if isinstance(settle, OdicSettle) else OdicSettle(dt=self.dt, **dict(ODIC_DEFAULT, **settle))
         self.reset()
 
     def reset(self) -> None:
@@ -71,6 +172,11 @@ class SwitchDetector:
         self.t_since_early = 1e9
         self._fg = None; self._fw = None
         self.pk_tilt = 0.0; self.pk_w = 0.0
+        if getattr(self, "settle", None) is not None:      # odic 전용 상태(시뮬 float32 텐서와 같은 정밀도)
+            self.settle.reset()
+            self._k = 0
+            self._f32 = dict(calm=np.float32(0), t_on=np.float32(0), hold=np.float32(0), pk_t=np.float32(0), pk_w=np.float32(0),
+                             refr_t=np.float32(-1e9))
 
     @staticmethod
     def tilt_deg(gravity_unit) -> float:
@@ -93,7 +199,13 @@ class SwitchDetector:
             g, w = self._fg, self._fw
         return g / max(float(np.linalg.norm(g)), 1e-6), w
 
-    def update(self, gravity_unit, gyro_rad_s, contact2) -> int:
+    @property
+    def needs_odic_inputs(self) -> bool:
+        return self.settle is not None
+
+    def update(self, gravity_unit, gyro_rad_s, contact2, qpos_rad=None, tau_knee_nm=None) -> int:
+        if self.settle is not None:
+            return self._update_odic(gravity_unit, gyro_rad_s, contact2, qpos_rad, tau_knee_nm)
         gravity_unit, gyro_rad_s = self.filtered(gravity_unit, gyro_rad_s)
         self.last_w = gyro_rad_s
         tilt = self.tilt_deg(gravity_unit)
@@ -133,6 +245,70 @@ class SwitchDetector:
         return self.mode
 
 
+    def _update_odic(self, gravity_unit, gyro_rad_s, contact2, qpos_rad, tau_knee_nm) -> int:
+        """odic 감지기 한 틱 — eval_ground_recovery.py 의 감지 블록(--det_from_obs --det_filt --sw_ref_tau --sw_early_imu
+        --settle_judge odo [--early_gate] [--sw_refrac])을 같은 순서·float32 로 옮긴 것. 시각 t_rel = 인계(첫 update) 뒤 k/50 s.
+        순서: 감지 입력 EMA → 상대 기울기(기준 초기화·갱신·±cap) → 오도메트리 → 켜기/조용함 → calm·t_on → calm 끄기 →
+        odic 조기 복귀(·early_gate) → hold → 불응기 → 모드."""
+        if qpos_rad is None:
+            raise ValueError("odic 감지기: qpos_rad(엔코더 12) 필수")
+        f32 = np.float32; S = self._f32; dt = f32(self.dt)
+        t_rel = self._k / (1.0 / self.dt)            # 시뮬 (i − STEPS_PRE) / 50.0 과 같은 반올림
+        g_raw = np.asarray(gravity_unit, dtype=np.float32).reshape(3); w_raw = np.asarray(gyro_rad_s, dtype=np.float32).reshape(3)
+        if self.in_filt > 0.0:
+            if self._fg is None or self._k == 0:
+                self._fg, self._fw = g_raw.copy(), w_raw.copy()
+            a = f32(self.in_filt)
+            self._fg = (self._fg + a * (g_raw - self._fg)).astype(np.float32); self._fw = (self._fw + a * (w_raw - self._fw)).astype(np.float32)
+            g, wv = self._fg, self._fw
+        else:
+            g, wv = g_raw, w_raw
+        g = (g / max(f32(np.linalg.norm(g)), f32(1e-6))).astype(np.float32)
+        self.last_w = wv
+        c = np.asarray(contact2, dtype=np.float32).reshape(2) > 0.5
+        w = f32(np.linalg.norm(wv[:2]))
+        rp = np.degrees(np.array([np.arctan2(g[1], -g[2]), np.arctan2(g[0], -g[2])], dtype=np.float32)).astype(np.float32)
+        if self.ref is None or self._k == 0 or t_rel < self.ref_init_s:
+            self.ref = rp.copy()
+        if self.mode == 0 and w < f32(0.1) and bool(c[0] and c[1]):
+            self.ref = (self.ref + (rp - self.ref) * f32(self.dt / self.ref_tau_s)).astype(np.float32)
+        self.ref = np.clip(self.ref, -self.ref_cap, self.ref_cap).astype(np.float32)
+        tilt = f32(np.linalg.norm(rp - self.ref))
+        self.last_tilt = float(tilt)      # 진단(재생 보고용) — 판정에 쓰지 않음
+        self.settle.update(qpos_rad, w_raw, g_raw, contact2, tau_knee_nm)      # 오도메트리 = 필터 전 원값(시뮬 _gy_raw·_pg_raw)
+        on = bool((tilt > f32(self.on_tilt)) or (w > f32(self.on_w)))
+        cq = {"both": bool(c[0] and c[1]), "any": bool(c[0] or c[1]), "none": True}[self.off_contact]
+        quiet = bool((tilt < f32(self.off_tilt)) and (w < f32(self.off_w)) and cq)
+        m = self.mode == 1
+        S["calm"] = f32(S["calm"] + dt) if (m and quiet) else f32(0)
+        S["t_on"] = f32(S["t_on"] + dt) if m else f32(0)
+        off = bool(m and S["calm"] >= f32(self.calm_s) and S["t_on"] >= f32(self.dwell_s))
+        ec = bool(m and self.settle.ok(S["t_on"]))
+        if self.early_gate is not None:
+            S["pk_t"] = f32(max(S["pk_t"], tilt)) if m else f32(0); S["pk_w"] = f32(max(S["pk_w"], w)) if m else f32(0)
+            ec = ec and bool((S["pk_t"] >= f32(self.early_gate[0])) or (S["pk_w"] >= f32(self.early_gate[1])))
+        S["hold"] = f32(S["hold"] + dt) if ec else f32(0)
+        eoff = bool(m and S["hold"] >= f32(self.early[3]))
+        if eoff:
+            self.n_early += 1
+        off = off or eoff
+        if self.refrac is not None:
+            if eoff:
+                S["refr_t"] = f32(t_rel)
+            in_ref = bool(f32(f32(t_rel) - S["refr_t"]) < f32(self.refrac[0]))
+            on = on and ((not in_ref) or bool(tilt > f32(self.refrac[1])) or bool(w > f32(self.refrac[2])))
+        new_on = (not m) and on
+        if new_on:
+            self.n_on += 1
+        self.mode = 1 if ((m or new_on) and not off) else 0
+        # 기존 필드(블랙박스·cue) 호환
+        self.calm, self.t_on, self.early_hold = float(S["calm"]), float(S["t_on"]), float(S["hold"])
+        self.pk_tilt, self.pk_w = float(S["pk_t"]), float(S["pk_w"])
+        self._k += 1
+        self.t_since = self._k / (1.0 / self.dt)
+        return self.mode
+
+
 class C5Runner:
     """PolicyRunnerStage4(서기 모델) + 회복 네트워크 + SwitchDetector.
 
@@ -167,6 +343,12 @@ class C5Runner:
     def blackbox(self) -> dict:
         """블랙박스 C5 필드(기록 전용)."""
         d = self.det
+        bb = self._blackbox_base(d)
+        if getattr(d, "settle", None) is not None:      # 1007 odic 진단(odic 감지기에서만 키 추가 — imu 경로 스키마 불변)
+            bb["odic"] = d.settle.blackbox()
+        return bb
+
+    def _blackbox_base(self, d) -> dict:
         return {"mode": int(self.last_mode), "switch": self.last_switch, "n_on": int(d.n_on),
                 "cue": int(self.cue_active), "n_cue": int(self.n_cue), "n_early": int(getattr(d, "n_early", 0)),
                 "ref_deg": (None if d.ref is None else [round(float(v), 3) for v in d.ref]),
@@ -211,14 +393,24 @@ class C5Runner:
             self._vc_slices = out
         return self._vc_slices
 
-    def step(self, gyro_rad_s, gravity_unit, cmd, qpos_rad, qvel_rad_s, contact2) -> np.ndarray:
+    @property
+    def needs_knee_tau(self) -> bool:
+        """1007 odic(무릎 보상 k̂ > 0) 감지기면 True — 브리지가 tau_knee_nm(관절 프레임 무릎 2 개)을 step 에 넘긴다."""
+        st = getattr(self.det, "settle", None)
+        return st is not None and st.needs_tau
+
+    def step(self, gyro_rad_s, gravity_unit, cmd, qpos_rad, qvel_rad_s, contact2, tau_knee_nm=None) -> np.ndarray:
+        """tau_knee_nm(1007 odic 전용): (왼, 오른) 무릎 관절 프레임 토크 [N·m] 또는 None(미수신·낡음). imu 감지기는 받지도 쓰지도 않는다."""
         core = self.core
         qpos = PolicyRunner._vec(qpos_rad, 12, "qpos_rad")
         obs = core.assemble_obs(gyro_rad_s, gravity_unit, cmd, qpos, qvel_rad_s, contact2)
         core.last_obs = obs
         core._tick += 1
         prev = self.last_mode
-        mode = self.det.update(gravity_unit, gyro_rad_s, contact2)
+        if getattr(self.det, "settle", None) is not None:
+            mode = self.det.update(gravity_unit, gyro_rad_s, contact2, qpos_rad=qpos, tau_knee_nm=tau_knee_nm)
+        else:
+            mode = self.det.update(gravity_unit, gyro_rad_s, contact2)
         raw_s = np.asarray(core._net(obs), dtype=np.float32).reshape(-1)
         obs_r = obs
         if self.cue_vx is not None:
@@ -388,8 +580,53 @@ def _selftest_cue_early() -> str:
     return "cue·early·refrac OK"
 
 
+def _selftest_odic() -> str:
+    """1007 odic 감지기 단위 동작(시뮬 소스 대조는 selftest_odic_equiv.py): 설정 검증 · 정지 자세면 켜진 뒤 0.9 s + 유지 0.2 s(float32 11 틱)에
+    조기 복귀 · τ 미수신이면 조기 복귀 막힘(모드 유지) · 다리가 움직이면 막힘 · 기본(settle 없음)은 qpos/τ 를 받지 않는다."""
+    ke = dict(on_tilt_deg=3.0, on_w=0.5, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, ref_tau_s=10.0, ref_init_s=1.5, off_contact="any",
+              early=(0.6, 6.0, 0.4, 0.2), refrac=(1.5, 6.0, 1.0), in_filt=0.33, early_gate=(5.0, 1.0))
+    for bad in (dict(ke, early=None), dict(ke, ref_tau_s=0.0)):
+        try:
+            SwitchDetector(**bad, settle={}); raise AssertionError("odic 설정 검증 누락")
+        except ValueError:
+            pass
+    try:
+        OdicSettle(k_hat=-1.0); raise AssertionError("k_hat 범위 검증 누락")
+    except ValueError:
+        pass
+    from policy_runner import DEFAULT_POSE_RAD as _DP  # noqa: E402
+    q0 = np.asarray(_DP, np.float64)
+
+    def run(tau_fn, q_fn, n=200):
+        d = SwitchDetector(**ke, settle={})
+        g = lambda deg: np.array([math.sin(math.radians(deg)), 0.0, -math.cos(math.radians(deg))])   # noqa: E731
+        for k in range(100):
+            d.update(g(0.0), [0, 0, 0], [1, 1], qpos_rad=q_fn(k), tau_knee_nm=tau_fn(k))
+        assert d.mode == 0
+        # 6° 6 틱(감지 입력 EMA α0.33 → 필터 기울기 최대 ≥ 5° = early_gate 충족) → 2°(켜기 3° 미만·조용함 1.5° 초과 = calm 경로 없음)
+        ms = [d.update(g(6.0 if j < 6 else 2.0), [0, 0, 0], [1, 1], qpos_rad=q_fn(100 + j), tau_knee_nm=tau_fn(100 + j)) for j in range(n)]
+        k_on = ms.index(1)
+        return d, (ms.index(0, k_on) - k_on if 0 in ms[k_on:] else None)      # 켜진 틱 = 0
+
+    d, k_off = run(lambda k: (3.0, -3.0), lambda k: q0)
+    assert d.n_early == 1 and k_off == 55, f"정지 자세 조기 복귀 틱 {k_off}(기대 55 = 켜진 뒤 t_on float32 ≥ 0.9−1e-6 인 45 번째 갱신부터 유지 0.2 s float32 11 틱)"
+    d, k_off = run(lambda k: None, lambda k: q0)
+    assert k_off is None and d.n_early == 0 and d.settle.n_tau_bad == 300, "τ 미수신인데 조기 복귀"
+    d, k_off = run(lambda k: (3.0, -3.0) if k < 130 else None, lambda k: q0)
+    assert k_off is None and d.n_early == 0, "τ 끊긴 뒤 조기 복귀"
+    iL = JOINT_ORDER.index("left_hip_f_joint"); iR = JOINT_ORDER.index("right_hip_f_joint")
+
+    def q_mv(k):      # 골반이 앞으로 0.15 m/s 쯤 움직이는 양발 지지(두 힙 피치 램프)
+        q = q0.copy(); q[iL] += 0.006 * k * 0.5; q[iR] -= 0.006 * k * 0.5; return q
+    d, k_off = run(lambda k: (3.0, -3.0), q_mv)
+    assert k_off is None and d.n_early == 0 and float(d.settle.spd) > 0.07, f"움직이는 중 조기 복귀(|v̄| {float(d.settle.spd):.3f})"
+    d0 = SwitchDetector(**ke)
+    assert d0.settle is None and not d0.needs_odic_inputs
+    return "odic 감지기 OK (정지 55 틱 조기 복귀·τ 미수신/끊김 막힘·움직임 막힘·기본 경로 settle 없음)"
+
+
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
-        for f in (_selftest_detector, _selftest_equivalence, _selftest_continuity, _selftest_cue_early):
+        for f in (_selftest_detector, _selftest_equivalence, _selftest_continuity, _selftest_cue_early, _selftest_odic):
             print(f())
         print("C5 selftest PASS")

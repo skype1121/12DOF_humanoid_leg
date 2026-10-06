@@ -316,12 +316,64 @@ C5_EXTRA = {"stand_c5kr_g21a_g24ra": dict(det=dict(early=(0.6, 6.0, 0.4, 0.2), r
 C5_DETECTOR_KW = dict(on_tilt_deg=3.0, on_w=0.5, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, ref_tau_s=10.0, ref_init_s=1.5, off_contact="any")   # RV4(1004 밤): RV3 + 끄기 접촉 한 발 이상 — 실물 시험 4 패드 0 고착 19 s 재생 해소·시뮬 RV3 와 동일(짝 불일치 0) — 젯슨 미반영(다음 배포 승인)
 
 
+#: 1007 병목 2 (**기본 꺼짐 · 실물 미검증 · 젯슨 미배포**): C5 KE 조기 복귀 판정기. None = 현행 IMU 규칙(종전 경로 비트 동일 —
+#: rl_walking/deploy/selftest_odic_equiv.py [A]). 켜는 길은 기동 인자 --c5-settle 하나뿐(set_c5_settle). dict = c5_switch.OdicSettle 설정
+#: (ODIC_DEFAULT 위에 덮어씀: v_thr·ds_s·min_s·min_frac·window_s·k_hat·tau_ref). 조기 복귀(early)가 있는 C5 키(stand_c5kr_*)에만 적용 —
+#: early 없는 키는 SwitchDetector 가 거부한다. 근거·한계: reports/gen_w3/STOPEST.md §9–§10 (k̂ 42 는 0919 역산 가정값, 실물 k 식별 전).
+C5_SETTLE = None
+#: odic 무릎 토크 입력 신선도 상한 [s] — analyze_fall 이 tau_est 동결값으로 보는 기준(0.1 s)과 같다. 넘으면 τ 없음(판정 불가 → 조기 복귀 막힘).
+KNEE_TAU_MAX_AGE_S = 0.1
+_ODIC_KEYS = ("v_thr", "ds_s", "min_s", "min_frac", "window_s", "k_hat", "tau_ref")
+
+
+def parse_c5_settle(spec):
+    """--c5-settle 값 → C5_SETTLE. None/'imu' = None(현행), 'odic' = {}(ODIC_DEFAULT), JSON = 키 검증·범위 검증(OdicSettle 생성으로) 뒤 dict."""
+    if spec is None or spec == "imu":
+        return None
+    if spec == "odic":
+        cfg = {}
+    else:
+        cfg = json.loads(spec)
+        if not isinstance(cfg, dict):
+            raise ValueError("--c5-settle JSON 은 객체여야 함")
+        bad = sorted(set(cfg) - set(_ODIC_KEYS))
+        if bad:
+            raise ValueError(f"--c5-settle 모르는 키 {bad} (허용 {list(_ODIC_KEYS)})")
+    from rl_walking.deploy.c5_switch import ODIC_DEFAULT, OdicSettle
+    OdicSettle(**dict(ODIC_DEFAULT, **cfg))      # 범위·tau_ref 검증(ValueError)
+    return dict(cfg)
+
+
+def set_c5_settle(cfg):
+    global C5_SETTLE
+    C5_SETTLE = None if cfg is None else dict(cfg)
+
+
+def knee_tau_joint(tau_est_motor, status_age_s, dir_by_joint, max_age_s=KNEE_TAU_MAX_AGE_S):
+    """odic 입력: stage8 feedback_torque_est(모터 프레임, 관절명 키) → (왼, 오른) 무릎 관절 프레임 토크 [N·m] = direction × τ_motor.
+    미수신(None)·비유한·status 신선도 초과(또는 수신 이력 없음)는 None — 조용히 0 으로 대체하지 않는다(판정기가 '판정 불가' 처리)."""
+    if status_age_s is None or not (0.0 <= float(status_age_s) <= float(max_age_s)):
+        return None
+    out = []
+    for j in ("left_knee_joint", "right_knee_joint"):
+        v = tau_est_motor.get(j)
+        if v is None:
+            return None
+        v = float(v)
+        if not math.isfinite(v):
+            return None
+        out.append(float(dir_by_joint[j]) * v)
+    return tuple(out)
+
+
 def _make_runner(checkpoint):
     """체크포인트 이름 → 러너. C5 이름이면 C5Runner(서기 정책 계약 공유), 아니면 PolicyRunnerStage4(종전)."""
     if checkpoint in C5_PAIRS:
         stand, rec_path = C5_PAIRS[checkpoint]
         _ex = C5_EXTRA.get(checkpoint, {})
-        return C5Runner(CHECKPOINTS[stand], rec_path, detector=SwitchDetector(**C5_DETECTOR_KW, **_ex.get("det", {})), **_ex.get("runner", {}),
+        # 1007 odic(기본 꺼짐 → 인자 자체를 넘기지 않음). 켜져 있어도 조기 복귀(early)가 있는 C5 키에만 — 실행 중 다른 C5 키로 바꿔도 거부·중단 없이 종전 imu.
+        _st = {"settle": dict(C5_SETTLE)} if (C5_SETTLE is not None and _ex.get("det", {}).get("early") is not None) else {}
+        return C5Runner(CHECKPOINTS[stand], rec_path, detector=SwitchDetector(**C5_DETECTOR_KW, **_ex.get("det", {}), **_st), **_ex.get("runner", {}),
                         gait_freq=CKPT_GAIT_FREQ.get(stand, CKPT_GAIT_FREQ_DEFAULT),
                         default_pose_rad=CKPT_DEFAULT_POSE.get(stand),
                         jvel_ema_mode=ckpt_jvel_ema_mode(stand),
@@ -1097,8 +1149,9 @@ class BridgeCore:
         self._apply_hh_cfg()
         self._apply_w3_cfg()
 
-    def tick(self, gyro, quat_wxyz, qpos_rad, qvel_rad_s, contact2):
-        """관측 → 목표각 12 [rad, 절대] (JOINT_ORDER 순)."""
+    def tick(self, gyro, quat_wxyz, qpos_rad, qvel_rad_s, contact2, tau_knee_nm=None):
+        """관측 → 목표각 12 [rad, 절대] (JOINT_ORDER 순).
+        tau_knee_nm(1007 odic 전용): (왼, 오른) 무릎 관절 프레임 토크 또는 None — 러너가 요구할 때(needs_knee_tau)만 넘긴다."""
         w, x, y, z = quat_wxyz
         grav = correct_gravity(projected_gravity(quat_wxyz))   # world -z 를 body 프레임으로 (게이트와 동일식) + 장착 편향 보정(맵 키 있을 때만)
         self.last_grav = grav
@@ -1112,6 +1165,9 @@ class BridgeCore:
             wz = self.hh.update(yaw)
         if self.w3hl is not None:        # 1007 W3 명령 채널 + 헤딩 고리(그 밖 키는 이 줄을 지나지 않는다)
             vx, vy, wz = self._w3_cmd_step(quat_wxyz, vx, vy, wz)
+        if getattr(self.runner, "needs_knee_tau", False):
+            return self.runner.step(gyro, grav, (vx, vy, wz),
+                                    qpos_rad, qvel_rad_s, contact2, tau_knee_nm=tau_knee_nm)
         return self.runner.step(gyro, grav, (vx, vy, wz),
                                 qpos_rad, qvel_rad_s, contact2)
 
@@ -1600,6 +1656,8 @@ def _selftest_c5():
     if not os.path.isdir(CHECKPOINTS["stand_crouch_g21a"]):
         return "SKIP (G21a 미배포)"
     C5_PAIRS["_selftest_c5"] = ("stand_crouch_g21a", CHECKPOINTS["stand_crouch_g21a"])
+    global C5_SETTLE
+    _saved_settle, C5_SETTLE = C5_SETTLE, None      # 1007: 종전 경로 정의 검증(--c5-settle 켜진 기동에서도 imu 로 격리)
     try:
         core = BridgeCore("_selftest_c5")
         assert isinstance(core.runner, C5Runner) and core.runner.act_obs_ema_beta == 0.27, "C5 러너·관측 필터 계약"
@@ -1619,6 +1677,7 @@ def _selftest_c5():
         assert set(bb) >= {"mode", "switch", "n_on", "ref_deg", "raw_stand", "raw_rec"}
         return f"C5 경로 OK: 켜짐 {bb['n_on']} 회 · 회복 체류 {sum(modes)} 틱 · 기준 자세 {bb['ref_deg']}"
     finally:
+        C5_SETTLE = _saved_settle
         C5_PAIRS.pop("_selftest_c5", None)
 
 
@@ -1630,6 +1689,8 @@ def _selftest_c5kr():
         return "SKIP (G21a 미배포)"
     C5_PAIRS["_selftest_c5kr"] = ("stand_crouch_g21a", CHECKPOINTS["stand_crouch_g21a"])
     C5_EXTRA["_selftest_c5kr"] = C5_EXTRA["stand_c5kr_g21a_g24ra"]
+    global C5_SETTLE
+    _saved_settle, C5_SETTLE = C5_SETTLE, None      # 1007: 종전 경로 정의 검증(--c5-settle 켜진 기동에서도 imu 로 격리)
     try:
         core = BridgeCore("_selftest_c5kr")
         r = core.runner
@@ -1651,7 +1712,70 @@ def _selftest_c5kr():
         assert {"cue", "n_cue", "n_early"} <= set(bb)
         return f"kr 경로 OK: 켜짐 {bb['n_on']} · cue {sum(cues)} 틱 · 조기 복귀 {bb['n_early']} · 회복 체류 {sum(modes)} 틱"
     finally:
+        C5_SETTLE = _saved_settle
         C5_PAIRS.pop("_selftest_c5kr", None); C5_EXTRA.pop("_selftest_c5kr", None)
+
+
+def _selftest_c5_odic():
+    """(1007 병목 2) odic 플래그: 기본 C5_SETTLE None → kr 러너 감지기 settle 없음·needs_knee_tau False(종전 경로) / 켜면 settle 전달·
+    tick 이 무릎 τ 를 넘김 · τ None 이면 조기 복귀 없음(calm 경로만) · τ 있으면 조기 복귀 · early 없는 C5 키 거부 · 설정 파싱 거부 ·
+    knee_tau_joint = direction × τ_motor, 미수신·낡음 None. 회복 자리에 G21a 내보내기(경로 검증, 정책 성능 아님)."""
+    import numpy as np
+    if not os.path.isdir(CHECKPOINTS["stand_crouch_g21a"]):
+        return "SKIP (G21a 미배포)"
+    for bad in ('{"k_hat": -1}', '{"foo": 1}', '{"tau_ref": "x"}', "[1]", "nope"):
+        try:
+            parse_c5_settle(bad); raise AssertionError(f"--c5-settle {bad} 거부 안 됨")
+        except ValueError:
+            pass
+    assert parse_c5_settle(None) is None and parse_c5_settle("imu") is None and parse_c5_settle("odic") == {}
+    assert parse_c5_settle('{"k_hat": 35}') == {"k_hat": 35}
+    dmap = {"left_knee_joint": -1, "right_knee_joint": -1}
+    assert knee_tau_joint({"left_knee_joint": 2.0, "right_knee_joint": -3.0}, 0.005, dmap) == (-2.0, 3.0)
+    assert knee_tau_joint({"left_knee_joint": 2.0, "right_knee_joint": -3.0}, 0.2, dmap) is None, "낡은 τ 통과"
+    assert knee_tau_joint({"left_knee_joint": 2.0}, 0.005, dmap) is None
+    assert knee_tau_joint({"left_knee_joint": 2.0, "right_knee_joint": 1.0}, None, dmap) is None
+    assert knee_tau_joint({"left_knee_joint": float("nan"), "right_knee_joint": 1.0}, 0.0, dmap) is None
+    saved = C5_SETTLE
+    C5_PAIRS["_selftest_odic"] = ("stand_crouch_g21a", CHECKPOINTS["stand_crouch_g21a"])
+    C5_EXTRA["_selftest_odic"] = C5_EXTRA["stand_c5kr_g21a_g24ra"]
+    C5_PAIRS["_selftest_odic_noearly"] = ("stand_crouch_g21a", CHECKPOINTS["stand_crouch_g21a"])
+    try:
+        set_c5_settle(None)
+        c0 = BridgeCore("_selftest_odic")
+        assert c0.runner.det.settle is None and not c0.runner.needs_knee_tau and "odic" not in c0.runner.blackbox(), "꺼짐 기본 경로"
+        set_c5_settle({})
+        cn = BridgeCore("_selftest_odic_noearly")
+        assert cn.runner.det.settle is None and not cn.runner.needs_knee_tau, "early 없는 C5 키에 odic 적용됨(종전 imu 여야 함)"
+        try:
+            from rl_walking.deploy.c5_switch import SwitchDetector as _SD
+            _SD(**C5_DETECTOR_KW, settle={}); raise AssertionError("early 없는 감지기에 odic 허용")
+        except ValueError:
+            pass
+        res = {}
+        for nm, tau in (("τ 있음", (-6.0, 6.0)), ("τ 없음", None)):
+            core = BridgeCore("_selftest_odic"); r = core.runner
+            assert r.det.settle is not None and r.needs_knee_tau
+            q0 = np.asarray(CKPT_DEFAULT_POSE["stand_crouch_g21a"], dtype=np.float32); prev = None; modes = []
+            for k in range(300):
+                ang = math.radians(0.5 + (6.0 if 100 <= k < 110 else (2.0 if 110 <= k < 200 else 0.0)))   # 펄스 뒤 2° 잔류(calm 경로 막힘)
+                quat = (math.cos(ang / 2), 0.0, math.sin(ang / 2), 0.0)
+                out = core.tick((0.0, 0.6 if k == 100 else 0.0, 0.0), quat, q0, np.zeros(12, np.float32), (1.0, 1.0), tau_knee_nm=tau)
+                assert np.all(np.isfinite(out))
+                if prev is not None:
+                    assert float(np.max(np.abs(out - prev))) <= math.radians(4.0) + 1e-6, "슬루 초과"
+                prev = out; modes.append(r.last_mode)
+            bb = r.blackbox()
+            assert "odic" in bb and {"spd", "frac", "ds", "tau_ok", "n_tau_bad"} <= set(bb["odic"])
+            res[nm] = (bb["n_early"], sum(modes), bb["odic"]["n_tau_bad"], modes[-1])
+        assert res["τ 있음"][0] >= 1 and res["τ 있음"][3] == 0, f"τ 있음 조기 복귀 미발동 {res}"
+        assert res["τ 없음"][0] == 0 and res["τ 없음"][2] == 300 and res["τ 없음"][1] > res["τ 있음"][1], f"τ 없음인데 조기 복귀 {res}"
+        return (f"odic 플래그 OK: 기본 꺼짐(settle 없음) · early 없는 키 = imu 유지(감지기 직접 생성은 거부) · 설정 파싱 거부 5 종 · knee τ 변환·신선도 · "
+                f"τ 있음 조기 복귀 {res['τ 있음'][0]}·체류 {res['τ 있음'][1]} 틱 / τ 없음 조기 0·체류 {res['τ 없음'][1]} 틱(calm 경로)")
+    finally:
+        set_c5_settle(saved)
+        for k in ("_selftest_odic", "_selftest_odic_noearly"):
+            C5_PAIRS.pop(k, None); C5_EXTRA.pop(k, None)
 
 
 def _selftest_obs_filter():
@@ -3060,6 +3184,7 @@ def run_selftest(required=()):
              ("관측 필터 계약(1003)", _selftest_obs_filter),
              ("C5 전환 경로(1004)", _selftest_c5),
              ("C5 kr 경로(1005)", _selftest_c5kr),
+             ("C5 odic 조기 복귀 플래그(1007)", _selftest_c5_odic),
              ("HTURN2 실험 플래그(1006)", _selftest_hturn2),
              ("W3 실험 플래그(1006)", _selftest_w3),
              ("W3 세션 감독기(1006 감사)", _selftest_w3_supervisor),
@@ -3110,6 +3235,10 @@ def main():
                          "120 s), 'off' = 끔, JSON = 설정(키·범위 w3_deploy.W3_HL_RANGES)")
     ap.add_argument("--w3-cmd-limits", default=None,
                     help="1007 W3 명령 채널 상한 JSON(vy_max ≤0.08·wz_max ≤0.3·min_dwell_s) — 생략 = W3S3d 학습 범위(|vy| ≤0.04·|wz| ≤0.2)")
+    ap.add_argument("--c5-settle", default=None,
+                    help="1007 병목 2 (기본 꺼짐·실물 미검증): C5 KE 조기 복귀 판정기. 생략/'imu' = 현행 IMU 규칙, 'odic' = 다리 운동학 오도메트리 "
+                         "0.9 s 주기 평균 |v̄| < 0.07 m/s·양발 ≥ 0.3 s·켜진 뒤 ≥ 0.9 s + 무릎 처짐 보상 (τ−τ_인계)/k̂(k̂ 42 가정값), "
+                         "JSON = 설정 덮어쓰기(키 " + ", ".join(_ODIC_KEYS) + "). 조기 복귀가 있는 C5 키(stand_c5kr_*)에서만 허용")
     ap.add_argument("--checkpoint", default=STAND_DEFAULT, choices=list(CHECKPOINTS) + [_H2.HTURN2_CKPT_KEY] + list(_W3.W3_KEYS),
                     help="기본값은 배포 데뷔 정책(STAND_DEFAULT). 0907: 구 walk 는 젯슨에서 삭제돼 "
                          "기본값으로 두면 selftest 가 필수 파일 없음으로 실패한다")
@@ -3145,6 +3274,17 @@ def main():
     if args.experimental_hturn2:
         enable_experimental_hturn2()
         print(f"[경고] --experimental-hturn2: 실험 기능 켜짐(실물 미검증) — 키 {_H2.HTURN2_CKPT_KEY}", file=sys.stderr)
+    try:
+        _c5s = parse_c5_settle(args.c5_settle)
+    except ValueError as e:      # json.JSONDecodeError 포함
+        print(f"[거부] --c5-settle: {e}", file=sys.stderr)
+        return 2
+    if _c5s is not None:
+        if args.checkpoint not in C5_PAIRS or C5_EXTRA.get(args.checkpoint, {}).get("det", {}).get("early") is None:
+            print(f"[거부] --c5-settle {args.c5_settle} 는 조기 복귀가 있는 C5 키에서만(현재 --checkpoint {args.checkpoint})", file=sys.stderr)
+            return 2
+        set_c5_settle(_c5s)
+        print(f"[경고] --c5-settle: odic 조기 복귀 판정기 켜짐(실물 미검증, k̂ 가정값) — 설정 {_c5s or 'ODIC_DEFAULT'}", file=sys.stderr)
     if args.selftest:
         return run_selftest(required=(args.checkpoint, STAND_DEFAULT))
 
@@ -3894,7 +4034,11 @@ def main():
                     self.get_logger().error(
                         f"발진 가드 트리거 — {why}. 줄 재인장 후 release_all 실행!")
                     return
-            targets_rad = self.core.tick(gyro, quat, qpos, qvel, contact2)
+            if getattr(self.core.runner, "needs_knee_tau", False):      # 1007 odic(기본 꺼짐): 무릎 τ 관절 프레임·신선도 검사
+                _tk = knee_tau_joint(self.tau_est, (now - self.status_ts) if self.status_ts > 0.0 else None, self.frames.dir_by_joint)
+                targets_rad = self.core.tick(gyro, quat, qpos, qvel, contact2, tau_knee_nm=_tk)
+            else:
+                targets_rad = self.core.tick(gyro, quat, qpos, qvel, contact2)
             while self.core.w3hl_events:   # 1007 W3 헤딩 고리 고장 → 코어가 걷기를 멈췄다(서기로) — 기록·경고
                 _e = self.core.w3hl_events.pop(0)
                 self._bb_write(dict(_e, timestamp=now))

@@ -707,7 +707,7 @@ n_takeoff = torch.zeros(N, device=dev); n_surv_takeoff = torch.zeros(N, device=d
 # 1005 실패 5분류 계측(첫 외란 기준): 첫 이륙·첫 착지·첫 하중 수용 시각, cue 종료 뒤 이륙 수·이동, 회복 모드 해제 시각, 서기 복귀 뒤 진동
 _NAN_ = lambda: torch.full((N,), float('nan'), device=dev)
 to_first_t = _NAN_(); td_first_t = _NAN_(); load_first_t = _NAN_(); rec_off_t = _NAN_(); cue_end_rec = _NAN_()
-to_after_cue = torch.zeros(N, device=dev); cue_xy0 = torch.full((N, 2), float('nan'), device=dev); xy_last = torch.zeros(N, 2, device=dev)
+to_after_cue = torch.zeros(N, device=dev); to_after_off = torch.zeros(N, device=dev); cue_end_v = _NAN_() if "_NAN_" in dir() else torch.full((N,), float('nan'), device=dev); cue_end_w = torch.full((N,), float('nan'), device=dev); cue_xy0 = torch.full((N, 2), float('nan'), device=dev); xy_last = torch.zeros(N, 2, device=dev)
 osc_flag_post = torch.zeros(N, dtype=torch.bool, device=dev)
 # 1005 밤 자세 복귀(posture restoration): 기준 = 외란 직전 자세(env 별 정상 서기). 복귀 = 기울기 편차 < 2°·|ω| < 0.2·양발·관절 평균 편차 < 3° 가 0.5 s 유지
 pr_q0 = None; pr_rp0 = None; pr_h0 = None; pr_hold = torch.zeros(N, device=dev); rest_t = torch.full((N,), float('nan'), device=dev)
@@ -1002,6 +1002,9 @@ for i in range(STEPS):
                     _bp, _bw = [float(x) for x in args_cli.cue_end_back.split(",")]
                     _prel = (_rp2[:, 1] - sw_ref[:, 1]) if ("sw_ref" in dir() and "_rp2" in dir()) else _rp()[0]
                     _end = _end | (cue_act & ((_prel < -_bp) | (robot.data.root_ang_vel_b[:, 1] < -_bw)))
+                _ce_new = _end & torch.isnan(cue_end_rec)
+                cue_end_v = torch.where(_ce_new, robot.data.root_lin_vel_w[:, :2].norm(dim=-1), cue_end_v)       # 1006 closure: cue 종료 순간 남은 운동량
+                cue_end_w = torch.where(_ce_new, robot.data.root_ang_vel_b[:, :2].norm(dim=-1), cue_end_w)
                 cue_end_rec = torch.where(_end & torch.isnan(cue_end_rec), torch.full_like(cue_end_rec, t_rel), cue_end_rec) if "cue_end_rec" in dir() else torch.where(_end, torch.full((N,), t_rel, device=dev), torch.full((N,), float('nan'), device=dev))
                 cue_act = cue_act & ~_end; cue_done = (cue_done | _end) & sw_mode
                 _vxm_ = cue_act & sw_mode
@@ -1166,7 +1169,7 @@ for i in range(STEPS):
         _sep = _fy[:, 0] - _fy[:, 1]
         if i == STEPS_PRE:
             lat_sep0[:] = _sep
-        if (not dists) or t_rel >= min(d.t0 for d in dists):
+        if ((not dists) and t_rel >= 2.0) or (dists and t_rel >= min(d.t0 for d in dists)):   # 1006: 외란 없음도 외란 조건과 같은 2 s 시점 기준(첫 틱 기준은 인계 과도를 S4 로 오판)
             _bothc = contact[:, 0] & contact[:, 1]
             _ok_ = a_ & ~term
             _newmin = _ok_ & _bothc & (_sep < lat_sep_min)
@@ -1220,6 +1223,7 @@ for i in range(STEPS):
                 to_first_t = torch.where(off & torch.isnan(to_first_t), torch.full_like(to_first_t, t_rel), to_first_t)
                 td_first_t = torch.where(on & ~torch.isnan(to_first_t) & torch.isnan(td_first_t), torch.full_like(td_first_t, t_rel), td_first_t)
                 to_after_cue += (off & ~torch.isnan(cue_end_rec)).float()
+                to_after_off += (off & ~torch.isnan(rec_off_t)).float()                                          # 서기 정책 인계 뒤 이륙
             if "_sep" in dir():
                 td_sep_s += torch.where(on, _sep, torch.zeros_like(_sep)); td_sep_n += on.float()
                 td_sep_min = torch.where(on, torch.minimum(td_sep_min, _sep), td_sep_min)
@@ -1428,7 +1432,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s", "cue_end_t", "cue_time_s", "to_first_t", "td_first_t", "load_first_t", "to_after_cue", "drift_after_cue_cm", "rec_off_t", "osc_flag_post"] if policy2 is not None else []) + ["td1_t", "td1_mf_cm", "td1_ml_cm", "td1_len_cm", "td1_pitch", "td1_prate", "td2_t", "td2_mf_cm", "td2_ml_cm", "td2_len_cm", "td2_pitch", "td2_prate", "rest_t", "end_dq_deg", "end_dh_cm", "end_dtilt_deg", "end_w"])
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s", "cue_end_t", "cue_time_s", "to_first_t", "td_first_t", "load_first_t", "to_after_cue", "drift_after_cue_cm", "rec_off_t", "osc_flag_post", "to_after_off", "cue_end_v", "cue_end_w"] if policy2 is not None else []) + ["td1_t", "td1_mf_cm", "td1_ml_cm", "td1_len_cm", "td1_pitch", "td1_prate", "td2_t", "td2_mf_cm", "td2_ml_cm", "td2_len_cm", "td2_pitch", "td2_prate", "rest_t", "end_dq_deg", "end_dh_cm", "end_dtilt_deg", "end_w"])
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -1455,7 +1459,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
             _fx_ = lambda v: "" if math.isnan(float(v)) else round(float(v), 2)
             _ct_ = (float(cue_ticks[e]) / 50.0) if "cue_ticks" in dir() else 0.0
             _dr_ = (100.0 * float((xy_last[e] - cue_xy0[e]).norm())) if not math.isnan(float(cue_xy0[e, 0])) else ""
-            row += [_fx_(cue_end_rec[e]), round(_ct_, 2), _fx_(to_first_t[e]), _fx_(td_first_t[e]), _fx_(load_first_t[e]), float(to_after_cue[e]), (round(_dr_, 1) if _dr_ != "" else ""), _fx_(rec_off_t[e]), int(osc_flag_post[e])]
+            row += [_fx_(cue_end_rec[e]), round(_ct_, 2), _fx_(to_first_t[e]), _fx_(td_first_t[e]), _fx_(load_first_t[e]), float(to_after_cue[e]), (round(_dr_, 1) if _dr_ != "" else ""), _fx_(rec_off_t[e]), int(osc_flag_post[e]), float(to_after_off[e]), _fx_(cue_end_v[e]), _fx_(cue_end_w[e])]
         row += [("" if math.isnan(float(TDM[k][e])) else round(float(TDM[k][e]), 2)) for k in ('t1','mf1','ml1','len1','p1','pr1','t2','mf2','ml2','len2','p2','pr2')]
         row += [("" if math.isnan(float(x[e])) else round(float(x[e]), 3)) for x in (rest_t, end_dq, end_dh, end_dt, end_w)]
         wcsv.writerow(row)

@@ -3337,6 +3337,13 @@ class Biped12HangStandW3C2k2EnvCfg(Biped12HangStandW3C2vdEnvCfg):
 
 
 @configclass
+class Biped12HangStandW3C2k1EnvCfg(Biped12HangStandW3C2k2EnvCfg):
+    """c2k1 (1007, 정지 시점 확정 대조): W3C2k2 와 같되 첫 회복 착지에서 정지 요청(stop_td_k 1)."""
+
+    C2_EXTRA = "v_box_s=0.909,stop_w=2.0,stop_tilt=12.5,tilt_ref_tau=10,cancel_calm=1,kv_bias=0.03,kv_lf=0.02,stop_td_k=1"
+
+
+@configclass
 class Biped12HangStandW3C2iEnvCfg(Biped12HangStandW3C2EnvCfg):
     """c2i 변형: critic 에 ICP−CoM(요 프레임 2차원, 이력 5) 추가 — critic 입력 335 → 345, **--init_expand 필요**(resume 불가). actor 불변."""
 

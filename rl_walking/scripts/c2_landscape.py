@@ -76,6 +76,32 @@ for n_, d_ in zip(_nm, _dm):
         sz *= int(v_)
     LAY[n_] = (_o, _o + sz); _o += sz
 VC = LAY["velocity_commands"]
+# 1007 R1d: 상태 게이트 서기 양(+) 항의 부작용 없는 복제(회복 ge 1 동안 채점) — settle_quiet_bonus 는 settled_ramp 타이머를 별도로 둔 순수 복제
+def _settle_pure(U, tmr, s_ang=0.08, s_lin=0.02, s_jvel=0.06, s_acc=0.05, use_jvel=True, use_acc=True, asset_cfg=None, hold_s=0.5, ramp_s=1.0,
+                 tilt_deg=8.0, min_height=0.60, sensor_cfg=None, threshold=5.0, r_eps=0.05, rational=False):
+    asset = U.scene["robot"]
+    w = asset.data.root_ang_vel_b[:, :2].norm(dim=1); v = asset.data.root_lin_vel_b[:, :2].norm(dim=1)
+    g = (lambda x, sg: 1.0 / (1.0 + (x / sg) ** 2)) if rational else (lambda x, sg: torch.exp(-(x / sg) ** 2))
+    terms = [g(w, s_ang), g(v, s_lin)]
+    if use_jvel:
+        terms.append(g(asset.data.joint_vel.pow(2).mean(1).sqrt(), s_jvel))
+    if use_acc:
+        terms.append(g(H.action_accel_l2(U).sqrt(), s_acc))                     # 스텝당 캐시 — 추가 호출 무해
+    f = U.scene.sensors["contact_forces"].data.net_forces_w[:, H._feet_body_ids(U), :]
+    both = (f.norm(dim=-1) > threshold).all(dim=1)
+    pg = asset.data.projected_gravity_b; tilt = torch.rad2deg(torch.acos((-pg[:, 2]).clamp(-1.0, 1.0)))
+    ok = (H._state(U)["r"] <= r_eps) & both & (tilt < tilt_deg) & (asset.data.root_pos_w[:, 2] > min_height)
+    tmr[:] = torch.where(ok, tmr + U.step_dt, torch.zeros_like(tmr))
+    return torch.stack(terms, 1).mean(1) * ((tmr - hold_s) / max(ramp_s, 1e-3)).clamp(0.0, 1.0)
+CAND = {}
+for _nm in ("knee_stance_flexion", "feet_contact_gated", "settle_quiet_bonus"):
+    if _nm in names:
+        _cf = RM._term_cfgs[names.index(_nm)]
+        _inner = _cf.params["func"]; _ip = dict(_cf.params.get("params") or {})
+        if _inner.__name__ == "state_gated":                                    # state_gated(func, params) 중첩 해제
+            _inner, _ip = _ip["func"], dict(_ip.get("params") or {})
+        CAND[_nm] = (_inner, _ip, float(_cf.weight))
+_settle_tmr = torch.zeros(N, device=dev)
 SB_TERMS = {}
 for _nm in ("track_lin_vel_xy_exp", "track_ang_vel_z_exp", "survive_after_release"):
     _cf = RM._term_cfgs[names.index(_nm)]
@@ -92,8 +118,11 @@ S["req_first_t"][:] = float("nan"); S["latch_first_t"][:] = float("nan")
 xy0 = torch.full((N, 2), float("nan"), device=dev); xy_req = torch.full((N, 2), float("nan"), device=dev); xy_last = z(N, 2)
 cat = None; kind0 = None; t0 = None; kind1 = None; t01 = None; T_STEPS = int(round(a.seconds / dt))
 
+TERM_W = torch.zeros(N, len(names), device=dev); CAND_W = None
 obs = venv.get_observations()
 for i in range(T_STEPS):
+    if CAND_W is None:
+        CAND_W = torch.zeros(N, len(CAND) + len(SB_TERMS), device=dev)
     if isinstance(obs, torch.Tensor):
         po = obs
     else:
@@ -134,7 +163,15 @@ for i in range(T_STEPS):
         for _nm, (_f, _p, _w) in SB_TERMS.items():
             sb = sb + _f(U, **H._resolve_nested(U, _p)) * _w
         sb = sb * rec_on.float()
+        cv = torch.zeros(N, len(CAND) + len(SB_TERMS), device=dev)      # 후보 항별(복제) 회복 중 기여: CAND 3 + SB 3
+        for j, (_nm, (_f, _p, _w)) in enumerate(CAND.items()):
+            val = _settle_pure(U, _settle_tmr, **H._resolve_nested(U, _p)) if _nm == "settle_quiet_bonus" else _f(U, **H._resolve_nested(U, _p))
+            cv[:, j] = val * _w * rec_on.float()
+        for j, (_nm, (_f, _p, _w)) in enumerate(SB_TERMS.items()):
+            cv[:, len(CAND) + j] = _f(U, **H._resolve_nested(U, _p)) * _w * rec_on.float()
         m = inw.float()
+        TERM_W += sr * m.unsqueeze(1) * dt                                  # 보상 매니저 항별 창 합(분해용)
+        CAND_W += cv * m.unsqueeze(1) * dt
         S["other_w"] += oth * m * dt; S["nom_w"] += nom * m * dt; S["cap_w"] += cap * m * dt; S["capm_w"] += capm * m * dt; S["capd_w"] += capd * m * dt; S["standbase_w"] += sb * m * dt; S["settle_w"] += stl * m * dt
         lv = live.float()
         S["nom_all"] += nom * lv * dt; S["cap_all"] += cap * lv * dt; S["settle_all"] += stl * lv * dt; S["rm_place_all"] += sr[:, i_place] * lv * dt
@@ -166,7 +203,8 @@ for i in range(T_STEPS):
 S["drift_w"] = torch.where(torch.isnan(xy0[:, 0]), torch.full_like(S["drift_w"], float("nan")), 100.0 * (xy_last - xy0).norm(dim=-1))
 S["drift_after_req"] = torch.where(torch.isnan(xy_req[:, 0]), torch.full((N,), float("nan"), device=dev), 100.0 * (xy_last - xy_req).norm(dim=-1))
 out = {k: v.cpu().numpy() for k, v in S.items()}
-out.update(cat=cat.cpu().numpy(), kind0=kind0.cpu().numpy(), t0=t0.cpu().numpy(), kind1=kind1.cpu().numpy(), t01=t01.cpu().numpy(), t_fall=t_fall.cpu().numpy(), arm=a.arm, c2_params=a.c2_params, cue=CUE, seed=a.seed, ckpt=str(ck),
+out.update(term_w=TERM_W.cpu().numpy(), term_names=np.array(names), cand_w=CAND_W.cpu().numpy(), cand_names=np.array(list(CAND) + list(SB_TERMS)),
+           cat=cat.cpu().numpy(), kind0=kind0.cpu().numpy(), t0=t0.cpu().numpy(), kind1=kind1.cpu().numpy(), t01=t01.cpu().numpy(), t_fall=t_fall.cpu().numpy(), arm=a.arm, c2_params=a.c2_params, cue=CUE, seed=a.seed, ckpt=str(ck),
            w_place=W_PLACE, w_settle=W_SETTLE, cap_mode=CAP_MODE, window=a.window)
 os.makedirs(os.path.join(DATA, "log_picture"), exist_ok=True)
 np.savez_compressed(os.path.join(DATA, "log_picture", f"c2unit_{a.out_tag}.npz"), **out)

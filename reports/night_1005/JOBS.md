@@ -93,3 +93,5 @@
 | 1006 | W3 Stage0 토너먼트(w3tour.sh PID 2662103: C·A 병렬 → U, 각 400 → eval_w3) | "W3TOUR 끝" | log_picture/w3eval_w3{C,A,U}_400*.txt | 감시 bidpc106v |
 | 1006 | LPFR | — | COMPLETED → KILL(LPF 완화 전 조건 악화) → NEXT = ARREST-HO(자동 대기 중) | — |
 | 1006 | ARREST-HO | — | COMPLETED → ANALYZED → DECISION(채택 아님, 정지는 학습 능력 문제) | — |
+| 1006 | 트랙 B SWMON(swmon.sh PID 2682338: d4·d3 반복 전환 감시) | "SWMON 끝" | ground_recovery_smon*_* | 감시 bqgpkea6v |
+| 1006 | 서브에이전트: 회복 정지 구조(포획점) 설계 | 완료 알림 | — | — |

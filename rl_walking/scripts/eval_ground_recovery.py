@@ -118,6 +118,7 @@ parser.add_argument("--cue_dir", type=float, default=None, help="1005 ACT2: 방�
 parser.add_argument("--sw_early", type=str, default="", help="1005 ④ 정착: 상태 기반 조기 복귀 'v,tilt,hold' — 첫 외란 뒤 첫 하중 수용이 있었고 |v_xy|<v m/s·감지기 기울기<tilt° 가 hold s 지속되면 회복 모드 강제 해제(G21a 복귀)")
 parser.add_argument("--cue_align", type=str, default="", help="1005 (B) 정착: cue 종료를 '발 앞뒤 정렬'로 — 'tmin,dx_cm,tmax': 켜진 뒤 tmin s 지나고 양발 접촉·두 발 앞축 거리 < dx_cm 이면 종료, tmax 넘으면 다음 양발 지지에서 종료")
 parser.add_argument("--cue_dir_imu", action="store_true", help="1005 배포 가능 신호: cue 방향 = 켜짐 순간 IMU 피치 각속도 ω_y > 0(앞으로 기우는 중) — 참 몸통 속도 대신")
+parser.add_argument("--sw_monitor", type=str, default="", help="1006 반복 전환 감시(supervisor 안전장치): 'n,w,s' — 외란 뒤 회복 켜짐 횟수 ≥ n 이고 서기 모드에서 |ω_xy| > w 가 s 초 이어지면 이후 회복 재진입 금지(서기 유지)")
 parser.add_argument("--ho_at_load", type=str, default="", help="1006 ARREST-HO(평가 전용): 'delay,block' — 첫 하중 수용(load_first_t) 뒤 delay s 에 서기 정책으로 강제 인계(env 당 1회), 그 뒤 block s 동안 회복 재진입 금지")
 parser.add_argument("--sw_early_imu", type=str, default="", help="1005 배포 가능 조기 복귀 'tmin,tilt,w,hold': 켜진 뒤 tmin s, 감지기 기울기<tilt°·|ω_xy|<w·양발 접촉(0/1) 이 hold s 유지 → 회복 해제(참 속도·접촉 힘 미사용)")
 parser.add_argument("--sw_refrac", type=str, default="", help="1005: 조기 복귀 뒤 불응기 's,tilt,w' — 조기 복귀 후 s 초 동안은 기울기>tilt° 또는 |ω|>w 일 때만 다시 켬(모드 왕복 억제)")
@@ -897,6 +898,13 @@ for i in range(STEPS):
                 _ec = sw_mode & ~torch.isnan(load_first_t) & (robot.data.root_lin_vel_w[:, :2].norm(dim=-1) < _ev) & (_tilt < _et)
                 early_hold = torch.where(_ec, early_hold + 0.02, torch.zeros_like(early_hold))
                 _swoff = _swoff | (sw_mode & (early_hold >= _eh))
+            if args_cli.sw_monitor:
+                _mn, _mw, _ms = [float(x) for x in args_cli.sw_monitor.split(",")]
+                if "mon_t" not in dir():
+                    mon_t = torch.zeros(N, device=dev); mon_lock = torch.zeros(N, dtype=torch.bool, device=dev)
+                mon_t = torch.where((~sw_mode) & (swc_n >= _mn) & (_w > _mw), mon_t + 0.02, torch.zeros_like(mon_t))
+                mon_lock = mon_lock | (mon_t >= _ms)
+                _on = _on & ~mon_lock
             if args_cli.ho_at_load:
                 _hd, _hb = [float(x) for x in args_cli.ho_at_load.split(",")]
                 if "ho_used" not in dir():

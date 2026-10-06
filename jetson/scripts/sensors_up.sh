@@ -16,7 +16,7 @@ declare -A NODES=(
   [imu_node]="/home/mama/humanoid_ws/install/humanoid_imu/lib/humanoid_imu/imu_node"
   [pressure]="/home/mama/humanoid_ws/install/humanoid_pressure/lib/humanoid_pressure/pressure_serial_node"
   [imu_adapter]="python3 /home/mama/rl_calib/imu_adapter_node.py"
-  [foot_adapter]="python3 /home/mama/rl_calib/foot_force_adapter_node.py"   # 1006 승윤님: RA30P 8 개 전부 수리 → L2(왼발 index 2 앞안쪽) 제외(left_pad_bias [0,0,5000,0], 0912) 해제. 임계 200 카운트는 어댑터 상수
+  [foot_adapter]="python3 /home/mama/rl_calib/foot_force_adapter_node.py --ros-args -p left_pad_bias:=[0.0,85.0,0.0,0.0] -p right_pad_bias:=[0.0,0.0,15.0,0.0]"   # 1006 승윤님: RA30P 8 개 수리 → L2 제외 해제. 무부하 오프셋 L1(뒤바깥) 85 = 순간접착 예압 ~79, R2(앞바깥) 15. 임계 200 카운트는 어댑터 상수(오프셋 채널은 원값 기준 285·215)
 )
 
 kill_verified() {  # $1=pid $2=서명(실행파일 basename) — argv[0..1] 위치 정밀 매칭

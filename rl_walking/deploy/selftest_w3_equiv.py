@@ -11,6 +11,8 @@
       × 꺼짐 길이 {1,2,3,11,30}틱 + 에피소드 첫 틱(fresh) 켜짐 + 켜진 채 리셋. 위상 u·주파수 f·ge·ge_obs 비트, 래치 전이 틱 목록,
       관측 클록(sin/cos ≤ 2 ulp)을 대조.
   [C] 브리지 코어(BridgeCore.tick) 플래그 꺼짐 = --ref 커밋 브리지와 비트 동일(실모델).
+  [E] (1007) 리드 발 규칙: W3S3d 설정 러너 클록 = 시뮬 w3_gait_update(lead_vy_cmin 0.02·lead_wz_cmin 0.08) 소스 실행, float32 경계 포함.
+  [F] (1007) 헤딩 고리: W3HeadingLoop = eval_w3.py set_cmd(--heading_loop) 소스 실행(float32 torch), ±π 감싸기·포화·wz₀ 적분.
   [D] 서기(G21a) → W3 상태 이어붙이기(carry_runner_state, 브리지 미연결): 이어받은 직후 관측이 원 러너를 계속 돌린 관측과
       클록 블록만 빼고 비트 동일, 클록 블록 = (0,0), 레이아웃·기본자세·필터 불일치 거부.
 """
@@ -299,12 +301,138 @@ def check_carry():
             f"이후 2틱 차이 원소 ≤{worst_other}(정책 출력이 클록 차로 갈라짐 — 의도), 레이아웃·기본자세·필터·비 W3 거부 4종")
 
 
+# ------------------------------------------------------------------ [E] 1007 리드 발 규칙 = 시뮬 w3_gait_update(lead_vy_cmin·lead_wz_cmin)
+class _FakeCmdMgr:
+    def __init__(self, torch):
+        self.c = torch.zeros(1, 3)
+
+    def get_command(self, name):
+        assert name == "base_velocity"
+        return self.c
+
+
+def check_lead():
+    """W3S3d 설정(W.W3S3D_CONFIG)으로 시뮬 원본 w3_gait_update(lead 0.02/0.08)와 러너 클록을 같은 (want, cmd) 열로 비교.
+    명령 = 경계값 포함(±0.02 근방 float32 이웃, ±0.08 이웃, 옆+회전 동시, 0) × 켜기·끄기 반복 + 켜진 채 명령 변경(위상 유지)."""
+    import torch
+    ns = _sim_namespace()
+    cfg = W.W3S3D_CONFIG
+    env = _FakeEnv(torch)
+    env.command_manager = _FakeCmdMgr(torch)
+    r = PolicyRunnerStage4(model_path=lambda o: np.zeros(12, np.float32), obs_dim=320, gait_freq=1.1, w3=cfg)
+    f32 = np.float32
+    nb = lambda x, d: float(np.nextafter(f32(x), f32(d)))  # noqa: E731
+    cmds = [(0, 0, 0), (0, 0.04, 0), (0, -0.04, 0), (0, -0.03, 0), (0, -0.02, 0), (0, nb(-0.02, -1), 0), (0, nb(-0.02, 1), 0),
+            (0, 0, 0.2), (0, 0, -0.2), (0, 0, -0.08), (0, 0, nb(-0.08, -1)), (0, 0, -0.1), (0, 0.019, -0.1), (0, 0.02, -0.1),
+            (0, nb(0.02, 0), -0.1), (0, -0.019, -0.1), (0.06, 0, 0), (-0.04, 0, 0), (0.06, 0, -0.15), (0, -0.04, 0.2)]
+    seq = [((0, 0, 0), True, True)] + [((0, 0, 0), True, False)] * 10      # 첫 틱 fresh 켜짐(명령 0)
+    for i, cm in enumerate(cmds):
+        seq += [((0, 0, 0), False, False)] * (25 + (i % 3) * 7)               # 끄기(반주기 경계 대기 포함)
+        seq += [(cm, True, False)] * (15 + i % 11)                           # 명령과 함께 켜기(시뮬 리샘플 = 같은 틱)
+        seq += [(cmds[(i + 5) % len(cmds)], True, False)] * 6                # 켜진 채 명령 변경 → 위상 유지(리드 재적용 없음)
+    seq += [((0, -0.04, 0), True, True)] + [((0, -0.04, 0), True, False)] * 5   # 켜진 채 리셋(fresh) + 옆 −
+    q = DEFAULT_POSE_RAD.copy()
+    n_r = n_starts = 0
+    prev_ge = False
+    for n, (cm, want, rst) in enumerate(seq):
+        if n > 0:
+            env.episode_length_buf += 1
+        if rst:
+            env.episode_length_buf[:] = 0
+            r.reset()
+        env.command_manager.c = torch.tensor([cm], dtype=torch.float32)
+        env._ge_cmd = torch.tensor([want])
+        ns["w3_gait_update"](env, None, f_step=cfg.f_step, ramp_s=cfg.ramp_s, lead_vy_cmin=cfg.lead_vy_cmin, lead_wz_cmin=cfg.lead_wz_cmin)
+        sim_clk = ns["gait_clock"](env, 1.1)[0].numpy()
+        r.set_gait_enable(want)
+        r.step((0, 0, 0), (0, 0, -1), cm, q, np.zeros(12), (1.0, 1.0))
+        c = r._w3_clock
+        assert c.ge == bool(env._ge[0]), f"[E] 틱 {n} ge"
+        assert f32(c.u).view(np.uint32) == f32(env._gu[0].item()).view(np.uint32), f"[E] 틱 {n} u {c.u} vs {env._gu[0].item()} (cmd {cm})"
+        assert f32(c.ge_obs).view(np.uint32) == f32(env._ge_obs[0].item()).view(np.uint32), f"[E] 틱 {n} ge_obs"
+        d = float(np.abs(r.last_obs[CLK].astype(np.float64) - sim_clk.astype(np.float64)).max())
+        assert d <= 2.4e-7, f"[E] 틱 {n} 클록 관측 차 {d:.3e}"
+        ge = bool(env._ge[0])
+        if ge and (not prev_ge or rst):
+            n_starts += 1
+            n_r += int(env._gu[0].item() == 0.5)
+        prev_ge = ge
+    assert n_r >= 8 and n_starts - n_r >= 8, (n_r, n_starts)
+    # W3-A(W3_DEFAULT, 리드 0)는 cmd 를 무시 — 같은 열에서 늘 위상 0 시작
+    r0 = PolicyRunnerStage4(model_path=lambda o: np.zeros(12, np.float32), obs_dim=320, gait_freq=1.1, w3=W.W3_DEFAULT)
+    for n, (cm, want, rst) in enumerate(seq[:200]):
+        if rst:
+            r0.reset()
+        r0.set_gait_enable(want)
+        g0 = r0._w3_clock.ge
+        r0.step((0, 0, 0), (0, 0, -1), cm, q, np.zeros(12), (1.0, 1.0))
+        if r0._w3_clock.ge and not g0:
+            assert r0._w3_clock.u == 0.0
+    return (f"[E] 리드 발 = 시뮬 소스(w3_gait_update lead 0.02/0.08): {len(seq)}틱·STEP 시작 {n_starts}회(오른발 {n_r}) "
+            f"u·ge·ge_obs 비트·클록 ≤2 ulp, float32 경계 이웃값·옆+회전 동시·켜진 채 명령 변경(위상 유지)·fresh 포함 / W3-A 는 명령 무시")
+
+
+# ------------------------------------------------------------------ [F] 1007 헤딩 고리 = eval_w3 --heading_loop 식(소스 그대로)
+def _eval_set_cmd_ns(torch, K, wzmax, CMD, dt):
+    tree = ast.parse(open(os.path.join(REPO, "rl_walking/scripts/eval_w3.py"), encoding="utf-8").read())
+    fns = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("_wrap", "set_cmd", "yaw_of")]
+    assert {f.name for f in fns} == {"_wrap", "set_cmd", "yaw_of"}
+
+    class _T:
+        def __init__(self):
+            self.vel_command_b = torch.zeros(1, 3)
+
+    class _D:
+        root_quat_w = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+
+    class _R:
+        data = _D()
+    ns = {"torch": torch, "math": math, "cmd_term": _T(), "robot": _R(), "HL": {"tgt": None, "wz": None}, "CMD": CMD, "dt": dt,
+          "a": argparse.Namespace(heading_loop=K, hl_wzmax=wzmax)}
+    exec(ast.unparse(ast.Module(body=fns, type_ignores=[])), ns)
+    return ns
+
+
+def check_heading_loop():
+    """eval_w3.py 의 set_cmd·_wrap·yaw_of 를 소스 그대로(AST) float32 torch 로 실행해 W3HeadingLoop(float64)와 같은 요 열에서 비교.
+    요 열 = 느린 표류 + 걸음 흔들림 + ±π 감싸기 + 큰 오차(포화). wz₀ 0(배포 경로)·wz₀ ≠ 0(적분 경로) 둘 다. 허용 = float32 반올림."""
+    import torch
+    cfg = W.W3_HL_DEFAULT
+    worst = {}
+    for wz0 in (0.0, 0.15, -0.2):
+        ns = _eval_set_cmd_ns(torch, cfg.kp, cfg.wz_max, [0.06 if wz0 == 0 else 0.0, 0.0, wz0], cfg.dt)
+        hl = W.W3HeadingLoop(W.W3HeadingLoopConfig(err_max_deg=181.0, timeout_s=1e9))   # 식만 비교(안전 상한은 브리지 selftest)
+        w = 0.0
+        for n in range(3000):
+            psi = 3.05 + wz0 * n * cfg.dt + 0.1 * math.sin(n * 0.35) + 0.002 * n * (wz0 == 0) + (0.4 if 1000 <= n < 1010 else 0.0)
+            psi = math.atan2(math.sin(psi), math.cos(psi))
+            q = torch.tensor([[math.cos(psi / 2), 0.0, 0.0, math.sin(psi / 2)]], dtype=torch.float32)
+            ns["robot"].data.root_quat_w = q
+            ns["set_cmd"]()
+            ref = float(ns["cmd_term"].vel_command_b[0, 2])
+            # 배포는 IMU 쿼터니언 → 요(float64, policy_runner_stage4.yaw_from_quat_wxyz) — 같은 float32 쿼터니언을 넣는다
+            from rl_walking.deploy.policy_runner_stage4 import yaw_from_quat_wxyz
+            got, fault = hl.update(yaw_from_quat_wxyz(*[float(v) for v in q[0]]), wz0)
+            assert fault is None, fault
+            w = max(w, abs(got - ref))
+        worst[wz0] = w
+        # 허용: wz₀ 0 = 요 float32 반올림만(≤ 1e-5), wz₀ ≠ 0 = eval 의 float32 ψ* 적분 누적 반올림(3000틱) 포함(≤ 2e-4 rad/s)
+        assert w < (1e-5 if wz0 == 0.0 else 2e-4), f"[F] wz₀ {wz0}: 최대 차 {w:.2e}"
+    # 같은 식이 학습 고리(w3.py w3_heading_loop)와도 같은지: 래치 틱 출력 = wz₀, 포화 = ±wz_max — 상태기 단위 확인
+    hl = W.W3HeadingLoop()
+    assert hl.update(1.0, 0.0) == (0.0, None) and abs(hl.update(1.0 - 0.1, 0.0)[0] - cfg.kp * 0.1) < 1e-12 and hl.update(0.5, 0.0)[1] is not None
+    hl.release(); assert not hl.latched
+    return (f"[F] 헤딩 고리 = eval_w3 set_cmd 소스(K {cfg.kp}, ±{cfg.wz_max}): 3000틱 × wz₀ {{0, +0.15, −0.2}}, "
+            "최대 차 " + "·".join(f"wz₀ {k:+.2f}: {v:.1e}" for k, v in worst.items()) + "(float32 반올림)·±π 감싸기·포화 포함 / 래치 틱 = wz₀·오차 상한 고장·해제")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ref", default="35b69b4a", help="플래그 꺼짐 비교 기준 커밋(W3 플래그 이전)")
     a = ap.parse_args()
     failed = 0
-    for fn in (lambda: check_flag_off(a.ref), check_flag_on, lambda: check_bridge_off(a.ref), check_carry):
+    for fn in (lambda: check_flag_off(a.ref), check_flag_on, lambda: check_bridge_off(a.ref), check_carry, check_lead,
+               check_heading_loop):
         try:
             print("[PASS]", fn())
         except Exception as e:  # noqa: BLE001

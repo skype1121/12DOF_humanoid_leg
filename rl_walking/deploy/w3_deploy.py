@@ -49,9 +49,22 @@ class W3Config:
     f_step: float = 1.1          # STEP 위상 주파수 [Hz]
     ramp_s: float = 0.2          # 관측 게이트 램프 [s]
     dt: float = 0.005 * 4        # env.step_dt (sim dt 0.005 × decimation 4) — 시뮬과 같은 python float 식
+    # 1007 리드 발 규칙(w3_gait_update lead_vy_cmin·lead_wz_cmin). 0 = 종전(W3-A: 위상 0 = 늘 왼발 리드)과 비트 동일.
+    lead_vy_cmin: float = 0.0    # > 0: STEP 시작(fresh·0→1) 때 vy < −이 값이면 위상 0.5(오른발 리드)
+    lead_wz_cmin: float = 0.0    # > 0: STEP 시작 때 |vy| < lead_lat_eps 이고 wz < −이 값이면 위상 0.5(오른발 리드)
+    lead_lat_eps: float = 0.02   # 시뮬 소스의 하드코딩 상수(cw[:, 1].abs() < 0.02)
 
 
 W3_DEFAULT = W3Config()
+
+# ------------------------------------------------------------------ 1007 W3S3d-15800 (Stage 3: 제자리·앞뒤·옆·제자리 회전, 학습 지연 1–5)
+#: 브리지 키(stand 가족 접두사 — 시작은 서기). 명령 채널(vx·vy·wz 단일 축)·리드 발 규칙·외부 헤딩 고리를 쓰는 첫 W3 키.
+W3S3D_CKPT_KEY = "stand_w3s3d_15800"
+W3S3D_RUN_REL = "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d"
+W3S3D_MODEL = "model_15800.pt"
+W3S3D_TASK = "Biped12-HangStand-W3S3d-v0"
+#: 학습 env.yaml events.w3_gait.params = {f_step 1.1, lead_vy_cmin 0.02, lead_wz_cmin 0.08}(W3S2 → W3S3 상속), ramp_s 기본 0.2.
+W3S3D_CONFIG = W3Config(lead_vy_cmin=0.02, lead_wz_cmin=0.08)
 
 
 class W3GaitClock:
@@ -76,11 +89,13 @@ class W3GaitClock:
         self.ge_obs = _F32(0.0)
         self.want = False
         self.events = []                 # 진단: (tick, "on"|"off") 래치 전이
+        self.last_lead = None            # 1007 진단: 마지막 STEP 시작 리드 발("left"|"right", 리드 규칙 켜진 설정에서만)
 
     def set_want(self, want: bool) -> None:
         self.want = bool(want)
 
-    def update(self, tick: int) -> None:
+    def update(self, tick: int, cmd=None) -> None:
+        """cmd = 이번 틱 정책 명령 관측(vx, vy, wz) — 리드 발 규칙(cfg.lead_*_cmin > 0)에서만 읽는다(시뮬: 명령 갱신 뒤 같은 틱 값)."""
         fresh = int(tick) <= 1
         want, ge = self.want, self.ge
         on = want and not ge
@@ -98,13 +113,31 @@ class W3GaitClock:
         if ge_new != ge:
             self.events.append((int(tick), "on" if ge_new else "off"))
         reset_u = fresh or on or (not ge_new)
-        self.u = _F32(0.0) if reset_u else _F32(np.remainder(u_next, _F32(1.0)))
+        u0 = _F32(0.0)
+        if ge_new and (fresh or on) and (self.cfg.lead_vy_cmin > 0.0 or self.cfg.lead_wz_cmin > 0.0):
+            u0 = self.lead_phase(cmd)
+        self.u = u0 if reset_u else _F32(np.remainder(u_next, _F32(1.0)))
         self.f = _F32(self.cfg.f_step) if ge_new else _F32(0.0)
         self.ge = ge_new
         if fresh:
             self.ge_obs = _F32(1.0) if ge_new else _F32(0.0)
         else:
             self.ge_obs = _F32(min(max(_F32(self.ge_obs + (self._k if ge_new else -self._k)), _F32(0.0)), _F32(1.0)))
+
+    def lead_phase(self, cmd) -> np.float32:
+        """STEP 시작 위상 — w3_gait_update 의 u0(float32 비교: 시뮬 텐서 float32 대 python 상수 = float32 비교).
+        vy < −lead_vy_cmin → 0.5 / |vy| < lead_lat_eps ∧ wz < −lead_wz_cmin → 0.5 / 그 밖 0(왼발 리드). cmd 없으면 거부."""
+        if cmd is None:
+            raise ValueError("W3 리드 발 규칙: 이번 틱 명령(vx, vy, wz)이 필요")
+        c = np.asarray(cmd, dtype=np.float32).reshape(-1)
+        vy, wz = c[1], c[2]
+        u0 = _F32(0.0)
+        if self.cfg.lead_vy_cmin > 0.0 and vy < _F32(-self.cfg.lead_vy_cmin):
+            u0 = _F32(0.5)
+        if self.cfg.lead_wz_cmin > 0.0 and abs(vy) < _F32(self.cfg.lead_lat_eps) and wz < _F32(-self.cfg.lead_wz_cmin):
+            u0 = _F32(0.5)
+        self.last_lead = "right" if u0 != _F32(0.0) else "left"     # 진단(블랙박스) — 래치 전이 events 와 섞지 않는다
+        return u0
 
     def clock_obs(self) -> np.ndarray:
         """[sin 2πu, cos 2πu] × ge_obs (float32) — mdp_stage4.gait_clock(_gait_phase = 2π·_gu)."""
@@ -155,6 +188,182 @@ def carry_runner_state(src, dst) -> None:
     dst._prev_emitted = None if src._prev_emitted is None else src._prev_emitted.copy()
     dst._tick = src._tick
     dst._w3_clock.reset()
+
+
+# ------------------------------------------------------------------ 1007 명령 채널(vx·vy·wz) + 외부 헤딩 고리 — W3S3d 키에서만(그 밖 키는 None)
+# 학습 분포(W3S3d env.yaml events.w3_cmd.params, stage 3): STEP 명령 = 제자리 / 앞뒤(vx +0.03–0.10, −0.03–0.06) / 옆(|vy| 0.03–0.04 —
+# S3d 학습 중 커리큘럼 미진급, 시작 단계 0) / 제자리 회전(|wz| 0.1–0.2, 같은 이유) **중 한 축만**(대각·이동+회전 없음). 그 사이(0 < |v| < 하한)는
+# 학습에 없던 값이다. 명령은 리샘플(8–12 s)마다 계단으로 바뀐다(STAND→STEP 은 ge 와 명령이 같은 틱에, STEP→STEP 은 위상 유지).
+# → 배포 '슬루' = 진폭 램프가 아니라 **변경 간 최소 체류 시간**(램프는 학습에 없던 0–하한 사이 값을 지나간다). 범위 밖은 거부(클립하지 않음).
+
+@dataclass(frozen=True)
+class W3CmdLimits:
+    """명령 채널 허용 범위 [m/s, rad/s] — 기본값 = W3S3d 학습 범위. 0 은 언제나 허용(제자리)."""
+    vx_fwd: tuple = (0.03, 0.10)
+    vx_back: tuple = (0.03, 0.06)
+    vy: tuple = (0.03, 0.04)
+    wz: tuple = (0.1, 0.2)
+    min_dwell_s: float = 1.0      # 걷는 중 명령 변경 간 최소 간격 [s] (한 걸음 주기 0.91 s 이상)
+
+
+W3S3D_CMD_LIMITS = W3CmdLimits()
+#: --w3-cmd-limits 로 넓힐 수 있는 상한(시뮬 평가 근거: vy 0.05–0.08 추종·wz 0.3 회전 — W3S3d-15800 확장 평가, 학습 범위 밖이라 기본은 안 씀).
+W3_CMD_LIMIT_RANGES = {"vy_max": (0.03, 0.08), "wz_max": (0.1, 0.3), "min_dwell_s": (0.5, 10.0)}
+
+
+def parse_w3_cmd_limits(text, base: W3CmdLimits = W3S3D_CMD_LIMITS) -> W3CmdLimits:
+    """'{"vy_max": 0.06}' → W3CmdLimits. 상한·체류만 바꾼다(하한·앞뒤 범위 고정). 모르는 키·비유한·범위 밖은 ValueError."""
+    if text is None or str(text).strip() == "":
+        return base
+    import json
+    d = json.loads(text)
+    if not isinstance(d, dict):
+        raise ValueError("W3 명령 범위 설정은 JSON 객체여야 함")
+    kw = {}
+    for k, v in d.items():
+        if k not in W3_CMD_LIMIT_RANGES:
+            raise ValueError(f"W3 명령 범위: 모르는 키 {k!r} (허용 {sorted(W3_CMD_LIMIT_RANGES)})")
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(float(v)):
+            raise ValueError(f"W3 명령 범위 {k}: 유한 수 필요 (받음 {v!r})")
+        lo, hi = W3_CMD_LIMIT_RANGES[k]
+        if not lo <= float(v) <= hi:
+            raise ValueError(f"W3 명령 범위 {k}={v} 범위 밖 [{lo}, {hi}]")
+        kw[k] = float(v)
+    return W3CmdLimits(vx_fwd=base.vx_fwd, vx_back=base.vx_back,
+                       vy=(base.vy[0], kw.get("vy_max", base.vy[1])), wz=(base.wz[0], kw.get("wz_max", base.wz[1])),
+                       min_dwell_s=kw.get("min_dwell_s", base.min_dwell_s))
+
+
+def validate_w3_cmd(d, lim: W3CmdLimits) -> tuple:
+    """명령 dict 의 vx·vy·wz(없으면 0) → (vx, vy, wz) python float. 단일 축 위반·축별 범위 밖·비유한·bool 은 ValueError(클립 없음)."""
+    v = {}
+    for k in ("vx", "vy", "wz"):
+        x = d.get(k, 0.0)
+        if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(float(x)):
+            raise ValueError(f"{k} 는 유한 수(받음 {x!r})")
+        v[k] = float(x)
+    nz = [k for k in ("vx", "vy", "wz") if v[k] != 0.0]
+    if len(nz) > 1:
+        raise ValueError(f"단일 축만 허용(받음 {nz}) — W3S3d 학습 = 제자리/앞뒤/옆/회전 한 축, 혼합은 학습 밖")
+    eps = 1e-9
+
+    def inr(x, r):
+        return r[0] - eps <= abs(x) <= r[1] + eps
+    if v["vx"] > 0.0 and not inr(v["vx"], lim.vx_fwd):
+        raise ValueError(f"vx {v['vx']:+.3f} 는 앞 범위 [{lim.vx_fwd[0]}, {lim.vx_fwd[1]}] 밖(0 또는 범위 안)")
+    if v["vx"] < 0.0 and not inr(v["vx"], lim.vx_back):
+        raise ValueError(f"vx {v['vx']:+.3f} 는 뒤 범위 [−{lim.vx_back[1]}, −{lim.vx_back[0]}] 밖")
+    if v["vy"] != 0.0 and not inr(v["vy"], lim.vy):
+        raise ValueError(f"|vy| {abs(v['vy']):.3f} 는 범위 [{lim.vy[0]}, {lim.vy[1]}] 밖")
+    if v["wz"] != 0.0 and not inr(v["wz"], lim.wz):
+        raise ValueError(f"|wz| {abs(v['wz']):.3f} 는 범위 [{lim.wz[0]}, {lim.wz[1]}] 밖")
+    return (v["vx"], v["vy"], v["wz"])
+
+
+@dataclass(frozen=True)
+class W3HeadingLoopConfig:
+    """외부 헤딩 P 고리 — 식은 eval_w3 --heading_loop K(--hl_wzmax) · rl_walking/w3.py w3_heading_loop 와 같다:
+        ψ* = 걷기 시작 요(래치), 이후 ψ* ← wrap(ψ* + wz₀·dt);  wz = clip(wz₀ + K·wrap(ψ* − ψ), ±wz_max).
+    시뮬 근거: W3S3d-15800 120 s 요 표류 2.2–2.4°(K 0.5, ±0.4). 실물 안전 장치(시뮬에 없음):
+      err_max_deg — |wrap(ψ* − ψ)| 가 넘으면 IMU 요 이상(점프·표류) 또는 실제 회전 이탈로 보고 고리 고장 → 걷기 정지(서기).
+      timeout_s   — 한 번 걷기(ψ* 래치) 최대 시간. 넘으면 걷기 정지(시뮬 검증 길이 120 s = 실물 IMU 요 표류 누적의 상한).
+    브리지는 운영자 wz₀ ≠ 0(회전 명령) 동안 고리를 끈다(W3S3h 학습 규약 = STEP·비회전 명령만) — 그때 ψ* 도 해제."""
+    kp: float = 0.5
+    wz_max: float = 0.4
+    err_max_deg: float = 15.0
+    timeout_s: float = 120.0
+    dt: float = 0.005 * 4
+
+
+W3_HL_DEFAULT = W3HeadingLoopConfig()
+W3_HL_RANGES = {"kp": (0.1, 1.0), "wz_max": (0.1, 0.4), "err_max_deg": (3.0, 30.0), "timeout_s": (5.0, 300.0)}
+
+
+def parse_w3_heading_loop(text):
+    """None/'' → 기본(켜짐) · 'off' → None(끔) · JSON 객체 → W3HeadingLoopConfig(모르는 키·범위 밖 ValueError)."""
+    if text is None or str(text).strip() == "":
+        return W3_HL_DEFAULT
+    if str(text).strip().lower() == "off":
+        return None
+    import json
+    d = json.loads(text)
+    if not isinstance(d, dict):
+        raise ValueError("W3 헤딩 고리 설정은 'off' 또는 JSON 객체")
+    kw = {}
+    for k, v in d.items():
+        if k not in W3_HL_RANGES:
+            raise ValueError(f"W3 헤딩 고리: 모르는 키 {k!r} (허용 {sorted(W3_HL_RANGES)})")
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(float(v)):
+            raise ValueError(f"W3 헤딩 고리 {k}: 유한 수 필요 (받음 {v!r})")
+        lo, hi = W3_HL_RANGES[k]
+        if not lo <= float(v) <= hi:
+            raise ValueError(f"W3 헤딩 고리 {k}={v} 범위 밖 [{lo}, {hi}]")
+        kw[k] = float(v)
+    return W3HeadingLoopConfig(**kw)
+
+
+def wrap_pi(x: float) -> float:
+    """atan2(sin x, cos x) — eval_w3._wrap · w3._wrap 과 같은 식(float64)."""
+    return math.atan2(math.sin(x), math.cos(x))
+
+
+class W3HeadingLoop:
+    """헤딩 고리 상태기(순수 파이썬, 시간 = 갱신 횟수 × dt). update() 는 걷는 틱마다 1회, release() 는 정지·서기·회전 명령 때."""
+
+    def __init__(self, cfg: W3HeadingLoopConfig = W3_HL_DEFAULT):
+        self.cfg = cfg
+        self.last_fault = None
+        self.release()
+
+    def release(self) -> None:
+        self.tgt = None
+        self.n = 0
+        self.err = None
+        self.wz = None
+        self.fault = None
+
+    @property
+    def latched(self) -> bool:
+        return self.tgt is not None
+
+    def update(self, psi: float, wz0: float = 0.0):
+        """현재 요 ψ, 운영자 wz₀ → (wz 명령, 고장 사유|None). 고장이면 wz = wz₀(보정 없음)이고 release 전까지 고장 유지."""
+        c = self.cfg
+        if self.fault is not None:
+            return float(wz0), self.fault
+        if not math.isfinite(float(psi)):
+            self.fault = self.last_fault = "IMU 요 비유한"
+            return float(wz0), self.fault
+        if self.tgt is None:
+            self.tgt = float(psi)
+            self.n = 0
+        else:
+            self.tgt = wrap_pi(self.tgt + float(wz0) * c.dt)
+            self.n += 1
+        e = wrap_pi(self.tgt - float(psi))
+        self.err = e
+        if abs(e) > math.radians(c.err_max_deg):
+            self.fault = self.last_fault = f"헤딩 오차 {math.degrees(e):+.1f}° > {c.err_max_deg:g}° (IMU 요 이상 또는 회전 이탈)"
+            return float(wz0), self.fault
+        if self.n * c.dt > c.timeout_s + 1e-9:
+            self.fault = self.last_fault = f"헤딩 고리 타임아웃 {c.timeout_s:g}s(한 번 걷기 상한)"
+            return float(wz0), self.fault
+        self.wz = max(-c.wz_max, min(c.wz_max, float(wz0) + c.kp * e))
+        return self.wz, None
+
+    def snapshot(self) -> dict:
+        return {"latched": self.latched, "tgt": None if self.tgt is None else round(self.tgt, 5),
+                "err_deg": None if self.err is None else round(math.degrees(self.err), 3),
+                "wz": None if self.wz is None else round(self.wz, 5), "t_s": round(self.n * self.cfg.dt, 2),
+                "fault": self.fault, "last_fault": self.last_fault}
+
+
+#: 브리지 W3 키 명세 — 키 → (run 상대 경로, 모델, 태스크, W3Config, 명령 채널 범위|None). None = 명령 (0,0,0) 고정(W3-A).
+W3_SPECS = {
+    W3_CKPT_KEY: (W3_RUN_REL, W3_MODEL, W3_TASK, W3_DEFAULT, None),
+    W3S3D_CKPT_KEY: (W3S3D_RUN_REL, W3S3D_MODEL, W3S3D_TASK, W3S3D_CONFIG, W3S3D_CMD_LIMITS),
+}
+W3_KEYS = tuple(W3_SPECS)
 
 
 # ------------------------------------------------------------------ W3 세션 명령·정지 감독기 (1006 감사 H3–H6·L1 수정, 순수 파이썬)
@@ -247,8 +456,10 @@ class W3Supervisor:
     FREEZE_WAIT_LATCH = "WAIT_LATCH"        # ge 0 요청 → 반주기 경계 대기(clock.ge 아직 1)
     FREEZE_WAIT_SUPPORT = "WAIT_SUPPORT"    # ge 0 → 양발 지지·정착 대기
 
-    def __init__(self, cfg: W3SafetyConfig = W3_SAFETY_DEFAULT):
+    def __init__(self, cfg: W3SafetyConfig = W3_SAFETY_DEFAULT, cmd_limits: W3CmdLimits | None = None):
         self.cfg = cfg
+        self.cmd_limits = cmd_limits     # 1007: None = 명령 채널 없음(W3-A, (0,0,0) 고정 — 종전 동작), 아니면 vx·vy·wz 검증 범위
+        self.last_cmd_t = None           # 1007: 마지막으로 명령(켜기·변경)을 적용한 시각 — 변경 간 최소 체류
         self.last_seq = None
         self.stop_latched = False
         self.latch_reason = None
@@ -309,14 +520,16 @@ class W3Supervisor:
         return True, "ok"
 
     # ---- 명령 처리: 결정만 낸다 ----
-    def handle(self, d, now, *, active, warmed, blend_done, ge_now, want_now) -> dict:
-        """d = 파싱된 명령 dict. 반환 {"accepted", "why", "action", "want"}.
+    def handle(self, d, now, *, active, warmed, blend_done, ge_now, want_now, cmd_now=None) -> dict:
+        """d = 파싱된 명령 dict. 반환 {"accepted", "why", "action", "want", "cmd", "hl"}.
         action: "estop"(종전 estop 실행) · "stop"(종전 stop 실행 = ge 0) · "set_want"(want 적용) · "launch"(종전 stand 경로) ·
-                "none"(실행 없음 — 거부, 또는 감독기 내부 상태만 바뀜)."""
+                "set_cmd"(1007 명령 채널: 걷는 중 명령만 바꿈) · "none"(실행 없음 — 거부, 또는 감독기 내부 상태만 바뀜).
+        1007 명령 채널(cmd_limits 있음): step 켜기에 vx·vy·wz(없으면 0)·heading_loop(bool, 없으면 True) — 켜기와 같은 틱에 적용(시뮬
+        리샘플과 같음 → 리드 발 규칙이 이 명령을 본다). cmd = 검증된 (vx, vy, wz), hl = 헤딩 고리 사용 여부. 채널 없는 키는 0 아닌 속도 거부."""
         c = d.get("cmd", "")
 
-        def out(acc, why, action="none", want=None):
-            return {"accepted": bool(acc), "why": why, "action": action, "want": want}
+        def out(acc, why, action="none", want=None, cmd=None, hl=None):
+            return {"accepted": bool(acc), "why": why, "action": action, "want": want, "cmd": cmd, "hl": hl}
 
         if c in ("estop", "stop"):
             _rid, seq, err = _check_req(d)
@@ -344,12 +557,37 @@ class W3Supervisor:
             if stale:
                 return out(False, f"중복/오래된 seq {seq} ≤ 마지막 {self.last_seq}")
             self.last_seq = seq                # 형식이 맞는 새 seq 는 거부돼도 소비(재시도는 새 seq)
+            cmd = hl = None
+            if self.cmd_limits is None:        # 명령 채널 없는 키(W3-A): (0,0,0) 고정 — 0 아닌 속도는 조용히 버리지 않고 거부
+                if any(isinstance(d.get(k), bool) or not isinstance(d.get(k, 0.0), (int, float)) or d.get(k, 0.0) != 0
+                       for k in ("vx", "vy", "wz")):
+                    return out(False, "이 키는 명령 채널 없음 — vx·vy·wz 는 0 만(제자리 스텝)")
+            else:
+                try:
+                    cmd = validate_w3_cmd(d, self.cmd_limits)
+                except ValueError as e:
+                    return out(False, f"명령 거부: {e}")
+                hl = d.get("heading_loop", True)
+                if not isinstance(hl, bool):
+                    return out(False, "heading_loop 은 true/false")
             if want_now and not self.stop_latched and self.freeze_state is None:
-                return out(True, "이미 켜짐 — 변화 없음", "none")
+                if self.cmd_limits is None:
+                    return out(True, "이미 켜짐 — 변화 없음", "none")
+                cur = tuple(float(x) for x in cmd_now) if cmd_now is not None else None
+                if cur == cmd:
+                    return out(True, "이미 켜짐·같은 명령 — 변화 없음", "none")
+                if self.last_cmd_t is not None and now - self.last_cmd_t < self.cmd_limits.min_dwell_s - 1e-9:
+                    return out(False, f"명령 변경 간격 {now - self.last_cmd_t:.2f}s < {self.cmd_limits.min_dwell_s:g}s(체류) — 다시")
+                self.last_cmd_t = now
+                return out(True, f"명령 변경 {cur} → {cmd}(위상 유지)", "set_cmd", None, cmd, hl)
             ok, why = self.enable_preconditions(now, active=active, warmed=warmed, blend_done=blend_done, ge_now=ge_now)
             if not ok:
                 return out(False, why)
-            return out(True, "켜기 — 다음 틱 위상 0(왼발 스윙)", "set_want", True)
+            if self.cmd_limits is None:
+                return out(True, "켜기 — 다음 틱 위상 0(왼발 스윙)", "set_want", True)
+            self.last_cmd_t = now
+            return out(True, f"켜기 — 명령 {cmd}·헤딩 고리 {'켜짐' if hl else '꺼짐'}(다음 틱, 리드 발은 명령 부호 규칙)",
+                       "set_want", True, cmd, hl)
         if c == "rearm":
             _rid, seq, err = _check_req(d)
             if err is not None:
@@ -425,6 +663,7 @@ class W3Supervisor:
         def r(v, n):
             return None if v is None or not math.isfinite(v) else round(float(v), n)
         return {"last_seq": self.last_seq, "stop_latched": self.stop_latched, "latch_reason": self.latch_reason,
+                **({} if self.cmd_limits is None else {"last_cmd_t": self.last_cmd_t}),
                 "freeze": self.freeze_state, "freeze_why": self.freeze_why if self.freeze_state else None,
                 "tilt_deg": r(self.tilt, 2), "w_xy": r(self.w_xy, 3),
                 "contact": list(self.contact) if self.contact else None}

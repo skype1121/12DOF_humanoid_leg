@@ -407,15 +407,16 @@ class PolicyRunnerStage4:
         """
         vec = PolicyRunner._vec
         qvel_raw = vec(qvel_rad_s, 12, "qvel_rad_s")
+        frames_cmd = vec(cmd, 3, "cmd")      # 1007: W3 리드 발 규칙이 같은 틱 명령 관측을 본다(시뮬 명령 갱신 → w3_gait_update 순서)
         frames = {
             "base_ang_vel": vec(gyro_rad_s, 3, "gyro_rad_s"),
             "projected_gravity": vec(gravity_unit, 3, "gravity_unit"),
-            "velocity_commands": vec(cmd, 3, "cmd"),
+            "velocity_commands": frames_cmd,
             "joint_pos": vec(qpos_rad, 12, "qpos_rad") - self.default_pose,
             "joint_vel": qvel_raw,
             "actions": self.last_action,
             "gait_clock": (self._h2_clock_frame(cmd) if self._h2_clock is not None
-                           else self._w3_clock_frame() if self._w3_clock is not None
+                           else self._w3_clock_frame(frames_cmd) if self._w3_clock is not None
                            else gait_clock_stage4(self._tick, self.gait_freq)),
             "feet_contact": self._contact2(contact2),
         }
@@ -452,9 +453,10 @@ class PolicyRunnerStage4:
         self._h2_clock.update(self._tick, c[0])
         return self._h2_clock.clock_obs()
 
-    def _w3_clock_frame(self) -> np.ndarray:
-        """1006 W3: 래치·위상·램프를 한 틱 갱신(조립 전 tick = env episode_length_buf)하고 게이트된 클록 관측을 낸다."""
-        self._w3_clock.update(self._tick)
+    def _w3_clock_frame(self, cmd=None) -> np.ndarray:
+        """1006 W3: 래치·위상·램프를 한 틱 갱신(조립 전 tick = env episode_length_buf)하고 게이트된 클록 관측을 낸다.
+        1007: cmd = 이번 틱 명령 관측(float32) — 리드 발 규칙(W3Config.lead_*_cmin > 0)에서만 쓰인다(W3-A 는 무시 = 종전 비트 동일)."""
+        self._w3_clock.update(self._tick, cmd)
         return self._w3_clock.clock_obs()
 
     # ---------- 스텝 ----------

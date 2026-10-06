@@ -458,31 +458,78 @@ def hturn2_validate_walk(d):
 # ---------------------------------------------------------------------------
 EXPERIMENTAL_W3 = False
 W3_CKPTS = {}              # 켜졌을 때만 {키: W3Config}
+W3_CMD_LIMITS = {}         # 1007: 켜졌을 때만 {명령 채널 키: W3CmdLimits} — 없는 키(W3-A)는 명령 (0,0,0) 고정
 W3_SAFETY = _W3.W3_SAFETY_DEFAULT   # W3 세션 감독기 문턱(기동 --w3-safety JSON 으로만 바꿈, 범위 검증) — 감사 H3–H6·L1
+W3_HL_CFG = _W3.W3_HL_DEFAULT       # 1007 헤딩 고리(기동 --w3-heading-loop 'off'|JSON). 명령 채널 키에서만 쓰인다
+W3_CMD_LIMITS_OVERRIDE = None       # 1007 기동 --w3-cmd-limits(상한·체류만, 범위 검증) — None = 학습 범위
 
 
 def enable_experimental_w3():
-    """W3 키 등록 — 경로 = W3-A run 의 exported/(없으면 selftest '정책 500틱' SKIP, 기동 --checkpoint 로 고르면 필수 파일 FAIL).
-    계약: 기본자세 = CROUCH_V5(학습 env.yaml init_state, G21a 와 같음), env.yaml 필수(관측 필터 act EMA·jvel LPF), LPF β0.27(stand 경로).
-    CKPT_GAIT_FREQ 는 stand 가족 레지스트리 요건으로만 둔다(W3 클록은 gait_freq 를 쓰지 않는다)."""
+    """W3 키 등록(W3-A 400 + 1007 W3S3d-15800) — 경로 = 각 run 의 exported/(없으면 selftest '정책 500틱' SKIP, 기동 --checkpoint 로
+    고르면 필수 파일 FAIL). 계약: 기본자세 = CROUCH_V5(학습 env.yaml init_state, G21a 와 같음), env.yaml 필수(관측 필터 act EMA·jvel LPF),
+    LPF β0.27(stand 경로). CKPT_GAIT_FREQ 는 stand 가족 레지스트리 요건으로만 둔다(W3 클록은 gait_freq 를 쓰지 않는다)."""
     global EXPERIMENTAL_W3
-    k = _W3.W3_CKPT_KEY
-    CHECKPOINTS[k] = os.path.join(REPO, _W3.W3_RUN_REL, "exported")
-    CKPT_GAIT_FREQ[k] = _W3.W3_DEFAULT.f_step
-    CKPT_DEFAULT_POSE[k] = [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
-    CKPT_REQUIRE_ENV_YAML.add(k)
-    W3_CKPTS[k] = _W3.W3_DEFAULT
+    for k, (run_rel, _m, _t, cfg, lim) in _W3.W3_SPECS.items():
+        CHECKPOINTS[k] = os.path.join(REPO, run_rel, "exported")
+        CKPT_GAIT_FREQ[k] = cfg.f_step
+        CKPT_DEFAULT_POSE[k] = [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
+        CKPT_REQUIRE_ENV_YAML.add(k)
+        W3_CKPTS[k] = cfg
+        if lim is not None:
+            W3_CMD_LIMITS[k] = W3_CMD_LIMITS_OVERRIDE if W3_CMD_LIMITS_OVERRIDE is not None else lim
     EXPERIMENTAL_W3 = True
 
 
 def disable_experimental_w3():
     """등록 되돌림(selftest 격리용) — 꺼진 상태 = 레지스트리에 W3 키가 하나도 없다."""
     global EXPERIMENTAL_W3
-    k = _W3.W3_CKPT_KEY
-    for reg in (CHECKPOINTS, CKPT_GAIT_FREQ, CKPT_DEFAULT_POSE, W3_CKPTS):
-        reg.pop(k, None)
-    CKPT_REQUIRE_ENV_YAML.discard(k)
+    for k in _W3.W3_KEYS:
+        for reg in (CHECKPOINTS, CKPT_GAIT_FREQ, CKPT_DEFAULT_POSE, W3_CKPTS, W3_CMD_LIMITS):
+            reg.pop(k, None)
+        CKPT_REQUIRE_ENV_YAML.discard(k)
     EXPERIMENTAL_W3 = False
+
+
+def _w3_env_contract(path):
+    """1007: 학습 env.yaml 에서 W3 명령·위상 계약만 줄 단위로 뽑는다(PyYAML 불필요) — events.w3_gait.params(f_step·lead_*)·
+    events.w3_cmd.params(stage·범위 튜플)·commands.base_velocity.heading_command·actions.joint_pos 지연 대역. 없는 키는 결과에 없음."""
+    out = {"w3_gait": {}, "w3_cmd": {}}
+    top = ev = None
+    in_params = False
+    tup_key, tup = None, []
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    for raw in lines + ["__end__:"]:
+        if not raw.strip():
+            continue
+        ind = len(raw) - len(raw.lstrip())
+        st = raw.strip()
+        if tup_key is not None:
+            if st.startswith("- ") and ind == 6:
+                tup.append(float(st[2:]))
+                continue
+            out[ev][tup_key] = tuple(tup)
+            tup_key, tup = None, []
+        if ind == 0:
+            top, ev, in_params = st.split(":")[0], None, False
+            continue
+        key, _, val = st.partition(":")
+        val = val.strip()
+        if top == "events":
+            if ind == 2:
+                ev, in_params = (key if key in ("w3_gait", "w3_cmd") else None), False
+            elif ind == 4 and ev is not None:
+                in_params = key == "params"
+            elif ind == 6 and ev is not None and in_params:
+                if val.startswith("!!python/tuple"):
+                    tup_key, tup = key, []
+                elif val not in ("", "null"):
+                    out[ev][key] = float(val) if key != "stage" else int(val)
+        elif top == "commands" and ind == 4 and key == "heading_command":
+            out["heading_command"] = (val == "true")
+        elif top == "actions" and ind == 4 and key in ("min_delay_steps", "max_delay_steps"):
+            out[key] = int(val)
+    return out
 
 
 def w3_parse_step(d):
@@ -979,6 +1026,10 @@ class BridgeCore:
         self.active = False          # stand/walk/march 시작 여부
         self.last_grav = None        # 이번 틱에 정책이 받은 투영중력(장착 편향 보정 후) — roll_comp 가 같은 벡터를 쓴다
         self._apply_hh_cfg()
+        self.w3hl = None             # 1007 W3 헤딩 고리(명령 채널 키 + 고리 켜짐에서만) — None 이면 tick 은 종전과 같다
+        self.w3hl_on = True          # 1007 이번 걷기에서 고리 사용(step 명령 heading_loop) — 고리 객체가 있을 때만 의미
+        self.w3hl_events = []        # 1007 고리 고장 → 걷기 정지 사건(노드가 블랙박스·로그로 비움)
+        self._apply_w3_cfg()
 
     @property
     def w3(self):
@@ -990,6 +1041,33 @@ class BridgeCore:
         if not self.w3:
             raise ValueError("W3 키가 아님 — gait_enable 입력 불가")
         self.runner.set_gait_enable(bool(want))
+
+    @property
+    def w3cmd(self):
+        """1007: 이 코어가 W3 명령 채널 키인지(vx·vy·wz 검증 범위 등록)."""
+        return self.ckpt_name in W3_CMD_LIMITS
+
+    def _apply_w3_cfg(self):
+        self.w3hl = _W3.W3HeadingLoop(W3_HL_CFG) if (self.ckpt_name in W3_CMD_LIMITS and W3_HL_CFG is not None) else None
+        self.w3hl_on = True
+
+    def _w3_cmd_step(self, quat_wxyz, vx, vy, wz):
+        """1007 W3 명령 채널: 걷는 중(want 1)·비회전(wz 0)·고리 사용이면 wz = 헤딩 고리 출력, 아니면 ψ* 해제하고 그대로.
+        고리 고장(오차 상한·타임아웃·비유한 요) → 걷기 정지(want 0, 명령 0 = 시뮬 정지 계약)·사건 기록."""
+        clk = self.runner._w3_clock
+        if self.w3hl is None or not (clk.want and self.w3hl_on and wz == 0.0):
+            if self.w3hl is not None:
+                self.w3hl.release()
+            return vx, vy, wz
+        yaw = yaw_from_quat_wxyz(*quat_wxyz)
+        wz_out, fault = self.w3hl.update(yaw, wz)
+        if fault is None:
+            return vx, vy, wz_out
+        self.runner.set_gait_enable(False)
+        self.cmd = (0.0, 0.0, 0.0)
+        self.w3hl_events.append({"event": "w3_hl_fault", "why": fault, "hl": self.w3hl.snapshot()})
+        self.w3hl.release()
+        return 0.0, 0.0, 0.0
 
     @property
     def hturn2(self):
@@ -1017,6 +1095,7 @@ class BridgeCore:
         self.hh_target = 0.0
         self.hh_yaw0 = None
         self._apply_hh_cfg()
+        self._apply_w3_cfg()
 
     def tick(self, gyro, quat_wxyz, qpos_rad, qvel_rad_s, contact2):
         """관측 → 목표각 12 [rad, 절대] (JOINT_ORDER 순)."""
@@ -1031,6 +1110,8 @@ class BridgeCore:
                 self.hh.set_ref(yaw if self.hh_target == 0.0 else yaw + self.hh_target)   # 목표 0 = 종전 그대로
                 self.hh_ref_set = True
             wz = self.hh.update(yaw)
+        if self.w3hl is not None:        # 1007 W3 명령 채널 + 헤딩 고리(그 밖 키는 이 줄을 지나지 않는다)
+            vx, vy, wz = self._w3_cmd_step(quat_wxyz, vx, vy, wz)
         return self.runner.step(gyro, grav, (vx, vy, wz),
                                 qpos_rad, qvel_rad_s, contact2)
 
@@ -2754,6 +2835,209 @@ def _selftest_w3_supervisor():
             f"{_W3.W3_SAFETY_DEFAULT.freeze_timeout_s:g}s, 서 있으면 즉시")
 
 
+def _selftest_w3_cmd():
+    """1007 W3S3d 명령 채널·리드 발·헤딩 고리: ① 학습 env.yaml 계약(리드 규칙 상수·명령 범위·heading_command 끔·지연 1–5·기본자세·
+    관측 필터)과 배포 상수 일치 ② 명령 검증(단일 축·범위·0 허용·bool/비유한 거부)·상한 설정 범위 ③ 감독기: 켜기 = 명령 동반·
+    걷는 중 변경 = 체류·같은 명령 무변화·채널 없는 키는 0 아닌 속도 거부 ④ 리드 발: 켜기 틱 위상 0.5 ⇔ vy<−0.02 또는 (|vy|<0.02 ∧ wz<−0.08)
+    ⑤ 헤딩 고리 식 = eval_w3 set_cmd 식(독립 float64 재구현) · 정지 시 ψ* 해제 · 회전 명령 중 고리 끔 · 오차 상한·타임아웃 → 걷기 정지
+    ⑥ 실모델(exported 있으면) 걷기 500틱 유한·슬루 4°/틱. 토치 소스 수준 동치는 PC rl_walking/deploy/selftest_w3_equiv.py [E]·[F]."""
+    import numpy as np
+    was_on = EXPERIMENTAL_W3
+    if not was_on:
+        enable_experimental_w3()
+    notes = []
+    try:
+        k = _W3.W3S3D_CKPT_KEY
+        assert k in W3_CKPTS and k in W3_CMD_LIMITS and k.startswith("stand_") and _W3.W3_CKPT_KEY not in W3_CMD_LIMITS
+        assert CHECKPOINTS[k].endswith(os.path.join(_W3.W3S3D_RUN_REL, "exported"))
+        cfg, lim = W3_CKPTS[k], W3_CMD_LIMITS[k]
+        # ① env.yaml 계약
+        yml = _ckpt_env_yaml(k)
+        if os.path.isfile(yml):
+            c = _parse_env_contract(yml)
+            for j, want in zip(JOINT_ORDER, CKPT_DEFAULT_POSE[k]):
+                assert abs(c["joint_pos"][j] - want) < 1e-6, f"W3S3d env.yaml 기본자세 {j} 불일치"
+            assert ckpt_obs_filter(k) == (0.27, 0.25), ckpt_obs_filter(k)
+            w = _w3_env_contract(yml)
+            g, cm = w["w3_gait"], w["w3_cmd"]
+            assert g.get("f_step") == cfg.f_step and g.get("ramp_s", 0.2) == cfg.ramp_s, g
+            assert g.get("lead_vy_cmin", 0.0) == cfg.lead_vy_cmin and g.get("lead_wz_cmin", 0.0) == cfg.lead_wz_cmin, g
+            assert cm.get("stage") == 3 and w.get("heading_command") is False, (cm, w.get("heading_command"))
+            assert tuple(cm.get("vx_range", (0.03, 0.10))) == lim.vx_fwd and tuple(cm["vx_back_range"]) == lim.vx_back, cm
+            if W3_CMD_LIMITS_OVERRIDE is None:
+                assert tuple(cm["vy_range"]) == lim.vy and tuple(cm["wz_range"]) == lim.wz, cm
+            assert cm.get("p_hloop", 0.0) == 0.0          # 학습에 고리 없음 → 고리는 평가(eval_w3 --heading_loop)로만 검증된 배포 장치
+            assert (w.get("min_delay_steps"), w.get("max_delay_steps")) == (1, 5), w
+            notes.append("env.yaml 계약(리드 0.02/0.08·범위·heading 끔·지연 1–5·CROUCH_V5·필터) 일치")
+        else:
+            notes.append("env.yaml 없음(계약 SKIP)")
+        # ② 명령 검증
+        V = _W3.validate_w3_cmd
+        for good, want in (({}, (0.0, 0.0, 0.0)), ({"vx": 0.06}, (0.06, 0.0, 0.0)), ({"vx": -0.03}, (-0.03, 0.0, 0.0)),
+                           ({"vy": -0.04}, (0.0, -0.04, 0.0)), ({"wz": 0.2}, (0.0, 0.0, 0.2)), ({"vx": 0.10, "vy": 0}, (0.10, 0.0, 0.0))):
+            assert V(good, lim) == want, (good, V(good, lim))
+        bad_cmds = ({"vx": 0.02}, {"vx": 0.11}, {"vx": -0.07}, {"vy": 0.05}, {"vy": 0.01}, {"wz": 0.3}, {"wz": -0.05},
+                    {"vx": 0.05, "wz": 0.1}, {"vx": 0.05, "vy": 0.03}, {"vx": True}, {"vy": float("nan")}, {"wz": "0.1"})
+        for bad in bad_cmds:
+            try:
+                V(bad, lim)
+                raise AssertionError(f"거부돼야 할 명령 통과 {bad}")
+            except ValueError:
+                pass
+        L2 = _W3.parse_w3_cmd_limits('{"vy_max": 0.08, "wz_max": 0.3}')
+        assert V({"vy": 0.08}, L2) == (0.0, 0.08, 0.0) and V({"wz": -0.3}, L2) == (0.0, 0.0, -0.3)
+        for bad in ('{"vy_max": 0.1}', '{"wz_max": 0.5}', '{"vx_max": 0.2}', '{"min_dwell_s": 0.1}', '[1]'):
+            try:
+                _W3.parse_w3_cmd_limits(bad)
+                raise AssertionError(f"범위 밖 상한 통과 {bad}")
+            except ValueError:
+                pass
+        assert _W3.parse_w3_heading_loop("off") is None and _W3.parse_w3_heading_loop(None) == _W3.W3_HL_DEFAULT
+        for bad in ('{"kp": 2}', '{"wz_max": 1.0}', '{"foo": 1}', '{"timeout_s": 1000}'):
+            try:
+                _W3.parse_w3_heading_loop(bad)
+                raise AssertionError(f"범위 밖 고리 설정 통과 {bad}")
+            except ValueError:
+                pass
+        notes.append(f"명령 검증 정상 {6}·거부 {len(bad_cmds)}·상한 설정 범위 거부 5·고리 설정 거부 4")
+        # ③ 감독기
+        S = _W3.W3Supervisor(cmd_limits=lim)
+        t = 100.0
+        for i in range(60):
+            S.observe(t + i * 0.02, (1.0, 1.0), (0.0, 0.0, 0.0), (0.0, 0.0, -1.0))
+        t += 1.2
+        kw = dict(active=True, warmed=True, blend_done=True, ge_now=False, want_now=False, cmd_now=(0.0, 0.0, 0.0))
+        r = S.handle({"cmd": "step", "enable": True, "req_id": "a", "seq": 1, "vy": 0.06}, t, **kw)
+        assert not r["accepted"] and "범위" in r["why"], r
+        r = S.handle({"cmd": "step", "enable": True, "req_id": "a", "seq": 2, "vy": -0.04, "heading_loop": False}, t, **kw)
+        assert r["accepted"] and r["action"] == "set_want" and r["cmd"] == (0.0, -0.04, 0.0) and r["hl"] is False, r
+        kw.update(ge_now=True, want_now=True, cmd_now=(0.0, -0.04, 0.0))
+        r = S.handle({"cmd": "step", "enable": True, "req_id": "a", "seq": 3, "vy": -0.04, "heading_loop": False}, t + 0.1, **kw)
+        assert r["accepted"] and r["action"] == "none", r
+        r = S.handle({"cmd": "step", "enable": True, "req_id": "a", "seq": 4, "vx": 0.05}, t + 0.5, **kw)
+        assert not r["accepted"] and "체류" in r["why"], r
+        r = S.handle({"cmd": "step", "enable": True, "req_id": "a", "seq": 5, "vx": 0.05}, t + 1.1, **kw)
+        assert r["accepted"] and r["action"] == "set_cmd" and r["cmd"] == (0.05, 0.0, 0.0) and r["hl"] is True, r
+        r = S.handle({"cmd": "step", "enable": True, "req_id": "a", "seq": 6, "vx": 0.05, "heading_loop": 1}, t + 3, **kw)
+        assert not r["accepted"], r
+        r = S.handle({"cmd": "step", "enable": False}, t + 3.1, **kw)
+        assert r["accepted"] and r["action"] == "set_want" and r["want"] is False, r
+        S0 = _W3.W3Supervisor()
+        for i in range(60):
+            S0.observe(t + i * 0.02, (1.0, 1.0), (0.0, 0.0, 0.0), (0.0, 0.0, -1.0))
+        r = S0.handle({"cmd": "step", "enable": True, "req_id": "a", "seq": 1, "vx": 0.05}, t + 1.2,
+                      active=True, warmed=True, blend_done=True, ge_now=False, want_now=False)
+        assert not r["accepted"] and "명령 채널 없음" in r["why"], r
+        r = S0.handle({"cmd": "step", "enable": True, "req_id": "a", "seq": 2, "vx": 0}, t + 1.2,
+                      active=True, warmed=True, blend_done=True, ge_now=False, want_now=False)
+        assert r["accepted"] and r["cmd"] is None, r
+        notes.append("감독기: 범위 밖 거부·켜기 명령 동반·같은 명령 무변화·체류 1 s 거부/통과·heading_loop 형식·끄기·W3-A 속도 거부")
+        # ④ 리드 발 + ⑤ 헤딩 고리 (BridgeCore + 스텁 정책)
+        q = np.array(CKPT_DEFAULT_POSE[k], dtype=np.float32)
+
+        def mk():
+            rr = PolicyRunnerStage4(model_path=lambda o: np.zeros(12, np.float32), obs_dim=320, gait_freq=1.1,
+                                    default_pose_rad=CKPT_DEFAULT_POSE[k], act_obs_ema_beta=0.27, jvel_obs_ema_beta=0.25, w3=cfg)
+            cc = BridgeCore(k, runner=rr)
+            cc.reset(); cc.heading_hold = False; cc.cmd = (0.0, 0.0, 0.0)
+            return cc
+
+        def yq(yaw):
+            return (math.cos(yaw / 2), 0.0, 0.0, math.sin(yaw / 2))
+        leads = []
+        for cmd, right in (((0.0, 0.0, 0.0), False), ((0.0, 0.04, 0.0), False), ((0.0, -0.04, 0.0), True), ((0.0, -0.03, 0.0), True),
+                           ((0.0, 0.0, 0.2), False), ((0.0, 0.0, -0.1), True), ((0.06, 0.0, 0.0), False), ((-0.04, 0.0, 0.0), False)):
+            cc = mk()
+            for n in range(20):
+                cc.tick((0.0, 0.0, 0.0), yq(0.3), q, np.zeros(12), [1.0, 1.0])
+            cc.cmd = cmd
+            cc.set_gait_enable(True)
+            cc.tick((0.0, 0.0, 0.0), yq(0.3), q, np.zeros(12), [1.0, 1.0])
+            clk = cc.runner._w3_clock
+            assert clk.ge and float(clk.u) == (0.5 if right else 0.0), (cmd, clk.u)
+            obs = cc.runner.last_obs
+            assert abs(float(obs[30 + 12]) - cmd[0]) < 1e-7 and abs(float(obs[31 + 12]) - cmd[1]) < 1e-7, "명령 관측 ≠ 명령(켜기 틱)"
+            leads.append("R" if right else "L")
+        notes.append("리드 발 " + "".join(leads) + "(제자리·+vy·−vy·−0.03·+wz·−wz·앞·뒤)")
+        # 고리 식: 독립 float64 재구현(eval_w3 set_cmd: tgt 첫 틱 래치, 이후 tgt=wrap(tgt+wz0·dt), wz=clip(wz0+K·wrap(tgt−ψ), ±max))
+        hc = W3_HL_CFG or _W3.W3_HL_DEFAULT
+        cc = mk()
+        if cc.w3hl is None:
+            notes.append("헤딩 고리 꺼짐(--w3-heading-loop off) — 고리 시험 SKIP")
+        else:
+            for n in range(10):
+                cc.tick((0.0, 0.0, 0.0), yq(1.0), q, np.zeros(12), [1.0, 1.0])
+            cc.cmd = (0.06, 0.0, 0.0)
+            cc.set_gait_enable(True)
+            tgt, worst = None, 0.0
+            wr = lambda x: math.atan2(math.sin(x), math.cos(x))  # noqa: E731
+            for n in range(300):
+                psi = 1.0 + 0.12 * math.sin(n * 0.05) + 0.0004 * n
+                if n == 150:
+                    psi = wr(psi + 2 * math.pi)            # ±π 감싸기 경로
+                cc.tick((0.0, 0.0, 0.0), yq(psi), q, np.zeros(12), [1.0, 1.0])
+                tgt = psi if tgt is None else wr(tgt + 0.0 * 0.02)
+                ref = max(-hc.wz_max, min(hc.wz_max, 0.0 + hc.kp * wr(tgt - psi)))
+                got = float(cc.runner.last_obs[32 + 12])
+                worst = max(worst, abs(got - ref))
+            assert worst < 1e-6, f"고리 wz 오차 {worst}"
+            lat = cc.w3hl.latched
+            cc.set_gait_enable(False)                      # 정지(want 0) → 다음 틱 ψ* 해제
+            cc.cmd = (0.0, 0.0, 0.0)
+            cc.tick((0.0, 0.0, 0.0), yq(2.0), q, np.zeros(12), [1.0, 1.0])
+            assert lat and not cc.w3hl.latched and float(cc.runner.last_obs[44]) == 0.0, "정지 뒤 ψ* 미해제/wz ≠ 0"
+            # 회전 명령 중 고리 끔(wz 그대로·ψ* 없음)
+            cc.cmd = (0.0, 0.0, -0.15); cc.set_gait_enable(True)
+            for n in range(30):
+                cc.tick((0.0, 0.0, 0.0), yq(2.0 - 0.003 * n), q, np.zeros(12), [1.0, 1.0])
+            assert not cc.w3hl.latched and abs(float(cc.runner.last_obs[44]) + 0.15) < 1e-7
+            # 오차 상한 → 걷기 정지
+            cc.cmd = (0.0, 0.0, 0.0)
+            for n in range(5):
+                cc.tick((0.0, 0.0, 0.0), yq(2.0), q, np.zeros(12), [1.0, 1.0])
+            cc.tick((0.0, 0.0, 0.0), yq(2.0 + math.radians(hc.err_max_deg + 1.0)), q, np.zeros(12), [1.0, 1.0])
+            assert not cc.runner._w3_clock.want and cc.cmd == (0.0, 0.0, 0.0) and cc.w3hl_events \
+                and "오차" in cc.w3hl_events[-1]["why"], "오차 상한에서 걷기 미정지"
+            # 타임아웃 → 걷기 정지
+            cc2 = mk()
+            cc2.cmd = (0.0, 0.0, 0.0); cc2.set_gait_enable(True)
+            nmax = int(round(hc.timeout_s / 0.02)) + 3
+            for n in range(nmax):
+                cc2.tick((0.0, 0.0, 0.0), yq(0.5), q, np.zeros(12), [1.0, 1.0])
+                if not cc2.runner._w3_clock.want:
+                    break
+            assert cc2.w3hl_events and "타임아웃" in cc2.w3hl_events[-1]["why"] and abs(n * 0.02 - hc.timeout_s) < 0.1, n
+            notes.append(f"고리 = eval 식(300틱 최대 차 {worst:.1e}, ±π 감싸기 포함)·정지 ψ* 해제·회전 중 끔·오차 상한/타임아웃 {hc.timeout_s:g}s → 걷기 정지")
+        # ⑥ 실모델 500틱(걷기)
+        d = CHECKPOINTS[k]
+        if os.path.exists(os.path.join(d, "policy.pt")) or os.path.exists(os.path.join(d, "policy.onnx")):
+            cc = BridgeCore(k)
+            cc.reset(); cc.heading_hold = False; cc.cmd = (0.0, 0.0, 0.0)
+            assert cc.w3 and cc.w3cmd and cc.runner.obs_dim == 320
+            qq = q.copy(); prev = qq.copy(); smax = 0.0
+            seq = [(0, (0.0, 0.0, 0.0), False), (50, (0.06, 0.0, 0.0), True), (200, (0.0, -0.04, 0.0), True),
+                   (300, (0.0, 0.0, -0.2), True), (400, (0.0, 0.0, 0.0), False)]
+            t0 = time.perf_counter()
+            for n in range(500):
+                for (nn, cmd, en) in seq:
+                    if n == nn:
+                        cc.cmd = cmd; cc.set_gait_enable(en)
+                out = cc.tick((0.0, 0.0, 0.0), yq(0.2), qq, np.zeros(12), [1.0, 1.0])
+                assert np.isfinite(out).all(), f"W3S3d 틱 {n} 비유한"
+                dd = float(np.abs(out - prev).max()); smax = max(smax, dd)
+                assert dd <= SLEW_RAD * 1.001 + 1e-6, f"W3S3d 틱 {n} 슬루 초과"
+                prev = out; qq = out
+            dt = (time.perf_counter() - t0) / 500
+            assert dt < TICK_SEC
+            notes.append(f"실모델 500틱(서기→앞→옆−→회전−→정지) 유한·슬루 최대 {math.degrees(smax):.2f}°/틱·{dt*1000:.2f}ms [{cc.runner.backend}]")
+        else:
+            notes.append("실모델 exported 없음(500틱 SKIP)")
+    finally:
+        if not was_on:
+            disable_experimental_w3()
+    return " / ".join(notes)
+
+
 def run_selftest(required=()):
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 게이트 + 정책 500틱.
     required: 파일이 반드시 있어야 하는 체크포인트(기동 --checkpoint, STAND_DEFAULT) — 없으면 FAIL."""
@@ -2779,6 +3063,7 @@ def run_selftest(required=()):
              ("HTURN2 실험 플래그(1006)", _selftest_hturn2),
              ("W3 실험 플래그(1006)", _selftest_w3),
              ("W3 세션 감독기(1006 감사)", _selftest_w3_supervisor),
+             ("W3S3d 명령 채널·리드 발·헤딩 고리(1007)", _selftest_w3_cmd),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:
@@ -2820,14 +3105,19 @@ def main():
     ap.add_argument("--w3-safety", default=None,
                     help="W3 세션 감독기 문턱 JSON(예: '{\"enable_tilt_deg\": 6}'). 키·범위는 w3_deploy.W3_SAFETY_RANGES — "
                          "범위 밖·모르는 키는 기동 거부. 생략 = 보수적 기본값")
-    ap.add_argument("--checkpoint", default=STAND_DEFAULT, choices=list(CHECKPOINTS) + [_H2.HTURN2_CKPT_KEY, _W3.W3_CKPT_KEY],
+    ap.add_argument("--w3-heading-loop", default=None,
+                    help="1007 W3 명령 채널 키(" + _W3.W3S3D_CKPT_KEY + ")의 외부 헤딩 고리: 생략 = 켜짐(K 0.5·±0.4 rad/s·오차 상한 15°·"
+                         "120 s), 'off' = 끔, JSON = 설정(키·범위 w3_deploy.W3_HL_RANGES)")
+    ap.add_argument("--w3-cmd-limits", default=None,
+                    help="1007 W3 명령 채널 상한 JSON(vy_max ≤0.08·wz_max ≤0.3·min_dwell_s) — 생략 = W3S3d 학습 범위(|vy| ≤0.04·|wz| ≤0.2)")
+    ap.add_argument("--checkpoint", default=STAND_DEFAULT, choices=list(CHECKPOINTS) + [_H2.HTURN2_CKPT_KEY] + list(_W3.W3_KEYS),
                     help="기본값은 배포 데뷔 정책(STAND_DEFAULT). 0907: 구 walk 는 젯슨에서 삭제돼 "
                          "기본값으로 두면 selftest 가 필수 파일 없음으로 실패한다")
     args = ap.parse_args()
     if args.checkpoint == _H2.HTURN2_CKPT_KEY and not args.experimental_hturn2:
         print(f"[거부] --checkpoint {args.checkpoint} 는 --experimental-hturn2 를 명시해야 선택 가능", file=sys.stderr)
         return 2
-    if args.checkpoint == _W3.W3_CKPT_KEY and not args.experimental_w3:
+    if args.checkpoint in _W3.W3_KEYS and not args.experimental_w3:
         print(f"[거부] --checkpoint {args.checkpoint} 는 --experimental-w3 를 명시해야 선택 가능", file=sys.stderr)
         return 2
     if args.experimental_hturn2 and args.experimental_w3:
@@ -2836,15 +3126,22 @@ def main():
     if args.w3_safety is not None and not args.experimental_w3:
         print("[거부] --w3-safety 는 --experimental-w3 와 함께만", file=sys.stderr)
         return 2
+    if (args.w3_heading_loop is not None or args.w3_cmd_limits is not None) and not args.experimental_w3:
+        print("[거부] --w3-heading-loop·--w3-cmd-limits 는 --experimental-w3 와 함께만", file=sys.stderr)
+        return 2
     if args.experimental_w3:
-        global W3_SAFETY
+        global W3_SAFETY, W3_HL_CFG, W3_CMD_LIMITS_OVERRIDE
         try:
             W3_SAFETY = _W3.parse_w3_safety(args.w3_safety)
+            W3_HL_CFG = _W3.parse_w3_heading_loop(args.w3_heading_loop)
+            W3_CMD_LIMITS_OVERRIDE = (None if args.w3_cmd_limits is None
+                                      else _W3.parse_w3_cmd_limits(args.w3_cmd_limits))
         except ValueError as e:      # json.JSONDecodeError 포함
-            print(f"[거부] --w3-safety: {e}", file=sys.stderr)
+            print(f"[거부] W3 설정: {e}", file=sys.stderr)
             return 2
         enable_experimental_w3()
-        print(f"[경고] --experimental-w3: 실험 기능 켜짐(실물 미검증) — 키 {_W3.W3_CKPT_KEY}", file=sys.stderr)
+        print(f"[경고] --experimental-w3: 실험 기능 켜짐(실물 미검증) — 키 {', '.join(_W3.W3_KEYS)}"
+              f" · 헤딩 고리 {W3_HL_CFG} · 명령 범위 {W3_CMD_LIMITS_OVERRIDE or 'W3S3d 학습 범위'}", file=sys.stderr)
     if args.experimental_hturn2:
         enable_experimental_hturn2()
         print(f"[경고] --experimental-hturn2: 실험 기능 켜짐(실물 미검증) — 키 {_H2.HTURN2_CKPT_KEY}", file=sys.stderr)
@@ -2892,7 +3189,9 @@ def main():
             self.core = BridgeCore(args.checkpoint)
             self._launches = 0          # 정책 시작 횟수(1006 W3 응답용 계수 — 제어 무관)
             # 1006 W3 세션 감독기(감사 H3–H6·L1): --experimental-w3 + W3 키 기동일 때만. 그 밖에는 None = 종전 경로 그대로.
-            self.w3sup = (_W3.W3Supervisor(W3_SAFETY) if (EXPERIMENTAL_W3 and args.checkpoint in W3_CKPTS) else None)
+            self.w3sup = (_W3.W3Supervisor(W3_SAFETY, **({"cmd_limits": W3_CMD_LIMITS[args.checkpoint]}
+                                                         if args.checkpoint in W3_CMD_LIMITS else {}))
+                          if (EXPERIMENTAL_W3 and args.checkpoint in W3_CKPTS) else None)
             self.frames = frames        # 모터↔관절 프레임 변환 (기동 시 검증 완료)
             self.roll_comp = RollComp(frames.roll_comp)   # 느린 기울기 롤 보정기 — 맵 키 없으면 OFF(no-op)
             self.pitch_comp = RollComp(frames.pitch_comp)  # 앞뒤 균형 복원항 — 맵 키 없으면 OFF(no-op)
@@ -3165,17 +3464,30 @@ def main():
             _bd = BLEND_S <= 0.0 or (self.blend_t0 is not None and now - self.blend_t0 >= BLEND_S)
             dec = self.w3sup.handle(d, now, active=bool(self.core.active), warmed=bool(self.warmed), blend_done=_bd,
                                     ge_now=bool(w3c.ge) if w3c is not None else False,
-                                    want_now=bool(w3c.want) if w3c is not None else False)
+                                    want_now=bool(w3c.want) if w3c is not None else False,
+                                    **({"cmd_now": tuple(self.core.cmd)} if self.core.w3cmd else {}))
             act = dec["action"]
             if act in ("estop", "stop"):
                 self._on_cmd_base({"cmd": act})        # 종전 경로(estop = STOP_ALL 즉시·비활성 / stop = ge 0)
             elif act == "set_want":
                 if self.core.w3:
+                    _ev = {"timestamp": now, "event": "w3_step", "enable": bool(dec["want"]), "by": "cmd",
+                           "req_id": d.get("req_id"), "seq": d.get("seq")}
+                    if self.core.w3cmd:                # 1007 명령 채널: 켜기 = 명령과 ge 를 같은 틱에(시뮬 리샘플), 끄기 = 명령 0
+                        self.core.cmd = tuple(dec["cmd"]) if dec["want"] else (0.0, 0.0, 0.0)
+                        if dec["want"]:
+                            self.core.w3hl_on = bool(dec["hl"])
+                        _ev.update(cmd=list(self.core.cmd), heading_loop=bool(self.core.w3hl_on) and self.core.w3hl is not None)
                     self.core.set_gait_enable(dec["want"])
-                    self._bb_write({"timestamp": now, "event": "w3_step", "enable": bool(dec["want"]), "by": "cmd",
-                                    "req_id": d.get("req_id"), "seq": d.get("seq")})
+                    self._bb_write(_ev)
                 else:
                     dec = dict(dec, accepted=False, why="W3 러너 아님")
+            elif act == "set_cmd":                     # 1007 걷는 중 명령 변경(위상 유지 — 시뮬 STEP→STEP 리샘플과 같음)
+                self.core.cmd = tuple(dec["cmd"])
+                self.core.w3hl_on = bool(dec["hl"])
+                self._bb_write({"timestamp": now, "event": "w3_cmd", "cmd": list(self.core.cmd),
+                                "heading_loop": bool(self.core.w3hl_on) and self.core.w3hl is not None,
+                                "req_id": d.get("req_id"), "seq": d.get("seq")})
             elif act == "launch":
                 n0 = self._launches
                 self._on_cmd_base(d)
@@ -3583,6 +3895,10 @@ def main():
                         f"발진 가드 트리거 — {why}. 줄 재인장 후 release_all 실행!")
                     return
             targets_rad = self.core.tick(gyro, quat, qpos, qvel, contact2)
+            while self.core.w3hl_events:   # 1007 W3 헤딩 고리 고장 → 코어가 걷기를 멈췄다(서기로) — 기록·경고
+                _e = self.core.w3hl_events.pop(0)
+                self._bb_write(dict(_e, timestamp=now))
+                self.get_logger().error(f"W3 헤딩 고리 고장 — {_e['why']}. 걷기 정지(반주기 경계에서 서기), 재개는 새 step(seq)")
             if self.core.ckpt_name.startswith("stand") or self.core.hturn2:   # 1006 HTURN2: 평가 조건(LPF β0.27) 그대로
                 self.tgt_filt = lpf_step(self.tgt_filt, targets_rad)
                 targets_rad = self.tgt_filt
@@ -3741,6 +4057,9 @@ def main():
                                  "hh_ref": (None if not self.core.hh_ref_set else round(self.core.hh.ref, 5))}
             if self.core.w3:               # 1006 W3 실험 경로에서만 필드 추가(종전 스키마 불변)
                 dbg["w3"] = self.core.runner._w3_clock.snapshot()
+            if self.core.w3cmd:            # 1007 W3 명령 채널 키에서만: 리드 발·헤딩 고리 상태(정책이 받은 wz 는 obs[32])
+                dbg["w3_cmd"] = {"lead": self.core.runner._w3_clock.last_lead, "hl_on": bool(self.core.w3hl_on),
+                                 "hl": (self.core.w3hl.snapshot() if self.core.w3hl is not None else None)}
             if self.w3sup is not None:     # 1006 W3 세션 감독기 상태(정지 래치·동결 대기·켜기 판정 입력)
                 dbg["w3_sup"] = self.w3sup.snapshot()
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
@@ -3880,6 +4199,8 @@ def main():
             반환 True = 이번 틱에 동결했다(호출자 return), False = 대기 중(정책 계속 — 서기로 내려가는 중)."""
             if self.w3sup.begin_freeze(now, f"{event}: {why}"):
                 if self.core.w3:
+                    if self.core.w3cmd:            # 1007 명령 채널: 정지 = 명령 0 + ge 0 (시뮬 정지 계약)
+                        self.core.cmd = (0.0, 0.0, 0.0)
                     self.core.set_gait_enable(False)
                 self._bb_write({"timestamp": now, "event": event, "why": why, "w3_deferred": True})
                 self._bb_write({"timestamp": now, "event": "w3_step", "enable": False, "by": event})

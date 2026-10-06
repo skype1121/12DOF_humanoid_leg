@@ -31,6 +31,8 @@ p.add_argument("--seed", type=int, default=1)
 p.add_argument("--assist_alpha", type=float, default=0.0, help="STEP_ASSIST_ALPHA 로 전달(기본 0 = 보조 없는 최종 평가)")
 p.add_argument("--ref_off", action="store_true", help="진단: W3_REF_SCALE=0 세팅(참조 잔차 끄기 — W3 코드가 읽을 때만 반영)")
 p.add_argument("--gait_enable", type=int, default=1, choices=(0, 1), help="W3_GAIT_ENABLE 로 전달(0 = STAND, 1 = STEP)")
+p.add_argument("--stand_first", type=float, default=0.0,
+               help="1006 진단: 처음 S 초는 STAND(ge 0) 후 STEP 전환(실물 순서 STAND→STEP). 워밍업 = S + 2 s 로 자동 연장")
 p.add_argument("--cmd", default="0,0,0", help="'vx,vy,wz' 고정 명령")
 p.add_argument("--out_tag", default="w3")
 cli_args.add_rsl_rl_args(p)
@@ -38,6 +40,8 @@ AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
 if a.long:
     a.seconds = 120.0
+if a.stand_first > 0:
+    a.warmup = max(a.warmup, a.stand_first + 2.0)
 # env var 는 환경 생성 전에(시작 이벤트가 읽는다)
 os.environ["STEP_ASSIST_ALPHA"] = repr(float(a.assist_alpha))
 os.environ["W3_GAIT_ENABLE"] = str(int(a.gait_enable))
@@ -142,6 +146,8 @@ t0 = time.time()
 for i in range(steps):
     t = (i + 1) * dt
     set_cmd()
+    if a.stand_first > 0 and getattr(U, "_ge_cmd", None) is not None:
+        U._ge_cmd[:] = bool(t > a.stand_first)
     with torch.inference_mode():
         act_ = policy(obs)
     obs, _, dones, _ = venv.step(act_)
@@ -255,6 +261,8 @@ alt_rate = S(alt_ok) / max(1.0, S(alt_pairs))
 alive_time = float(w_time.sum())
 cad = S(n_valid) / max(1e-9, alive_time) / 2.0
 fall_rate = float((~al).float().mean())
+tf_ = t_fall.cpu() if torch.is_tensor(t_fall) else torch.as_tensor(t_fall)
+n_fall_warm = int(((~al.cpu()) & (tf_ <= a.warmup)).sum()); n_fall_score = int(((~al.cpu()) & (tf_ > a.warmup)).sum())
 dpos = pos_end - pos0
 c0, s0 = torch.cos(yaw0), torch.sin(yaw0)
 dx = dpos[:, 0] * c0 + dpos[:, 1] * s0; dy = -dpos[:, 0] * s0 + dpos[:, 1] * c0
@@ -308,7 +316,7 @@ L = [f"# W3 Stage 0 채점표 · {a.out_tag}",
      f"| 유효 cadence(보행 주기) | {cad:.3f} Hz |",
      f"| 수평 표류(명령 대비 잔차 속도) | {drift_v:.3f} m/s · 총 이동 {disp:.2f} m · 실제 앞 {fwd_v:+.3f} / 옆 {lat_v:+.3f} m/s |",
      f"| 요 표류(명령 대비 |Δ요|) | {yaw_drift:.1f}° · 평균 요 속도 {yaw_rate:+.2f}°/s |",
-     f"| 낙상률 | {100 * fall_rate:.1f} % ({int((~al).sum())}/{N}) |",
+     f"| 낙상률 | {100 * fall_rate:.1f} % ({int((~al).sum())}/{N}) — 워밍업(시작 과도) {n_fall_warm} · 채점 구간 {n_fall_score} |",
      f"| 10 s 창별 유효 cadence | " + " → ".join(f"{x:.2f}" for x in w_cad) + f" Hz · {'붕괴' if collapse else '붕괴 없음'} |",
      f"| 스텝 높이 cm (10/50/90 %) | " + "/".join(f"{x:.1f}" for x in pct(R_)) + " |",
      f"| 보폭 cm (수평 변위 10/50/90 %) | " + "/".join(f"{x:.1f}" for x in pct(L_)) + " · 앞축 " + "/".join(f"{x:+.1f}" for x in pct(F_)) + " |",
@@ -327,7 +335,7 @@ L += ["", "주: 접촉 = 발 링크 |F| > 5 N. 유효 cadence = 유효 스텝/(�
 txt = "\n".join(L); print(txt, flush=True)
 out_dir = os.path.join(REPO, "log_picture"); os.makedirs(out_dir, exist_ok=True)
 open(os.path.join(out_dir, f"w3eval_{a.out_tag}.txt"), "w").write(txt + "\n")
-J = {"task": a.task, "checkpoint": ck, "num_envs": N, "seed": a.seed, "delay": a.delay, "warmup_s": a.warmup, "seconds": T, "long": a.long,
+J = {"fall_warm": n_fall_warm, "fall_score": n_fall_score, "stand_first": a.stand_first, "task": a.task, "checkpoint": ck, "num_envs": N, "seed": a.seed, "delay": a.delay, "warmup_s": a.warmup, "seconds": T, "long": a.long,
      "cmd": CMD, "gait_enable": a.gait_enable, "assist_alpha": a.assist_alpha, "ref_off": a.ref_off, "turn_alpha": os.environ.get("TURN_ALPHA"),
      "phase_source": phase_src, "steps_done": steps,
      "lift_rate": lift_rate, "touchdown_rate": td_rate, "swing_rate": swing_rate, "load_rate": load_rate, "alternation_rate": alt_rate,

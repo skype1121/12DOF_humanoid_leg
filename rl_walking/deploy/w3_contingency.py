@@ -50,7 +50,7 @@ class W3MonitorConfig:
     chatter_n: int = 6                # 정상 걷기 = 한 발 2 전이/주기(0.91 s)
     stand_chatter_win_s: float = 2.0
     stand_chatter_n: int = 2
-    contact_max_age_s: float = 0.15   # 발 센서 나이(노드 FOOT_STALE_SEC 0.35 하드 정지보다 앞서 걷기만 멈춤)
+    contact_max_age_s: float = 0.25   # 발 센서 나이(10 Hz → 2 펄스 결손). 지속 요구 없음 — 노드 FOOT_STALE_SEC 0.35 하드 정지 전에 걷기만 멈춤(간헐 결손 대비)
     # C 실효 지연
     lat_max_ticks: float = 0.0        # 0 = 끔
     lat_win_s: float = 2.0
@@ -445,21 +445,23 @@ class W3WalkMonitor:
 
         def over(v, thr):
             return thr > 0 and v is not None and (not math.isfinite(float(v)) or float(v) > thr)
-        rs = []
-        if over(foot_age_s, c.contact_max_age_s):
-            rs.append(f"발 센서 나이 {foot_age_s:.3f}s > {c.contact_max_age_s:g}s(오래된 접촉 — 0/1 대체 없이 걷기 금지)")
+        rs, now_bad = [], None
+        if over(foot_age_s, c.contact_max_age_s):          # 즉시(지속 요구 없음)
+            now_bad = f"발 센서 나이 {foot_age_s:.3f}s > {c.contact_max_age_s:g}s(오래된 접촉 — 0/1 대체 없이 걷기 금지)"
         if over(fb_age_s, c.fb_age_max_s):
             rs.append(f"관절 피드백 나이 {fb_age_s:.3f}s > {c.fb_age_max_s:g}s")
         if over(s8_p50_ms, c.s8_age_max_ms):
             rs.append(f"stage8 명령 처리 나이 중앙 {s8_p50_ms:.1f} ms > {c.s8_age_max_ms:g} ms(스택 지연 적체 의심)")
         if not rs:
             self._hb_t0 = None
+        else:
+            self._hb_t0 = self.t if self._hb_t0 is None else self._hb_t0
+        held = bool(rs) and self.t - self._hb_t0 >= c.health_hold_s - 1e-9
+        parts = ([now_bad] if now_bad else []) + (rs if held else [])
+        if not parts:
             self.health_bad = None
             return
-        self._hb_t0 = self.t if self._hb_t0 is None else self._hb_t0
-        if self.t - self._hb_t0 < c.health_hold_s - 1e-9:
-            return
-        bad = "; ".join(rs)
+        bad = "; ".join(parts)
         if self.health_bad is None:
             self._emit("health", bad, "inhibit")
         self.health_bad = bad

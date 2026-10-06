@@ -3493,11 +3493,12 @@ def main():
     if (args.w3_heading_loop is not None or args.w3_cmd_limits is not None) and not args.experimental_w3:
         print("[거부] --w3-heading-loop·--w3-cmd-limits 는 --experimental-w3 와 함께만", file=sys.stderr)
         return 2
+    global W3_MON_CFG, C5_OVERTIME
+    W3_MON_CFG, C5_OVERTIME = None, None          # 기동마다 명시(같은 프로세스에서 main 을 다시 부르는 셀프테스트 하네스 포함)
     if args.w3_monitor is not None and not args.experimental_w3:
         print("[거부] --w3-monitor 는 --experimental-w3 와 함께만", file=sys.stderr)
         return 2
     if args.w3_monitor is not None:
-        global W3_MON_CFG
         try:
             W3_MON_CFG = _w3c().parse_w3_monitor(args.w3_monitor)
         except ValueError as e:      # json.JSONDecodeError 포함
@@ -3506,7 +3507,6 @@ def main():
         if W3_MON_CFG is not None:
             print(f"[경고] --w3-monitor: 2 차 대비책 감시 켜짐(실물 미검증) — {_w3c().config_dict(W3_MON_CFG)}", file=sys.stderr)
     if args.c5_overtime is not None:
-        global C5_OVERTIME
         if args.checkpoint not in C5_PAIRS:
             print(f"[거부] --c5-overtime 는 C5 키에서만(현재 --checkpoint {args.checkpoint})", file=sys.stderr)
             return 2

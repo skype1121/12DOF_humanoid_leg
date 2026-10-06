@@ -124,6 +124,9 @@ class Harness:
         self.force_contact = None
         self.gyro = (0.02, 0.01, 0.0)
         self.yaw = 0.0                     # 1007: IMU 요(헤딩 고리 시험). 0 이면 종전과 같은 쿼터니언 [1,0,0,0]
+        self.pitch = 0.0                   # 1007 감시 시험: 몸통 피치[rad](0 이면 종전 쿼터니언)
+        self.s8 = None                     # 1007 감시 시험: stage8 cmd_timing.p50_age_ms_1s(None 이면 필드 없음 = 종전)
+        self.foot_mute = False             # 1007 감시 시험: 발 메시지 끊김
 
     @property
     def acks(self):
@@ -150,12 +153,19 @@ class Harness:
         for j, v in zip(self.b.JOINT_ORDER, self.pose):
             m = self.n.frames.joint_rad_to_motor_deg(j, v)
             js[j] = {"baseline_deg": m, "latest_actual_deg": m, "feedback_age_sec": 0.0, "commanded_relative_deg": 0.0}
-        self.n._on_status(_Msg(json.dumps({"armed": True, "joints": js})))
+        st = {"armed": True, "joints": js}
+        if self.s8 is not None:
+            st["cmd_timing"] = {"p50_age_ms_1s": self.s8}
+        self.n._on_status(_Msg(json.dumps(st)))
         qt = [1.0, 0.0, 0.0, 0.0] if self.yaw == 0.0 else [math.cos(self.yaw / 2), 0.0, 0.0, math.sin(self.yaw / 2)]
+        if self.pitch != 0.0:              # 요 ψ 뒤 피치 θ (z-y 순)
+            cy, sy, cp, sp = math.cos(self.yaw / 2), math.sin(self.yaw / 2), math.cos(self.pitch / 2), math.sin(self.pitch / 2)
+            qt = [cy * cp, -sy * sp, cy * sp, sy * cp]
         self.n._on_imu(_Msg(json.dumps({"gyro_rad_s": list(self.gyro), "quat_wxyz": qt, "timestamp": now})))
         cl, cr = self.contact()
-        self.n._on_foot(_Msg(json.dumps({"left_n": 50.0 * cl, "right_n": 50.0 * cr, "left_contact": cl,
-                                         "right_contact": cr, "timestamp": now})))
+        if not self.foot_mute:
+            self.n._on_foot(_Msg(json.dumps({"left_n": 50.0 * cl, "right_n": 50.0 * cr, "left_contact": cl,
+                                             "right_contact": cr, "timestamp": now})))
 
     def tick(self, k=1):
         for _ in range(k):
@@ -380,6 +390,100 @@ def scenario_s3d(b, clock, out):
     return driver
 
 
+def scenario_mon(b, clock, out):
+    """1007 2 차 대비책 감시(--w3-monitor on) 노드 통합: 자세(저역 피치 14°) → 걷기 정지·정지 래치·로그(동결 아님) → rearm 뒤 재개,
+    stage8 명령 처리 나이 120 ms(0.3 s 지속) → 걷기 정지·켜기 거부(이유 '감시') → 정상화 뒤 허용, 발 메시지 0.3 s 끊김 → 걷기 정지
+    (노드 하드 정지 0.35 s 전에), 블랙박스 w3_mon 필드."""
+    def driver(node):
+        H = Harness(node, b, clock)
+        R = []
+        assert node.core.w3mon is not None and node.core.w3cmd
+        H.tick(5)
+        assert H.cmd({"cmd": "stand"})["accepted"]
+        H.tick(int(2.6 / b.TICK_SEC))
+        clk = node.core.runner._w3_clock
+        sq = [0]
+
+        def nxt():
+            sq[0] += 1
+            return sq[0]
+
+        def enable(**kw):
+            return H.cmd(dict({"cmd": "step", "enable": True, "req_id": "op", "seq": nxt()}, **kw))
+
+        def rearm():
+            return H.cmd({"cmd": "rearm", "req_id": "r", "seq": nxt()})
+        assert enable(vx=0.06)["accepted"]
+        H.tick(int(2.0 / b.TICK_SEC))
+        assert clk.ge and not node.w3sup.stop_latched
+        n0 = len(H.stop_alls)
+        H.pitch = math.radians(14.0)
+        k = 0
+        while clk.want and k < 100:
+            H.tick(1); k += 1
+        assert not clk.want and node.core.cmd == (0.0, 0.0, 0.0) and node.core.active and len(H.stop_alls) == n0, (k, node.core.cmd)
+        assert node.w3sup.stop_latched and "monitor tilt" in node.w3sup.latch_reason, node.w3sup.latch_reason
+        assert any("W3 감시 걷기 정지" in m for lv, m in node._log.lines)
+        R.append(f"저역 피치 14° → {k * b.TICK_SEC:.2f}s 뒤 걷기 정지·정지 래치({node.w3sup.latch_reason[:24]}…)·동결 없음")
+        H.pitch = 0.0
+        H.tick(int(2.0 / b.TICK_SEC))
+        a = enable(vx=0.06)
+        assert not a["accepted"] and "정지 래치" in a["why"], a
+        assert rearm()["accepted"]
+        H.tick(int(1.2 / b.TICK_SEC))
+        a = enable(vx=0.06)
+        assert a["accepted"], a
+        R.append("래치 → 켜기 거부 → rearm 뒤 재개")
+        H.tick(int(1.0 / b.TICK_SEC))
+        H.s8 = 120.0
+        k = 0
+        while clk.want and k < 100:
+            H.tick(1); k += 1
+        assert not clk.want and 0.28 <= k * b.TICK_SEC <= 0.36 and "monitor health" in node.w3sup.latch_reason, (k, node.w3sup.latch_reason)
+        H.tick(int(1.5 / b.TICK_SEC))
+        assert rearm()["accepted"]
+        H.tick(int(1.2 / b.TICK_SEC))
+        a = enable(vx=0.06)
+        assert not a["accepted"] and "감시" in a["why"] and "stage8" in a["why"], a
+        H.s8 = 1.0
+        H.tick(2)
+        a = enable(vx=0.06)
+        assert a["accepted"], a
+        R.append(f"stage8 명령 처리 나이 120 ms → {k * b.TICK_SEC:.2f}s 뒤 걷기 정지, 켜기 거부(감시)·정상화 뒤 허용")
+        H.tick(int(1.0 / b.TICK_SEC))
+        H.foot_mute = True
+        k = 0
+        while clk.want and k < 30:
+            H.tick(1); k += 1
+        H.foot_mute = False
+        assert not clk.want and node.core.active and k * b.TICK_SEC < 0.35, (k, node.core.active, node.stop_reason)
+        R.append(f"발 메시지 끊김 → {k * b.TICK_SEC:.2f}s 에 걷기 정지(하드 정지 0.35 s 전)")
+        bb = [json.loads(m) for m in node._pubs[b.BRIDGE_DEBUG_TOPIC].msgs[-3:]]
+        assert all("w3_mon" in d and d["w3_mon"]["mode"] == "act" for d in bb)
+        R.append("디버그 w3_mon 필드")
+        assert H.cmd({"cmd": "estop"})["accepted"]
+        out["mon"] = R
+    return driver
+
+
+def scenario_s3d_benign(b, clock, out, key):
+    """정상 입력 W3S3d 세션 — 감시 켬/끔 명령 토픽 비트 비교용(같은 입력열)."""
+    def driver(node):
+        H = Harness(node, b, clock)
+        H.tick(5)
+        assert H.cmd({"cmd": "stand"})["accepted"]
+        H.tick(int(2.6 / b.TICK_SEC))
+        assert H.cmd({"cmd": "step", "enable": True, "req_id": "op", "seq": 1, "vx": 0.06})["accepted"]
+        H.yaw = 0.0
+        for i in range(400):
+            H.yaw = 0.02 * math.sin(i * 0.05)
+            H.tick(1)
+        H.cmd({"cmd": "step", "enable": False, "req_id": "op", "seq": 2})
+        H.tick(100)
+        out[key] = list(node._pubs[b.COMMAND_TOPIC].msgs)
+    return driver
+
+
 def scenario_off(b, clock, out):
     def driver(node):
         assert node.w3sup is None and node.pub_ack is None and b.BRIDGE_ACK_TOPIC not in node._pubs
@@ -509,6 +613,8 @@ def main():
               scenario, "w3"),
              ("W3S3d 세션 노드(1007)", ["--live", "--force-frame", "--force-gains", "--experimental-w3", "--checkpoint",
                                         b._W3.W3S3D_CKPT_KEY], scenario_s3d, "s3d"),
+             ("W3S3d 감시 켬 노드(1007 2 차 대비책)", ["--live", "--force-frame", "--force-gains", "--experimental-w3", "--checkpoint",
+                                                   b._W3.W3S3D_CKPT_KEY, "--w3-monitor", "on"], scenario_mon, "mon"),
              ("플래그 꺼짐 노드", ["--force-frame", "--checkpoint", "stand_crouch_g21a"], scenario_off, "off")]
     for name, argv, sc, key in tests:
         try:
@@ -574,6 +680,29 @@ def main():
         import traceback
         traceback.print_exc()
         print(f"[FAIL] W3-A 세션 노드 비트 비교: {type(e).__name__}: {e}")
+    try:   # 1007 2 차 대비책: W3S3d 정상 입력에서 감시 켬 = 끔 명령 토픽 비트 동일, --w3-monitor 거부 경로
+        for mm in (b,):
+            if not mm.EXPERIMENTAL_W3:
+                pass
+        res = {}
+        for key, extra in (("m_off", []), ("m_on", ["--w3-monitor", "on"])):
+            ck = FakeClock()
+            _patch(b, ck)
+            rc = _run_main(b, ["--live", "--force-frame", "--force-gains", "--experimental-w3", "--checkpoint", b._W3.W3S3D_CKPT_KEY] + extra,
+                           scenario_s3d_benign(b, ck, res, key))
+            assert rc == 0, rc
+        la, lb = res["m_off"], res["m_on"]
+        assert len(la) == len(lb) and la == lb, f"감시 켬/끔 명령 토픽 다름 ({len(la)} vs {len(lb)})"
+        for argv in (["--w3-monitor", "on", "--selftest"], ["--experimental-w3", "--w3-monitor", '{"walk_tilt_deg": 40}', "--selftest"],
+                     ["--checkpoint", "stand_crouch_g21a", "--c5-overtime", "note:6", "--selftest"]):
+            rc = _run_main(b, argv, lambda n: None)
+            assert rc == 2, (argv, rc)
+        print(f"[PASS] W3S3d 정상 입력 감시 켬 = 끔 명령 토픽 비트 동일({len(la)}건)·--w3-monitor/--c5-overtime 거부 3 경로(exit 2)")
+    except Exception as e:  # noqa: BLE001
+        fails += 1
+        import traceback
+        traceback.print_exc()
+        print(f"[FAIL] 1007 감시 켬/끔 비트 비교: {type(e).__name__}: {e}")
     try:   # 1007 기동 설정 거부: 범위 밖 헤딩 고리·명령 상한, 플래그 없이
         for argv in (["--experimental-w3", "--w3-heading-loop", '{"kp": 3}', "--selftest"],
                      ["--experimental-w3", "--w3-cmd-limits", '{"vy_max": 0.2}', "--selftest"],

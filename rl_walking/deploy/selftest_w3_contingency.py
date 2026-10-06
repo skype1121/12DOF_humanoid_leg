@@ -131,7 +131,13 @@ def t_contact():
     run(m, 120, walking=False, k0=k)
     assert m.enable_gate()[0]
     # 센서 나이(발·피드백·stage8 명령 처리) — 0.3 s 지속해야 판정, 정상이면 즉시 해제
-    for kw in ({"foot_age_s": 0.25}, {"fb_age_s": 0.12}, {"s8_p50_ms": 120.0}):
+    m = C.W3WalkMonitor(C.W3MonitorConfig())         # 발 센서 나이는 즉시(지속 요구 없음), 0.2 s(1 펄스 결손)는 통과
+    run(m, 5, walking=False)
+    m.health(foot_age_s=0.2)
+    assert m.enable_gate()[0]
+    m.health(foot_age_s=0.3)
+    assert not m.enable_gate()[0]
+    for kw in ({"fb_age_s": 0.12}, {"s8_p50_ms": 120.0}):
         m = C.W3WalkMonitor(C.W3MonitorConfig())
         run(m, 10, walking=False)
         m.health(foot_age_s=0.05, fb_age_s=0.01, s8_p50_ms=1.0)
@@ -156,7 +162,7 @@ def t_contact():
     m = C.W3WalkMonitor(C.W3MonitorConfig(mode="note"))
     for k in range(30):
         run(m, 1, walking=False, k0=k)
-        m.health(foot_age_s=0.25)
+        m.health(foot_age_s=0.3)
     assert m.enable_gate()[0] and any(e["kind"] == "health" for e in m.events)
     return "한발 0.8 s·양발 0.2 s·채터 → 정지 / 서기 채터·센서 나이 3 종(0.3 s 지속) → 켜기 거부(해제 확인)·한 틱 튐 무시 / note 는 거부 안 함"
 

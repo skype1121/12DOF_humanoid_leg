@@ -128,7 +128,7 @@ st_xy0 = None; st_lifts = fz(N); st_last_lift = torch.full((N,), float("nan"), d
 st_xy_end = fz(N, 2); st_fm0 = None; st_fm_end = fz(N, 2); st_lat_lifts = fz(N); st_alive0 = None; st_com_off = fz(N, 2); st_tilt = fz(N); st_dq = fz(N); st_ge = torch.ones(N, device=dev); st_ge_off = torch.full((N,), float("nan"), device=dev)
 in_air = torch.zeros(N, 2, dtype=torch.bool, device=dev); air_t = fz(N, 2); z0 = fz(N, 2); zmax = fz(N, 2); p0 = fz(N, 2, 2)
 pend = torch.zeros(N, 2, dtype=torch.bool, device=dev); pend_t = fz(N, 2); pend_load = fz(N, 2); pend_swing = torch.zeros(N, 2, dtype=torch.bool, device=dev)
-pend_rise = fz(N, 2); pend_len = fz(N, 2); pend_fwd = fz(N, 2)
+pend_rise = fz(N, 2); pend_len = fz(N, 2); pend_fwd = fz(N, 2); pend_lat = fz(N, 2); pend_w = fz(N, 2)
 n_lift, n_swing, n_td, n_load, n_valid = fz(N, 2), fz(N, 2), fz(N, 2), fz(N, 2), fz(N, 2)
 last_valid = torch.full((N,), -1, dtype=torch.long, device=dev); alt_pairs, alt_ok = fz(N), fz(N)
 # 예정 스윙 반주기
@@ -140,6 +140,8 @@ NW = max(1, int(math.ceil(a.seconds / 10.0 - 1e-6)))
 w_valid, w_time = np.zeros(NW), np.zeros(NW)
 # 분포
 rises, lens, fwds = [], [], []
+lats, widths, foot_ids = [], [], []   # 1006 Stage 2: 착지 옆 변위·착지 순간 발 간격·발
+roll_s, roll_n = fz(N), fz(N)
 # 자세
 pit_s, pit_ss, pit_n = fz(N), fz(N), fz(N); wy_ss = fz(N)
 pos0 = yaw0 = None
@@ -219,6 +221,10 @@ for i in range(steps):
         pend_swing = torch.where(landed, sw, pend_swing)
         pend_rise = torch.where(landed, rise, pend_rise); pend_len = torch.where(landed, dp.norm(dim=-1), pend_len)
         pend_fwd = torch.where(landed, (dp * hx).sum(-1), pend_fwd)
+        hy = torch.stack([-torch.sin(yaw), torch.cos(yaw)], -1).unsqueeze(1)
+        pend_lat = torch.where(landed, (dp * hy).sum(-1), pend_lat)
+        _wd = ((fpos[:, 0, :2] - fpos[:, 1, :2]) * hy[:, 0]).sum(-1)          # 왼 − 오 (요 프레임 y, 양수 = 정상)
+        pend_w = torch.where(landed, _wd.unsqueeze(1).expand(-1, 2), pend_w)
     # ── 하중 수용 ──
     pend = pend & m2
     pend_load = pend_load + dt * (pend & (fzv > 0.5 * MG)).float()
@@ -230,6 +236,8 @@ for i in range(steps):
     n_valid += val.float()
     if val.any():
         rises.append(pend_rise[val].cpu()); lens.append(pend_len[val].cpu()); fwds.append(pend_fwd[val].cpu())
+        lats.append(pend_lat[val].cpu()); widths.append(pend_w[val].cpu())
+        foot_ids.append(torch.arange(2, device=dev).unsqueeze(0).expand(N, 2)[val].cpu())
         for k in (0, 1):
             vk = val[:, k]
             has = vk & (last_valid >= 0)
@@ -266,6 +274,7 @@ for i in range(steps):
         pg = robot.data.projected_gravity_b
         pit = torch.rad2deg(torch.atan2(pg[:, 0], -pg[:, 2])); af = alive.float()
         pit_s += pit * af; pit_ss += pit * pit * af; pit_n += af
+        rol = torch.rad2deg(torch.atan2(-pg[:, 1], -pg[:, 2])); roll_s += rol * af; roll_n += af
         wy_ss += robot.data.root_ang_vel_b[:, 1] ** 2 * af
         a_raw = act_.detach()
         am = alive.unsqueeze(1).float()
@@ -309,6 +318,13 @@ pm = pit_s / pit_n.clamp(min=1); pit_rms = (pit_ss / pit_n.clamp(min=1) - pm * p
 pitch_rms = mA(pit_rms); wy_rms = mA((wy_ss / pit_n.clamp(min=1)).sqrt())
 cat = lambda L: torch.cat(L).numpy() if L else np.zeros(0)
 R_, L_, F_ = cat(rises) * 100, cat(lens) * 100, cat(fwds) * 100
+Y_, W_, FI_ = cat(lats) * 100, cat(widths) * 100, (torch.cat(foot_ids).numpy() if foot_ids else np.zeros(0))
+_sg = np.sign(CMD[1]) if abs(CMD[1]) > 1e-6 else 0.0
+lat_sign_rate = float((np.sign(Y_) == _sg).mean()) if (len(Y_) and _sg != 0) else float("nan")
+width_viol = float((W_ < 23.8).mean()) if len(W_) else float("nan")
+cross_rate = float((W_ < 0).mean()) if len(W_) else float("nan")
+lr_ratio = float((FI_ == 0).sum() / max(1, (FI_ == 1).sum())) if len(FI_) else float("nan")
+roll_mean = mA(roll_s / roll_n.clamp(min=1))
 pct = lambda x: [float(np.percentile(x, q)) for q in (10, 50, 90)] if len(x) else [float("nan")] * 3
 LP = cat(lift_phase)
 act_rms = math.sqrt(act_ss / max(1, act_n))
@@ -350,6 +366,8 @@ L = [f"# W3 Stage 0 채점표 · {a.out_tag}",
      f"| 낙상률 | {100 * fall_rate:.1f} % ({int((~al).sum())}/{N}) — 워밍업(시작 과도) {n_fall_warm} · 채점 구간 {n_fall_score} · 시각 " + " ".join(f"{k}:{v}" for k, v in fall_t_hist.items() if v) + " |",
      f"| 10 s 창별 유효 cadence | " + " → ".join(f"{x:.2f}" for x in w_cad) + f" Hz · {'붕괴' if collapse else '붕괴 없음'} |",
      f"| 스텝 높이 cm (10/50/90 %) | " + "/".join(f"{x:.1f}" for x in pct(R_)) + " |",
+     f"| 옆 변위 cm (착지, 10/50/90 %) | " + "/".join(f"{x:+.1f}" for x in pct(Y_)) + f" · 명령 방향 부호 일치 {100 * lat_sign_rate:.1f} % |",
+     f"| 착지 발 간격 cm (10/50/90 %) | " + "/".join(f"{x:.1f}" for x in pct(W_)) + f" · 23.8 미만 {100 * width_viol:.2f} % · 교차 {100 * cross_rate:.2f} % · 좌/우 유효 스텝 비 {lr_ratio:.2f} · 롤 평균 {roll_mean:+.2f}° |",
      f"| 보폭 cm (수평 변위 10/50/90 %) | " + "/".join(f"{x:.1f}" for x in pct(L_)) + " · 앞축 " + "/".join(f"{x:+.1f}" for x in pct(F_)) + " |",
      f"| 이륙 위상(예정 스윙 시작 대비 주기, 10/50/90 %) | " + ("/".join(f"{x:+.2f}" for x in pct(LP)) if len(LP) else "—") + " |",
      f"| 피치 RMS(정지 떨림{'' if a.gait_enable == 0 else ', 참고'}) | {pitch_rms:.2f}° · 피치각속도 RMS {wy_rms:.3f} rad/s |",
@@ -387,7 +405,8 @@ L += ["", "주: 접촉 = 발 링크 |F| > 5 N. 유효 cadence = 유효 스텝/(�
 txt = "\n".join(L); print(txt, flush=True)
 out_dir = os.path.join(REPO, "log_picture"); os.makedirs(out_dir, exist_ok=True)
 open(os.path.join(out_dir, f"w3eval_{a.out_tag}.txt"), "w").write(txt + "\n")
-J = {"stop": J_stop, "fall_t_hist": fall_t_hist, "fall_t": [round(float(x), 2) for x in _tfv], "fall_warm": n_fall_warm, "fall_score": n_fall_score, "stand_first": a.stand_first, "task": a.task, "checkpoint": ck, "num_envs": N, "seed": a.seed, "delay": a.delay, "warmup_s": a.warmup, "seconds": T, "long": a.long,
+J = {"lateral": {"lat_sign_rate": lat_sign_rate, "width_viol": width_viol, "cross_rate": cross_rate, "lr_ratio": lr_ratio, "roll_mean": roll_mean,
+               "lat_p50_cm": (float(np.median(Y_)) if len(Y_) else None), "width_p50_cm": (float(np.median(W_)) if len(W_) else None)}, "stop": J_stop, "fall_t_hist": fall_t_hist, "fall_t": [round(float(x), 2) for x in _tfv], "fall_warm": n_fall_warm, "fall_score": n_fall_score, "stand_first": a.stand_first, "task": a.task, "checkpoint": ck, "num_envs": N, "seed": a.seed, "delay": a.delay, "warmup_s": a.warmup, "seconds": T, "long": a.long,
      "cmd": CMD, "gait_enable": a.gait_enable, "assist_alpha": a.assist_alpha, "ref_off": a.ref_off, "turn_alpha": os.environ.get("TURN_ALPHA"),
      "phase_source": phase_src, "steps_done": steps,
      "lift_rate": lift_rate, "touchdown_rate": td_rate, "swing_rate": swing_rate, "load_rate": load_rate, "alternation_rate": alt_rate,

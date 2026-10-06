@@ -272,7 +272,25 @@ def t_reltilt():
     p0 = C.C2Params(); check("10f 기본 tilt_ref_tau 0(종전 절대 기울기 — 학습 설정 불변)", p0.tilt_ref_tau == 0.0)
 
 
+# ---------------------------------------------------------------- 11. 취소 조건(cancel_calm) ----------------------------------------------------------------
+def t_cancel_calm():
+    P2 = C._P({"cancel_calm": 1.0, "stop_w": 2.0, "stop_tilt": 12.5})
+    st = fresh_state(P_=P2)
+    for _ in range(P2.det_delay + 1):
+        C.c2_core(st, T(6.0), T(1.0), B(True), B(False), DT, P2)
+    for k in range(200):                                   # 걸음 흔들림(ω 1.2 > 감지 0.5, < 정지 2.0) 속 정지 요청
+        C.c2_core(st, T(6.0), T(1.2), B(True), B((k % 23) == 5), DT, P2)
+        if int(st["mode"][0]) == C.STOPREQ:
+            break
+    for _ in range(10):
+        C.c2_core(st, T(6.0), T(1.2), B(True), B(False), DT, P2)
+    check("11a cancel_calm: 걸음 흔들림(감지 문턱 초과·정지 문턱 미만)으로는 취소 안 됨", int(st["mode"][0]) == C.STOPREQ)
+    for _ in range(3):
+        C.c2_core(st, T(14.0), T(2.5), B(True), B(False), DT, P2)
+    check("11b cancel_calm: 정지 문턱 초과면 취소", int(st["mode"][0]) == C.REC)
+
+
 if __name__ == "__main__":
-    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt()
+    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt(); t_cancel_calm()
     print(f"\n결과: 실패 {len(FAIL)}" + (f" {FAIL}" if FAIL else " — 전부 통과"))
     sys.exit(1 if FAIL else 0)

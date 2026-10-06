@@ -26,7 +26,7 @@ p.add_argument("--out_tag", default="c2unit")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
-ARM_ENV = {"B1": ("stand", ""), "B2": ("", "min_td=1e6,tmax_s=1e9"), "B3": ("", ""), "B4": ("", "min_rec_s=0,stop_w=1e9,stop_tilt=1e9"),
+ARM_ENV = {"B1": ("stand", ""), "B2": ("", "min_td=1e6,tmax_s=1e9"), "B3": ("", ""), "B4": ("", "min_rec_s=0,stop_w=1e9,stop_tilt=1e9,stop_v=1e9"),
            "B5": ("", "min_td=1e6"), "B6": ("", "")}[a.arm]
 for k in ("C2_ARM", "C2_PARAMS"):
     os.environ.pop(k, None)

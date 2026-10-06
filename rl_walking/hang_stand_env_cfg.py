@@ -3275,7 +3275,8 @@ class Biped12HangStandW3C2EnvCfg(Biped12HangStandW3S1cEnvCfg):
       초과 스텝 벌점 없음. 기존 STAND 보상(G21a, ge 0 게이트)이 POST 의 자세 복귀를 맡는다.
     - 속도 밀기(push_robot) 없음(W3S1c 그대로 꺼짐) — 평가 fi40/fs80 충격은 g22r 충격(3–7 N·s)이 부분 대표."""
 
-    C2_STOP_V = -1.0        # 비주석 클래스 상수(설정 필드 아님): > 0 이면 정지 요청에 |v| 조건(c2v)
+    C2_STOP_V = -1.0        # 비주석 클래스 상수: > 0 이면 정지 요청에 |v| 조건(c2v)
+    C2_EXTRA = ""           # 'k=v,...' C2Params 추가 덮어쓰기(c2v 변형용)
     W_SETTLE = 50.0
 
     def __post_init__(self):
@@ -3283,7 +3284,10 @@ class Biped12HangStandW3C2EnvCfg(Biped12HangStandW3S1cEnvCfg):
         ev = self.events; rw = self.rewards
         ev.disturbance = EventTerm(func=mdp_hang.disturbance_reset_g22r, mode="reset", params=dict(_C2_DIST))
         ev.w3_gait.func = _c2.c2_gait_update                     # 같은 자리(정의 순서) — w3_track 앞
-        ev.w3_gait.params = {"f_step": 1.1, "c2": {"stop_v": float(self.C2_STOP_V)}}
+        _c2p = {"stop_v": float(self.C2_STOP_V)}
+        for _kv in filter(None, str(self.C2_EXTRA).split(",")):
+            _k, _v = _kv.split("="); _c2p[_k.strip()] = float(_v)
+        ev.w3_gait.params = {"f_step": 1.1, "c2": _c2p}
         ev.c2_track = EventTerm(func=_c2.c2_tracker, mode="interval", interval_range_s=(0.0, 0.0), params={})   # w3_track 뒤(정의 순서)
         rw.w3_place = RewTerm(func=_c2.c2_place_reward, weight=10.0, params={"sig": 0.04, "sig_cap": 0.05})
         rw.c2_settle = RewTerm(func=_c2.c2_value, weight=float(self.W_SETTLE), params={"name": "ev_settle"})
@@ -3292,9 +3296,12 @@ class Biped12HangStandW3C2EnvCfg(Biped12HangStandW3S1cEnvCfg):
 
 @configclass
 class Biped12HangStandW3C2vEnvCfg(Biped12HangStandW3C2EnvCfg):
-    """c2v 변형: 정지 요청에 |v| < 0.10 m/s(운동학 속도 추정 대리 — 학습은 참 몸통 속도 + 잡음 σ 0.03) 추가. 배포엔 다리 운동학 속도 추정기가 선행 조건."""
+    """c2v 변형(1006 C2CAL 반영): 정지 요청 = 한 보행 주기(0.909 s) 이동평균 속도 |v̄_T| < 0.07 m/s(제자리 걸음 p90 0.058 × 1.2;
+    회복 중 p90 0.25–0.34) & IMU 창 max|ω| < 2.0·기울기 < 12.5°(제자리 걸음 p90 규칙) + 감지기 상대 기울기 τ 10 s(무외란 서기 오탐 22 → 0.9 %).
+    학습 속도 = 참 몸통 속도 + 잡음 σ 0.03. 배포엔 다리 운동학 속도 추정기(주기 평균)가 선행 조건 — 현장 확인 필요."""
 
-    C2_STOP_V = 0.10
+    C2_STOP_V = 0.07
+    C2_EXTRA = "v_box_s=0.909,stop_w=2.0,stop_tilt=12.5,tilt_ref_tau=10,cancel_calm=1"   # cancel_calm: 1006 C2EVAL 취소 결함 수정(미평가)
 
 
 @configclass

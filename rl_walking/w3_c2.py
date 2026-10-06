@@ -52,7 +52,11 @@ class C2Params:
     stop_tilt: float = 4.0        # 창 안 max 기울기 문턱 [deg] — 가정값
     stop_v: float = -1.0          # > 0 이면 |v| 조건 추가(운동학 속도 추정 대리, 잡음 kv_noise) — C2v 변형
     kv_noise: float = 0.03        # [m/s] 속도 추정 잡음 σ(학습 DR, 가정)
+    v_box_s: float = 0.0          # > 0: |v| 조건을 이 길이(한 보행 주기 0.909 s) 이동평균 속도 벡터의 크기로. 1006 C2CAL: 순간 |v| 는 제자리 걸음 흔들림이
+                                  #     중앙 0.32 m/s 라 정지 조건이 영원히 안 열림 → 주기 평균(제자리 p90 0.058 vs 회복 p90 0.25–0.34 m/s)로 분리됨
     tmax_s: float = 4.0           # REC 시간 초과 → 정지 요청
+    cancel_calm: float = 0.0      # > 0: STOPREQ 취소 조건 = 감지기 발화(종전) 대신 '정지 규칙 미충족'(창 max|ω|·기울기·|v̄| 중 하나라도 문턱 초과).
+                                  #     1006 C2EVAL(c2v): 감지 문턱(4°·0.5)을 제자리 걸음 흔들림이 늘 넘어 요청의 90 % 가 취소됨(b18 요청 8.3·취소 7.6·래치 0.7)
     refr_s: float = 0.5           # POST 진입 뒤 재켜짐 불응 [s]
     post_s: float = 3.0           # POST 유지 뒤 STAND
     settle_tilt: float = 3.0      # 정착(보상 전용, 특권 |v| 사용 가능)
@@ -83,7 +87,8 @@ def new_state(N: int, dev, P: C2Params, dt: float) -> dict:
             "ev_trig": z(N), "ev_req": z(N), "ev_timeout": z(N), "ev_cancel": z(N), "ev_latch": z(N), "ev_settle": z(N),
             # 착지 사건 보조(발별): 회복 중 착지였는지, 포획 목표 오차
             "td_rec": torch.zeros(N, 2, dtype=torch.bool, device=dev), "cap_err": z(N, 2),
-            "gref": torch.zeros(N, 3, device=dev), "en_t": z(N), "K": K, "D": D}
+            "gref": torch.zeros(N, 3, device=dev), "en_t": z(N), "K": K, "D": D,
+            "vbuf": z(N, max(1, int(round(P.v_box_s / dt))), 2), "vi": 0}
 
 
 def reset_envs(st: dict, mask: torch.Tensor):
@@ -133,7 +138,8 @@ def c2_core(st: dict, tilt: torch.Tensor, w: torch.Tensor, armed: torch.Tensor, 
     tout = in_rec & ~req & (t_rec >= P.tmax_s)
     # STOPREQ 취소(시간 초과로 들어온 것은 취소 불가)
     in_sr = m == STOPREQ
-    cancel = in_sr & det & (st["t"] + dt < P.tmax_s) & armed
+    _cdet = ~calm if P.cancel_calm > 0.0 else det
+    cancel = in_sr & _cdet & (st["t"] + dt < P.tmax_s) & armed
     # POST → STAND
     post_end = (m == POST) & (st["t"] + dt >= P.post_s) & ~start
     new_m = m.clone()
@@ -291,7 +297,14 @@ def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: d
     s3 = W3._st(env)
     td_any = s3["ev_td"].sum(1) > 0.5                           # 직전 틱 유효 착지(보상과 같은 20 ms 지연 규약)
     v_est = None
-    if P.stop_v > 0.0:
+    if P.v_box_s > 0.0:                                        # 주기 이동평균(배포 = 다리 운동학 속도 추정기의 주기 평균, 학습 = 참 속도 + 잡음)
+        vn = asset.data.root_lin_vel_w[:, :2] + P.kv_noise * torch.randn(env.num_envs, 2, device=env.device)
+        st["vbuf"][fresh] = vn[fresh].unsqueeze(1)
+        st["vbuf"][:, st["vi"]] = vn; st["vi"] = (st["vi"] + 1) % st["vbuf"].shape[1]
+        st["vbar"] = st["vbuf"].mean(1).norm(dim=-1)
+    if P.stop_v > 0.0 and P.v_box_s > 0.0:
+        v_est = st["vbar"]
+    elif P.stop_v > 0.0:
         v_est = (asset.data.root_lin_vel_b[:, :2] + P.kv_noise * torch.randn(env.num_envs, 2, device=env.device)).norm(dim=1)
     want = c2_core(st, tilt, w, armed, td_any, env.step_dt, P, v_est)
     if getattr(env, "_c2_march", False):

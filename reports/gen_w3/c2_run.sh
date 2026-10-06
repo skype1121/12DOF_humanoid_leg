@@ -57,6 +57,6 @@ unit)
   for B in B1 B2 B3 B4 B5 B6; do
     t=${PFX}_${B}_s${SD}; f=$DATA/log_picture/c2unit_${t}.npz; rm -f $f
     run_one "[ -f $f ]" $LOGD/$t.l \
-      /home/ryu/IsaacLab/isaaclab.sh -p $WT/rl_walking/scripts/c2_landscape.py --headless --load_run $RUN --checkpoint $CK --arm $B --seed $SD --out_tag $t
+      /home/ryu/IsaacLab/isaaclab.sh -p $WT/rl_walking/scripts/c2_landscape.py --headless --task ${UNIT_TASK:-Biped12-HangStand-W3C2-v0} --load_run $RUN --checkpoint $CK --arm $B --seed $SD --out_tag $t
   done ;;
 esac

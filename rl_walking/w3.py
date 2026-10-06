@@ -162,13 +162,13 @@ def w3_yaw_drift(env) -> torch.Tensor:
 
 
 def w3_assist_curriculum(env, env_ids, alphas: tuple = (1.0, 0.75, 0.5, 0.25, 0.0), min_full: float = 0.25, min_iters: int = 50,
-                         min_sched: float = 20000.0, steps_per_iter: int = 24):
+                         min_sched: float = 20000.0, steps_per_iter: int = 24, start_stage: int = 0):
     """보조 scaffold 감쇠 — A0m 규칙(절대 문턱): 블록 유효 스텝률(유효/예정 반주기) ≥ min_full 이고 체류 ≥ min_iters 면 다음 α.
     상대 규칙(톱니) 금지(W2omP3 교훈). 마지막 α(0) 에서 계속 학습."""
     s = _st(env); g = getattr(env, "_w3_cur", None)
     if g is None:
-        g = {"stage": 0, "since": 0, "base_s": 0.0, "base_v": 0.0, "last": float("nan")}; env._w3_cur = g
-        env._w3_alpha = alphas[0]
+        g = {"stage": int(start_stage), "since": 0, "base_s": 0.0, "base_v": 0.0, "last": float("nan")}; env._w3_cur = g
+        env._w3_alpha = alphas[g["stage"]]
     n_s = float(s["n_sched"].sum()); n_v = float(s["n_valid"].sum())
     it = int(env.common_step_counter) // steps_per_iter
     if n_s - g["base_s"] >= min_sched:

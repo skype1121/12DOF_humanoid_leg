@@ -3195,3 +3195,13 @@ class Biped12HangStandW3CIEnvCfg(Biped12HangStandW3CEnvCfg):
         self.rewards.w3_imit = RewTerm(func=_w3.w3_imitation, weight=1.5, params={"ref_path": _W3_REF})
         self.rewards.w3_yaw = RewTerm(func=_w3.w3_yaw_drift, weight=-0.5)
         self.curriculum = _W3CICurriculumCfg()
+
+
+@configclass
+class Biped12HangStandW3A2EnvCfg(Biped12HangStandW3AEnvCfg):
+    """W3-A2 (1006): W3-A 400 이어학습 — 보조 감쇠 이어받기(start_stage 3 = α 0.25 → 0, 절대 문턱) + α 0 장기 체류(A0m 조건) + 요 표류 벌점 −0.5(빠진 항)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.w3_yaw = RewTerm(func=_w3.w3_yaw_drift, weight=-0.5)
+        self.curriculum.w3_assist.params = {"start_stage": 3}

@@ -255,7 +255,24 @@ def t_arms():
     check("9d 없는 키 덮어쓰기는 오류(조용한 무시 금지)", ok)
 
 
+# ---------------------------------------------------------------- 10. 상대 기울기 감지기(tilt_ref_tau > 0) ----------------------------------------------------------------
+def t_reltilt():
+    def g_of(pitch_deg, roll_deg=0.0):
+        p, r = math.radians(pitch_deg), math.radians(roll_deg)
+        return torch.tensor([[math.sin(p), -math.sin(r) * math.cos(p), -math.cos(p) * math.cos(r)]])
+    d = float(C.tilt_dev_deg(g_of(5.0), g_of(5.0))[0]); check("10a 같은 자세 편차 0", abs(d) < 1e-3, f"{d:.4f}")
+    d = float(C.tilt_dev_deg(g_of(9.0), g_of(5.0))[0]); check("10b 서기 5° 기준에서 +4° 기울면 편차 4°", abs(d - 4.0) < 1e-3, f"{d:.3f}")
+    ref = torch.zeros(1, 3); ref = C.update_gref(ref, g_of(5.0), B(False), B(True), DT, 10.0)
+    check("10c init → 기준 = 현재", float(C.tilt_dev_deg(g_of(5.0), ref)[0]) < 1e-3)
+    for _ in range(50):                                     # 갱신 금지(upd 0) 동안 기준 고정
+        ref = C.update_gref(ref, g_of(10.0), B(False), B(False), DT, 10.0)
+    check("10d upd 0 이면 기준 불변(회복 중 기준 끌림 없음)", abs(float(C.tilt_dev_deg(g_of(10.0), ref)[0]) - 5.0) < 1e-3)
+    ref2 = C.update_gref(torch.zeros(1, 3), g_of(20.0), B(False), B(True), DT, 10.0)
+    check("10e 기준 기울기 상한 8°", abs(float(C.tilt_dev_deg(ref2, g_of(0.0))[0]) - 8.0) < 0.05, f"{float(C.tilt_dev_deg(ref2, g_of(0.0))[0]):.2f}")
+    p0 = C.C2Params(); check("10f 기본 tilt_ref_tau 0(종전 절대 기울기 — 학습 설정 불변)", p0.tilt_ref_tau == 0.0)
+
+
 if __name__ == "__main__":
-    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms()
+    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt()
     print(f"\n결과: 실패 {len(FAIL)}" + (f" {FAIL}" if FAIL else " — 전부 통과"))
     sys.exit(1 if FAIL else 0)

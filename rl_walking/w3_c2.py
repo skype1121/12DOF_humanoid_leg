@@ -40,6 +40,9 @@ G = 9.81
 class C2Params:
     on_tilt: float = 4.0          # KE 감지기 sw_on 과 같은 값(deg)
     on_w: float = 0.5             # rad/s
+    tilt_ref_tau: float = 0.0     # > 0: 기울기 = 기준 중력 방향 대비 편차(KE --sw_ref_tau 와 같은 개념, 배포 가능 — IMU 만). 기준은 STAND·양발·|ω|<0.1 일 때 EMA τ[s] 갱신, |기준 기울기| ≤ 8°.
+                                  #     0 = 절대 기울기(종전). 1006 C2EVAL 스모크: 절대 기울기 감지기는 무외란 서기에서 외란 전 켜짐 21 % → 후보 수정.
+    tilt_ref_init_s: float = 1.5  # 인계(감지 허용) 뒤 이 시간 동안 기준 = 현재 자세(블렌딩 과도 오탐 방지, KE --sw_ref_init_s)
     det_delay: int = 2            # 감지 지연 [틱] (KE det_from_obs ≈ 관측 지연)
     arm_s: float = 2.5            # 외력 해제 뒤 무장 유지 [s] (학습 전용)
     min_rec_s: float = 0.9        # 정지 요청 최소 REC 시간 ≈ 한 주기(두 걸음)
@@ -80,7 +83,7 @@ def new_state(N: int, dev, P: C2Params, dt: float) -> dict:
             "ev_trig": z(N), "ev_req": z(N), "ev_timeout": z(N), "ev_cancel": z(N), "ev_latch": z(N), "ev_settle": z(N),
             # 착지 사건 보조(발별): 회복 중 착지였는지, 포획 목표 오차
             "td_rec": torch.zeros(N, 2, dtype=torch.bool, device=dev), "cap_err": z(N, 2),
-            "K": K, "D": D}
+            "gref": torch.zeros(N, 3, device=dev), "en_t": z(N), "K": K, "D": D}
 
 
 def reset_envs(st: dict, mask: torch.Tensor):
@@ -216,6 +219,26 @@ def _c2_mask(env) -> torch.Tensor:
     return g["cat"] > 0.5
 
 
+def tilt_dev_deg(g: torch.Tensor, gref: torch.Tensor) -> torch.Tensor:
+    """(N,) 두 단위 중력 방향(몸통 프레임) 사이 각 [deg] — 상대 기울기 감지기(순수 계산, CPU 시험 대상)."""
+    gn = g / g.norm(dim=-1, keepdim=True).clamp(min=1e-9); rn = gref / gref.norm(dim=-1, keepdim=True).clamp(min=1e-9)
+    return torch.rad2deg(torch.acos((gn * rn).sum(-1).clamp(-1.0, 1.0)))
+
+
+def update_gref(gref: torch.Tensor, g: torch.Tensor, upd: torch.Tensor, init: torch.Tensor, dt: float, tau: float, max_deg: float = 8.0) -> torch.Tensor:
+    """기준 중력 방향 EMA: init 이면 현재값, upd 이면 dt/τ 만큼 따라감, 기준 기울기(아래 방향 대비)는 max_deg 로 제한."""
+    a = min(1.0, dt / max(tau, 1e-6))
+    r = torch.where(init.unsqueeze(1), g, torch.where(upd.unsqueeze(1), gref + a * (g - gref), gref))
+    r = r / r.norm(dim=-1, keepdim=True).clamp(min=1e-9)
+    down = torch.tensor([0.0, 0.0, -1.0], device=g.device).expand_as(r)
+    ang = tilt_dev_deg(r, down)
+    over = ang > max_deg
+    if bool(over.any()):           # 아래 방향과 기준 사이를 max_deg 로 되돌림(구면 선형 근사)
+        k = (max_deg / ang.clamp(min=1e-6)).unsqueeze(1)
+        rr = down + k * (r - down); r = torch.where(over.unsqueeze(1), rr / rr.norm(dim=-1, keepdim=True), r)
+    return r
+
+
 def _imu_signals(env):
     asset = env.scene["robot"]
     pg = asset.data.projected_gravity_b
@@ -235,7 +258,8 @@ def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: d
             k, v = kv.split("="); prm[k.strip()] = float(v)
         P = _P(prm); env._c2_P = P
         env._c2_arm_off = os.environ.get("C2_ARM", "") == "stand"          # 진단 팔 B1: 회복 켜짐 금지(발목 전략만)
-        env._c2_deploy = os.environ.get("C2_ARM", "") == "deploy"         # 평가: 배포 의미(전 env supervisor·무장 항상 참 — nd 오탐 포함)
+        env._c2_deploy = os.environ.get("C2_ARM", "") in ("deploy", "march")   # 평가: 배포 의미(전 env supervisor·무장 항상 참 — nd 오탐 포함)
+        env._c2_march = os.environ.get("C2_ARM", "") == "march"           # C2CAL: 전 env ge 1 고정(제자리 걸음 흔들림 분포 측정, supervisor 상태는 계산만)
         print(f"[c2] supervisor 파라미터 {P} · 켜짐 금지 {env._c2_arm_off} · 배포 의미 {env._c2_deploy}", flush=True)
     st = _c2(env, P)
     fresh = env.episode_length_buf <= 1
@@ -243,6 +267,17 @@ def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: d
     deploy = getattr(env, "_c2_deploy", False)
     m2 = torch.ones(env.num_envs, dtype=torch.bool, device=env.device) if deploy else _c2_mask(env)
     asset, tilt, w = _imu_signals(env)
+    if P.tilt_ref_tau > 0.0:                                  # 상대 기울기 감지기(배포 가능: IMU 중력 방향만)
+        g = asset.data.projected_gravity_b
+        en0 = getattr(env, "_c2_enable", None)
+        en_now = en0 if en0 is not None else torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+        st["en_t"] = torch.where(en_now & ~fresh, st["en_t"] + env.step_dt, torch.zeros_like(st["en_t"]))
+        init = fresh | (st["gref"].norm(dim=-1) < 0.5) | (st["en_t"] < P.tilt_ref_init_s)
+        sensor0 = env.scene.sensors["contact_forces"]
+        both0 = (sensor0.data.net_forces_w[:, H._feet_body_ids(env), :].norm(dim=-1) > 5.0).all(dim=1)
+        upd = (st["mode"] == STAND) & both0 & (w < 0.1)
+        st["gref"] = update_gref(st["gref"], g, upd, init, env.step_dt, P.tilt_ref_tau)
+        tilt = tilt_dev_deg(g, st["gref"])
     hs = H._state(env)
     force_on = hs["dst_F_now"] > 0.0
     t = env.episode_length_buf.to(torch.float32) * env.step_dt
@@ -259,6 +294,8 @@ def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: d
     if P.stop_v > 0.0:
         v_est = (asset.data.root_lin_vel_b[:, :2] + P.kv_noise * torch.randn(env.num_envs, 2, device=env.device)).norm(dim=1)
     want = c2_core(st, tilt, w, armed, td_any, env.step_dt, P, v_est)
+    if getattr(env, "_c2_march", False):
+        want = torch.ones_like(want) if en is None else en.clone()     # 홀드(인계 전) 구간은 ge 0
     if getattr(env, "_ge_cmd", None) is not None:
         env._ge_cmd = torch.where(m2, want, env._ge_cmd)
         term = env.command_manager.get_term("base_velocity")

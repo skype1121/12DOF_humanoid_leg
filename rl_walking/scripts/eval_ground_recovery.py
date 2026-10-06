@@ -25,6 +25,7 @@ sys.path.insert(0, "/home/ryu/IsaacLab/scripts/reinforcement_learning/rsl_rl")
 import cli_args  # isort: skip  # noqa: E402
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, REPO)
+DATA = os.environ.get("EVAL_DATA_REPO", REPO)      # 1006: 체크포인트(logs/)·출력(log_picture/) 위치 — 워크트리 코드로 본 트리 자료를 쓸 때
 
 parser = argparse.ArgumentParser(description="지면 절차 평가: 홀드 사전검사 → 인계 → 동일 외란 → 회복")
 parser.add_argument("--task", type=str, default="Biped12-HangStand-G6-v0")
@@ -134,6 +135,11 @@ parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌�
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
 parser.add_argument("--sw_off", type=str, default="2.5,0.25,1.0,1.5", help="전환 끄기: 기울기 deg, |ω| rad/s 둘 다 미만 & 양발 접촉이 calm s 연속 & 켜진 뒤 최소 hold s")
 parser.add_argument("--out_tag", type=str, default="rec")
+parser.add_argument("--c2", action="store_true", help="1006 c2 평가 어댑터: 단일 W3 정책 + 환경 안 supervisor(w3_c2.c2_gait_update, 배포 의미) + W3 위상·ge 래치·스텝 추적기. "
+                    "회복 모드 = 실제 ge 1, 'cue 종료' = 첫 정지 요청(상태 조건/시간 초과), '서기 인계' = ge 0 래치 — CSV 열은 전환 평가와 같은 이름(stages_cmp·closure_s5 그대로)")
+parser.add_argument("--c2_arm", type=str, default="deploy", choices=("deploy", "march"), help="deploy = 감지기 켜짐(무장 항상 참) / march = 인계 뒤 ge 1 고정(C2CAL 제자리 걸음 흔들림)")
+parser.add_argument("--c2_params", type=str, default="", help="C2Params 덮어쓰기 'k=v,...'(C2_PARAMS env var 로 전달)")
+parser.add_argument("--c2_trace", action="store_true", help="C2CAL: 틱별 기울기·|ω_xy|·|v|·모드·ge·양발 접촉·생존을 log_picture/c2trace_<tag>.npz 로")
 parser.add_argument("--video", action="store_true", help="측면 카메라 프레임(10 Hz)·mp4 저장 + 힘 화살표 주석 (env --video_env)")
 parser.add_argument("--video_env", type=int, default=0)
 parser.add_argument("--video_every", type=int, default=5, help="프레임 간격 [틱]")
@@ -169,6 +175,23 @@ env_cfg.seed = agent_cfg.seed
 if args_cli.seed is not None:
     env_cfg.seed = int(args_cli.seed); agent_cfg.seed = int(args_cli.seed)
 env_cfg.events.push_robot = None                     # 외란은 이 스크립트가 동일하게 건다
+C2MODE = bool(args_cli.c2)
+if C2MODE:
+    if args_cli.switch_to:
+        raise SystemExit("--c2 는 단일 정책 평가(--switch_to 와 함께 쓰지 않음)")
+    os.environ["C2_ARM"] = args_cli.c2_arm; os.environ["W3_GAIT_ENABLE"] = "0"
+    if args_cli.c2_params:
+        os.environ["C2_PARAMS"] = args_cli.c2_params
+    from isaaclab.managers import EventTermCfg as _ETC  # noqa: E402
+    from rl_walking import w3 as _w3m, w3_c2 as _c2m  # noqa: E402
+    _evc = env_cfg.events
+    for _k in ("w3_cmd", "w3_gait", "w3_track", "gait_phase"):
+        if getattr(_evc, _k, None) is not None:
+            raise SystemExit(f"--c2: 평가 env 에 이미 {_k} 이벤트가 있음(위상 이중 갱신 방지) — 지면 평가 태스크(G11a 등)를 쓸 것")
+    _evc.w3_cmd = _ETC(func=_w3m.install_w3_cmd, mode="startup", params={"p_step": 0.0, "stage": 0})
+    _evc.w3_gait = _ETC(func=_c2m.c2_gait_update, mode="interval", interval_range_s=(0.0, 0.0), params={"f_step": 1.1, "c2": {}})
+    _evc.w3_track = _ETC(func=_w3m.w3_step_tracker, mode="interval", interval_range_s=(0.0, 0.0), params={})
+    print(f"[c2] 평가 어댑터: C2_ARM={args_cli.c2_arm} C2_PARAMS='{args_cli.c2_params}' — W3 위상·ge 래치·supervisor 이벤트 추가(외력 적용 뒤 순서)", flush=True)
 if getattr(env_cfg.events, "disturbance", None) is not None:      # G7: env 자체 외란 스케줄 끔(평가 외란은 --dist 로만)
     env_cfg.events.disturbance = None
 for _k in ("onset_hold_range", "onset_blend_range"):              # G7: env 온셋 인계 끔(이 스크립트의 홀드→체인 인계가 절차)
@@ -516,7 +539,7 @@ N = args_cli.num_envs
 
 policy = None; resume_path = "(hold: 액션 0 지속)"
 if not args_cli.hold:
-    log_root = os.path.join(REPO, "logs", "rsl_rl", agent_cfg.experiment_name)
+    log_root = os.path.join(DATA, "logs", "rsl_rl", agent_cfg.experiment_name)
     resume_path = get_checkpoint_path(log_root, agent_cfg.load_run, agent_cfg.load_checkpoint)
     runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
     runner.load(resume_path)
@@ -524,7 +547,7 @@ if not args_cli.hold:
 policy2 = None
 if args_cli.switch_to and policy is not None:
     _r2, _c2 = args_cli.switch_to.split(":")
-    _p2 = get_checkpoint_path(os.path.join(REPO, "logs", "rsl_rl", agent_cfg.experiment_name), _r2, _c2)
+    _p2 = get_checkpoint_path(os.path.join(DATA, "logs", "rsl_rl", agent_cfg.experiment_name), _r2, _c2)
     runner2 = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
     runner2.load(_p2); policy2 = runner2.get_inference_policy(device=dev)
     _SW_ON = [float(x) for x in args_cli.sw_on.split(",")]; _SW_OFF = [float(x) for x in args_cli.sw_off.split(",")]
@@ -536,6 +559,12 @@ if args_cli.switch_to and policy is not None:
     HOF = {}
     print(f"[switch] 주 정책 {resume_path} ↔ 회복 정책 {_p2} · 켜기 {_SW_ON} · 끄기 {_SW_OFF}", flush=True)
 
+if C2MODE:
+    _z_ = lambda: torch.zeros(N, device=dev)
+    sw_mode = torch.zeros(N, dtype=torch.bool, device=dev); swc_n = _z_(); sw_ticks = _z_(); sw_ticks_pre_dist = _z_(); swc_pre = _z_()
+    swc_first = torch.full((N,), float('nan'), device=dev); cue_ticks = _z_()
+    c2_req_n = _z_(); c2_to_n = _z_(); c2_cancel_n = _z_(); c2_latch_n = _z_(); c2_cue_timeout = _z_()
+    _C2TR = {k: [] for k in ("t_rel", "tilt", "w", "v", "vxy", "mode", "ge", "both", "alive")} if args_cli.c2_trace else None
 obs = env.get_observations()
 _OBS_EMA = []; _OBS_EMA_ST = {}
 if args_cli.obs_ema:
@@ -741,7 +770,7 @@ d_x0 = torch.full((N, D), float("nan"), device=dev); d_x1 = torch.full((N, D), f
 _VID = None
 if args_cli.video:
     from PIL import Image, ImageDraw  # noqa: E402
-    _vdir = os.path.join(REPO, "log_picture", f"video_{args_cli.out_tag}"); os.makedirs(_vdir, exist_ok=True)
+    _vdir = os.path.join(DATA, "log_picture", f"video_{args_cli.out_tag}"); os.makedirs(_vdir, exist_ok=True)
     _VID = {"dir": _vdir, "n": 0}
     _ve = int(args_cli.video_env); _vo = uenv.scene.env_origins[_ve]
     _cam_state = {}
@@ -778,8 +807,8 @@ prev_a = None; prev_cmd = None; prev_dcmd = None; _FROZEN = [None]
 pitch_tl = []; force_tl = []
 _DUMP = []
 if args_cli.dump_envs > 0:
-    os.makedirs(os.path.join(REPO, "log_picture"), exist_ok=True)
-    _DUMP = [open(os.path.join(REPO, "log_picture", f"recbb_{args_cli.out_tag}_env{k}.jsonl"), "w", encoding="utf-8") for k in range(min(args_cli.dump_envs, N))]
+    os.makedirs(os.path.join(DATA, "log_picture"), exist_ok=True)
+    _DUMP = [open(os.path.join(DATA, "log_picture", f"recbb_{args_cli.out_tag}_env{k}.jsonl"), "w", encoding="utf-8") for k in range(min(args_cli.dump_envs, N))]
 
 QUIET_W, QUIET_V, QUIET_QD, QUIET_TICKS = 0.15, 0.05, 0.30, 25
 
@@ -1059,6 +1088,8 @@ for i in range(STEPS):
             if _FROZEN[0] is None:
                 _FROZEN[0] = a.clone(); print(f"[freeze] t_rel={t_rel:.2f}s 정책 출력 고정", flush=True)
             a = _FROZEN[0]
+        if C2MODE:
+            uenv._c2_enable = torch.full((N,), i >= STEPS_PRE, dtype=torch.bool, device=dev)   # 홀드(인계 전)에는 감지 켜짐 금지
         obs, _, dones, _ = env.step(a)
         if _OBS_EMA:
             _po = obs["policy"]
@@ -1073,6 +1104,33 @@ for i in range(STEPS):
     qd_rms = (robot.data.joint_vel ** 2).mean(1).sqrt()
     f = _cs.data.net_forces_w[:, [_fl, _fr], :].norm(dim=-1); contact = f > 5.0
     both = contact[:, 0] & contact[:, 1]
+    if C2MODE:      # ── c2 supervisor 사건 → 전환 평가와 같은 이름의 계측 ──
+        _c2s = uenv._c2; _md = _c2s["mode"]; _gen = uenv._ge.clone()
+        _t0d = min(d.t0 for d in dists) if dists else None
+        if i >= STEPS_PRE:
+            _non = _c2s["ev_trig"] > 0.5
+            swc_n += (_non & alive).float()
+            swc_first = torch.where(_non & torch.isnan(swc_first), torch.full_like(swc_first, t_rel), swc_first)
+            sw_mode = _gen
+            sw_ticks += (sw_mode & alive).float()
+            if dists and t_rel < _t0d:
+                swc_pre += _non.float(); sw_ticks_pre_dist += (sw_mode & alive).float()
+            if (not dists) or t_rel >= _t0d:
+                _rq = (_c2s["ev_req"] + _c2s["ev_timeout"]) > 0.5
+                _ce_new = _rq & torch.isnan(cue_end_rec)
+                cue_end_v = torch.where(_ce_new, robot.data.root_lin_vel_w[:, :2].norm(dim=-1), cue_end_v)
+                cue_end_w = torch.where(_ce_new, robot.data.root_ang_vel_b[:, :2].norm(dim=-1), cue_end_w)
+                c2_cue_timeout = torch.where(_ce_new, _c2s["ev_timeout"], c2_cue_timeout)
+                cue_end_rec = torch.where(_ce_new, torch.full_like(cue_end_rec, t_rel), cue_end_rec)
+                rec_off_t = torch.where((_c2s["ev_latch"] > 0.5) & torch.isnan(rec_off_t), torch.full_like(rec_off_t, t_rel), rec_off_t)
+                c2_req_n += _c2s["ev_req"] * alive.float(); c2_to_n += _c2s["ev_timeout"] * alive.float()
+                c2_cancel_n += _c2s["ev_cancel"] * alive.float(); c2_latch_n += _c2s["ev_latch"] * alive.float()
+                cue_ticks += ((_md == 1) & alive & torch.isnan(cue_end_rec)).float()      # 첫 정지 요청 전 REC 시간 = 'cue 시간'
+        if _C2TR is not None:
+            _pgt = robot.data.projected_gravity_b
+            _C2TR["t_rel"].append(t_rel); _C2TR["tilt"].append(torch.rad2deg(torch.acos((-_pgt[:, 2]).clamp(-1.0, 1.0))).cpu())
+            _C2TR["w"].append(robot.data.root_ang_vel_b[:, :2].norm(dim=-1).cpu()); _C2TR["v"].append(robot.data.root_lin_vel_w[:, :2].norm(dim=-1).cpu()); _C2TR["vxy"].append(robot.data.root_lin_vel_w[:, :2].cpu())
+            _C2TR["mode"].append(_md.cpu().to(torch.int8)); _C2TR["ge"].append(_gen.cpu()); _C2TR["both"].append(both.cpu()); _C2TR["alive"].append((alive & ~term).cpu())
     if i >= STEPS_PRE:
         _ob = min(int(t_rel), NB_OSC - 1); _ok = alive & ~term
         osc_max[:, _ob] = torch.where(_ok, torch.maximum(osc_max[:, _ob], pitch), osc_max[:, _ob])
@@ -1119,10 +1177,10 @@ for i in range(STEPS):
             _flag = (_rev >= 9) & (_p2p >= math.radians(2.5))      # (N, J)
             osc_rev_max = torch.maximum(osc_rev_max, _rev.max(1).values * alive.float())
             osc_flag_any = osc_flag_any | (_flag.any(1) & alive)
-            if policy2 is not None:
+            if policy2 is not None or C2MODE:
                 osc_flag_rec = osc_flag_rec | (_flag.any(1) & alive & sw_mode)
             osc_flag_hipf = osc_flag_hipf | (_flag[:, _HIPF].any(1) & alive)
-            if policy2 is not None:
+            if policy2 is not None or C2MODE:
                 osc_flag_post = osc_flag_post | (_flag.any(1) & alive & ~sw_mode & ~torch.isnan(rec_off_t))
     a_ = alive.clone()
     newly = a_ & term
@@ -1350,6 +1408,12 @@ P = L.append
 P("=" * 100)
 P(f"지면 절차 평가 — {args_cli.task} | {'홀드(비교 기준)' if policy is None else resume_path}")
 P("인자: " + " ".join(sys.argv[1:]))
+if C2MODE:
+    _m = pre_pass; _nt = int(_m.sum())
+    P(f"[c2 supervisor {args_cli.c2_arm}] 회복(ge 1) 시간 비율 {100*float(sw_ticks[_m].sum())/max(1.0, _nt*T_after*50):.1f} % · 켜짐 env 평균 {float(swc_n[_m].mean()):.2f} · 켜진 env {100*float((swc_n[_m]>0).float().mean()):.1f} %"
+      + (f" · 외란 전 켜짐(오탐) env {100*float((swc_pre[_m]>0).float().mean()):.1f} %" if dists else "")
+      + f" | 외란 뒤 정지 요청 env 평균 {float(c2_req_n[_m].mean()):.2f} · 시간 초과 {float(c2_to_n[_m].mean()):.2f} · 취소 {float(c2_cancel_n[_m].mean()):.2f} · 래치 {float(c2_latch_n[_m].mean()):.2f}"
+      + f" · 첫 정지 요청이 시간 초과인 env {100*float(c2_cue_timeout[_m].mean()):.1f} %")
 if policy2 is not None:
     _m = pre_pass
     P(f"[전환] 회복 정책 사용 시간 비율 {100*float(sw_ticks[_m].sum())/max(1.0, float(_m.sum())*T_after*50):.1f} % · 켜짐 횟수 env 평균 {float(swc_n[_m].mean()):.2f} · 한 번이라도 켜진 env {100*float((swc_n[_m]>0).float().mean()):.1f} % · 첫 켜짐 시각 중앙 {float(swc_first[_m & ~torch.isnan(swc_first)].median()) if bool((_m & ~torch.isnan(swc_first)).any()) else float('nan'):.2f} s"
@@ -1419,20 +1483,20 @@ for t, p_, al, fN, bc in pitch_tl:
 P(f"[종료 조건] {_TERM_CNT if _TERM_CNT else '없음'}")
 txt = "\n".join(L)
 print(txt)
-os.makedirs(os.path.join(REPO, "log_picture"), exist_ok=True)
-with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}.txt"), "w", encoding="utf-8") as fh:
+os.makedirs(os.path.join(DATA, "log_picture"), exist_ok=True)
+with open(os.path.join(DATA, "log_picture", f"ground_recovery_{args_cli.out_tag}.txt"), "w", encoding="utf-8") as fh:
     fh.write(txt + "\n")
 import csv  # noqa: E402
 if policy2 is not None and HOF:
     import numpy as _np
-    _np.savez_compressed(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}_handoff.npz"),
+    _np.savez_compressed(os.path.join(DATA, "log_picture", f"ground_recovery_{args_cli.out_tag}_handoff.npz"),
                          fell=fell.cpu().numpy(), pre_pass=pre_pass.cpu().numpy(), monitor=bool(args_cli.sw_monitor), obs_layout=json.dumps(_OBS_LAYOUT) if "_OBS_LAYOUT" in dir() else "",
                          **{k: v.cpu().numpy() for k, v in HOF.items()})
-with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}_envs.csv"), "w", newline="") as fh:
+with open(os.path.join(DATA, "log_picture", f"ground_recovery_{args_cli.out_tag}_envs.csv"), "w", newline="") as fh:
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s", "cue_end_t", "cue_time_s", "to_first_t", "td_first_t", "load_first_t", "to_after_cue", "drift_after_cue_cm", "rec_off_t", "osc_flag_post", "to_after_off", "cue_end_v", "cue_end_w"] if policy2 is not None else []) + ["td1_t", "td1_mf_cm", "td1_ml_cm", "td1_len_cm", "td1_pitch", "td1_prate", "td2_t", "td2_mf_cm", "td2_ml_cm", "td2_len_cm", "td2_pitch", "td2_prate", "rest_t", "end_dq_deg", "end_dh_cm", "end_dtilt_deg", "end_w"])
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s", "cue_end_t", "cue_time_s", "to_first_t", "td_first_t", "load_first_t", "to_after_cue", "drift_after_cue_cm", "rec_off_t", "osc_flag_post", "to_after_off", "cue_end_v", "cue_end_w"] if (policy2 is not None or C2MODE) else []) + ["td1_t", "td1_mf_cm", "td1_ml_cm", "td1_len_cm", "td1_pitch", "td1_prate", "td2_t", "td2_mf_cm", "td2_ml_cm", "td2_len_cm", "td2_pitch", "td2_prate", "rest_t", "end_dq_deg", "end_dh_cm", "end_dtilt_deg", "end_w"] + (["c2_req_n", "c2_timeout_n", "c2_cancel_n", "c2_latch_n", "c2_first_req_timeout"] if C2MODE else []))
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -1454,7 +1518,7 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
                 (round(100 * float(td_sep_s[e] / td_sep_n[e]), 1) if float(td_sep_n[e]) > 0 else ""), (round(100 * float(td_sep_min[e]), 1) if float(td_sep_min[e]) < 8 else ""),
                 round(float(_RAMP[0][e]), 3), round(float(_RAMP[1][e]), 2), round(float(_RAMP[2][e]), 2),
                 int(osc_rev_max[e]), int(osc_flag_any[e]), int(osc_flag_rec[e]), int(osc_flag_hipf[e])]
-        if policy2 is not None:
+        if policy2 is not None or C2MODE:
             row += [float(swc_n[e]), (round(float(swc_first[e]), 2) if not math.isnan(float(swc_first[e])) else ""), float(swc_pre[e]), round(float(sw_ticks[e]) / 50.0, 2)]
             _fx_ = lambda v: "" if math.isnan(float(v)) else round(float(v), 2)
             _ct_ = (float(cue_ticks[e]) / 50.0) if "cue_ticks" in dir() else 0.0
@@ -1462,10 +1526,19 @@ with open(os.path.join(REPO, "log_picture", f"ground_recovery_{args_cli.out_tag}
             row += [_fx_(cue_end_rec[e]), round(_ct_, 2), _fx_(to_first_t[e]), _fx_(td_first_t[e]), _fx_(load_first_t[e]), float(to_after_cue[e]), (round(_dr_, 1) if _dr_ != "" else ""), _fx_(rec_off_t[e]), int(osc_flag_post[e]), float(to_after_off[e]), _fx_(cue_end_v[e]), _fx_(cue_end_w[e])]
         row += [("" if math.isnan(float(TDM[k][e])) else round(float(TDM[k][e]), 2)) for k in ('t1','mf1','ml1','len1','p1','pr1','t2','mf2','ml2','len2','p2','pr2')]
         row += [("" if math.isnan(float(x[e])) else round(float(x[e]), 3)) for x in (rest_t, end_dq, end_dh, end_dt, end_w)]
+        if C2MODE:
+            row += [float(c2_req_n[e]), float(c2_to_n[e]), float(c2_cancel_n[e]), float(c2_latch_n[e]), int(c2_cue_timeout[e])]
         wcsv.writerow(row)
+if C2MODE and _C2TR is not None:
+    import numpy as _np2
+    _np2.savez_compressed(os.path.join(DATA, "log_picture", f"c2trace_{args_cli.out_tag}.npz"), t_rel=_np2.array(_C2TR["t_rel"], dtype=_np2.float32),
+                          **{k: torch.stack(v, 0).numpy() for k, v in _C2TR.items() if k != "t_rel"}, pre_pass=pre_pass.cpu().numpy(),
+                          dist_t0=_np2.array([d.t0 for d in dists], dtype=_np2.float32), dist_tend=_np2.array([d.t_end for d in dists], dtype=_np2.float32),
+                          steps_pre=STEPS_PRE, arm=args_cli.c2_arm, c2_params=args_cli.c2_params, ckpt=str(resume_path))
+    print(f"[c2_trace] log_picture/c2trace_{args_cli.out_tag}.npz", flush=True)
 if _VID is not None and _VID["n"] > 0:
     import subprocess  # noqa: E402
-    _mp4 = os.path.join(REPO, "log_picture", f"video_{args_cli.out_tag}.mp4")
+    _mp4 = os.path.join(DATA, "log_picture", f"video_{args_cli.out_tag}.mp4")
     try:
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(50 // max(1, args_cli.video_every)), "-i", os.path.join(_VID["dir"], "f%05d.png"), "-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", _mp4], check=True, timeout=300)
         print(f"[video] {_mp4} ({_VID['n']} frames, {50 // max(1, args_cli.video_every)} fps)")

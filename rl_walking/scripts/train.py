@@ -51,6 +51,10 @@ parser.add_argument("--c5_arm_s", type=float, default=1.0,
                     help="PA1: 에피소드 시작 뒤 감지기 무장 지연[s](그동안 G21a 고정, 스폰 과도 오탐 방지)")
 parser.add_argument("--c5_no_rescale", action="store_true", default=False,
                     help="PA1: mask advantage 표본비 배율(전/mask, 상한 10) 끔 — 기본은 켬(손실 평균 희석 보정)")
+parser.add_argument("--init_expand", type=str, default="",
+                    help="W3-B(1006): 관측 확장 웜스타트 '<run>:<model_N.pt>'(실험 디렉터리 기준) 또는 .pt 경로. 체크포인트 run 의 "
+                         "params/env.yaml 과 새 env 관측 항을 이름으로 대조 — 기존 항 열 복사·새 항 열 0, 나머지 층 그대로, "
+                         "optimizer 새로 시작. 비우면 끔(기존 동작 그대로). --resume 과 동시 사용 불가. rl_walking/obs_expand.py")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -241,6 +245,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
     # write git state to logs
     runner.add_git_repo_to_log(__file__)
+    if args_cli.init_expand:
+        # W3-B: 관측 확장 웜스타트 (꺼져 있으면 이 블록 전체를 건너뜀)
+        if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation" or args_cli.distributed:
+            raise ValueError("--init_expand 는 --resume·Distillation·분산 학습과 함께 쓸 수 없음")
+        from rl_walking.obs_expand import init_expand_runner
+        init_expand_runner(runner, env, args_cli.init_expand, log_root_path, log_dir)
     # load the checkpoint
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")

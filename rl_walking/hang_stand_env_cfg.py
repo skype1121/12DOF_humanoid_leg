@@ -3517,3 +3517,14 @@ class Biped12HangStandW3S4EnvCfg(Biped12HangStandW3S3s2EnvCfg):
         self.curriculum = _W3S4CurriculumCfg()
         self.curriculum.w3_vy.params = {"start_stage": int(self.VY_STAGE)}
         self.curriculum.w3_wz.params = {"start_stage": int(self.WZ_STAGE)}
+
+
+@configclass
+class Biped12HangStandW3S3dEnvCfg(Biped12HangStandW3S3s2EnvCfg):
+    """W3S3 d (1007 새벽): W3S3s2(회전, 헤딩 고리 120 s 요 1.7°) 보상 + W3S2d 의 학습 지연 1–5 틱(지연 4–5 낙상 38→26·80→35).
+    두 검증된 변경의 합, 시작 = W3S2d 끝. 회전은 +100–400 반복에서 충분(후반 이득 과대·낙상 증가) → 500 반복, 이른 체크포인트 선택."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.min_delay_steps = 1
+        self.actions.joint_pos.max_delay_steps = 5

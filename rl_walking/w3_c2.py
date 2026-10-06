@@ -59,7 +59,8 @@ class C2Params:
                                   #     중앙 0.32 m/s 라 정지 조건이 영원히 안 열림 → 주기 평균(제자리 p90 0.058 vs 회복 p90 0.25–0.34 m/s)로 분리됨
     tmax_s: float = 4.0           # REC 시간 초과 → 정지 요청
     stop_td_k: int = 0            # 반사실 정지 시점 스윕(1006 문헌 권고 3): > 0 이면 정지 요청 = 회복 유효 착지 k 번째(상태 조건·취소 무시, 시간 초과는 유지)
-    stop_oracle: float = 0.0      # > 0 이면 정지 요청 = 오라클(참 ξ_eq 가 양발 지지영역 안에 처음 들어온 착지, 특권 — 진단 전용)
+    stop_oracle: float = 0.0      # 1 = 오라클(착지 후 참 ξ_eq ∈ 양발 지지영역 — 1006 스윕에서 언제나 첫 착지 = 약함), 2 = 속도 오라클(회복 착지 뒤 0.5 s 안
+                                  #     참 주기 평균 속도 |v̄_T| < 0.07, 잡음 없음 — '운동량 소멸' 특권 기준). 진단 전용
     cancel_calm: float = 0.0      # > 0: STOPREQ 취소 조건 = 감지기 발화(종전) 대신 '정지 규칙 미충족'(창 max|ω|·기울기·|v̄| 중 하나라도 문턱 초과).
                                   #     1006 C2EVAL(c2v): 감지 문턱(4°·0.5)을 제자리 걸음 흔들림이 늘 넘어 요청의 90 % 가 취소됨(b18 요청 8.3·취소 7.6·래치 0.7)
     refr_s: float = 0.5           # POST 진입 뒤 재켜짐 불응 [s]
@@ -93,7 +94,8 @@ def new_state(N: int, dev, P: C2Params, dt: float) -> dict:
             # 착지 사건 보조(발별): 회복 중 착지였는지, 포획 목표 오차
             "td_rec": torch.zeros(N, 2, dtype=torch.bool, device=dev), "cap_err": z(N, 2), "cap_mg": z(N, 2), "cap_df": z(N, 2), "phi_b": z(N, 2), "phi_a": z(N, 2), "oracle_ok": torch.zeros(N, dtype=torch.bool, device=dev),
             "gref": torch.zeros(N, 3, device=dev), "en_t": z(N), "K": K, "D": D,
-            "vbuf": z(N, max(1, int(round(P.v_box_s / dt))), 2), "vi": 0, "kvb": z(N, 2), "kvlf": z(N, 2)}
+            "vbuf": z(N, max(1, int(round(P.v_box_s / dt))), 2), "vi": 0, "kvb": z(N, 2), "kvlf": z(N, 2),
+            "vtbuf": z(N, max(2, int(round((1.0 / 1.1) / dt))), 2), "vti": 0, "since_rtd": torch.full((N,), 1e9, device=dev)}
 
 
 def reset_envs(st: dict, mask: torch.Tensor):
@@ -401,7 +403,16 @@ def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: d
         v_est = st["vbar"]
     elif P.stop_v > 0.0:
         v_est = (asset.data.root_lin_vel_b[:, :2] + P.kv_noise * torch.randn(env.num_envs, 2, device=env.device)).norm(dim=1)
-    want = c2_core(st, tilt, w, armed, td_any, env.step_dt, P, v_est, oracle_ok=st["oracle_ok"])
+    orc = st["oracle_ok"]
+    if P.stop_oracle >= 2.0:                                    # 속도 오라클(참값, 특권): 회복 착지 뒤 0.5 s 안 & 참 주기 평균 속도 < 0.07
+        vt = asset.data.root_lin_vel_w[:, :2]
+        st["vtbuf"][fresh] = vt[fresh].unsqueeze(1)
+        st["vtbuf"][:, st["vti"]] = vt; st["vti"] = (st["vti"] + 1) % st["vtbuf"].shape[1]
+        rtd = st["td_rec"].any(1)
+        st["since_rtd"] = torch.where(rtd, torch.zeros_like(st["since_rtd"]), st["since_rtd"] + env.step_dt)
+        st["since_rtd"] = torch.where(fresh, torch.full_like(st["since_rtd"], 1e9), st["since_rtd"])
+        orc = (st["since_rtd"] <= 0.5) & (st["vtbuf"].mean(1).norm(dim=-1) < 0.07)
+    want = c2_core(st, tilt, w, armed, td_any, env.step_dt, P, v_est, oracle_ok=orc)
     if getattr(env, "_c2_march", False):
         want = torch.ones_like(want) if en is None else en.clone()     # 홀드(인계 전) 구간은 ge 0
     if getattr(env, "_ge_cmd", None) is not None:

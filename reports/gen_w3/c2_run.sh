@@ -11,7 +11,7 @@ export OMNI_KIT_ACCEPT_EULA=YES PYTHONPATH=$WT EVAL_DATA_REPO=$DATA W3EVAL_REPO=
 LOCK=${EVAL_LOCK:-/tmp/claude-1000/-home-ryu-humanoid-leg-test1/e53dc80b-9c62-45a7-a400-3cd12071b2f1/scratchpad/eval17.gpu.lock}
 LOGD=${C2_LOGDIR:-/tmp/claude-1000/-home-ryu-humanoid-leg-test1/e53dc80b-9c62-45a7-a400-3cd12071b2f1/scratchpad/c2logs}; mkdir -p $LOGD
 declare -A X=( [nd]="" [sf15]="--dist ramp:f:2:15:0.5:1.0" [fs80]="--dist push:f:2:80:0.1" [fi40]="--dist push:f:2:40:0.2" [b18]="--dist push:b:2:18:0.3" )
-COMMON="--task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --last_action_ema 0.27 --obs_ema joint_vel:0.25"
+COMMON="--task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --last_action_ema 0.27 --obs_ema joint_vel:0.25 --contact_ver v2"   # 1006 밤: 접촉 관측 v2(학습·배포 계약, KABS 와 같음) — 그 전 c2 평가는 v1
 
 wait_mem() { while true; do u=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1); [ "$u" -le 10500 ] && return; sleep 20; done; }
 bad_log() { grep -aqE 'Unable to allocate|PhysX.*(error|Error).*(memory|alloc)|CUDA error|out of memory|Failed to allocate' "$1"; }
@@ -59,9 +59,19 @@ unit)
     run_one "[ -f $f ]" $LOGD/$t.l \
       /home/ryu/IsaacLab/isaaclab.sh -p $WT/rl_walking/scripts/c2_landscape.py --headless --task ${UNIT_TASK:-Biped12-HangStand-W3C2-v0} --load_run $RUN --checkpoint $CK --arm $B --seed $SD --out_tag $t
   done ;;
+ke)   # KE 기준선 재측정(KABS 인자 그대로, 고친 평가기) — c2_run.sh ke - - <태그접두> <seed...>
+  for SD in "$@"; do for C in ${EVAL_CONDS:-nd sf15 fs80 fi40 b18}; do
+    t=${PFX}_${C}_s${SD}; f=$DATA/log_picture/ground_recovery_${t}.txt; rm -f $f
+    run_one "grep -q '사전 검사(무개입 자립 [0-9.]*s) 통과: [1-9]' $f 2>/dev/null && [ -f $DATA/log_picture/ground_recovery_${t}_envs.csv ]" $LOGD/$t.l \
+      /home/ryu/IsaacLab/isaaclab.sh -p $WT/rl_walking/scripts/eval_ground_recovery.py --headless --task Biped12-HangStand-G11a-v0 --num_envs 128 \
+      --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --precheck_s 3 --after_s 8 --seed $SD --enc_obs v2 --contact_real \
+      --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 \
+      --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --delay_steps 2,2 --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 \
+      --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --contact_ver v2 ${X[$C]} --out_tag $t
+  done; done ;;
 sweep)
   SD=$1
-  for CUE in B3 B6; do for spec in k1:stop_td_k=1 k2:stop_td_k=2 k3:stop_td_k=3 k4:stop_td_k=4 or:stop_oracle=1; do
+  for CUE in B3 B6; do for spec in ${SWEEP_SPECS:-k1:stop_td_k=1 k2:stop_td_k=2 k3:stop_td_k=3 k4:stop_td_k=4 or:stop_oracle=1 ov:stop_oracle=2}; do
     IFS=: read nm PRM <<< "$spec"
     t=${PFX}_${CUE}_${nm}_s${SD}; f=$DATA/log_picture/c2unit_${t}.npz; rm -f $f
     run_one "[ -f $f ]" $LOGD/$t.l \

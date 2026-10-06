@@ -28,8 +28,9 @@ p.add_argument("--out_tag", default="c2unit")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
-ARM_ENV = {"B1": ("stand", ""), "B2": ("", "min_td=1e6,tmax_s=1e9"), "B3": ("", ""), "B4": ("", "min_rec_s=0,stop_w=1e9,stop_tilt=1e9,stop_v=1e9"),
-           "B5": ("", "min_td=1e6"), "B6": ("", ""), "X": ("", a.c2_params)}[a.arm]
+# 1006 밤: B2/B5 는 stop_td_k=0 을 명시(고정 k 설정에서도 의미 유지), B4 = 첫 회복 착지에서 정지(stop_td_k 1 — 종전 정의와 같은 의미, 강제·취소 없음)
+ARM_ENV = {"B1": ("stand", ""), "B2": ("", "stop_td_k=0,stop_oracle=0,min_td=1e6,tmax_s=1e9"), "B3": ("", ""), "B4": ("", "stop_td_k=1"),
+           "B5": ("", "stop_td_k=0,stop_oracle=0,min_td=1e6"), "B6": ("", ""), "X": ("", a.c2_params)}[a.arm]
 CUE = a.arm == "B6" or (a.arm == "X" and a.cue)
 for k in ("C2_ARM", "C2_PARAMS"):
     os.environ.pop(k, None)
@@ -75,12 +76,16 @@ for n_, d_ in zip(_nm, _dm):
         sz *= int(v_)
     LAY[n_] = (_o, _o + sz); _o += sz
 VC = LAY["velocity_commands"]
+SB_TERMS = {}
+for _nm in ("track_lin_vel_xy_exp", "track_ang_vel_z_exp", "survive_after_release"):
+    _cf = RM._term_cfgs[names.index(_nm)]
+    SB_TERMS[_nm] = (_cf.params["func"], dict(_cf.params.get("params") or {}), float(_cf.weight))
 print(f"[c2unit] {a.task} · {ck} · 팔 {a.arm} {ARM_ENV} · env {N} · seed {a.seed} · 보상 항 {len(names)} · 관측 {_o} · velocity_commands {VC}", flush=True)
 
 z = lambda *s: torch.zeros(*s, device=dev)
 first_ep = torch.ones(N, dtype=torch.bool, device=dev)       # 첫 에피소드 진행 중
 fell = torch.zeros(N, dtype=torch.bool, device=dev); t_fall = torch.full((N,), float("nan"), device=dev)
-S = {k: z(N) for k in ("other_w", "nom_w", "cap_w", "capm_w", "capd_w", "settle_w", "nom_all", "cap_all", "settle_all", "rm_place_all",
+S = {k: z(N) for k in ("other_w", "nom_w", "cap_w", "capm_w", "capd_w", "standbase_w", "settle_w", "nom_all", "cap_all", "settle_all", "rm_place_all",
                        "n_rec_td", "cap_raw_rec", "nom_raw_rec", "mg_raw_rec", "df_raw_rec", "n_td_req", "n_td_w", "n_valid_w", "trig_w", "req_w", "timeout_w", "cancel_w", "latch_w",
                        "settle_ev_w", "trig_all", "rec_ticks_w", "fell_w", "fell_pre", "drift_w", "to_after_req", "req_first_t", "latch_first_t")}
 S["req_first_t"][:] = float("nan"); S["latch_first_t"][:] = float("nan")
@@ -123,8 +128,14 @@ for i in range(T_STEPS):
         stl = st["ev_settle"] * W_SETTLE
         capm = C.c2_place_reward(U, sig=SIG, sig_cap=SIG_CAP, cap_mode="margin") * W_PLACE     # 여유형 흐름(설정과 무관하게 함께 채점)
         capd = C.c2_place_reward(U, sig=SIG, sig_cap=SIG_CAP, cap_mode="diff") * W_PLACE       # 차분형 흐름
+        # R1c(숨기 유인 해소 반사실): 회복 ge 1 동안에도 서기 기본 보상(상태 읽기만 하는 항 — 명령 추종 2개·생존)을 유지했다면
+        sb = torch.zeros(N, device=dev)
+        rec_on = W3._ge(U) & (H._g22(U)["cat"] > 0.5)
+        for _nm, (_f, _p, _w) in SB_TERMS.items():
+            sb = sb + _f(U, **H._resolve_nested(U, _p)) * _w
+        sb = sb * rec_on.float()
         m = inw.float()
-        S["other_w"] += oth * m * dt; S["nom_w"] += nom * m * dt; S["cap_w"] += cap * m * dt; S["capm_w"] += capm * m * dt; S["capd_w"] += capd * m * dt; S["settle_w"] += stl * m * dt
+        S["other_w"] += oth * m * dt; S["nom_w"] += nom * m * dt; S["cap_w"] += cap * m * dt; S["capm_w"] += capm * m * dt; S["capd_w"] += capd * m * dt; S["standbase_w"] += sb * m * dt; S["settle_w"] += stl * m * dt
         lv = live.float()
         S["nom_all"] += nom * lv * dt; S["cap_all"] += cap * lv * dt; S["settle_all"] += stl * lv * dt; S["rm_place_all"] += sr[:, i_place] * lv * dt
         S["trig_all"] += st["ev_trig"] * lv

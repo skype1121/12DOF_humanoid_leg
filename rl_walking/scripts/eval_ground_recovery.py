@@ -757,9 +757,6 @@ pr_q0 = None; pr_rp0 = None; pr_h0 = None; pr_hold = torch.zeros(N, device=dev);
 ab_pitch = torch.full((N,), float('nan'), device=dev); ab_roll = torch.full((N,), float('nan'), device=dev); ab_h = torch.full((N,), float('nan'), device=dev)
 ab_dqn = torch.full((N,), float('nan'), device=dev); ab_both = torch.zeros(N, device=dev); nrm_hold = torch.zeros(N, device=dev); nrm_t = torch.full((N,), float('nan'), device=dev)
 abn_ticks = torch.zeros(N, device=dev); post_ticks = torch.zeros(N, device=dev)   # 1006 승윤님 회복 체인: 절대 자세(수평·명목 관절) 기준
-ab_pitch = torch.full((N,), float('nan'), device=dev); ab_roll = torch.full((N,), float('nan'), device=dev); ab_h = torch.full((N,), float('nan'), device=dev)
-ab_dqn = torch.full((N,), float('nan'), device=dev); ab_both = torch.zeros(N, device=dev); nrm_hold = torch.zeros(N, device=dev); nrm_t = torch.full((N,), float('nan'), device=dev)
-abn_ticks = torch.zeros(N, device=dev); post_ticks = torch.zeros(N, device=dev)   # 1006 승윤님 회복 체인: 절대 자세(수평·명목 관절) 기준
 end_dq = torch.full((N,), float('nan'), device=dev); end_dh = torch.full((N,), float('nan'), device=dev); end_dt = torch.full((N,), float('nan'), device=dev); end_w = torch.full((N,), float('nan'), device=dev)
 # 1005 ③a 진단: 외란 뒤 1·2번째 착지의 캡처 여유(발 − ξ, 몸통 앞/왼축, cm)·걸음 길이·시각·피치·피치율
 _MASS = robot.root_physx_view.get_masses().to(dev).float(); _MTOT = _MASS.sum(-1, keepdim=True)
@@ -1296,17 +1293,6 @@ for i in range(STEPS):
                 nrm_t = torch.where((nrm_hold >= 0.5) & torch.isnan(nrm_t), torch.full_like(nrm_t, t_rel - min(d.t0 for d in dists)), nrm_t)
             if (not dists and t_rel >= 3.0) or (dists and t_rel >= max(d.t0 for d in dists) + 1.0):
                 _calm = _ok_ & (_w3 < 0.2)                                   # 조용한데 자세 비정상 = 괴상한 자세 체류
-                post_ticks += _calm.float(); abn_ticks += (_calm & ~_nrm).float()
-            ab_pitch = torch.where(_ok_, _pp3, ab_pitch); ab_roll = torch.where(_ok_, _rr3, ab_roll); ab_h = torch.where(_ok_, robot.data.root_pos_w[:, 2], ab_h)
-            ab_dqn = torch.where(_ok_, _dqn, ab_dqn); ab_both = torch.where(_ok_, _bothc.float(), ab_both)
-            # 1006 절대 기준: 수평(피치·롤 0)·명목 관절(default_joint_pos)·높이·양발·각속도. "정상 자세" = |피치|·|롤| < 3° · |ω_xy| < 0.2 · 양발 · 명목 관절 평균 편차 < 5° · 높이 ≥ 외란 전 − 2 cm, 0.5 s 지속
-            _dqn = torch.rad2deg((robot.data.joint_pos - robot.data.default_joint_pos).abs()).mean(-1)
-            _nrm = _ok_ & (_pp3.abs() < 3.0) & (_rr3.abs() < 3.0) & (_w3 < 0.2) & _bothc & (_dqn < 5.0) & (_dh3 > -2.0)
-            nrm_hold = torch.where(_nrm, nrm_hold + 0.02, torch.zeros_like(nrm_hold))
-            if dists and t_rel >= max(d.t0 for d in dists) + 0.3:
-                nrm_t = torch.where((nrm_hold >= 0.5) & torch.isnan(nrm_t), torch.full_like(nrm_t, t_rel - min(d.t0 for d in dists)), nrm_t)
-            if (not dists and t_rel >= 3.0) or (dists and t_rel >= max(d.t0 for d in dists) + 1.0):
-                _calm = _ok_ & (_w3 < 0.2)                                   # 균형은 잡았는데(조용) 자세가 비정상 = 괴상한 자세 체류
                 post_ticks += _calm.float(); abn_ticks += (_calm & ~_nrm).float()
             ab_pitch = torch.where(_ok_, _pp3, ab_pitch); ab_roll = torch.where(_ok_, _rr3, ab_roll); ab_h = torch.where(_ok_, robot.data.root_pos_w[:, 2], ab_h)
             ab_dqn = torch.where(_ok_, _dqn, ab_dqn); ab_both = torch.where(_ok_, _bothc.float(), ab_both)

@@ -3329,6 +3329,14 @@ class Biped12HangStandW3C2vdEnvCfg(Biped12HangStandW3C2vEnvCfg):
 
 
 @configclass
+class Biped12HangStandW3C2k2EnvCfg(Biped12HangStandW3C2vdEnvCfg):
+    """c2k2 (1006 밤, 단순화): W3C2vd 와 같되 정지 요청 = **회복 유효 착지 2 번째**(stop_td_k 2 — 상태 조건·속도 추정기 불필요, 시간 초과 4 s 유지).
+    근거: 정지 시점 스윕(seed 1·2) — 고정 2 보 낙상이 상태 정지·오라클과 같은 급(충격 B3 24 vs 28 %, 램프 74 vs 78 %). 배포 = IMU 감지기(상대 기울기) + 접촉 0/1 착지 수만."""
+
+    C2_EXTRA = "v_box_s=0.909,stop_w=2.0,stop_tilt=12.5,tilt_ref_tau=10,cancel_calm=1,kv_bias=0.03,kv_lf=0.02,stop_td_k=2"
+
+
+@configclass
 class Biped12HangStandW3C2iEnvCfg(Biped12HangStandW3C2EnvCfg):
     """c2i 변형: critic 에 ICP−CoM(요 프레임 2차원, 이력 5) 추가 — critic 입력 335 → 345, **--init_expand 필요**(resume 불가). actor 불변."""
 

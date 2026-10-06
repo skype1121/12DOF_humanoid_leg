@@ -152,6 +152,16 @@ for _fld, _sfx in (("capm_w", "m"), ("capd_w", "d")):
 if R["B1"] is not None and R["B3"] is not None:      # 레드팀 d: 서기만(B1) 이 회복(B3) 보다 R1 이 높으면 감지 문턱 아래로 숨는 유인
     dd, se = pdiff("B1", "B3", r1, dist)
     L.append(f"[유인 점검] R1 B1(서기만) − B3 짝 {dd:+.3f} ± {se:.3f} — 양수면 회복 모드 진입을 피하는(기울기를 감지 문턱 아래로 묶는) 유인 가설. 낙상 B1 {100*R['B1']['fell_w'][dist].mean():.1f} % vs B3 {100*R['B3']['fell_w'][dist].mean():.1f} %")
+if "standbase_w" in base and R["B1"] is not None and R["B3"] is not None:      # R1c: 회복 중 서기 기본 보상(명령 추종 2·생존) 유지 반사실
+    r1c = lambda X: X["other_w"] + X["cap_w"] + X["settle_w"] + X["standbase_w"]
+    dd, se = pdiff("B1", "B3", r1c, dist)
+    L.append(f"[유인 점검 R1c] B1 − B3 짝 {dd:+.3f} ± {se:.3f}(≤ 0 이면 숨기 유인 해소) · 회복 중 유지분 B3 평균 {R['B3']['standbase_w'][dist].mean():+.3f}")
+    if all(R[a] is not None for a in ("B2", "B4", "B5")):
+        v3, v5, v2 = r1c(R["B3"])[dist].mean(), r1c(R["B5"])[dist].mean(), r1c(R["B2"])[dist].mean()
+        d32, se32 = pdiff("B3", "B2", r1c, dist); d43, se43 = pdiff("B4", "B3", r1c, dist)
+        ok_all["1c_hide"] = bool(dd <= 0.0)
+        L.append(f"    R1c 기준 3 {'PASS' if (v3 > v5 > v2 and d32 >= 1.0) else 'FAIL'}(B3 {v3:+.2f} · B5 {v5:+.2f} · B2 {v2:+.2f}, B3−B2 {d32:+.2f}±{se32:.2f}) · "
+                 f"기준 5 {'PASS' if d43 <= 0 else 'FAIL'}(B4−B3 {d43:+.2f}±{se43:.2f})")
 kill = (2 in ok_all and not ok_all[2]) and (3 in ok_all and not ok_all[3])
 L.append(f"종합: 통과 {[k for k, v in ok_all.items() if v]} · 실패 {[k for k, v in ok_all.items() if not v]} → " +
          ("Kill(기준 2·3 모두 실패: c2 보상 설계 폐기)" if kill else ("C2 학습 시작 조건 충족" if all(ok_all.get(k) for k in ((1, "2m", 3, 4, 5) if "2m" in ok_all else (1, 2, 3, 4, 5))) else "학습 시작 조건 미충족(실패 기준 수정 뒤 재시험)")))

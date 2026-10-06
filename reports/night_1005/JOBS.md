@@ -110,3 +110,17 @@
 | 1006 | Stage 1 단위시험 1차 FAIL → EMA 수정 → 2차(s1unit2) | "S1UNIT2 끝" | landscape_s1b_* | 감시 b0j6t120r |
 | 1006 | 트랙 B RW3Z(rw3z.sh PID 2727441: KE 전환 대상 → W3-A) | "RW3Z 끝" | ground_recovery_rw3z* | 감시 bp15tmlds |
 | 1006 | 서브에이전트 4: Stage0 진단·Stage1 적대 검토·옆/요 설계·W3 브리지 플래그 | 완료 알림 | — | — |
+- 12:22 S1UNIT3(W3S1b 단위시험 3차) s1unit3.sh PID 2735381 → s1unit3.out, 감시 = 백그라운드 대기(S1UNIT3/W3A2 500 중 먼저 끝나는 것)
+- 12:30 W3CI 12200 평가 무효(PhysX GPU 메모리 실패: 물리 정지, 모든 수치 0) → safe_eval.sh 재평가 PID 2739757 (w3ci_re.out)
+- 12:40 W3 브리지 실험 플래그(에이전트) 반영 7e3803eb, selftest_w3_equiv 본 트리 ALL PASS — 젯슨 미배포, exported 없음
+- 12:50 S1UNIT4 s1unit4.sh PID 2743262 (메모리 실패 재시도 내장)
+- 13:00 A3UNIT a3unit.sh PID 2750044 (S1UNIT4 뒤)
+- 13:10 39시간 된 멈춘 play.py(G24Ra export, PID 409807, GPU 1 GB) 명시 PID 종료
+- 13:20 W3S1b w3s1b.sh PID 2772005 (W3A2 끝 대기 후 학습·평가 4회)
+- 13:20 STARTUP startup.sh PID 2772006
+- 13:45 w3s1b.sh 재기동 PID 2778367, w3a3.sh PID 2778368 (체크포인트 번호 100 단위 수정)
+- 13:58 4일 된 linkck.sh(PID 539310, G17/G18 링크 감시 — 더 이상 불필요) 명시 PID 종료. W3CI 학습 끝(12:44) — closure 1 은 W3-A 계열로 집중, W3-CI 추가 학습 없음. CLOSE2 close2.sh PID 2789465
+- 14:10 STARTUP2 startup2.sh PID 2804463
+- 13:40 STOPQ stopq.sh PID 2809837 (STARTUP2 뒤)
+- 15:06 W3S1c s1 PID 2859270 · s2 PID 2859271 · STOPQ2 PID 2859272
+- 15:07 서브에이전트 6 운용(사용자: 최소 5·최대 10): ①요 표류 신호 분해 ②Stage1 해킹 감시 ③회복 c2 설계·단위시험(worktree) ④정지 표류 분해 ⑤배포조건 강건성(지연·seed) ⑥지그 해제 착지 낙상 분해 — 학습 슬롯은 W3S1c s1·s2 만

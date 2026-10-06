@@ -564,3 +564,16 @@ for _stage, _agent in (("G22R", "Biped12G22RPPORunnerCfg"), ("W1", "Biped12W1PPO
             "rsl_rl_cfg_entry_point": f"rl_walking.agents:{_agent}",
         },
     )
+
+
+# 1006 W3 Stage 2(옆걸음) — 별도 블록(긴 등록 튜플 줄의 병합 충돌 회피). 설계: reports/gen_w3/S2_DESIGN.md
+for _stage in ("W3S2",):
+    gym.register(
+        id=f"Biped12-HangStand-{_stage}-v0",
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"rl_walking.hang_stand_env_cfg:Biped12HangStand{_stage}EnvCfg",
+            "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+        },
+    )

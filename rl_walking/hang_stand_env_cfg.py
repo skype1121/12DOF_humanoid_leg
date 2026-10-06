@@ -3314,3 +3314,35 @@ class Biped12HangStandW3S1dEnvCfg(Biped12HangStandW3S1cEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.w3_cmd.params = {"p_step": 0.7, "stage": 1, "vx_range": (0.03, 0.06), "vx_back_range": (0.03, 0.06)}
+
+
+# ================================================================ W3 Stage 2 (1006) — 옆걸음(vy). 기본 꺼짐(이 클래스를 고를 때만 적용) ================================================================
+# 설계·반사실 단위시험·사전 통과 기준: reports/gen_w3/S2_DESIGN.md. CPU 단위시험: rl_walking/scripts/unit_w3_s2.py.
+@configclass
+class _W3S2CurriculumCfg:
+    w3_assist = _CurrTerm(func=_w3.w3_assist_curriculum, params={"start_stage": 4})
+    w3_vy = _CurrTerm(func=_w3.w3_vy_curriculum)
+
+
+@configclass
+class Biped12HangStandW3S2EnvCfg(Biped12HangStandW3S1cEnvCfg):
+    """W3 Stage 2 (1006): W3S1c 끝에서 이어 학습(관측 actor 320·critic 335 불변 → --resume 그대로; 명령 채널 vy 는 이미 관측에 있음).
+    - 명령: STAND 30 % / STEP(제자리 0.3·앞뒤 0.3(Stage 1 범위 리허설)·옆 0.4(±vy)), |vy| 0.03–0.04 → 0.06 → 0.08(w3_vy_curriculum:
+      부호 정답 ≥ 90 %·폭 위반 < 2 %·체류 ≥ 100 반복).
+    - 위상: vy < 0 이면 STEP 시작 위상 0.5(오른발 리드), vy > 0 은 0(왼발 리드) — 가는 쪽 발이 먼저(배포 러너 위상 생성기도 같은 규칙 필요 = 배포 계약 변경).
+    - 보상 변경 2개: w3_stride → w3_stride2(옆 명령만 2D ΔP* = (vx/f, vy/f) + 폭 게이트; vy 0 은 Stage 1 과 비트 동일), w3_width −10/사건
+      (착지 순간 좌우 발 간격 W < 2·W_HALF − 0.05 또는 교차). W_HALF 0.144 = STAND 정책 실측 간격 28.7 cm 의 절반(night_1005 LOG) → 문턱 0.238 m.
+    - 그 밖(추종 w3_track_rel 2D·순 표류 −3·순 요 −4·착지 목표·유효 스텝·종료)은 W3S1c 그대로."""
+
+    W_HALF = 0.144          # 비주석 클래스 상수(설정 필드 아님)
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev = self.events; rw = self.rewards
+        ev.w3_cmd.params = {"p_step": 0.7, "stage": 2, "vx_back_range": (0.03, 0.06), "mix2": (0.3, 0.3, 0.4), "vy_range": (0.03, 0.04)}
+        ev.w3_gait.params = {"f_step": 1.1, "lead_vy_cmin": 0.02}
+        ev.w3_lat = EventTerm(func=_w3.w3_lat_tracker, mode="interval", interval_range_s=(0.0, 0.0),
+                              params={"nominal_half_width": float(self.W_HALF), "width_margin": 0.05})   # w3_track 뒤(정의 순서)
+        rw.w3_stride = RewTerm(func=_w3.w3_stride2, weight=10.0)
+        rw.w3_width = RewTerm(func=_w3.w3_width_pen, weight=-10.0)
+        self.curriculum = _W3S2CurriculumCfg()

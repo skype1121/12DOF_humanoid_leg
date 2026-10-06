@@ -15,8 +15,9 @@ import argparse, os, sys, math
 from isaaclab.app import AppLauncher
 sys.path.insert(0, "/home/ryu/IsaacLab/scripts/reinforcement_learning/rsl_rl")
 import cli_args  # noqa: E402
-REPO = "/home/ryu/humanoid_leg_test1"
-sys.path.insert(0, REPO)
+REPO = "/home/ryu/humanoid_leg_test1"                      # 로그·출력 위치(본 저장소)
+CODE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # 코드(worktree 에서 돌리면 worktree 코드)
+sys.path.insert(0, CODE)
 p = argparse.ArgumentParser()
 p.add_argument("--task", required=True)
 p.add_argument("--num_envs", type=int, default=0, help="0 = 그룹당 --per_group")
@@ -28,6 +29,8 @@ p.add_argument("--warmup", type=float, default=2.0, help="집계 제외 초기 �
 p.add_argument("--seed", type=int, default=1)
 p.add_argument("--no_dist", action="store_true", help="외란·속도 밀기 끔(기본 = 학습 환경 그대로)")
 p.add_argument("--out_tag", default="landscape")
+p.add_argument("--stand_obs", default="", help="쉼표 목록: 이 행동 그룹은 정책 관측의 gait_clock 블록을 (0,0)으로 덮는다(STEP 채점 아래 '서기' 궤적 대리)")
+p.add_argument("--lat_force", default="", help="'LABEL:Fy;...' 행동 그룹별 몸통(base 링크 프레임) y 방향 일정 힘[N](시간 평균) — 옆 이동 대리")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args()
@@ -106,6 +109,24 @@ def force_cmd():
 
 
 force_cmd()
+# 1006 W3S2 반사실 옵션: 서기 대리(클록 관측 0) · 옆 이동 대리(몸통 y 힘)
+_stand_lab = {x.strip() for x in a.stand_obs.split(",") if x.strip()}
+stand_mask = torch.tensor([B[combos[k][0]][0] in _stand_lab for k in range(len(combos))], device=dev)[gi]
+_lf = {lab: v for lab, v in ((g.split(":")[0].strip(), float(g.split(":")[1])) for g in a.lat_force.split(";") if g.strip())}
+fy = torch.tensor([_lf.get(B[combos[k][0]][0], 0.0) for k in range(len(combos))], device=dev)[gi]
+_om = U.observation_manager; _off = 0; clk = None
+for _n, _cf, _d in zip(_om._group_obs_term_names["policy"], _om._group_obs_term_cfgs["policy"], _om._group_obs_term_dim["policy"]):
+    _w = int(torch.tensor(_d).prod())
+    if getattr(_cf.func, "__name__", "") == "gait_clock":
+        clk = slice(_off, _off + _w)
+    _off += _w
+print(f"[landscape] gait_clock 관측 {clk} · 서기 대리 그룹 {sorted(_stand_lab)} · 옆 힘 {_lf}", flush=True)
+if bool(stand_mask.any()):
+    assert clk is not None, "gait_clock 관측 항을 못 찾음"
+_dec = int(env_cfg.decimation)
+rob0 = U.scene["robot"]
+w3s = {"n_td": torch.zeros(N, device=dev), "dy": torch.zeros(N, device=dev), "dx": torch.zeros(N, device=dev), "bad": torch.zeros(N, device=dev),
+       "ok": torch.zeros(N, device=dev), "roll": torch.zeros(N, device=dev), "wsum": torch.zeros(N, device=dev), "wn": torch.zeros(N, device=dev)}
 obs = venv.get_observations()
 sum_c = torch.zeros(N, T, device=dev); nz = torch.zeros(N, T, device=dev); n_t = torch.zeros(N, device=dev)
 alive = torch.ones(N, dtype=torch.bool, device=dev)
@@ -116,13 +137,30 @@ for i in range(steps):
     force_cmd()
     if isinstance(obs, torch.Tensor):
         o2 = obs.clone(); o2[:, 30:45] = bvec.repeat(1, 5)
+        if clk is not None and bool(stand_mask.any()):
+            o2[stand_mask, clk] = 0.0
     else:
-        o2 = obs.clone(); _po = o2["policy"].clone(); _po[:, 30:45] = bvec.repeat(1, 5); o2["policy"] = _po
+        o2 = obs.clone(); _po = o2["policy"].clone(); _po[:, 30:45] = bvec.repeat(1, 5)
+        if clk is not None and bool(stand_mask.any()):
+            _po[stand_mask, clk] = 0.0
+        o2["policy"] = _po
     with torch.inference_mode():
         act = policy(o2)
+    if bool((fy != 0).any()):                            # 순간 렌치: 첫 물리 서브스텝만 적용되고 지워짐 → ×decimation 으로 시간 평균 Fy
+        Fb = torch.zeros(N, 1, 3, device=dev); Fb[:, 0, 1] = fy * _dec
+        rob0.instantaneous_wrench_composer.add_forces_and_torques(forces=Fb, torques=None, positions=None, body_ids=[0], env_ids=None, is_global=False)
     obs, _, dones, _ = venv.step(act)
     sr = RM._step_reward.clone()                        # (N,T) = raw × weight [초당]
     m = alive & (i >= w0)
+    _L = getattr(U, "_w3lat", None); _S = getattr(U, "_w3", None)
+    if _L is not None and _S is not None:               # W3S2 추적기: 유효 착지 Δy·폭 위반·명령 부호 정답(보상 명령 기준)
+        td = (_S["ev_td"] > 0.5) & m.unsqueeze(1)
+        w3s["n_td"] += td.float().sum(1); w3s["dy"] += (_L["td_dy"] * td).sum(1); w3s["dx"] += (_L["td_dx"] * td).sum(1)
+        w3s["bad"] += (_L["width_bad"] * td).sum(1)
+        w3s["ok"] += ((_L["td_dy"] * torch.sign(rvec[:, 1]).unsqueeze(1) > 0) & td).float().sum(1)
+        w3s["wsum"] += _L["width"] * m; w3s["wn"] += m.float()
+    pgb = rob0.data.projected_gravity_b
+    w3s["roll"] += torch.rad2deg(torch.atan2(pgb[:, 1], -pgb[:, 2])) * m
     sum_c += sr * m.unsqueeze(1); nz += (sr.abs() > 1e-9).float() * m.unsqueeze(1); n_t += m.float()
     rob = U.scene["robot"]
     v_b = quat_apply_inverse(rob.data.root_quat_w, rob.data.root_lin_vel_w)
@@ -137,6 +175,10 @@ for k, (bi, ri) in enumerate(combos):
     tot = float(contrib.sum()); pos = float(contrib.clamp(min=0).sum())
     surv = float(alive[mk].float().mean()); v = vb[mk].sum(0) / nt
     L.append(f"## 행동 {B[bi][0]}{B[bi][1]} × 보상명령 {Rc[ri][0]}{Rc[ri][1]} — 총 {tot:+.3f}/s · 생존 {100*surv:.0f} % · 실제 (vx,vy,wz) ({float(v[0]):+.3f},{float(v[1]):+.3f},{float(v[2]):+.3f})")
+    ntd = float(w3s["n_td"][mk].sum())
+    L.append(f"  [W3] 유효 착지 {ntd:.0f} · 평균 Δx {float(w3s['dx'][mk].sum())/max(ntd,1):+.4f} · Δy {float(w3s['dy'][mk].sum())/max(ntd,1):+.4f} m"
+             f" · vy 부호 정답 {float(w3s['ok'][mk].sum())/max(ntd,1):.3f} · 폭 위반 {float(w3s['bad'][mk].sum())/max(ntd,1):.3f}"
+             f" · 평균 발 간격 {float(w3s['wsum'][mk].sum())/max(float(w3s['wn'][mk].sum()),1):.3f} m · 몸통 롤 평균 {float(w3s['roll'][mk].sum())/float(nt):+.2f}°")
     order = torch.argsort(contrib.abs(), descending=True)
     for j in order.tolist():
         if abs(float(contrib[j])) < 1e-4:

@@ -2893,6 +2893,20 @@ class Biped12HangStandW2omP3EnvCfg(Biped12HangStandW2omPEnvCfg):
 
 
 @configclass
+class Biped12HangStandW2omIEnvCfg(Biped12HangStandW2omPEnvCfg):
+    """W2omI (1006, 제자리 걸음 — 정책이 직접 동작을 만들게): W2omP 에서 **굽힘 보조 제거(α 0 고정)** + **제자리 범주에만 모방 보상 3종**
+    (joint_pose_reference +1.5 · foot_position_reference +2.0(vx 0 → 제자리 목표) · contact_phase_reference +2.0, STEP-I0 가중) 단일 개념 변경.
+    근거: W2omP3 — 보조 하 하중 수용이 α 에 비례(보조 산물, 정책 미내재화). 모방 보상은 정책 자신의 관절 궤적을 채점한다(A0m 학습 때 사용)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.omni_assist = None
+        rw = self.rewards
+        for name, wgt, key in (("joint_pose_reference", 1.5, "r_qref"), ("foot_position_reference", 2.0, "r_foot"), ("contact_phase_reference", 2.0, "r_cref")):
+            setattr(rw, name, RewTerm(func=mdp_hang.omni_cat_gated, weight=wgt, params={"func": mdp_hang.sb0_value, "params": {"name": key}, "cats": (3,)}))
+
+
+@configclass
 class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
     """W2om 평가용: + 회전 보조 훅(TURN_ALPHA, 0 이면 무동작) — W2qe 와 같은 평가 조건."""
 

@@ -2163,6 +2163,18 @@ def set_omni(env, env_ids, wz_min: float = 0.1):
 _OMNI_MIX = (("fwd", 0.35), ("back", 0.15), ("lat", 0.20), ("turn", 0.20), ("fwd_turn", 0.10))
 
 
+def omni_cat_gated(env, func, params: dict | None = None, cats: tuple = (3,)) -> torch.Tensor:
+    """1006 W2omI: func 를 명령 범주(env._omni_cat ∈ cats, 걷기 모드) env 에만 — 범주 정보 없으면 0."""
+    val = func(env, **_resolve_nested(env, params))
+    cat = getattr(env, "_omni_cat", None)
+    if cat is None:
+        return torch.zeros_like(val)
+    m = torch.zeros_like(cat, dtype=torch.bool)
+    for c in cats:
+        m |= cat == c
+    return val * (m & _walk_mode(env, 0.03)).to(val.dtype)
+
+
 def install_omni_cmd(env, env_ids, wz_min: float = 0.1, mix=_OMNI_MIX):
     """mode="startup": set_omni + 명령 리샘플 후 범주 혼합(서기 env 는 그대로 0). 균등 독립 표본이면 순수 뒤·옆·제자리 회전이 드물다.
     fwd vx U(0.05,0.15)·wz U(±0.3) | back vx U(−0.12,−0.05) | lat vy ±U(0.04,0.10) | turn wz ±U(0.2,0.45) | fwd_turn vx U(0.05,0.12)·wz ±U(0.2,0.4)."""

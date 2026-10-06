@@ -3253,3 +3253,54 @@ class Biped12HangStandW3S1cEnvCfg(Biped12HangStandW3S1bEnvCfg):
         super().__post_init__()
         self.rewards.w3_yaw = RewTerm(func=_w3.w3_yaw_net, weight=-4.0)
         self.rewards.w3_drift = RewTerm(func=_w3.w3_drift_net, weight=-3.0)
+
+
+# ================================================================ c2 (1006) — closure 2 구조 경로: W3 스텝 엔진 + 포획점 착지 + 상태 조건 정지 ================================================================
+# 설계·반사실 단위시험 계획: reports/gen_w3/C2_DESIGN.md · 코어: rl_walking/w3_c2.py. 기본 꺼짐(이 클래스들을 고를 때만 적용).
+from rl_walking import w3_c2 as _c2  # noqa: E402
+
+_C2_DIST = {"n_range": (1, 2), "t0_range": (3.0, 9.0), "gap_range": (4.0, 7.0), "ramp_prob": 0.6,
+            "F_ramp_range": (3.0, 20.0), "rise_range": (1.0, 4.0), "hold_range": (1.0, 3.0),
+            "F_imp_range": (5.0, 30.0), "dur_imp_range": (0.2, 0.4), "lateral_prob": 0.0, "lateral_scale": 0.6, "p_active": 1.0,
+            "branch": "g22r", "stage_override": 2, "p_none_override": 0.5}
+
+
+@configclass
+class Biped12HangStandW3C2EnvCfg(Biped12HangStandW3S1cEnvCfg):
+    """c2 (1006, closure 2): W3S1c 끝에서 이어 학습(관측 actor 320·critic 335 불변 → --resume 그대로).
+    - 외란 에피소드 50 %(g22r R3 고정 = G24Ra/KE 학습 분포: 앞 10–12 N·뒤 12–18 N 램프, 충격 ×1.5, 좌우 없음; 첫 외란 3–9 s — 스폰 과도 2 s 회피).
+      외란 에피소드는 STAND(ge 0, 명령 0)로 시작하고 supervisor(감지기 → ge 1 → 상태 조건 정지 요청 → 반주기 래치 → POST)만 ge 를 바꾼다.
+    - 무외란 에피소드(50 %)는 W3S1c 와 같은 명령·보상(Stage 1 리허설).
+    - 보상 변경 2개: w3_place → c2_place(회복 착지만 포획 목표, 그 밖 같은 값), c2_settle(정착 1회/외란, 가중 50 × dt = +1.0).
+      초과 스텝 벌점 없음. 기존 STAND 보상(G21a, ge 0 게이트)이 POST 의 자세 복귀를 맡는다.
+    - 속도 밀기(push_robot) 없음(W3S1c 그대로 꺼짐) — 평가 fi40/fs80 충격은 g22r 충격(3–7 N·s)이 부분 대표."""
+
+    C2_STOP_V = -1.0        # 비주석 클래스 상수(설정 필드 아님): > 0 이면 정지 요청에 |v| 조건(c2v)
+    W_SETTLE = 50.0
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev = self.events; rw = self.rewards
+        ev.disturbance = EventTerm(func=mdp_hang.disturbance_reset_g22r, mode="reset", params=dict(_C2_DIST))
+        ev.w3_gait.func = _c2.c2_gait_update                     # 같은 자리(정의 순서) — w3_track 앞
+        ev.w3_gait.params = {"f_step": 1.1, "c2": {"stop_v": float(self.C2_STOP_V)}}
+        ev.c2_track = EventTerm(func=_c2.c2_tracker, mode="interval", interval_range_s=(0.0, 0.0), params={})   # w3_track 뒤(정의 순서)
+        rw.w3_place = RewTerm(func=_c2.c2_place_reward, weight=10.0, params={"sig": 0.04, "sig_cap": 0.05})
+        rw.c2_settle = RewTerm(func=_c2.c2_value, weight=float(self.W_SETTLE), params={"name": "ev_settle"})
+        self.curriculum.c2_log = _CurrTerm(func=_c2.c2_log)
+
+
+@configclass
+class Biped12HangStandW3C2vEnvCfg(Biped12HangStandW3C2EnvCfg):
+    """c2v 변형: 정지 요청에 |v| < 0.10 m/s(운동학 속도 추정 대리 — 학습은 참 몸통 속도 + 잡음 σ 0.03) 추가. 배포엔 다리 운동학 속도 추정기가 선행 조건."""
+
+    C2_STOP_V = 0.10
+
+
+@configclass
+class Biped12HangStandW3C2iEnvCfg(Biped12HangStandW3C2EnvCfg):
+    """c2i 변형: critic 에 ICP−CoM(요 프레임 2차원, 이력 5) 추가 — critic 입력 335 → 345, **--init_expand 필요**(resume 불가). actor 불변."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.observations.critic.c2_icp = _ObsTerm(func=_c2.c2_icp_obs, history_length=5, flatten_history_dim=True)

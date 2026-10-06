@@ -736,6 +736,16 @@ class Stage8TwelveAxisMitControlCore:
                 sent_ids.append(CAN_ID_BY_JOINT[joint])
         return sent_ids
 
+    def _tick_timing_status(self):
+        """1006: 최근 ≤ 250 틱 간격 통계(ms) — 평균·p50·p99·최대·20 ms ±5 ms 밖 비율. 계측 전용."""
+        buf = getattr(self, "_tick_dt_ms", None)
+        if not buf:
+            return {"n": 0}
+        xs = sorted(buf); n = len(xs)
+        q = lambda f: round(xs[min(n - 1, int(f * (n - 1)))], 3)
+        return {"n": n, "mean_ms": round(sum(xs) / n, 3), "p50_ms": q(0.5), "p99_ms": q(0.99), "max_ms": round(xs[-1], 3),
+                "out_of_band_frac": round(sum(1 for x in xs if abs(x - CONTROL_PERIOD_SEC * 1000.0) > 5.0) / n, 4)}
+
     def control_tick(self, source="timer"):
         """제어 틱. source = "timer"(종전 주기 타이머) | "command"(--send-on-command 즉시 송신) |
         "watchdog"(즉시 송신 모드에서 명령이 끊겼을 때의 감시 송신). 동작은 source 와 무관하게 같고
@@ -743,6 +753,15 @@ class Stage8TwelveAxisMitControlCore:
         self.executed = False
         self._tick_sent_ids = []
         self._tick_source = source
+        # 1006 계측(읽기 전용, 동작 무관): 틱 간격 링버퍼 → status.tick_timing(지터 판정용)
+        _now = time.monotonic()
+        _lt = getattr(self, "_tick_last_mono", None)
+        if _lt is not None:
+            _buf = getattr(self, "_tick_dt_ms", None)
+            if _buf is None:
+                _buf = self._tick_dt_ms = collections.deque(maxlen=250)
+            _buf.append((_now - _lt) * 1000.0)
+        self._tick_last_mono = _now
         # 선기동 대기: 상태 파일이 나타날 때까지 CAN 완전 침묵 (송신 0 —
         # hang_stand가 아직 버스를 소유·홀드 중이므로 ENTER 폴링도 금지)
         if self._waiting_takeover:
@@ -1641,6 +1660,7 @@ class Stage8TwelveAxisMitControlCore:
             "latency_options": latency_options_status(),
             "send_counts": dict(self.send_counts),
             "fb_after_send": dict(self.fb_after_send),
+            "tick_timing": self._tick_timing_status(),
             "max_target_step_deg_per_tick": MAX_TARGET_STEP_DEG_PER_TICK,
             "baseline_set": self._has_any_baseline(),
             "baseline_complete": self._baseline_is_set(),

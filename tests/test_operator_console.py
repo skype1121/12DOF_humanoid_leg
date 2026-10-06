@@ -791,3 +791,14 @@ def test_stage8_latency_args_allowlist():
     for bad in ("hz100", "--control-hz 100", "w20", "x"):
         with pytest.raises(ValueError):
             c.stage8_latency_args(bad)
+
+
+def test_stage8_latency_file(tmp_path, monkeypatch):
+    monkeypatch.delenv("STAGE8_LATENCY_OPTS", raising=False)
+    monkeypatch.setattr(c, "STAGE8_LATENCY_FILE", str(tmp_path / "none"))
+    assert c.stage8_latency_args() == []                      # 파일 없음 = 종전
+    f = tmp_path / "opts"; f.write_text("fas   # 1단계\n")
+    monkeypatch.setattr(c, "STAGE8_LATENCY_FILE", str(f))
+    assert c.stage8_latency_args() == ["--feedback-after-send"]
+    f.write_text("\n")
+    assert c.stage8_latency_args() == []                      # 빈 파일 = 종전

@@ -821,8 +821,25 @@ def act_can_up():
 _STAGE8_LAT_FLAGS = {"fas": ["--feedback-after-send"], "soc": ["--send-on-command"]}
 
 
+STAGE8_LATENCY_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config", "stage8_latency_opts")
+
+
+def stage8_latency_raw():
+    """옵션 원문: 환경변수 STAGE8_LATENCY_OPTS 가 있으면 그것, 없으면 config/stage8_latency_opts 첫 줄(없거나 비면 '' = 종전 경로).
+    서비스(systemd) 변경 없이 파일 한 줄로 켜고 끈다 — 되돌리기 = 파일 비우기/삭제 후 stage8 재기동."""
+    env = os.environ.get("STAGE8_LATENCY_OPTS")
+    if env is not None:
+        return env
+    try:
+        with open(STAGE8_LATENCY_FILE) as f:
+            line = f.readline().split("#", 1)[0].strip()
+        return line
+    except OSError:
+        return ""
+
+
 def stage8_latency_args(raw=None):
-    raw = os.environ.get("STAGE8_LATENCY_OPTS", "") if raw is None else raw
+    raw = stage8_latency_raw() if raw is None else raw
     out = []
     for tok in [t.strip() for t in raw.split(",") if t.strip()]:
         if tok in _STAGE8_LAT_FLAGS:

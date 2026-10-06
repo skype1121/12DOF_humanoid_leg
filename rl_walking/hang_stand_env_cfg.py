@@ -3242,3 +3242,14 @@ class Biped12HangStandW3S1bEnvCfg(Biped12HangStandW3S1EnvCfg):
         self.events.w3_cmd.params = {"p_step": 0.7, "stage": 1, "vx_back_range": (0.03, 0.06)}
         self.rewards.w3_track = RewTerm(func=_w3.w3_track_rel, weight=3.0)
         self.rewards.w3_stride = RewTerm(func=_w3.w3_stride, weight=10.0)
+
+
+@configclass
+class Biped12HangStandW3S1cEnvCfg(Biped12HangStandW3S1bEnvCfg):
+    """W3 Stage 1 c (1006): W3S1b(앞 획득 +0.067 @0.06, 뒤 명령 기울기 정상 −3.6 cm 보폭 차) 는 명령 0 영점이 앞 +0.021 로 치우쳐 뒤가 −0.014 에 그침.
+    영점 표류는 Stage 0 결함 — W3-A3 의 순 표류·순 요 벌점(w3_drift_net −3, w3_yaw_net −4)이 해소(−0.003). 두 검증된 변경의 합: S1b 보상 + A3 벌점, W3-A3 끝에서 시작."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.w3_yaw = RewTerm(func=_w3.w3_yaw_net, weight=-4.0)
+        self.rewards.w3_drift = RewTerm(func=_w3.w3_drift_net, weight=-3.0)

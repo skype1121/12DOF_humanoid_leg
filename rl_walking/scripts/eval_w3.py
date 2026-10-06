@@ -154,6 +154,7 @@ for i in range(steps):
         U._ge_cmd[:] = bool(t > a.stand_first)
     if a.stop_at > 0 and getattr(U, "_ge_cmd", None) is not None and t > a.stop_at:
         U._ge_cmd[:] = False
+        cmd_term.vel_command_b[:] = 0.0                                      # 정지 = 명령 0 + ge 0 (실물 stop 과 같은 계약)
     with torch.inference_mode():
         act_ = policy(obs)
     obs, _, dones, _ = venv.step(act_)

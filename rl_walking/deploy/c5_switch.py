@@ -143,7 +143,7 @@ class SwitchDetector:
 
     def __init__(self, on_tilt_deg: float = 4.0, on_w: float = 0.5, off_tilt_deg: float = 2.5, off_w: float = 0.3,
                  calm_s: float = 1.0, dwell_s: float = 0.4, dt: float = 1.0 / RATE_HZ, ref_tau_s: float = 0.0, ref_cap_deg: float = 8.0, ref_init_s: float = 0.0, off_contact: str = "both",
-                 early=None, refrac=None, in_filt: float = 0.0, early_gate=None, settle=None):
+                 early=None, refrac=None, in_filt: float = 0.0, early_gate=None, settle=None, imu_f32: bool = False):
         """ref_tau_s > 0: 기울기를 **기준 자세 대비 편차**로(1004 실물 로그 재생: 실물 서기 기울기 3–4° → 절대 기준이면 회복 모드 70–99 % 체류).
         기준 = 첫 update 의 (롤, 피치), 서기 모드·|ω|<0.1·양발일 때 EMA(τ) 갱신, |ref| ≤ ref_cap_deg. 0 = 절대 기울기(시뮬 SW-1 정의)."""
         self.on_tilt, self.on_w, self.off_tilt, self.off_w = float(on_tilt_deg), float(on_w), float(off_tilt_deg), float(off_w)
@@ -171,6 +171,15 @@ class SwitchDetector:
             if self.ref_tau_s <= 0.0:
                 raise ValueError("odic 경로는 상대 기울기 감지기(ref_tau_s > 0, 시뮬 --sw_ref_tau)만 지원")
             self.settle = settle if isinstance(settle, OdicSettle) else OdicSettle(dt=self.dt, **dict(ODIC_DEFAULT, **settle))
+        # 1007 parity 감사: imu_f32=True(기본 False = 종전 비트 동일) — 현행 IMU 조기 복귀 규칙을 odic 와 같은 float32 경로(_update_odic,
+        # 시뮬 eval_ground_recovery 감지 블록 순서·정밀도)로 계산한다. 종전 float64 타이머는 calm 1.0 s·hold 0.2 s 를 시뮬보다 1 틱 일찍
+        # 채운다(STOPEST §9 부수 측정: 82 꺼짐 중 46 건 −1 틱). odic 와 같은 전제(상대 기울기 ref_tau_s > 0, early 설정)에서만.
+        self.imu_f32 = bool(imu_f32)
+        if self.imu_f32:
+            if self.settle is not None:
+                raise ValueError("imu_f32 는 settle(odic) 와 함께 쓰지 않는다 — odic 경로는 이미 float32")
+            if self.early is None or self.ref_tau_s <= 0.0:
+                raise ValueError("imu_f32 는 조기 복귀(early)·상대 기울기(ref_tau_s > 0) 감지기(KE 계열)에만")
         self.reset()
 
     def reset(self) -> None:
@@ -185,8 +194,9 @@ class SwitchDetector:
         self.t_since_early = 1e9
         self._fg = None; self._fw = None
         self.pk_tilt = 0.0; self.pk_w = 0.0
-        if getattr(self, "settle", None) is not None:      # odic 전용 상태(시뮬 float32 텐서와 같은 정밀도)
-            self.settle.reset()
+        if getattr(self, "settle", None) is not None or getattr(self, "imu_f32", False):      # odic·imu_f32 상태(시뮬 float32 텐서와 같은 정밀도)
+            if self.settle is not None:
+                self.settle.reset()
             self._k = 0
             self._f32 = dict(calm=np.float32(0), t_on=np.float32(0), hold=np.float32(0), pk_t=np.float32(0), pk_w=np.float32(0),
                              refr_t=np.float32(-1e9))
@@ -217,7 +227,7 @@ class SwitchDetector:
         return self.settle is not None
 
     def update(self, gravity_unit, gyro_rad_s, contact2, qpos_rad=None, tau_knee_nm=None) -> int:
-        if self.settle is not None:
+        if self.settle is not None or self.imu_f32:
             return self._update_odic(gravity_unit, gyro_rad_s, contact2, qpos_rad, tau_knee_nm)
         gravity_unit, gyro_rad_s = self.filtered(gravity_unit, gyro_rad_s)
         self.last_w = gyro_rad_s
@@ -263,7 +273,7 @@ class SwitchDetector:
         --settle_judge odo [--early_gate] [--sw_refrac])을 같은 순서·float32 로 옮긴 것. 시각 t_rel = 인계(첫 update) 뒤 k/50 s.
         순서: 감지 입력 EMA → 상대 기울기(기준 초기화·갱신·±cap) → 오도메트리 → 켜기/조용함 → calm·t_on → calm 끄기 →
         odic 조기 복귀(·early_gate) → hold → 불응기 → 모드."""
-        if qpos_rad is None:
+        if qpos_rad is None and self.settle is not None:
             raise ValueError("odic 감지기: qpos_rad(엔코더 12) 필수")
         f32 = np.float32; S = self._f32; dt = f32(self.dt)
         t_rel = self._k / (1.0 / self.dt)            # 시뮬 (i − STEPS_PRE) / 50.0 과 같은 반올림
@@ -288,7 +298,8 @@ class SwitchDetector:
         self.ref = np.clip(self.ref, -self.ref_cap, self.ref_cap).astype(np.float32)
         tilt = f32(np.linalg.norm(rp - self.ref))
         self.last_tilt = float(tilt)      # 진단(재생 보고용) — 판정에 쓰지 않음
-        self.settle.update(qpos_rad, w_raw, g_raw, contact2, tau_knee_nm)      # 오도메트리 = 필터 전 원값(시뮬 _gy_raw·_pg_raw)
+        if self.settle is not None:
+            self.settle.update(qpos_rad, w_raw, g_raw, contact2, tau_knee_nm)      # 오도메트리 = 필터 전 원값(시뮬 _gy_raw·_pg_raw)
         on = bool((tilt > f32(self.on_tilt)) or (w > f32(self.on_w)))
         cq = {"both": bool(c[0] and c[1]), "any": bool(c[0] or c[1]), "none": True}[self.off_contact]
         quiet = bool((tilt < f32(self.off_tilt)) and (w < f32(self.off_w)) and cq)
@@ -296,7 +307,11 @@ class SwitchDetector:
         S["calm"] = f32(S["calm"] + dt) if (m and quiet) else f32(0)
         S["t_on"] = f32(S["t_on"] + dt) if m else f32(0)
         off = bool(m and S["calm"] >= f32(self.calm_s) and S["t_on"] >= f32(self.dwell_s))
-        ec = bool(m and self.settle.ok(S["t_on"], w))      # odicw(w_thr > 0): w = 감지 EMA 뒤 |ω_xy| float32 — 시뮬 _w 와 같은 값
+        if self.settle is not None:
+            ec = bool(m and self.settle.ok(S["t_on"], w))      # odicw(w_thr > 0): w = 감지 EMA 뒤 |ω_xy| float32 — 시뮬 _w 와 같은 값
+        else:                                               # imu_f32: 시뮬 --sw_early_imu 규칙(_ec2) float32
+            _tm, _tt, _tw, _th = self.early
+            ec = bool(m and S["t_on"] >= f32(_tm) and tilt < f32(_tt) and w < f32(_tw) and bool(c[0] and c[1]))
         if self.early_gate is not None:
             S["pk_t"] = f32(max(S["pk_t"], tilt)) if m else f32(0); S["pk_w"] = f32(max(S["pk_w"], w)) if m else f32(0)
             ec = ec and bool((S["pk_t"] >= f32(self.early_gate[0])) or (S["pk_w"] >= f32(self.early_gate[1])))

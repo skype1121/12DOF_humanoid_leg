@@ -279,7 +279,7 @@ class PolicyRunnerStage4:
                  gait_freq: float = GAIT_FREQ_HZ, obs_dim: int | None = None,
                  default_pose_rad=None, jvel_ema_mode: str = "v2",
                  act_obs_ema_beta: float | None = None, jvel_obs_ema_beta: float | None = None,
-                 hturn2=None, w3=None):
+                 hturn2=None, w3=None, ema_fresh_ticks: int = 1):
         """model_path: exported/ 디렉토리 또는 .onnx/.pt 파일 경로 (callable=스텁).
         backend: 'auto'(onnx 우선→torch 폴백) | 'onnx' | 'torch'.
         gait_freq: 클록 주파수 [Hz] — 반드시 체크포인트의 학습 클록과 일치
@@ -299,6 +299,9 @@ class PolicyRunnerStage4:
         w3: (1006 **실험 플래그, 기본 None = 종전과 비트 동일**) rl_walking.deploy.w3_deploy.W3Config — 켜면 관측 gait_clock =
             W3 계약([sin 2πu, cos 2πu] × ge_obs, gait_enable 래치·0.2 s 램프, gait_freq 무시). ge 는 set_gait_enable() 로 준다
             (reset 뒤 기본 False = 서기). 행동 잔차는 없다(보조·참조는 배포에 없음). hturn2 와 동시 사용 불가.
+        ema_fresh_ticks: (1007 parity 감사, **기본 1 = 종전과 비트 동일**) S8a raw+EMA 항(gyro_ema·joint_vel_ema, α0.1)의 재시작 틱 수.
+            1 = 틱 0 에서만 현재값으로 시작(종전). 2 = 시뮬 mdp_hang._ema_state 계약 — episode_length_buf ≤ 1 이면 st = x 로 두고 같은
+            갱신식((1−α)·st + α·x)을 적용(틱 0·1 모두 재시작). 차이는 시작 과도만(0.9ⁿ 감쇠, selftest_w3_rollout_parity [P1]).
         """
         if hturn2 is not None and w3 is not None:
             raise ValueError("hturn2 와 w3 는 동시에 켤 수 없다")
@@ -307,6 +310,9 @@ class PolicyRunnerStage4:
                 raise ValueError(f"관측 EMA β 는 (0,1] (받음 {_b})")
         self.act_obs_ema_beta = None if act_obs_ema_beta is None else float(act_obs_ema_beta)
         self.jvel_obs_ema_beta = None if jvel_obs_ema_beta is None else float(jvel_obs_ema_beta)
+        if int(ema_fresh_ticks) not in (1, 2):
+            raise ValueError(f"ema_fresh_ticks 는 1 | 2 (받음 {ema_fresh_ticks})")
+        self.ema_fresh_ticks = int(ema_fresh_ticks)
         if jvel_ema_mode not in ("v2", "ema0"):
             raise ValueError(f"jvel_ema_mode 는 'v2' | 'ema0' (받음 {jvel_ema_mode!r})")
         self.jvel_ema_mode = jvel_ema_mode
@@ -433,7 +439,11 @@ class PolicyRunnerStage4:
             for name, src in (("gyro_ema", "base_ang_vel"), ("joint_vel_ema", "joint_vel")):
                 x = np.asarray(qvel_raw if src == "joint_vel" else frames[src], dtype=np.float32)   # 1003: joint_vel_ema 는 원시 속도에서
                 prev = self._ema.get(name)
-                self._ema[name] = x.copy() if prev is None else (1.0 - EMA_ALPHA_S8A) * prev + EMA_ALPHA_S8A * x
+                if self.ema_fresh_ticks == 1:
+                    self._ema[name] = x.copy() if prev is None else (1.0 - EMA_ALPHA_S8A) * prev + EMA_ALPHA_S8A * x
+                else:                        # 1007: 시뮬 _ema_state(fresh = buf ≤ 1 → st = x, 이어서 같은 갱신식)
+                    st = x.copy() if (prev is None or self._tick < self.ema_fresh_ticks) else prev
+                    self._ema[name] = (1.0 - EMA_ALPHA_S8A) * st + EMA_ALPHA_S8A * x
                 frames[name] = self._ema[name]
             self.last_jvel_ema = self._ema["joint_vel_ema"].copy()
             if self.jvel_ema_mode == "ema0":   # 1001: legacy 학습 계약(이 채널 = 0+잡음)의 평균값

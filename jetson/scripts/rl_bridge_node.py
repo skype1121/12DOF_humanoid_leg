@@ -117,6 +117,7 @@ IMU_TOPIC = "/humanoid/imu"
 FOOT_TOPIC = "/humanoid/foot_force"
 BRIDGE_CMD_TOPIC = "/humanoid/rl_bridge_command"
 BRIDGE_DEBUG_TOPIC = "/humanoid/rl_bridge_debug"
+BRIDGE_ACK_TOPIC = "/humanoid/rl_bridge_ack"     # 1006 W3 세션 전용 명령 응답(수락/거부+이유) — 종전 세션은 발행하지 않음
 
 CHECKPOINTS = {
     "walk": os.path.join(
@@ -457,6 +458,7 @@ def hturn2_validate_walk(d):
 # ---------------------------------------------------------------------------
 EXPERIMENTAL_W3 = False
 W3_CKPTS = {}              # 켜졌을 때만 {키: W3Config}
+W3_SAFETY = _W3.W3_SAFETY_DEFAULT   # W3 세션 감독기 문턱(기동 --w3-safety JSON 으로만 바꿈, 범위 검증) — 감사 H3–H6·L1
 
 
 def enable_experimental_w3():
@@ -2568,6 +2570,190 @@ def _selftest_w3():
             + (" (기동 플래그 켜짐 상태 복원)" if was_on else ""))
 
 
+def _w3_sup_closed_loop(trip_tick, *, contact_ok=True, cfg=None, n_ticks=400, enable_tick=60):
+    """W3 감독기 + 실제 BridgeCore(W3 러너, 스텁 정책) 폐루프 — 노드 _tick 순서(observe → 지연 동결 확인 → 가드 → core.tick)를 흉내.
+    접촉 모형(가정): ge 1 이면 u<0.5 = 왼발 스윙(접촉 L0 R1), u≥0.5 = 오른발 스윙(L1 R0); ge 0 이 된 뒤 5틱(0.1 s) 착지 지연 후 양발.
+    contact_ok=False 면 ge 0 뒤에도 오른발 접촉이 안 들어온다(패드 고장 모형). 반환 dict(트립·래치 해제·동결 틱, 동결 종류, 동결 틱 접촉)."""
+    import numpy as np
+    k = _W3.W3_CKPT_KEY
+    r = PolicyRunnerStage4(model_path=lambda obs: np.zeros(12, np.float32), obs_dim=320, gait_freq=1.1,
+                           default_pose_rad=CKPT_DEFAULT_POSE[k], act_obs_ema_beta=0.27, jvel_obs_ema_beta=0.25, w3=W3_CKPTS[k])
+    core = BridgeCore(k, runner=r)
+    core.reset(); core.heading_hold = False; core.cmd = (0.0, 0.0, 0.0)
+    sup = _W3.W3Supervisor(cfg or _W3.W3_SAFETY_DEFAULT)
+    q = np.array(CKPT_DEFAULT_POSE[k], dtype=np.float32)
+    clk = core.runner._w3_clock
+    t0 = 1000.0
+    off_t = None
+    res = {"trip": None, "latch_off": None, "freeze": None, "kind": None, "contact_at_freeze": None,
+           "enable": None, "single_support_at_trip": None}
+    seq = 0
+    for n in range(n_ticks):
+        now = t0 + n * TICK_SEC
+        if clk.ge:
+            u = float(clk.u)
+            contact = [1.0, 0.0] if u >= 0.5 else [0.0, 1.0]
+            gyro = (0.6, 0.3, 0.0)
+            off_t = None
+        else:
+            off_t = now if off_t is None else off_t
+            landed = now - off_t >= 5 * TICK_SEC - 1e-9 or res["enable"] is None
+            contact = [1.0, 1.0 if (landed and (contact_ok or res["trip"] is None)) else 0.0]
+            gyro = (0.05, 0.02, 0.0) if landed else (0.5, 0.2, 0.0)
+        sup.observe(now, contact, gyro, (0.0, 0.0, -1.0))
+        due = sup.freeze_due(now, bool(clk.ge))
+        if due is not None:
+            res["freeze"], res["kind"], res["contact_at_freeze"] = n, due[0], list(contact)
+            sup.on_frozen(due[1])
+            break
+        if n == enable_tick:
+            seq += 1
+            d = sup.handle({"cmd": "step", "enable": True, "req_id": "t", "seq": seq}, now, active=True, warmed=True,
+                           blend_done=True, ge_now=bool(clk.ge), want_now=bool(clk.want))
+            assert d["accepted"] and d["action"] == "set_want", d
+            core.set_gait_enable(True)
+            res["enable"] = n
+        if n == trip_tick:
+            res["trip"] = n
+            res["single_support_at_trip"] = contact.count(1.0) == 1
+            if sup.begin_freeze(now, "lift_guard: 시험"):
+                core.set_gait_enable(False)
+            due = sup.freeze_due(now, bool(clk.ge))
+            if due is not None:
+                res["freeze"], res["kind"], res["contact_at_freeze"] = n, due[0], list(contact)
+                sup.on_frozen(due[1])
+                break
+        was_ge = bool(clk.ge)
+        core.tick((0.0, 0.0, 0.0), (1.0, 0.0, 0.0, 0.0), q, np.zeros(12), contact)
+        if was_ge and not clk.ge and res["trip"] is not None and res["latch_off"] is None:
+            res["latch_off"] = n
+    return res
+
+
+def _selftest_w3_supervisor():
+    """1006 감사 H3–H6·L1: W3 세션 감독기 — 명령 상태기(req_id·seq·정지 래치·rearm·응답 결정), 실행 중 재발사·교체 거부,
+    켜기 선행조건(양발 접촉·기울기·정착), 지연 동결 순서(래치 해제 → 양발 지지 → 동결, 타임아웃)를 순수 객체 + BridgeCore 폐루프로 고정.
+    플래그 꺼짐 기동에서는 노드가 감독기를 만들지 않는다(w3sup None — 종전 경로)."""
+    was_on = EXPERIMENTAL_W3
+    if not was_on:
+        enable_experimental_w3()
+    try:
+        S = _W3.W3Supervisor()
+        ok_ctx = dict(active=True, warmed=True, blend_done=True, ge_now=False, want_now=False)
+
+        def settle(sup, t_end, dur=1.2, contact=(1.0, 1.0), gyro=(0.02, 0.01, 0.0), grav=(0.0, 0.0, -1.0)):
+            t = t_end - dur
+            while t <= t_end + 1e-9:
+                sup.observe(t, contact, gyro, grav)
+                t += TICK_SEC
+
+        def step(seq, en=True, rid="op"):
+            return {"cmd": "step", "enable": en, "req_id": rid, "seq": seq}
+
+        # (1) 형식: req_id·seq 필수
+        settle(S, 10.0)
+        for bad in ({"cmd": "step", "enable": True}, {"cmd": "step", "enable": True, "req_id": "a"},
+                    {"cmd": "step", "enable": True, "req_id": "a", "seq": True}, {"cmd": "step", "enable": True, "req_id": "", "seq": 1},
+                    {"cmd": "step", "enable": True, "req_id": "a", "seq": 0}, {"cmd": "step", "enable": "yes", "req_id": "a", "seq": 1}):
+            assert not S.handle(bad, 10.0, **ok_ctx)["accepted"], f"형식 불량 수락: {bad}"
+        # (2) 정상 켜기 → 중복 seq·오래된 seq 거부
+        d = S.handle(step(5), 10.0, **ok_ctx)
+        assert d["accepted"] and d["action"] == "set_want" and d["want"] is True, d
+        dup = S.handle(step(5), 10.02, **dict(ok_ctx, want_now=False))
+        old = S.handle(step(4), 10.04, **ok_ctx)
+        assert not dup["accepted"] and "중복" in dup["why"] and not old["accepted"], (dup, old)
+        # (3) 늦은 enable(H3): stop 뒤 0.3 s 에 새 seq 켜기 → 정지 래치로 거부
+        assert S.handle({"cmd": "stop"}, 11.0, **dict(ok_ctx, ge_now=True, want_now=True))["action"] == "stop"
+        settle(S, 11.3)
+        late = S.handle(step(6), 11.3, **ok_ctx)
+        assert not late["accepted"] and "정지 래치" in late["why"], late
+        # (4) 1 Hz 반복 enable(같은 메시지 seq 7) 중 stop → 전부 거부, rearm 뒤에도 반복 메시지는 거부, 새 seq 만 수락
+        S2 = _W3.W3Supervisor()
+        settle(S2, 20.0)
+        rep = step(7, rid="pub")
+        acc = [S2.handle(rep, 20.0, **ok_ctx)["accepted"]]
+        assert S2.handle({"cmd": "stop", "req_id": "stop", "seq": 8}, 20.5, **dict(ok_ctx, ge_now=True, want_now=True))["accepted"]
+        for i in range(1, 6):
+            settle(S2, 20.0 + i)
+            acc.append(S2.handle(rep, 20.0 + i, **ok_ctx)["accepted"])
+        assert acc == [True, False, False, False, False, False], acc
+        assert not S2.handle({"cmd": "rearm", "req_id": "r", "seq": 8}, 26.0, **ok_ctx)["accepted"], "중복 seq rearm 수락"
+        assert not S2.handle({"cmd": "rearm", "req_id": "r", "seq": 9}, 26.0, **dict(ok_ctx, ge_now=True))["accepted"], "ge 1 rearm 수락"
+        assert S2.handle({"cmd": "rearm", "req_id": "r", "seq": 10}, 26.0, **ok_ctx)["accepted"]
+        settle(S2, 27.0)
+        assert not S2.handle(rep, 27.0, **ok_ctx)["accepted"], "rearm 뒤 옛 반복 메시지가 켜짐"
+        assert S2.handle(step(11), 27.0, **ok_ctx)["accepted"]
+        # 끄기는 seq 없거나 오래돼도 적용(안전 방향)
+        off = S2.handle({"cmd": "step", "enable": False}, 27.1, **dict(ok_ctx, ge_now=True, want_now=True))
+        assert off["accepted"] and off["action"] == "set_want" and off["want"] is False and "주의" in off["why"], off
+        # estop 도 래치
+        S2.handle({"cmd": "estop"}, 28.0, **ok_ctx)
+        settle(S2, 29.0)
+        assert not S2.handle(step(12), 29.0, **ok_ctx)["accepted"]
+        # (5) 스텝 중 stand/walk/march 재발사·교체 거부(H4/H5), 비활성 stand 만 launch
+        S3 = _W3.W3Supervisor()
+        for c in ("stand", "walk", "march", "turn", "foo"):
+            dd = S3.handle({"cmd": c}, 1.0, **dict(ok_ctx, ge_now=True, want_now=True))
+            assert not dd["accepted"] and dd["action"] == "none", (c, dd)
+        for c in ("walk", "march"):
+            assert not S3.handle({"cmd": c}, 1.0, **dict(ok_ctx, active=False))["accepted"], f"비활성 {c} 수락(가족 대체 경로)"
+        assert S3.handle({"cmd": "stand"}, 1.0, **dict(ok_ctx, active=False))["action"] == "launch"
+        # (6) 켜기 선행조건(L1): 접촉 없음·한발·접촉 짧음·기울기·흔들림·관측 낡음·ge 1·종전 3종
+        rej = {}
+        for name, kw, ctx in (("한발", dict(contact=(1.0, 0.0)), ok_ctx), ("무접촉", dict(contact=(0.0, 0.0)), ok_ctx),
+                              ("접촉 0.5 s", dict(dur=0.5), ok_ctx),
+                              ("기울기 9°", dict(grav=(math.sin(math.radians(9)), 0.0, -math.cos(math.radians(9)))), ok_ctx),
+                              ("흔들림", dict(gyro=(0.4, 0.0, 0.0)), ok_ctx),
+                              ("ge 1", {}, dict(ok_ctx, ge_now=True)), ("미실행", {}, dict(ok_ctx, active=False)),
+                              ("워밍업", {}, dict(ok_ctx, warmed=False)), ("블렌딩", {}, dict(ok_ctx, blend_done=False))):
+            s = _W3.W3Supervisor()
+            settle(s, 5.0, **kw)
+            dd = s.handle(step(1), 5.0, **ctx)
+            assert not dd["accepted"], f"{name} 인데 켜기 수락"
+            rej[name] = dd["why"].split(" ")[0]
+        s = _W3.W3Supervisor()
+        settle(s, 5.0)
+        assert not s.handle(step(1), 5.2, **ok_ctx)["accepted"], "관측 0.2 s 낡음인데 수락"
+        s = _W3.W3Supervisor()
+        settle(s, 5.0, grav=(math.sin(math.radians(6)), 0.0, -math.cos(math.radians(6))))
+        assert s.handle(step(1), 5.0, **ok_ctx)["accepted"], "6° 직립·정착인데 거부"
+        # 설정 파서: 범위 밖·모르는 키 거부
+        for bad in ('{"enable_tilt_deg": 30}', '{"foo": 1}', '{"enable_quiet_w": true}', '[1]'):
+            try:
+                _W3.parse_w3_safety(bad)
+                raise AssertionError(f"설정 거부 실패: {bad}")
+            except ValueError:
+                pass
+        assert _W3.parse_w3_safety('{"enable_tilt_deg": 5}').enable_tilt_deg == 5.0
+        # (7) 지연 동결(H2): 한발 지지 중 트립 → 래치 해제(반주기 경계) 뒤 양발 지지에서 동결, 즉시 동결 아님
+        lat = []
+        for trip in range(66, 66 + 46):          # 켜기(60) 뒤 반주기 전 구간 위치에서 트립
+            r = _w3_sup_closed_loop(trip)
+            assert r["single_support_at_trip"], r
+            assert r["kind"] == "support" and r["contact_at_freeze"] == [1.0, 1.0], r
+            assert r["latch_off"] is not None and r["freeze"] > r["latch_off"] >= r["trip"], r
+            lat.append((r["freeze"] - r["trip"]) * TICK_SEC)
+        assert max(lat) < _W3.W3_SAFETY_DEFAULT.freeze_timeout_s, lat
+        # 접촉이 끝내 안 들어오면 타임아웃 동결(사유 기록)
+        r = _w3_sup_closed_loop(80, contact_ok=False)
+        assert r["kind"] == "timeout" and abs((r["freeze"] - r["trip"]) * TICK_SEC - _W3.W3_SAFETY_DEFAULT.freeze_timeout_s) < 0.03, r
+        # 이미 서 있으면(ge 0·양발·정착) 트립 틱에 바로 동결
+        r = _w3_sup_closed_loop(40, enable_tick=10_000)
+        assert r["freeze"] == r["trip"] == 40 and r["kind"] == "support", r
+        # 동결 뒤 래치 유지 → rearm 전 켜기 거부
+        s = _W3.W3Supervisor()
+        settle(s, 3.0)
+        s.begin_freeze(3.0, "x"); s.on_frozen("x")
+        assert s.stop_latched and s.freeze_state is None and not s.handle(step(1), 3.0, **ok_ctx)["accepted"]
+    finally:
+        if not was_on:
+            disable_experimental_w3()
+    return (f"형식 6종 거부·중복/오래된 seq 거부·stop 뒤 0.3 s 늦은 켜기 거부·1 Hz 반복(seq 7) {acc}·rearm 뒤 옛 메시지 거부·"
+            f"끄기 무조건 적용·estop 래치 / 실행 중 stand·walk·march·turn 거부, 비활성 walk·march 거부 / 켜기 거부 {list(rej)}·관측 낡음 거부·6° 수락 / "
+            f"한발 지지 트립 46위치: 래치 해제 뒤 양발 지지에서 동결, 트립→동결 {min(lat):.2f}–{max(lat):.2f}s, 접촉 부재 = 타임아웃 "
+            f"{_W3.W3_SAFETY_DEFAULT.freeze_timeout_s:g}s, 서 있으면 즉시")
+
+
 def run_selftest(required=()):
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 게이트 + 정책 500틱.
     required: 파일이 반드시 있어야 하는 체크포인트(기동 --checkpoint, STAND_DEFAULT) — 없으면 FAIL."""
@@ -2592,6 +2778,7 @@ def run_selftest(required=()):
              ("C5 kr 경로(1005)", _selftest_c5kr),
              ("HTURN2 실험 플래그(1006)", _selftest_hturn2),
              ("W3 실험 플래그(1006)", _selftest_w3),
+             ("W3 세션 감독기(1006 감사)", _selftest_w3_supervisor),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:
@@ -2627,7 +2814,12 @@ def main():
                          "HeadingHold 목표 각 |wz|≤0.3). 켜도 --checkpoint " + _H2.HTURN2_CKPT_KEY + " 일 때만 계약이 바뀐다")
     ap.add_argument("--experimental-w3", action="store_true",
                     help="1006 실험(기본 꺼짐·실물 미검증): W3 키 등록(W3-A 400 제자리 교대 스텝 엔진 — gait_enable 래치 클록). "
-                         "켜도 --checkpoint " + _W3.W3_CKPT_KEY + " 일 때만 계약이 바뀐다. 시작 = stand(서기), 스텝 = {\"cmd\":\"step\",\"enable\":true}")
+                         "켜도 --checkpoint " + _W3.W3_CKPT_KEY + " 일 때만 계약이 바뀐다. 시작 = stand(서기), "
+                         "스텝 = {\"cmd\":\"step\",\"enable\":true,\"req_id\":\"..\",\"seq\":N}(seq 단조 증가), "
+                         "stop/estop/가드 = 정지 래치 → {\"cmd\":\"rearm\",\"req_id\":\"..\",\"seq\":N}. 응답 " + BRIDGE_ACK_TOPIC)
+    ap.add_argument("--w3-safety", default=None,
+                    help="W3 세션 감독기 문턱 JSON(예: '{\"enable_tilt_deg\": 6}'). 키·범위는 w3_deploy.W3_SAFETY_RANGES — "
+                         "범위 밖·모르는 키는 기동 거부. 생략 = 보수적 기본값")
     ap.add_argument("--checkpoint", default=STAND_DEFAULT, choices=list(CHECKPOINTS) + [_H2.HTURN2_CKPT_KEY, _W3.W3_CKPT_KEY],
                     help="기본값은 배포 데뷔 정책(STAND_DEFAULT). 0907: 구 walk 는 젯슨에서 삭제돼 "
                          "기본값으로 두면 selftest 가 필수 파일 없음으로 실패한다")
@@ -2641,7 +2833,16 @@ def main():
     if args.experimental_hturn2 and args.experimental_w3:
         print("[거부] --experimental-hturn2 와 --experimental-w3 는 함께 켤 수 없음", file=sys.stderr)
         return 2
+    if args.w3_safety is not None and not args.experimental_w3:
+        print("[거부] --w3-safety 는 --experimental-w3 와 함께만", file=sys.stderr)
+        return 2
     if args.experimental_w3:
+        global W3_SAFETY
+        try:
+            W3_SAFETY = _W3.parse_w3_safety(args.w3_safety)
+        except ValueError as e:      # json.JSONDecodeError 포함
+            print(f"[거부] --w3-safety: {e}", file=sys.stderr)
+            return 2
         enable_experimental_w3()
         print(f"[경고] --experimental-w3: 실험 기능 켜짐(실물 미검증) — 키 {_W3.W3_CKPT_KEY}", file=sys.stderr)
     if args.experimental_hturn2:
@@ -2689,6 +2890,9 @@ def main():
             super().__init__("humanoid_rl_bridge")
             self._gnote = {}            # guard_mode=data 기록 throttle: {이벤트: (마지막 사유, 마지막 시각)}
             self.core = BridgeCore(args.checkpoint)
+            self._launches = 0          # 정책 시작 횟수(1006 W3 응답용 계수 — 제어 무관)
+            # 1006 W3 세션 감독기(감사 H3–H6·L1): --experimental-w3 + W3 키 기동일 때만. 그 밖에는 None = 종전 경로 그대로.
+            self.w3sup = (_W3.W3Supervisor(W3_SAFETY) if (EXPERIMENTAL_W3 and args.checkpoint in W3_CKPTS) else None)
             self.frames = frames        # 모터↔관절 프레임 변환 (기동 시 검증 완료)
             self.roll_comp = RollComp(frames.roll_comp)   # 느린 기울기 롤 보정기 — 맵 키 없으면 OFF(no-op)
             self.pitch_comp = RollComp(frames.pitch_comp)  # 앞뒤 균형 복원항 — 맵 키 없으면 OFF(no-op)
@@ -2767,6 +2971,13 @@ def main():
             self.create_subscription(String, BRIDGE_CMD_TOPIC, self._on_cmd, 10)
             self.pub_cmd = self.create_publisher(String, COMMAND_TOPIC, 10)
             self.pub_dbg = self.create_publisher(String, BRIDGE_DEBUG_TOPIC, 10)
+            self.pub_ack = None
+            if self.w3sup is not None:     # 1006 W3 세션만 응답 토픽을 연다(종전 세션은 토픽·스키마 불변)
+                self.pub_ack = self.create_publisher(String, BRIDGE_ACK_TOPIC, 10)
+                self.get_logger().warn(
+                    f"W3 세션 감독기 켜짐 — 응답 {BRIDGE_ACK_TOPIC}, 문턱 {W3_SAFETY}, guard_mode={self.guard_mode}"
+                    + (" (data 모드: 리프트·발진 가드는 정지하지 않음 — 지연 동결은 safe 모드에서만 작동)"
+                       if self.guard_mode == "data" else ""))
             self.timer = self.create_timer(TICK_SEC, self._tick)
             self.get_logger().info(
                 f"RL 브리지 기동 — {'LIVE' if self.live else 'DRY-RUN'}, "
@@ -2924,7 +3135,57 @@ def main():
                 # 비-dict 유효 JSON("estop" 등)이 콜백을 죽여 라이브 중 브리지
                 # 사망(STOP_ALL 없이)하는 경로 차단 (적대리뷰 A6)
                 self.get_logger().warn(f"명령이 JSON 객체가 아님 — 무시: {msg.data[:60]}")
+                if self.w3sup is not None:
+                    self._w3_ack({}, False, "명령이 JSON 객체가 아님")
                 return
+            if self.w3sup is not None:      # 1006 W3 세션(플래그 + W3 키 기동)에서만 — 감독기가 먼저 판정
+                self._on_cmd_w3(d)
+                return
+            self._on_cmd_base(d)
+
+        def _w3_ack(self, d, accepted, why, action=None):
+            """1006 W3 세션: 모든 명령에 응답(수락/거부+이유) — BRIDGE_ACK_TOPIC + 블랙박스."""
+            now = time.time()
+            ack = {"timestamp": now, "cmd": d.get("cmd"), "req_id": d.get("req_id"), "seq": d.get("seq"),
+                   "accepted": bool(accepted), "why": str(why), "action": action,
+                   "active": bool(self.core.active), "w3": self.core.runner._w3_clock.snapshot() if self.core.w3 else None,
+                   "sup": self.w3sup.snapshot(), "guard_mode": self.guard_mode}
+            try:
+                self.pub_ack.publish(String(data=json.dumps(ack, default=str)))
+            except Exception:  # noqa: BLE001 — 응답 실패가 명령 처리를 막으면 안 된다
+                pass
+            self._bb_write(dict(ack, event="w3_cmd_ack"))
+            (self.get_logger().info if accepted else self.get_logger().warn)(
+                f"W3 명령 {d.get('cmd')!r} seq={d.get('seq')} {'수락' if accepted else '거부'}: {why}")
+
+        def _on_cmd_w3(self, d):
+            """1006 W3 세션 명령 처리(감사 H3–H5·L1) — 판단은 W3Supervisor.handle, 실행은 종전 경로."""
+            now = time.time()
+            w3c = self.core.runner._w3_clock if self.core.w3 else None
+            _bd = BLEND_S <= 0.0 or (self.blend_t0 is not None and now - self.blend_t0 >= BLEND_S)
+            dec = self.w3sup.handle(d, now, active=bool(self.core.active), warmed=bool(self.warmed), blend_done=_bd,
+                                    ge_now=bool(w3c.ge) if w3c is not None else False,
+                                    want_now=bool(w3c.want) if w3c is not None else False)
+            act = dec["action"]
+            if act in ("estop", "stop"):
+                self._on_cmd_base({"cmd": act})        # 종전 경로(estop = STOP_ALL 즉시·비활성 / stop = ge 0)
+            elif act == "set_want":
+                if self.core.w3:
+                    self.core.set_gait_enable(dec["want"])
+                    self._bb_write({"timestamp": now, "event": "w3_step", "enable": bool(dec["want"]), "by": "cmd",
+                                    "req_id": d.get("req_id"), "seq": d.get("seq")})
+                else:
+                    dec = dict(dec, accepted=False, why="W3 러너 아님")
+            elif act == "launch":
+                n0 = self._launches
+                self._on_cmd_base(d)
+                if self._launches == n0:
+                    g = self.grav_last
+                    dec = dict(dec, accepted=False,
+                               why=f"stand 시작 거부(종전 게이트) — {g[1] if g and not g[0] else 'hang_arm/touchdown 조건 — 로그 참조'}")
+            self._w3_ack(d, dec["accepted"], dec["why"], act)
+
+        def _on_cmd_base(self, d):
             c = d.get("cmd", "")
             if c == "estop":
                 self._stop_all("estop")
@@ -3066,6 +3327,7 @@ def main():
                 # 걸려 sensor_stale 오정지. 워밍업이 이 타이밍 레이스를 없앤다(정상상태 게이트는 불변).
                 self.warmed = False
                 self.warmup_until = time.time() + STAND_WARMUP_MAX_S
+                self._launches += 1      # 시작 횟수(1006 W3 세션 응답이 '실제 시작'을 판정 — 종전 경로 동작 무관)
                 self.get_logger().info(f"RL {c} 시작 ckpt={ck} cmd={self.core.cmd} (인계 워밍업 최대 {STAND_WARMUP_MAX_S:.0f}s)")
 
         def _reset_chain_state(self, hang, t0):
@@ -3269,6 +3531,11 @@ def main():
                 self._bb_write({"timestamp": now, "event": "touchdown_start", "why": _why,
                                 "gate": self.td_gate.snapshot(now)})
                 self.get_logger().info(f"{_why} — 정책 구동 시작 (ckpt={self.core.ckpt_name})")
+            # 1006 W3 세션: 감독기 관측 갱신(정책이 받는 contact2·투영중력과 같은 값) + 지연 동결 순서 확인(감사 H2)
+            if self.w3sup is not None:
+                self.w3sup.observe(now, contact2, gyro, correct_gravity(projected_gravity(quat)))
+                if self._w3_freeze_check(now):
+                    return
             # 리프트 가드 — 양발 무접촉 LIFT_STOP_S 지속 시 동결 (발버둥 차단).
             # 0908: HangGuard 상태기로 이관. hang_arm 미명시면 종전과 동일 동작(셀프테스트 고정),
             # hang_arm 명시면 접지 획득 전에만 무접촉 허용(상한 HANG_MAX_S).
@@ -3282,6 +3549,9 @@ def main():
                     # 데이터 수집 모드: 양발 무접촉(=낙상 중)에도 멈추지 않는다. 그 구간이
                     # 바로 재려는 구간이기 때문이다. 회수는 운영자의 줄·손이 책임진다.
                     self._guard_note(now, "lift_guard", _why)
+                elif self.w3sup is not None:
+                    if self._w3_guard_trip(now, "lift_guard", _why):
+                        return
                 else:
                     self._bb_write({"timestamp": now, "event": "lift_guard", "why": _why})
                     self._stop_all(_why)
@@ -3297,6 +3567,11 @@ def main():
                     # 발진 자체는 허용(운영자 판단). 과속 폭주(OSC_VEL_HARD)는 발진이 아니라
                     # 기구 보호 한계라 데이터 모드에서도 그대로 정지한다.
                     self._guard_note(now, "osc_guard", why)
+                    why = None
+                if why and self.w3sup is not None and not why.startswith("과속"):
+                    # 1006 W3 세션: 지연 동결(감사 H2). osc_tripped 를 걸지 않아 대기 중에도 과속(하드) 감시는 계속된다.
+                    if self._w3_guard_trip(now, "osc_guard", why):
+                        return
                     why = None
                 if why:
                     self.osc_tripped = why
@@ -3322,6 +3597,10 @@ def main():
                 why_t = self.osc_tgt.update(now, targets_rad, tvel)
                 if why_t and self.guard_mode == "data" and not why_t.startswith("과속"):
                     self._guard_note(now, "osc_guard_tgt", why_t)
+                    why_t = None
+                if why_t and self.w3sup is not None and not why_t.startswith("과속"):
+                    if self._w3_guard_trip(now, "osc_guard_tgt", why_t):   # 1006 W3 세션: 지연 동결(감사 H2)
+                        return
                     why_t = None
                 if why_t:
                     self.osc_tripped = why_t
@@ -3462,6 +3741,8 @@ def main():
                                  "hh_ref": (None if not self.core.hh_ref_set else round(self.core.hh.ref, 5))}
             if self.core.w3:               # 1006 W3 실험 경로에서만 필드 추가(종전 스키마 불변)
                 dbg["w3"] = self.core.runner._w3_clock.snapshot()
+            if self.w3sup is not None:     # 1006 W3 세션 감독기 상태(정지 래치·동결 대기·켜기 판정 입력)
+                dbg["w3_sup"] = self.w3sup.snapshot()
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
             if not (self.live and self.armed):
@@ -3593,7 +3874,36 @@ def main():
             self._bb_write({"timestamp": now, "event": event + "_noted",
                             "why": why, "guard_mode": "data", "stopped": False})
             self.get_logger().warn(f"[data] {event} 감지 — {why} (정지하지 않음)")
+
+        def _w3_guard_trip(self, now, event, why):
+            """1006 W3 세션 가드 트립(비하드, guard_mode safe) — 즉시 동결 대신 ge 0 → 반주기 래치 해제 → 양발 지지·정착 → 동결.
+            반환 True = 이번 틱에 동결했다(호출자 return), False = 대기 중(정책 계속 — 서기로 내려가는 중)."""
+            if self.w3sup.begin_freeze(now, f"{event}: {why}"):
+                if self.core.w3:
+                    self.core.set_gait_enable(False)
+                self._bb_write({"timestamp": now, "event": event, "why": why, "w3_deferred": True})
+                self._bb_write({"timestamp": now, "event": "w3_step", "enable": False, "by": event})
+                self.get_logger().error(f"{event} — {why}. W3 지연 동결 시작(ge 0 → 반주기 래치 해제 → 양발 지지 확인 → 동결)")
+            return self._w3_freeze_check(now)
+
+        def _w3_freeze_check(self, now):
+            """지연 동결 조건이 차면 STOP_ALL + 비활성 → True."""
+            w3c = self.core.runner._w3_clock if self.core.w3 else None
+            due = self.w3sup.freeze_due(now, bool(w3c.ge) if w3c is not None else False)
+            if due is None:
+                return False
+            kind, msg = due
+            why = f"{self.w3sup.freeze_why} → W3 지연 동결({kind}): {msg}"
+            self._bb_write({"timestamp": now, "event": "w3_freeze", "kind": kind, "why": why})
+            self._stop_all(why)
+            self.core.active = False
+            (self.get_logger().error if kind == "timeout" else self.get_logger().warn)(
+                f"{why}. 동결 홀드 — 줄 재인장 후 회수 절차")
+            return True
+
         def _stop_all(self, reason):
+            if self.w3sup is not None:      # 1006 W3 세션: 어떤 경로의 STOP_ALL 이든 지연 대기 해제 + 정지 래치
+                self.w3sup.on_frozen(reason)
             self.stop_reason = str(reason)
             self.get_logger().warning(f"STOP_ALL ({reason})")
             # 안전동작 먼저, 기록은 다음 (적대리뷰 A3: 순서 역전 금지)

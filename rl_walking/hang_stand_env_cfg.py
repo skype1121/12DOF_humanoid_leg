@@ -2907,6 +2907,28 @@ class Biped12HangStandW2omIEnvCfg(Biped12HangStandW2omPEnvCfg):
 
 
 @configclass
+class Biped12HangStandW2omR1EnvCfg(Biped12HangStandW2omP3EnvCfg):
+    """W2omR1 (1006, 진단자 원장 가설): W2omP3 + **track_lin_vel_walk 를 병진 명령(‖v_xy‖ ≥ 0.03)에만** 단일 변경.
+    근거: 제자리 범주(vx 0)에서 선속도 추종 +3·std 0.1 은 서기에 ≈ +2.9/s, 걸음 흔들림에 벌 — 서기 대비 걸음 이득 +30–45 %(A0m 스텝 모드 +130 %)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        t = self.rewards.track_lin_vel_walk
+        self.rewards.track_lin_vel_walk = RewTerm(func=mdp_hang.w1_translate_gated, weight=t.weight, params=dict(t.params))
+
+
+@configclass
+class Biped12HangStandW2omR2EnvCfg(Biped12HangStandW2omR1EnvCfg):
+    """W2omR2 (1006): W2omR1 + **제자리 범주 외란 끔**(지속·충격 힘 + 속도 밀기) — A0m 스텝 모드는 외란 없음."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.dist_off = EventTerm(func=mdp_hang.dist_off_cats, mode="interval", interval_range_s=(0.0, 0.0), params={"cats": (3,)})
+        pr = self.events.push_robot
+        self.events.push_robot = EventTerm(func=mdp_hang.push_filtered, mode=pr.mode, interval_range_s=pr.interval_range_s, params={"velocity_range": dict(pr.params["velocity_range"])})
+
+
+@configclass
 class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
     """W2om 평가용: + 회전 보조 훅(TURN_ALPHA, 0 이면 무동작) — W2qe 와 같은 평가 조건."""
 

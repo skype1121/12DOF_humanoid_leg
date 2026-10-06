@@ -182,6 +182,9 @@ def _apply(env, st, ids, asset_cfg):
         body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
     # 0921 G7: 외란(지속 램프·순간 충격) — 월드 수평 힘을 base 로컬로 변환해 더한다(is_global 미작동 확인 0920)
     Fd = _dist_force_w(st, ids)                                     # (n,2) 월드 xy [N]
+    _off = getattr(env, "_dist_off", None)                           # 1006 W2omR2: 범주별 외란 끄기(기본 없음 = 종전)
+    if _off is not None:
+        Fd = torch.where(_off[ids].unsqueeze(1), torch.zeros_like(Fd), Fd)
     st["dst_F_now"][ids] = Fd.norm(dim=-1)
     if bool((st["dst_F_now"][ids] > 0.0).any()):
         Fd3 = torch.cat([Fd, torch.zeros_like(Fd[:, :1])], dim=-1)
@@ -2161,6 +2164,37 @@ def set_omni(env, env_ids, wz_min: float = 0.1):
 
 
 _OMNI_MIX = (("fwd", 0.35), ("back", 0.15), ("lat", 0.20), ("turn", 0.20), ("fwd_turn", 0.10))
+
+
+def w1_translate_gated(env, func, params: dict | None = None, walk_min: float = 0.03, v_min: float = 0.03) -> torch.Tensor:
+    """1006 W2omR1: 걷기 모드 + 병진 명령(‖v_xy‖ ≥ v_min)일 때만 — 제자리(회전 전용) 걷기에서 선속도 추종(std 0.1)이 걸음 흔들림을 벌하던 것 제거."""
+    val = func(env, **_resolve_nested(env, params))
+    c = env.command_manager.get_command("base_velocity")
+    return val * (_walk_mode(env, walk_min) & (c[:, :2].norm(dim=-1) >= v_min)).to(val.dtype)
+
+
+def dist_off_cats(env, env_ids, cats: tuple = (3,)):
+    """mode="interval"(0 s) — 1006 W2omR2: 명령 범주 cats env 의 외란(지속·충격 힘)을 끄는 마스크 env._dist_off 갱신."""
+    cat = getattr(env, "_omni_cat", None)
+    if cat is None:
+        return
+    m = torch.zeros_like(cat, dtype=torch.bool)
+    for c in cats:
+        m |= cat == c
+    env._dist_off = m
+
+
+def push_filtered(env, env_ids, velocity_range: dict, asset_cfg=None):
+    """1006 W2omR2: push_by_setting_velocity 를 env._dist_off 가 아닌 env 에만."""
+    from isaaclab.envs import mdp as _imdp
+    from isaaclab.managers import SceneEntityCfg as _SEC
+    off = getattr(env, "_dist_off", None)
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long) if not isinstance(env_ids, slice) else torch.arange(env.num_envs, device=env.device)
+    if off is not None:
+        ids = ids[~off[ids]]
+    if ids.numel() == 0:
+        return
+    _imdp.push_by_setting_velocity(env, ids, velocity_range, asset_cfg=asset_cfg or _SEC("robot"))
 
 
 def omni_cat_gated(env, func, params: dict | None = None, cats: tuple = (3,)) -> torch.Tensor:

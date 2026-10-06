@@ -74,3 +74,5 @@
 | 1006 | W2omI | — | +300 KILL, 명시 PID 종료 | — |
 | 1006 | 제자리 걸음 실패 원인 독립 진단(서브에이전트, 읽기·분석) | 완료 알림 | 대화 내 보고 | 결과로 다음 보행 실험 결정 |
 | 1006 | DLYGAIN2(dlygain2.sh PID 2566183: KE sf12·bi30 × d2·d3) | "DLYGAIN2 끝" | ground_recovery_fked{2,3}_{sf12,bi30}_* | 감시 bzj91gw8a |
+| 1006 | 진단자 보고 | — | ANALYZED → NEXT=W2omR1·R2 | — |
+| 1006 | W2omR1·R2(w2omr.sh PID 2573842: 병렬 600 반복 → 15200·끝 α0 평가) | "W2omR 끝" in scratchpad/w2omr.out | walk_eval_w2omR*_* | 감시 brfi70r76 |

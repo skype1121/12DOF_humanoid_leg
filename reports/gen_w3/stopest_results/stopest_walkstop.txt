@@ -1,0 +1,13 @@
+a3_stop err rms all 0.006
+  t-stop [-4,0): true|vbar| p50/p90 0.031/0.055 est p50/p90 0.030/0.053 err rms 0.005  est<0.07 98%
+  t-stop [0,1): true|vbar| p50/p90 0.045/0.095 est p50/p90 0.045/0.111 err rms 0.015  est<0.07 68%
+  t-stop [1,2): true|vbar| p50/p90 0.018/0.049 est p50/p90 0.024/0.060 err rms 0.011  est<0.07 93%
+  t-stop [2,4): true|vbar| p50/p90 0.004/0.008 est p50/p90 0.004/0.009 err rms 0.003  est<0.07 100%
+  t-stop [4,8): true|vbar| p50/p90 0.003/0.006 est p50/p90 0.002/0.005 err rms 0.003  est<0.07 100%
+s1b_f06_stop err rms all 0.008
+  t-stop [-4,0): true|vbar| p50/p90 0.085/0.111 est p50/p90 0.081/0.107 err rms 0.006  est<0.07 30%
+  t-stop [0,1): true|vbar| p50/p90 0.072/0.099 est p50/p90 0.078/0.108 err rms 0.014  est<0.07 39%
+  t-stop [1,2): true|vbar| p50/p90 0.023/0.053 est p50/p90 0.030/0.063 err rms 0.012  est<0.07 93%
+  t-stop [2,4): true|vbar| p50/p90 0.004/0.012 est p50/p90 0.004/0.013 err rms 0.010  est<0.07 99%
+  t-stop [4,8): true|vbar| p50/p90 0.003/0.007 est p50/p90 0.002/0.007 err rms 0.007  est<0.07 100%
+s1b_f06_nostop err rms all 0.008

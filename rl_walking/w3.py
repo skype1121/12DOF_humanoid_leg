@@ -352,13 +352,34 @@ def _v_ema(env, tau: float = 0.5):
     return st[0]
 
 
-def _v_err(env):
+def _v_box(env, period_s: float = 1.0 / 1.1):
+    """1006 S1 단위시험 3차: EMA(τ 0.5)는 0.55 Hz 좌우 흔들림(±0.14 m/s)을 절반(≈0.07)만 깎아 명령 0.03 추종을 덮음 →
+    정확히 한 보행 주기 이동 평균 = (p_t − p_{t−T})/T (주기 성분 소거). 에피소드 앞 T 동안은 시작점 기준."""
+    asset = env.scene[H._base_cfg().name]
+    p = asset.data.root_pos_w[:, :2]
+    tick = int(env.common_step_counter)
+    K = max(2, int(round(period_s / env.step_dt)))
+    st = getattr(env, "_w3_vbox", None)
+    if st is None or st["buf"].shape[0] != env.num_envs or st["buf"].shape[1] != K:
+        st = {"buf": p.unsqueeze(1).repeat(1, K, 1).clone(), "i": 0, "tick": -1, "v": torch.zeros_like(p)}; env._w3_vbox = st
+    if st["tick"] != tick:
+        fresh = env.episode_length_buf <= 1
+        if bool(fresh.any()):
+            st["buf"][fresh] = p[fresh].unsqueeze(1)
+        i = st["i"]; old = st["buf"][:, i].clone()                     # K 틱 전(또는 에피소드 시작) 위치
+        st["buf"][:, i] = p; st["i"] = (i + 1) % K
+        n = env.episode_length_buf.clamp(min=1, max=K).float().unsqueeze(1)
+        st["v"] = (p - old) / (n * env.step_dt); st["tick"] = tick
+    return st["v"]
+
+
+def _v_err(env, box: bool = False):
     asset = env.scene[H._base_cfg().name]
     q = asset.data.root_quat_w
     yaw = torch.atan2(2 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]), 1 - 2 * (q[:, 2] ** 2 + q[:, 3] ** 2))
     cmd = env.command_manager.get_command("base_velocity")
     cw = torch.stack([cmd[:, 0] * torch.cos(yaw) - cmd[:, 1] * torch.sin(yaw), cmd[:, 0] * torch.sin(yaw) + cmd[:, 1] * torch.cos(yaw)], -1)
-    return (_v_ema(env) - cw).norm(dim=-1), cmd[:, :2].norm(dim=-1)
+    return ((_v_box(env) if box else _v_ema(env)) - cw).norm(dim=-1), cmd[:, :2].norm(dim=-1)
 
 
 def w3_drift(env) -> torch.Tensor:
@@ -374,8 +395,9 @@ def w3_track(env, sig: float = 0.05, cmin: float = 0.02) -> torch.Tensor:
 
 
 def w3_track_rel(env, sig: float = 0.05, cmin: float = 0.02) -> torch.Tensor:
-    """Stage 1 v2: 서기 대비 개선분 exp(−e²/σ²) − exp(−|c|²/σ²) — 서기(v 0) = 0 점, 반대 방향 < 0. 명령 0 은 0(Stage 0 과 같음)."""
-    e, cn = _v_err(env)
+    """Stage 1 v2: 서기 대비 개선분 exp(−e²/σ²) − exp(−|c|²/σ²) — 서기(v 0) = 0 점, 반대 방향 < 0. 명령 0 은 0(Stage 0 과 같음).
+    속도 = 한 보행 주기 이동 평균(_v_box, 흔들림 소거)."""
+    e, cn = _v_err(env, box=True)
     return (torch.exp(-(e / sig) ** 2) - torch.exp(-(cn / sig) ** 2)) * (cn >= cmin).float() * _ge(env).float()
 
 

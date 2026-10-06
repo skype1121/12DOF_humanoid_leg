@@ -43,11 +43,79 @@ p.add_argument("--heading_loop", type=float, default=0.0,
 p.add_argument("--hl_wzmax", type=float, default=0.4)
 p.add_argument("--turn_metrics", action="store_true", help="회전 지표 표 강제 출력(|wz| > 0 또는 --heading_loop 이면 자동)")
 p.add_argument("--out_tag", default="w3")
+# ── 1006 우선순위 4: 걷는 중 외란 → 회복 → 정상 STAND/WALK 복귀 채점(비우면 종전과 비트 동일) ──
+p.add_argument("--dist", default="",
+               help="걷는 중 외란. 그룹 '|' 구분, 그룹 안 토큰 ';' 구분. push:방향:t0:힘N:지속s (충격) · ramp:방향:t0:최대N:상승s:유지s (느린 외력) "
+                    "— eval_ground_recovery --dist 와 같은 문법, 방향 f/b/l/r = 몸통 앞/뒤/왼/오른(수평), t0 = 에피소드 시작 기준 s(워밍업 포함). "
+                    "stop[:지연s] = 그 그룹은 외란 끝 + 지연에 정지 명령(ge 0·명령 0) → STAND 복귀 채점, 없으면 같은 명령 유지 → WALK 복귀 채점. "
+                    "env i → 그룹 i %% G. 힘 0 토큰(push:f:6:0:0.3) = 같은 시각 대조군(sham)")
+p.add_argument("--rec_T", type=float, default=6.0, help="복귀 판정 한도[s](외란 시작 기준) — WALK 는 정상 창 시작, STAND 는 0.5 s 유지 완료 시각")
+p.add_argument("--pre_s", type=float, default=2.73, help="외란 전 기준 창[s](같은 env 의 걷기 기준값). 기본 = 1.1 Hz 3 주기(흔들림 위상 편향 제거)")
+p.add_argument("--walk_win", type=float, default=1.82, help="WALK 정상 판정 이동 창[s]. 기본 = 1.1 Hz 2 주기")
+p.add_argument("--walk_alt_frac", type=float, default=0.75, help="창 안 교대 비율(1 − 같은 발 반복/유효) ≥ 이 값")
+p.add_argument("--walk_hold", type=float, default=1.0, help="WALK 정상 유지 요구[s]")
+p.add_argument("--walk_tol_v", type=float, default=0.03, help="창 평균 속도 추종 오차 허용 = 외란 전 오차 + 이 값[m/s]")
+p.add_argument("--walk_tol_ang", type=float, default=2.0, help="창 평균 피치·롤 허용 = 외란 전 평균 ± 이 값[°]")
+p.add_argument("--walk_rate_frac", type=float, default=0.6, help="창 유효 스텝률 ≥ 외란 전 × 이 값")
+p.add_argument("--dist_jitter", type=float, default=0.0,
+               help="env 별 외란 시각 오프셋 U[0,J) s — 0(기본)이면 모든 env 가 같은 보행 위상에서 맞는다. 0.91(= 1.1 Hz 한 주기)이면 위상 전체 표본 + 위상 구간별 낙상 표")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
 if a.long:
     a.seconds = 120.0
+
+
+class WDist:
+    """eval_ground_recovery.Dist 와 같은 문법·같은 힘 모양(시각만 에피소드 기준)."""
+    def __init__(self, tok):
+        q_ = tok.strip().split(":")
+        self.kind = q_[0]; self.dir = q_[1]; self.t0 = float(q_[2]); self.F = float(q_[3])
+        assert self.dir in ("f", "b", "l", "r"), tok
+        if self.kind == "push":
+            self.dur = float(q_[4]); self.t_end = self.t0 + self.dur
+        elif self.kind == "ramp":
+            self.rise = float(q_[4]); self.holdt = float(q_[5]); self.t_end = self.t0 + self.rise + self.holdt
+        else:
+            raise ValueError(tok)
+
+    def force_at(self, t):
+        if t < self.t0 or t >= self.t_end:
+            return 0.0
+        if self.kind == "push":
+            return self.F
+        return self.F * min(1.0, (t - self.t0) / max(self.rise, 1e-3))
+
+    def force_vec(self, tt):
+        """env 별 시각 텐서 tt 에 대한 force_at(같은 식)."""
+        on = (tt >= self.t0) & (tt < self.t_end)
+        if self.kind == "push":
+            return on.float() * self.F
+        return on.float() * self.F * ((tt - self.t0) / max(self.rise, 1e-3)).clamp(max=1.0)
+
+
+DG = []   # (라벨, [WDist], 정지 지연 s | None)
+DG_CMD = []   # 그룹별 명령 덮기 'cmd=vx,vy,wz'(없으면 None = --cmd) — 한 실행에 앞·옆 걷기 그룹을 같이 넣을 때
+if a.dist.strip():
+    for _gs in a.dist.split("|"):
+        _ds, _stop, _gc = [], None, None
+        for _tok in [x.strip() for x in _gs.split(";") if x.strip()]:
+            if _tok.split(":")[0] == "stop":
+                _stop = float(_tok.split(":")[1]) if len(_tok.split(":")) > 1 else 0.0
+            elif _tok.startswith("cmd="):
+                _gc = [float(x) for x in _tok[4:].split(",")]; assert len(_gc) == 3, _tok
+                assert a.heading_loop <= 0, "그룹 cmd= 와 --heading_loop 는 같이 쓰지 않는다(고리는 전역 --cmd 기준)"
+            else:
+                _ds.append(WDist(_tok))
+        assert _ds, f"그룹 '{_gs}': 외란 토큰 1개 이상 필요(대조군은 힘 0 토큰)"
+        DG.append((_gs.strip(), _ds, _stop)); DG_CMD.append(_gc)
+    a.pre_s = max(a.pre_s, a.walk_win)
+    _t0min = min(min(d.t0 for d in g[1]) for g in DG)
+    assert _t0min >= a.warmup + a.pre_s - 1e-6, f"외란 t0 {_t0min} < 워밍업 {a.warmup} + 기준 창 {a.pre_s}"
+    _need = max(max(d.t_end for d in g[1]) for g in DG) + a.rec_T + a.walk_win + a.walk_hold + 0.5 + a.dist_jitter
+    if a.warmup + a.seconds < _need:
+        print(f"[eval_w3] --dist: 채점 구간을 {a.seconds:.1f} → {_need - a.warmup:.1f} s 로 연장(복귀 판정 데이터 확보)", flush=True)
+        a.seconds = _need - a.warmup
 if a.stand_first > 0:
     a.warmup = max(a.warmup, a.stand_first + 2.0)
 # env var 는 환경 생성 전에(시작 이벤트가 읽는다)
@@ -150,6 +218,63 @@ def phase_now():
     return torch.remainder(1.1 * t, 1.0), "시간 1.1 Hz"
 
 
+if DG:
+    from isaaclab.utils.math import quat_apply, quat_apply_inverse  # noqa: E402
+    G_ = len(DG); dg_id = torch.arange(N, device=dev) % G_
+    _gt = lambda f: torch.tensor([f(g) for g in DG], device=dev, dtype=torch.float32)[dg_id]
+    dg_t0 = _gt(lambda g: min(d.t0 for d in g[1])); dg_te = _gt(lambda g: max(d.t_end for d in g[1]))
+    dg_stop = _gt(lambda g: (max(d.t_end for d in g[1]) + g[2]) if g[2] is not None else float("nan"))
+    # --dist_jitter J: env 별 시각 오프셋 U[0, J)(전용 난수 생성기 — env 난수 소비 불변) → 외란이 보행 위상 전체에 퍼진다. 0 이면 모든 env 같은 위상.
+    _gen = torch.Generator(device="cpu"); _gen.manual_seed(int(a.seed) + 7919)
+    dg_off = (torch.rand(N, generator=_gen) * float(a.dist_jitter)).to(dev)
+    dg_t0 = dg_t0 + dg_off; dg_te = dg_te + dg_off; dg_stop = dg_stop + dg_off
+    ph_on = torch.full((N,), float("nan"), device=dev)                                    # 외란 시작 순간 위상 env._gu
+    dg_isstop = ~torch.isnan(dg_stop)
+    _bn_ = list(robot.data.body_names); dg_base = _bn_.index("base") if "base" in _bn_ else 0
+    _EX_ = torch.tensor([1.0, 0.0, 0.0], device=dev); _EY_ = torch.tensor([0.0, 1.0, 0.0], device=dev)
+
+    def _wdir(dch):
+        """env 별 월드 수평 단위벡터: 몸통 +x = 앞, +y = 왼(eval_ground_recovery._dir_vec 와 같은 식)."""
+        qq = robot.data.root_quat_w
+        v = quat_apply(qq, (_EX_ if dch in ("f", "b") else _EY_).unsqueeze(0).expand(qq.shape[0], 3)); v[:, 2] = 0.0
+        v = v / v.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+        return v if dch in ("f", "l") else -v
+    _nan = lambda: torch.full((N,), float("nan"), device=dev)
+    WN = int(round(a.walk_win / dt)); WS = int(round(0.5 / dt)); NF = 8      # 특징: vx,vy(요 프레임)·피치·롤·ω_xy²·유효 스텝·같은 발 반복·높이
+    ring = torch.zeros(WN, N, NF, device=dev); ring_i = 0; RS = torch.zeros(N, NF, device=dev); RSs = torch.zeros(N, NF, device=dev)
+    PS = torch.zeros(N, NF, device=dev); PSS = torch.zeros(N, NF, device=dev); PC = torch.zeros(N, device=dev)
+    dl_last = torch.full((N,), -1, dtype=torch.long, device=dev)
+    DG_HAS_CMD = any(c_ is not None for c_ in DG_CMD)
+    CMD3 = torch.tensor([(c_ if c_ is not None else CMD) for c_ in DG_CMD], device=dev, dtype=torch.float32)[dg_id]   # (N,3)
+    CMDV = CMD3[:, :2].clone()
+    on_alive = torch.zeros(N, dtype=torch.bool, device=dev); on_done = torch.zeros(N, dtype=torch.bool, device=dev)
+    pre_ok = torch.zeros(N, dtype=torch.bool, device=dev); v_on = torch.zeros(N, 2, device=dev); dir_on = torch.zeros(N, 2, device=dev); dv_dir = _nan(); gf_on = _nan()
+    t_step1 = _nan(); n_val_rec = torch.zeros(N, device=dev); n_lift_stop = torch.zeros(N, device=dev); n_val_stop = torch.zeros(N, device=dev)
+    t_damp, t_cont, t_level, t_norm = _nan(), _nan(), _nan(), _nan(); t_walk_win, t_walk_conf = _nan(), _nan()
+    r_damp, r_cont, r_level, r_norm, r_walk = (torch.zeros(N, device=dev) for _ in range(5)); alt_after = torch.zeros(N, device=dev)
+    wk_after_ok, wk_after_n = torch.zeros(N, device=dev), torch.zeros(N, device=dev)          # 확정 뒤 유지율
+    ab_calm, ab_bad = torch.zeros(N, device=dev), torch.zeros(N, device=dev)                  # 비정상 자세 체류(STAND: 조용한 틱 중 / WALK: 생존 틱 중)
+    pk_pit, pk_rol, pk_w, pk_dh = (torch.zeros(N, device=dev) for _ in range(4))
+    dg_resid_F = 0.0                                                                         # 외란 종료 뒤 base 합성 외력 최대(누적 버그 감시)
+    _tau_end = float(dg_te.max())
+
+    WK_NAMES = ("속도 추종", "스텝률·교대", "피치", "롤", "ω RMS", "높이")
+    wk_fail = torch.zeros(N, len(WK_NAMES), device=dev)                                       # 판정 잡음 진단: 하위 기준별 실패 틱
+
+    def _walk_parts(wm, nsum):
+        """창 평균 wm(N,NF) 가 외란 전 같은 env 기준으로 정상 걷기인가 — 하위 기준 (N,6)."""
+        pc_ = PC.clamp(min=1).unsqueeze(1); pm = PS / pc_
+        err_pre = (pm[:, :2] - CMDV).norm(dim=-1); err_w = (wm[:, :2] - CMDV).norm(dim=-1)
+        w_pre = pm[:, 4].sqrt(); rate_pre = pm[:, 5]
+        alt_ok = (nsum[:, 5] - nsum[:, 6]) >= a.walk_alt_frac * nsum[:, 5] - 1e-6               # 창 안 교대 비율(같은 발 반복 = 하중 수용 1 회 누락이면 생김)
+        stp = torch.where(rate_pre > 0, (wm[:, 5] >= a.walk_rate_frac * rate_pre) & (nsum[:, 5] >= 2 - 1e-6) & alt_ok, torch.ones_like(PC, dtype=torch.bool))
+        return torch.stack([err_w <= err_pre + a.walk_tol_v, stp, (wm[:, 2] - pm[:, 2]).abs() <= a.walk_tol_ang, (wm[:, 3] - pm[:, 3]).abs() <= a.walk_tol_ang,
+                            wm[:, 4].sqrt() <= 1.5 * w_pre + 0.05, wm[:, 7] >= pm[:, 7] - 0.02], -1)
+
+    def _walk_ok(wm, nsum):
+        return _walk_parts(wm, nsum).all(-1)
+    print("[eval_w3] --dist 그룹: " + " | ".join(f"G{k}={g[0]}({'STAND' if g[2] is not None else 'WALK'})" for k, g in enumerate(DG)), flush=True)
+
 obs = venv.get_observations()
 if isinstance(obs, tuple):
     obs = obs[0]
@@ -197,6 +322,29 @@ for i in range(steps):
     if a.stop_at > 0 and getattr(U, "_ge_cmd", None) is not None and t > a.stop_at:
         U._ge_cmd[:] = False
         cmd_term.vel_command_b[:] = 0.0                                      # 정지 = 명령 0 + ge 0 (실물 stop 과 같은 계약)
+    if DG:
+        if DG_HAS_CMD:
+            cmd_term.vel_command_b[:] = CMD3                                  # 그룹별 명령(덮기 없는 그룹 = --cmd)
+        _stp = dg_isstop & (t > dg_stop)                                   # 그룹별 정지(외란 끝 + 지연) — --stop_at 과 같은 계약
+        if bool(_stp.any()):
+            cmd_term.vel_command_b[_stp] = 0.0
+            if getattr(U, "_ge_cmd", None) is not None:
+                U._ge_cmd[_stp] = False
+        _fw = torch.zeros(N, 3, device=dev)
+        _tt = t - 0.5 * dt - dg_off                                          # 이 틱의 물리 구간 [t−dt, t) 중앙, env 별 시각 오프셋(--dist_jitter)
+        for _gi, (_, _ds, _) in enumerate(DG):
+            for _d in _ds:
+                if _d.F == 0.0:
+                    continue
+                _fN = _d.force_vec(_tt) * (dg_id == _gi).float()
+                if bool((_fN != 0).any()):
+                    _fw += _wdir(_d.dir) * _fN.unsqueeze(1)
+        if bool((_fw.norm(dim=-1) > 0).any()):
+            # sim-push-frame-gotcha(0920): 월드 힘을 base 쿼터니언으로 로컬 변환해 로컬 경로로. set 이 아니라 add —
+            # env 의 hang_support_step(매 스텝 끝 set+add: 지지·롤 램프·수평 토크)을 지우지 않고 그 위에 더한다(다음 스텝 끝에 env 가 다시 set).
+            _fb = quat_apply_inverse(robot.data.root_quat_w, _fw).unsqueeze(1).contiguous()
+            robot.permanent_wrench_composer.add_forces_and_torques(forces=_fb, torques=None, positions=None,
+                                                                   body_ids=[dg_base], env_ids=None, is_global=False)
     with torch.inference_mode():
         act_ = policy(obs)
     obs, _, dones, _ = venv.step(act_)
@@ -344,6 +492,83 @@ for i in range(steps):
         _dy = torch.atan2(torch.sin(yaw - yaw_prev), torch.cos(yaw - yaw_prev))   # 1006 감사 D4: 틱별 누적(±180° 감싸기 없음)
         yaw_acc = torch.where(alive, yaw_acc + _dy, yaw_acc); yaw_prev = yaw.clone()
     q_prevf = fq.clone()                          # 지지발 피벗용 직전 틱 발 자세(틱 끝에서 갱신)
+    if DG and ev:                                  # ── 외란 회복 체인 계측(1006 우선순위 4) ──
+        pg_ = robot.data.projected_gravity_b
+        pit_ = torch.rad2deg(torch.atan2(pg_[:, 0], -pg_[:, 2])); rol_ = torch.rad2deg(torch.atan2(-pg_[:, 1], -pg_[:, 2]))
+        wxy_ = robot.data.root_ang_vel_b[:, :2].norm(dim=-1)
+        vw_ = robot.data.root_lin_vel_w[:, :2]; cy_, sy_ = torch.cos(yaw), torch.sin(yaw)
+        vyf = torch.stack([vw_[:, 0] * cy_ + vw_[:, 1] * sy_, -vw_[:, 0] * sy_ + vw_[:, 1] * cy_], -1)
+        h_ = robot.data.root_pos_w[:, 2]; both_ = cc.all(1)
+        rep_ = torch.zeros(N, device=dev)
+        for k in (0, 1):
+            vk = val[:, k]; rep_ += (vk & (dl_last == k)).float(); dl_last = torch.where(vk, torch.full_like(dl_last, k), dl_last)
+        nv_ = val.float().sum(1)
+        feat = torch.stack([vyf[:, 0], vyf[:, 1], pit_, rol_, wxy_ ** 2, nv_, rep_, h_], -1)
+        RS += feat - ring[ring_i]; RSs += feat - ring[(ring_i - WS) % WN]; ring[ring_i] = feat; ring_i = (ring_i + 1) % WN
+        wm_, wms_ = RS / WN, RSs / WS
+        rel = t - dg_t0                                                     # 외란 시작 기준 시각
+        inpre = (rel >= -a.pre_s) & (rel < 0) & alive
+        PS += feat * inpre.float().unsqueeze(1); PSS += feat ** 2 * inpre.float().unsqueeze(1); PC += inpre.float()
+        newon = (rel >= 0) & ~on_done
+        if bool(newon.any()):                                                # 외란 시작 틱: 생존·외란 전 정상(대조)·방향 기준
+            on_alive = torch.where(newon, alive, on_alive)
+            pre_ok = torch.where(newon, alive & _walk_ok(wm_, RS), pre_ok)
+            v_on = torch.where(newon.unsqueeze(1), vw_, v_on)
+            if getattr(U, "_gf", None) is not None and U._gf.shape[0] == N:     # 위상 클록 주파수(STEP 이면 1.1 Hz)
+                gf_on = torch.where(newon, U._gf.float(), gf_on)
+            if getattr(U, "_gu", None) is not None and U._gu.shape[0] == N:
+                ph_on = torch.where(newon, U._gu.float(), ph_on)
+            _dfirst = torch.zeros(N, 2, device=dev)
+            for _gi, (_, _ds, _) in enumerate(DG):
+                _dfirst[dg_id == _gi] = _wdir(_ds[0].dir)[dg_id == _gi, :2]
+            dir_on = torch.where(newon.unsqueeze(1), _dfirst, dir_on)
+            on_done |= newon
+        aft = on_done & on_alive & alive
+        endt = (t >= dg_te) & (t - dt < dg_te) & on_done
+        dv_dir = torch.where(endt & alive, ((vw_ - v_on) * dir_on).sum(-1), dv_dir)
+        pm_ = PS / PC.clamp(min=1).unsqueeze(1)
+        inrec = aft & (rel <= a.rec_T)
+        t_step1 = torch.where(aft & nv_.gt(0) & torch.isnan(t_step1), rel, t_step1)
+        n_val_rec += nv_ * inrec.float()
+        pk_pit = torch.where(inrec, torch.maximum(pk_pit, (pit_ - pm_[:, 2]).abs()), pk_pit)
+        pk_rol = torch.where(inrec, torch.maximum(pk_rol, (rol_ - pm_[:, 3]).abs()), pk_rol)
+        pk_w = torch.where(inrec, torch.maximum(pk_w, wxy_), pk_w); pk_dh = torch.where(inrec, torch.minimum(pk_dh, h_ - pm_[:, 7]), pk_dh)
+        post = aft & (t >= dg_te)
+        # STAND(정지 그룹): eval_ground_recovery 의 절대 기준과 같은 정의
+        st_ = dg_isstop; post_s = post & st_ & (t >= dg_stop)
+        dqn_ = torch.rad2deg((robot.data.joint_pos - robot.data.default_joint_pos).abs()).mean(-1)
+        lvl_ = (pit_.abs() < 3.0) & (rol_.abs() < 3.0)
+        nrm_ = lvl_ & (wxy_ < 0.2) & both_ & (dqn_ < 5.0) & (h_ - pm_[:, 7] > -0.02)
+        n_lift_stop += (lifted.any(1) & post_s).float(); n_val_stop += nv_ * post_s.float()
+        _hold = lambda run, c_: torch.where(c_, run + dt, torch.zeros_like(run))
+        r_damp = _hold(r_damp, post_s & (wxy_ < 0.2) & (vw_.norm(dim=-1) < 0.1)); r_cont = _hold(r_cont, post_s & both_)
+        r_level = _hold(r_level, post_s & lvl_); r_norm = _hold(r_norm, post_s & nrm_ & (t >= dg_te + 0.3))
+        for _tt, _rr, _need in ((t_damp, r_damp, 0.2), (t_cont, r_cont, 0.5), (t_level, r_level, 0.5), (t_norm, r_norm, 0.5)):
+            _tt.copy_(torch.where(st_ & (_rr >= _need - 1e-6) & torch.isnan(_tt), rel, _tt))
+        _ab_s = post_s & (t >= dg_te + 1.0) & (wxy_ < 0.2)
+        ab_calm += _ab_s.float(); ab_bad += (_ab_s & ~nrm_).float()
+        # WALK(유지 그룹): 외란 전 같은 env 기준 — 창이 외란 끝 뒤에 완전히 들어온 뒤부터
+        wk_ = ~st_
+        sh_ok = (wms_[:, 4].sqrt() <= 1.5 * pm_[:, 4].sqrt() + 0.05) & ((wms_[:, :2] - pm_[:, :2]).norm(dim=-1) <= 0.05)
+        sh_lv = ((wms_[:, 2] - pm_[:, 2]).abs() <= a.walk_tol_ang) & ((wms_[:, 3] - pm_[:, 3]).abs() <= a.walk_tol_ang)
+        post_sh = post & wk_ & (t - 0.5 >= dg_te)
+        t_damp = torch.where(post_sh & sh_ok & torch.isnan(t_damp), rel, t_damp)
+        t_level = torch.where(post_sh & sh_lv & torch.isnan(t_level), rel, t_level)
+        alt_after = torch.where(post & wk_ & (rep_ > 0), torch.zeros_like(alt_after), alt_after + (post & wk_).float() * nv_)
+        t_cont = torch.where(post & wk_ & (alt_after >= 2) & torch.isnan(t_cont), rel, t_cont)
+        post_w = post & wk_ & (t - a.walk_win >= dg_te)
+        _parts = _walk_parts(wm_, RS)
+        okw = post_w & _parts.all(-1)
+        wk_fail += (post_w.unsqueeze(1) & ~_parts).float()
+        r_walk = _hold(r_walk, okw)
+        _conf = wk_ & (r_walk >= a.walk_hold - 1e-6) & torch.isnan(t_walk_conf)
+        t_walk_conf = torch.where(_conf, rel, t_walk_conf)
+        t_walk_win = torch.where(_conf, rel - a.walk_hold + dt - a.walk_win, t_walk_win)
+        _kept = post_w & ~torch.isnan(t_walk_conf)
+        wk_after_n += _kept.float(); wk_after_ok += (_kept & okw).float()
+        ab_calm += post_w.float(); ab_bad += (post_w & ~okw).float()
+        if t > _tau_end + 0.1:
+            dg_resid_F = max(dg_resid_F, float(robot.permanent_wrench_composer.composed_force_as_torch[:, dg_base, :2].norm(dim=-1).max()))
 print(f"[eval_w3] {steps} 틱 완료 · {time.time() - t0:.0f} s", flush=True)
 
 # ───────────── 집계 ─────────────
@@ -440,7 +665,7 @@ all_pass = all(ok for _, ok, _ in crit)
 
 L = [f"# W3 Stage 0 채점표 · {a.out_tag}",
      f"- 태스크 {a.task} · 정책 {ck}",
-     f"- env {N} · seed {a.seed} · 지연 {a.delay}틱 · LPF β 0.27 · 워밍업 {a.warmup}s + 채점 {T:.0f}s{' (장시간)' if a.long else ''} · 외란 없음 · 학습 DR 유지",
+     f"- env {N} · seed {a.seed} · 지연 {a.delay}틱 · LPF β 0.27 · 워밍업 {a.warmup}s + 채점 {T:.0f}s{' (장시간)' if a.long else ''} · {('외란 --dist ' + a.dist) if DG else '외란 없음'} · 학습 DR 유지",
      f"- 명령 (vx,vy,wz) = ({CMD[0]:+.2f},{CMD[1]:+.2f},{CMD[2]:+.2f}) · gait_enable {a.gait_enable} · STEP_ASSIST_ALPHA {a.assist_alpha}"
      f" · W3_REF_SCALE {'0(--ref_off)' if a.ref_off else '미설정'} · TURN_ALPHA {os.environ.get('TURN_ALPHA')} · 위상 출처 {phase_src}"
      + (f" · env._assist_alpha {getattr(U, '_assist_alpha'):.3g}" if hasattr(U, "_assist_alpha") else " · 보조 훅 없음"),
@@ -493,6 +718,84 @@ else:
 J_turn = None
 if TURN_ON:
     J_turn, _rows = turn_summary(); L += _rows
+J_dist = None
+if DG:
+    _tf = t_fall
+    _pm = PS / PC.clamp(min=1).unsqueeze(1)
+    _rate_pre = _pm[:, 5] / dt                                               # 외란 전 유효 스텝 /s
+    _exp_rate = torch.where(torch.isnan(gf_on) | (gf_on <= 0), _rate_pre, 2.0 * gf_on)       # 클록 기대 스텝률(창 양자화 회피), 없으면 외란 전 실측
+    extra_w = n_val_rec - _exp_rate * a.rec_T
+    def _q(x, m):
+        v = x[m]; v = v[~torch.isnan(v)]
+        return [float(torch.quantile(v, q_)) for q_ in (0.1, 0.5, 0.9)] if v.numel() else [float("nan")] * 3
+    _f3 = lambda L3, f="{:.2f}": "/".join(f.format(x) for x in L3)
+    L += ["", "## 외란 회복 체인(1006 우선순위 4 — 외란 → 회복 스텝 → 운동량·각속도 억제 → 접촉 → 수평 → 정상 STAND/WALK 복귀)",
+          f"- 시각 = 외란 시작 기준 s · 복귀 한도 rec_T {a.rec_T:.1f} s · 분모 = 외란 시작 시 생존 env(외란 전 낙상은 제외·따로 표기) · 낙상 = 미도달",
+          f"- WALK 정상 = {a.walk_win:.1f} s 창이 외란 끝 뒤에 있고 외란 전 {a.pre_s:.1f} s 같은 env 기준: 창 평균 속도 추종 오차 ≤ 전 오차 + {a.walk_tol_v}"
+          f" · 유효 스텝률 ≥ 전 × {a.walk_rate_frac} · 창 안 교대 비율 ≥ {a.walk_alt_frac}·유효 ≥ 2 · 평균 피치·롤 전 ± {a.walk_tol_ang}° · ω_xy RMS ≤ 1.5×전 + 0.05 · 높이 ≥ 전 − 2 cm, {a.walk_hold:.1f} s 유지."
+          f" 복귀 시각 = 유지 시작 창의 시작(하한 = 외란 길이). 억제·수평 = 0.5 s 창(전 기준 ω RMS·속도 ±0.05 / 피치·롤 ± {a.walk_tol_ang}°), 접촉 = 외란 끝 뒤 교대 유효 스텝 2 연속",
+          "- STAND 정상(정지 그룹, eval_ground_recovery 와 같은 절대 기준) = |피치|·|롤| < 3° · |ω_xy| < 0.2 · 양발 · 명목 관절 평균 편차 < 5° · 높이 ≥ 외란 전 − 2 cm, 0.5 s 지속(외란 끝 + 0.3 s·정지 요청 뒤)."
+          " 억제 = |ω_xy| < 0.2·|v| < 0.1 0.2 s, 접촉 = 양발 0.5 s, 수평 = |피치|·|롤| < 3° 0.5 s",
+          f"- 대조: '외란 전 정상' = 외란 시작 순간 WALK 판정이 이미 참인 비율(판정 기준 자체의 잡음 확인). 방향 검증 Δv = 외란 끝−시작 골반 속도의 힘 방향 성분(걷기 흔들림 포함 — 같은 방향·같은 길이 힘 0 대조군 값을 빼서 읽는다; 기대 ≈ 힘·시간/17.6 kg). 외란 종료 뒤 base 합성 외력 최대 {dg_resid_F:.2f} N(0 이어야 함 — 힘 누적 감시)", ""]
+    L += ["| 그룹 | 시나리오 | n(외란 전 낙상) | 외란 전 정상 | Δv 힘 방향 m/s | 낙상 | 회복 스텝(첫 유효) | 억제 | 접촉 | 수평 | **정상 복귀** ≤rec_T | 복귀 s 10/50/90 | ≤1/2/3/5 s | 추가 스텝 중앙/90 | 비정상 체류 | 확정 뒤 유지 | 정점 |Δ피치|/|Δ롤|°·ω·Δh cm(중앙) |",
+          "|" + "---|" * 17]
+    J_dist = {"groups": [], "rec_T": a.rec_T, "pre_s": a.pre_s, "walk_win": a.walk_win, "walk_hold": a.walk_hold, "walk_tol_v": a.walk_tol_v,
+              "walk_tol_ang": a.walk_tol_ang, "walk_rate_frac": a.walk_rate_frac, "walk_alt_frac": a.walk_alt_frac,
+              "dist_jitter": a.dist_jitter, "resid_force_N": dg_resid_F, "ramp_off": a.ramp_off}
+    for gi, (lab, ds, stp) in enumerate(DG):
+        gm = dg_id == gi; m0 = gm & on_alive; n0 = int(m0.sum()); nb = int((gm & ~on_alive).sum())
+        isS = stp is not None
+        fell = m0 & ~alive
+        tr = t_norm if isS else t_walk_win
+        rec = m0 & ~torch.isnan(tr) & (tr <= a.rec_T)
+        def _reach(x):
+            return int((m0 & ~torch.isnan(x) & (x <= a.rec_T)).sum())
+        cdf = [int((rec & (tr <= s_)).sum()) for s_ in (1.0, 2.0, 3.0, 5.0)]
+        ex = _q(n_val_stop if isS else extra_w, m0 & alive)
+        abn = float(ab_bad[m0].sum() / ab_calm[m0].sum().clamp(min=1))
+        keep = float(wk_after_ok[m0].sum() / wk_after_n[m0].sum().clamp(min=1)) if not isS else float("nan")
+        pk = [_q(x, m0)[1] for x in (pk_pit, pk_rol, pk_w)] + [_q(pk_dh * 100, m0)[1]]
+        rt = lambda x: f"{_reach(x)}/{n0} · {_q(x, m0)[1]:.2f}s"
+        L.append(f"| G{gi} `{lab}` | {'STAND(정지)' if isS else 'WALK(유지)'} | {n0}({nb}) | {int((pre_ok & m0).sum())}/{n0} | {_q(dv_dir, m0)[1]:+.3f} | {int(fell.sum())}/{n0}"
+                 f" | {rt(t_step1)} | {rt(t_damp)} | {rt(t_cont)} | {rt(t_level)} | **{int(rec.sum())}/{n0}** | {_f3(_q(tr, rec))} | {'/'.join(str(c_) for c_ in cdf)}"
+                 f" | {ex[1]:+.1f}/{ex[2]:+.1f}{' (정지 뒤 유효)' if isS else ''} | {100 * abn:.1f} % | {('—' if isS else f'{100 * keep:.1f} %')}"
+                 f" | {pk[0]:.1f}/{pk[1]:.1f}·{pk[2]:.2f}·{pk[3]:+.1f} |")
+        J_dist["groups"].append({
+            "label": lab, "scenario": "STAND" if isS else "WALK", "stop_delay": stp, "n": n0, "fell_before": nb,
+            "pre_ok": int((pre_ok & m0).sum()), "dv_dir_med": _q(dv_dir, m0)[1], "falls": int(fell.sum()),
+            "fall_t_rel": [round(float(x), 2) for x in (_tf[fell] - dg_t0[fell]).tolist()],
+            "reach": {k_: _reach(x) for k_, x in (("step", t_step1), ("damp", t_damp), ("contact", t_cont), ("level", t_level))},
+            "t_med": {k_: _q(x, m0)[1] for k_, x in (("step", t_step1), ("damp", t_damp), ("contact", t_cont), ("level", t_level))},
+            "recovered": int(rec.sum()), "rec_t_p10_50_90": _q(tr, rec), "rec_cdf_1_2_3_5": cdf,
+            "walk_confirm_t_med": (None if isS else _q(t_walk_conf, m0)[1]),
+            "extra_steps_p10_50_90": ex, "lifts_after_stop_p10_50_90": (_q(n_lift_stop, m0 & alive) if isS else None),
+            "abnormal_frac": abn, "walk_keep_frac": (None if isS else keep),
+            "peak_dpitch_med": pk[0], "peak_droll_med": pk[1], "peak_wxy_med": pk[2], "peak_dh_cm_med": pk[3],
+            "rate_pre_steps_per_s_med": _q(_rate_pre, m0)[1], "clock_hz_med": _q(gf_on, m0)[1],
+            "walk_fail_frac": (None if isS else {nm: float(wk_fail[m0, k].sum() / ab_calm[m0].sum().clamp(min=1)) for k, nm in enumerate(WK_NAMES)}),
+            "per_env_rec_t": [(None if math.isnan(float(x)) else round(float(x), 2)) for x in tr[m0].tolist()]})
+    L += ["", "주: 외란 그룹은 env 를 round-robin 으로 나눈다(같은 명령·같은 seed·같은 시각, 힘 0 그룹 = 대조군). 위 Stage 0 표·판정은 전 그룹 합산(외란 포함)이라 외란 실행에서는 참고만.",
+          "정점 = 외란 시작~rec_T 동안 외란 전 평균 대비 최대 이탈(높이는 최저). 추가 스텝(WALK) = rec_T 안 유효 스텝 − 2·f_클록(외란 시작 env._gf, 없으면 외란 전 실측 스텝률) × rec_T — 대조군(힘 0) 값과 비교해 읽는다.",
+          f"hang_support 롤 토크 램프: {'끔(--ramp_off)' if a.ramp_off else '켬(학습 조건 — 시간에 따라 커지는 롤 토크라 외란 전 기준값과 비교하는 복귀 판정을 오염시킬 수 있다: 대조군 비정상 체류로 확인)'}", "",
+          "### WALK 판정 하위 기준별 실패 틱 비율(외란 끝 + 창 이후, 생존 틱 — 대조군 값 = 판정 잡음)",
+          "| 그룹 | " + " | ".join(WK_NAMES) + " |", "|---|" + "---|" * len(WK_NAMES)]
+    for gi, (lab, ds, stp) in enumerate(DG):
+        if stp is not None:
+            continue
+        m0 = (dg_id == gi) & on_alive; den = float(ab_calm[m0].sum().clamp(min=1))
+        L.append(f"| G{gi} `{lab}` | " + " | ".join(f"{100 * float(wk_fail[m0, k].sum()) / den:.1f} %" for k in range(len(WK_NAMES))) + " |")
+    # 외란 시작 위상별 낙상·복귀(φ = env._gu: 0–0.5 왼발 스윙 예정, 0.5–1 오른발) — --dist_jitter 0 이면 한 칸에 몰린다
+    _PB = ((0.0, 0.25), (0.25, 0.5), (0.5, 0.75), (0.75, 1.0))
+    L += ["", f"### 외란 시작 위상별 낙상 / 복귀(φ = env._gu, 0–0.5 왼발 스윙·0.5–1 오른발 스윙 예정 · 시각 오프셋 U[0,{a.dist_jitter:.2f}) s)",
+          "| 그룹 | " + " | ".join(f"φ {lo:.2f}–{hi:.2f} 낙상/복귀/n" for lo, hi in _PB) + " |", "|---|" + "---|" * len(_PB)]
+    for gi, (lab, ds, stp) in enumerate(DG):
+        m0 = (dg_id == gi) & on_alive; tr = t_norm if stp is not None else t_walk_win
+        rec_ = ~torch.isnan(tr) & (tr <= a.rec_T); cells = []
+        for lo, hi in _PB:
+            mb = m0 & (ph_on >= lo) & (ph_on < hi)
+            cells.append(f"{int((mb & ~alive).sum())}/{int((mb & rec_).sum())}/{int(mb.sum())}")
+        L.append(f"| G{gi} `{lab}` | " + " | ".join(cells) + " |")
+        J_dist["groups"][gi]["phase_bins_fall_rec_n"] = cells
 L += ["", f"## Stage 0 사전 기준 판정({'STAND, gait_enable 0' if a.gait_enable == 0 else 'STEP'}): {'PASS' if all_pass else 'FAIL'}"]
 L += [f"- {'PASS' if ok else 'FAIL'} · {nm} · {val}" for nm, ok, val in crit]
 L += ["", "주: 접촉 = 발 링크 |F| > 5 N. 유효 cadence = 유효 스텝/(생존 env·s)/2. 표류 = 시작 요 프레임 변위/채점 시간 − 명령(vx,vy). "
@@ -511,6 +814,8 @@ J = {"ramp_off": a.ramp_off, "turn": J_turn, "heading_loop": a.heading_loop, "hl
      "step_height_cm_p10_50_90": pct(R_), "step_len_cm_p10_50_90": pct(L_), "step_fwd_cm_p10_50_90": pct(F_), "lift_phase_p10_50_90": pct(LP),
      "pitch_rms_deg": pitch_rms, "pitch_rate_rms": wy_rms, "action_rms": act_rms, "action_rms_deg": act_rms_deg, "ref_rms_deg": ref_rms_deg,
      "per_foot": per_foot, "criteria": [{"name": nm, "pass": bool(ok), "value": val} for nm, ok, val in crit], "pass": all_pass}
+if DG:
+    J["dist"] = J_dist
 json.dump(J, open(os.path.join(out_dir, f"w3eval_{a.out_tag}.json"), "w"), ensure_ascii=False, indent=1)
 print(f"[eval_w3] 저장: log_picture/w3eval_{a.out_tag}.txt/.json", flush=True)
 sys.stdout.flush(); os._exit(0)   # app.close() 가 종료에서 멈추는 경우가 있어(1006 스모크: 300 s 타임아웃) 산출물 저장 뒤 즉시 종료

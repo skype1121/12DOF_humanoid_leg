@@ -118,6 +118,7 @@ parser.add_argument("--cue_dir", type=float, default=None, help="1005 ACT2: 방�
 parser.add_argument("--sw_early", type=str, default="", help="1005 ④ 정착: 상태 기반 조기 복귀 'v,tilt,hold' — 첫 외란 뒤 첫 하중 수용이 있었고 |v_xy|<v m/s·감지기 기울기<tilt° 가 hold s 지속되면 회복 모드 강제 해제(G21a 복귀)")
 parser.add_argument("--cue_align", type=str, default="", help="1005 (B) 정착: cue 종료를 '발 앞뒤 정렬'로 — 'tmin,dx_cm,tmax': 켜진 뒤 tmin s 지나고 양발 접촉·두 발 앞축 거리 < dx_cm 이면 종료, tmax 넘으면 다음 양발 지지에서 종료")
 parser.add_argument("--cue_dir_imu", action="store_true", help="1005 배포 가능 신호: cue 방향 = 켜짐 순간 IMU 피치 각속도 ω_y > 0(앞으로 기우는 중) — 참 몸통 속도 대신")
+parser.add_argument("--ho_state", type=str, default="", help="1006 SGATE(평가 전용, 특권 상태): 'margin_m,w,hold,block' — 회복 켜짐 ≥ 0.3 s 뒤 ICP(골반 xy + v/ω0)가 접촉 발 지지 사각형 안 ≥ margin 이고 |ω_xy| < w 가 hold s 유지되면 서기 인계, block s 재진입 금지")
 parser.add_argument("--sw_monitor", type=str, default="", help="1006 반복 전환 감시(supervisor 안전장치): 'n,w,s' — 외란 뒤 회복 켜짐 횟수 ≥ n 이고 서기 모드에서 |ω_xy| > w 가 s 초 이어지면 이후 회복 재진입 금지(서기 유지)")
 parser.add_argument("--ho_at_load", type=str, default="", help="1006 ARREST-HO(평가 전용): 'delay,block' — 첫 하중 수용(load_first_t) 뒤 delay s 에 서기 정책으로 강제 인계(env 당 1회), 그 뒤 block s 동안 회복 재진입 금지")
 parser.add_argument("--sw_early_imu", type=str, default="", help="1005 배포 가능 조기 복귀 'tmin,tilt,w,hold': 켜진 뒤 tmin s, 감지기 기울기<tilt°·|ω_xy|<w·양발 접촉(0/1) 이 hold s 유지 → 회복 해제(참 속도·접촉 힘 미사용)")
@@ -898,6 +899,34 @@ for i in range(STEPS):
                 _ec = sw_mode & ~torch.isnan(load_first_t) & (robot.data.root_lin_vel_w[:, :2].norm(dim=-1) < _ev) & (_tilt < _et)
                 early_hold = torch.where(_ec, early_hold + 0.02, torch.zeros_like(early_hold))
                 _swoff = _swoff | (sw_mode & (early_hold >= _eh))
+            if args_cli.ho_state:
+                _sm, _sw2, _sh, _sb = [float(x) for x in args_cli.ho_state.split(",")]
+                if "hs_t" not in dir():
+                    hs_t = torch.zeros(N, device=dev); hs_block = torch.full((N,), -1e9, device=dev); hs_n = torch.zeros(N, device=dev)
+                _q = robot.data.root_quat_w
+                _yw = torch.atan2(2 * (_q[:, 0] * _q[:, 3] + _q[:, 1] * _q[:, 2]), 1 - 2 * (_q[:, 2] ** 2 + _q[:, 3] ** 2))
+                _cy, _sy = torch.cos(_yw), torch.sin(_yw)
+                _icp = robot.data.root_pos_w[:, :2] + robot.data.root_lin_vel_w[:, :2] / math.sqrt(9.81 / 0.58)
+                _rel = _icp[:, None, :] - robot.data.body_pos_w[:, _FT, :2]                    # (N,2,2) 발 기준
+                _rx = _rel[..., 0] * _cy[:, None] + _rel[..., 1] * _sy[:, None]; _ry = -_rel[..., 0] * _sy[:, None] + _rel[..., 1] * _cy[:, None]
+                _fpb = robot.data.body_pos_w[:, _FT, :2] - robot.data.root_pos_w[:, None, :2]
+                _fy_b = -_fpb[..., 0] * _sy[:, None] + _fpb[..., 1] * _cy[:, None]           # 발 횡위치(몸통)
+                # 발 사각형(발목 기준 앞 0.085·뒤 0.065·반폭 0.03) 안쪽 거리 — 양발 접촉이면 두 사각형을 잇는 횡 구간도 허용
+                _in_x = torch.minimum(0.085 - _rx, _rx + 0.065)                               # (N,2)
+                _in_y1 = 0.03 - _ry.abs()
+                _ylo = torch.minimum(_fy_b[:, 0], _fy_b[:, 1]) - 0.03; _yhi = torch.maximum(_fy_b[:, 0], _fy_b[:, 1]) + 0.03
+                _icpb_y = -(_icp[:, 0] - robot.data.root_pos_w[:, 0]) * _sy + (_icp[:, 1] - robot.data.root_pos_w[:, 1]) * _cy
+                _in_y2 = torch.minimum(_icpb_y - _ylo, _yhi - _icpb_y)
+                _m1 = torch.where(_cf, torch.minimum(_in_x, _in_y1), torch.full_like(_in_x, -1.0)).max(1).values
+                _both = _cf[:, 0] & _cf[:, 1]
+                _m2 = torch.where(_both, torch.minimum(torch.minimum(_in_x[:, 0], _in_x[:, 1]), _in_y2), torch.full_like(_m1, -1.0))
+                _marg = torch.maximum(_m1, _m2)
+                _okst = sw_mode & (sw_t_on >= 0.3) & (_marg >= _sm) & (_w < _sw2)
+                hs_t = torch.where(_okst, hs_t + 0.02, torch.zeros_like(hs_t))
+                _hso = sw_mode & (hs_t >= _sh)
+                _swoff = _swoff | _hso; hs_n += _hso.float()
+                hs_block = torch.where(_hso, torch.full_like(hs_block, t_rel + _sb), hs_block)
+                _on = _on & ~(t_rel < hs_block)
             if args_cli.sw_monitor:
                 _mn, _mw, _ms = [float(x) for x in args_cli.sw_monitor.split(",")]
                 if "mon_t" not in dir():

@@ -98,3 +98,4 @@
 | 1006 | W3-C 400 | — | COMPLETED → ANALYZED(참조 켬 교대 93 %·참조 0 소멸) → NEXT = W3-CI | — |
 | 1006 | W3-A 재실행(w3A_rerun.sh PID 2684025, 1차 GPU 할당 실패) | "W3A 끝" | w3eval_w3A_400 | 감시 b9p9vakrk(+U) |
 | 1006 | W3-CI(w3ci.sh PID 2685179: W3-C 400 → 1000, 참조 내재화) | "W3CI 500 끝"·"W3CI 끝" | w3eval_w3CI_* | 감시 bq1w4g1x1 |
+| 1006 | 트랙 B SGATE(sgate.sh PID 2686659: SWMON 끝 뒤 sg3·sg2) | "SGATE 끝" | ground_recovery_sg*_* | 감시 bwm90n5b3 |

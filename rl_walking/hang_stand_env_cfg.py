@@ -3304,3 +3304,13 @@ class Biped12HangStandW3C2iEnvCfg(Biped12HangStandW3C2EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.observations.critic.c2_icp = _ObsTerm(func=_c2.c2_icp_obs, history_length=5, flatten_history_dim=True)
+
+
+@configclass
+class Biped12HangStandW3S1dEnvCfg(Biped12HangStandW3S1cEnvCfg):
+    """W3 Stage 1 d (1006): S1c 와 단 하나만 다름 — 앞 명령 범위를 뒤와 대칭(0.03–0.06). 가설: 명령 분포 비대칭(앞 0.03–0.10 vs 뒤 0.03–0.06)이
+    명령 0 영점 앞 편향(S1c 13300 +0.024 → 13500 +0.036, A3 시작 −0.006)을 만든다. 같은 시작점(W3-A3 끝)·같은 seed 로 S1c 와 짝 비교."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.w3_cmd.params = {"p_step": 0.7, "stage": 1, "vx_range": (0.03, 0.06), "vx_back_range": (0.03, 0.06)}

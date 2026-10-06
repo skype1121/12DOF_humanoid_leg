@@ -88,3 +88,4 @@
 | 1006 | 트랙 B LPFR(lpfr.sh PID 2639886: KE × 체인 β 0.5/0.4/1.0 × d3 × 7조건) | "LPFR 끝" | ground_recovery_lpf*d3_* | 감시 bk7i8t3zn |
 | 1006 | 트랙 A W3 단위시험(w3unit.sh PID 2640739) | "W3UNIT 끝" | landscape_u_* | 감시 bj54x9yd2 |
 | 1006 | 서브에이전트: 회복 병목(진행)·W3 채점표 도구(진행) | 완료 알림 | — | — |
+| 1006 | 트랙 B ARREST-HO(arrest.sh PID 2642866: LPFR 끝 뒤 aho3·aho2) | "ARREST 끝" | ground_recovery_aho*_* | 감시 b8wsu9ivx(stages_cmp) |

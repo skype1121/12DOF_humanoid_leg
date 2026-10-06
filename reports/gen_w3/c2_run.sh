@@ -59,4 +59,13 @@ unit)
     run_one "[ -f $f ]" $LOGD/$t.l \
       /home/ryu/IsaacLab/isaaclab.sh -p $WT/rl_walking/scripts/c2_landscape.py --headless --task ${UNIT_TASK:-Biped12-HangStand-W3C2-v0} --load_run $RUN --checkpoint $CK --arm $B --seed $SD --out_tag $t
   done ;;
+sweep)
+  SD=$1
+  for CUE in B3 B6; do for spec in k1:stop_td_k=1 k2:stop_td_k=2 k3:stop_td_k=3 k4:stop_td_k=4 or:stop_oracle=1; do
+    IFS=: read nm PRM <<< "$spec"
+    t=${PFX}_${CUE}_${nm}_s${SD}; f=$DATA/log_picture/c2unit_${t}.npz; rm -f $f
+    run_one "[ -f $f ]" $LOGD/$t.l \
+      /home/ryu/IsaacLab/isaaclab.sh -p $WT/rl_walking/scripts/c2_landscape.py --headless --task ${UNIT_TASK:-Biped12-HangStand-W3C2v-v0} --load_run $RUN --checkpoint $CK \
+      --arm X --c2_params $PRM $([ $CUE = B6 ] && echo --cue) --seed $SD --out_tag $t
+  done; done ;;
 esac

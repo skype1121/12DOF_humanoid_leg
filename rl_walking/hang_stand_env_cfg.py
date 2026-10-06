@@ -3315,6 +3315,16 @@ class Biped12HangStandW3C2vmEnvCfg(Biped12HangStandW3C2vEnvCfg):
 
 
 @configclass
+class Biped12HangStandW3C2vdEnvCfg(Biped12HangStandW3C2vEnvCfg):
+    """c2vd (1006, 문헌 권고: Atalante 2203.01148·Digit 2404.19173·Cassie 2401.16889·Kangaroo 2411.01000): c2v + 회복 착지 점수 = 차분형
+    clip((Φ_전 − Φ_후)/5 cm, 0, 1), Φ = max(0, dist(ξ_eq, 지지영역) − 1 cm), ξ_eq = ξ + F/(mω0²)(지속 외력 평형 보정, 특권). 이미 포획된 착지 = 0."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.w3_place.params = dict(self.rewards.w3_place.params, cap_mode="diff")
+
+
+@configclass
 class Biped12HangStandW3C2iEnvCfg(Biped12HangStandW3C2EnvCfg):
     """c2i 변형: critic 에 ICP−CoM(요 프레임 2차원, 이력 5) 추가 — critic 입력 335 → 345, **--init_expand 필요**(resume 불가). actor 불변."""
 

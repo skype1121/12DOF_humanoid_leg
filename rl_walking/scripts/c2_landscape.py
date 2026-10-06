@@ -17,7 +17,9 @@ sys.path.insert(0, CODE)
 p = argparse.ArgumentParser()
 p.add_argument("--task", default="Biped12-HangStand-W3C2-v0")
 p.add_argument("--num_envs", type=int, default=256)
-p.add_argument("--arm", required=True, choices=("B1", "B2", "B3", "B4", "B5", "B6"))
+p.add_argument("--arm", required=True, choices=("B1", "B2", "B3", "B4", "B5", "B6", "X"))
+p.add_argument("--c2_params", default="", help="arm X: C2_PARAMS(예 stop_td_k=2 / stop_oracle=1) — 정지 시점 스윕")
+p.add_argument("--cue", action="store_true", help="arm X: 회복 중 B6 형 관측 cue")
 p.add_argument("--window", type=float, default=8.0)
 p.add_argument("--seconds", type=float, default=19.0, help="시뮬 길이(첫 외란 t0 ≤ 9 s + 창 8 s 를 덮게)")
 p.add_argument("--cue_vx", type=float, default=0.06)
@@ -27,7 +29,8 @@ cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
 ARM_ENV = {"B1": ("stand", ""), "B2": ("", "min_td=1e6,tmax_s=1e9"), "B3": ("", ""), "B4": ("", "min_rec_s=0,stop_w=1e9,stop_tilt=1e9,stop_v=1e9"),
-           "B5": ("", "min_td=1e6"), "B6": ("", "")}[a.arm]
+           "B5": ("", "min_td=1e6"), "B6": ("", ""), "X": ("", a.c2_params)}[a.arm]
+CUE = a.arm == "B6" or (a.arm == "X" and a.cue)
 for k in ("C2_ARM", "C2_PARAMS"):
     os.environ.pop(k, None)
 if ARM_ENV[0]:
@@ -77,8 +80,8 @@ print(f"[c2unit] {a.task} · {ck} · 팔 {a.arm} {ARM_ENV} · env {N} · seed {a
 z = lambda *s: torch.zeros(*s, device=dev)
 first_ep = torch.ones(N, dtype=torch.bool, device=dev)       # 첫 에피소드 진행 중
 fell = torch.zeros(N, dtype=torch.bool, device=dev); t_fall = torch.full((N,), float("nan"), device=dev)
-S = {k: z(N) for k in ("other_w", "nom_w", "cap_w", "capm_w", "settle_w", "nom_all", "cap_all", "settle_all", "rm_place_all",
-                       "n_rec_td", "cap_raw_rec", "nom_raw_rec", "mg_raw_rec", "n_td_w", "n_valid_w", "trig_w", "req_w", "timeout_w", "cancel_w", "latch_w",
+S = {k: z(N) for k in ("other_w", "nom_w", "cap_w", "capm_w", "capd_w", "settle_w", "nom_all", "cap_all", "settle_all", "rm_place_all",
+                       "n_rec_td", "cap_raw_rec", "nom_raw_rec", "mg_raw_rec", "df_raw_rec", "n_td_req", "n_td_w", "n_valid_w", "trig_w", "req_w", "timeout_w", "cancel_w", "latch_w",
                        "settle_ev_w", "trig_all", "rec_ticks_w", "fell_w", "fell_pre", "drift_w", "to_after_req", "req_first_t", "latch_first_t")}
 S["req_first_t"][:] = float("nan"); S["latch_first_t"][:] = float("nan")
 xy0 = torch.full((N, 2), float("nan"), device=dev); xy_req = torch.full((N, 2), float("nan"), device=dev); xy_last = z(N, 2)
@@ -90,7 +93,7 @@ for i in range(T_STEPS):
         po = obs
     else:
         po = obs["policy"]
-    if a.arm == "B6" and getattr(U, "_c2", None) is not None:
+    if CUE and getattr(U, "_c2", None) is not None:
         g = H._g22(U)["cat"]; md = U._c2["mode"]
         on = ((md == C.REC) | (md == C.STOPREQ)) & (g > 0.5)
         vx = torch.where(g > 1.5, -a.cue_vx, a.cue_vx)
@@ -119,8 +122,9 @@ for i in range(T_STEPS):
         cap = C.c2_place_reward(U, sig=SIG, sig_cap=SIG_CAP, cap_mode=CAP_MODE) * W_PLACE
         stl = st["ev_settle"] * W_SETTLE
         capm = C.c2_place_reward(U, sig=SIG, sig_cap=SIG_CAP, cap_mode="margin") * W_PLACE     # 여유형 흐름(설정과 무관하게 함께 채점)
+        capd = C.c2_place_reward(U, sig=SIG, sig_cap=SIG_CAP, cap_mode="diff") * W_PLACE       # 차분형 흐름
         m = inw.float()
-        S["other_w"] += oth * m * dt; S["nom_w"] += nom * m * dt; S["cap_w"] += cap * m * dt; S["capm_w"] += capm * m * dt; S["settle_w"] += stl * m * dt
+        S["other_w"] += oth * m * dt; S["nom_w"] += nom * m * dt; S["cap_w"] += cap * m * dt; S["capm_w"] += capm * m * dt; S["capd_w"] += capd * m * dt; S["settle_w"] += stl * m * dt
         lv = live.float()
         S["nom_all"] += nom * lv * dt; S["cap_all"] += cap * lv * dt; S["settle_all"] += stl * lv * dt; S["rm_place_all"] += sr[:, i_place] * lv * dt
         S["trig_all"] += st["ev_trig"] * lv
@@ -129,12 +133,14 @@ for i in range(T_STEPS):
         S["cap_raw_rec"] += (torch.exp(-(st["cap_err"] / SIG_CAP) ** 2) * tdr.float()).sum(1) * m
         S["nom_raw_rec"] += (torch.exp(-(s3["td_err"] / SIG) ** 2) * tdr.float()).sum(1) * m
         S["mg_raw_rec"] += (st["cap_mg"] * tdr.float()).sum(1) * m              # 여유형 점수(설정과 무관하게 항상 기록)
+        S["df_raw_rec"] += (st["cap_df"] * tdr.float()).sum(1) * m              # 차분형 점수
         S["n_td_w"] += s3["ev_td"].sum(1) * m; S["n_valid_w"] += s3["ev_valid"].sum(1) * m
         for k_, e_ in (("trig_w", "ev_trig"), ("req_w", "ev_req"), ("timeout_w", "ev_timeout"), ("cancel_w", "ev_cancel"), ("latch_w", "ev_latch"), ("settle_ev_w", "ev_settle")):
             S[k_] += st[e_] * m
         S["rec_ticks_w"] += ((st["mode"] == C.REC) | (st["mode"] == C.STOPREQ)).float() * m
         rq = ((st["ev_req"] + st["ev_timeout"]) > 0.5) & inw & torch.isnan(S["req_first_t"])
         S["req_first_t"] = torch.where(rq, t_cur - t0, S["req_first_t"])
+        S["n_td_req"] = torch.where(rq, st["n_td"], S["n_td_req"])               # 첫 정지 요청 때 회복 착지 수(스윕 k 확인)
         lt = (st["ev_latch"] > 0.5) & inw & torch.isnan(S["latch_first_t"])
         S["latch_first_t"] = torch.where(lt, t_cur - t0, S["latch_first_t"])
         S["to_after_req"] += s3["ev_takeoff"].sum(1) * (inw & ~torch.isnan(S["req_first_t"])).float()
@@ -149,7 +155,7 @@ for i in range(T_STEPS):
 S["drift_w"] = torch.where(torch.isnan(xy0[:, 0]), torch.full_like(S["drift_w"], float("nan")), 100.0 * (xy_last - xy0).norm(dim=-1))
 S["drift_after_req"] = torch.where(torch.isnan(xy_req[:, 0]), torch.full((N,), float("nan"), device=dev), 100.0 * (xy_last - xy_req).norm(dim=-1))
 out = {k: v.cpu().numpy() for k, v in S.items()}
-out.update(cat=cat.cpu().numpy(), kind0=kind0.cpu().numpy(), t0=t0.cpu().numpy(), kind1=kind1.cpu().numpy(), t01=t01.cpu().numpy(), t_fall=t_fall.cpu().numpy(), arm=a.arm, seed=a.seed, ckpt=str(ck),
+out.update(cat=cat.cpu().numpy(), kind0=kind0.cpu().numpy(), t0=t0.cpu().numpy(), kind1=kind1.cpu().numpy(), t01=t01.cpu().numpy(), t_fall=t_fall.cpu().numpy(), arm=a.arm, c2_params=a.c2_params, cue=CUE, seed=a.seed, ckpt=str(ck),
            w_place=W_PLACE, w_settle=W_SETTLE, cap_mode=CAP_MODE, window=a.window)
 os.makedirs(os.path.join(DATA, "log_picture"), exist_ok=True)
 np.savez_compressed(os.path.join(DATA, "log_picture", f"c2unit_{a.out_tag}.npz"), **out)

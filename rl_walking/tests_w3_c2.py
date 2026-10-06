@@ -310,7 +310,48 @@ def t_margin():
     check("12g c2_place_reward 기본 cap_mode = err(종전 비트 동일)", C.c2_place_reward.__defaults__[-1] == "err")
 
 
+# ---------------------------------------------------------------- 13. 차분형 포획 점수·지지영역 거리·정지 시점 스윕 ----------------------------------------------------------------
+def t_diff_sweep():
+    yaw = torch.zeros(1)
+    fxy = torch.tensor([[[0.0, 0.10], [0.0, -0.10]]])
+    cor = C.foot_corners(fxy, yaw).reshape(1, 8, 2)
+    both = torch.ones(1, 8, dtype=torch.bool)
+    d_in = float(C.support_dist(torch.tensor([[0.0, 0.0]]), cor, both)[0]); d_out = float(C.support_dist(torch.tensor([[0.185, 0.0]]), cor, both)[0])
+    check("13a 양발 지지영역 안(골반 밑) 거리 ≤ 0", d_in <= 0, f"{d_in:+.3f}")
+    check("13b 앞 0.185 m 점 = 발끝(0.085) 에서 0.10 m", abs(d_out - 0.10) < 2e-3, f"{d_out:.4f}")
+    xi = torch.tensor([[0.20, 0.0]])
+    cont = torch.tensor([[False, True]]); td = torch.tensor([[True, False]])
+    # 왼발이 ξ 쪽(앞 0.18)으로 딛음 vs 제자리(0)로 딛음 — 오른발 지지
+    f_step = C.foot_corners(torch.tensor([[[0.18, 0.10], [0.0, -0.10]]]), yaw); f_place = C.foot_corners(fxy, yaw)
+    sc_step, pb1, pa1 = C.capture_diff_score(xi, f_step, cont, td); sc_place, pb2, pa2 = C.capture_diff_score(xi, f_place, cont, td)
+    check("13c 방향 스텝 점수 > 제자리 디딤 점수", float(sc_step[0, 0]) > float(sc_place[0, 0]) + 0.3, f"{float(sc_step[0,0]):.2f} vs {float(sc_place[0,0]):.2f}")
+    sc_cap, _, _ = C.capture_diff_score(torch.tensor([[0.0, -0.10]]), f_place, cont, td)
+    check("13d 이미 포획(ξ 가 지지발 위) 착지 = 0 점", float(sc_cap[0, 0]) == 0.0)
+    sc_air, _, _ = C.capture_diff_score(xi, f_step, torch.tensor([[False, False]]), td)
+    check("13e 지지 없던 착지(공중) = 0 점", float(sc_air[0, 0]) == 0.0)
+    # 정지 시점 스윕: k 번째 유효 착지에서 정지 요청, 상태 조건·취소 무시
+    for k in (1, 3):
+        Pk = C._P({"stop_td_k": k}); st = fresh_state(P_=Pk)
+        for _ in range(Pk.det_delay + 1):
+            C.c2_core(st, T(6.0), T(1.0), B(True), B(False), DT, Pk)
+        n = 0; kreq = None
+        for i in range(200):
+            td_ = (i % 23) == 5
+            n += int(td_)
+            C.c2_core(st, T(8.0), T(2.0), B(True), B(td_), DT, Pk)
+            if st["ev_req"][0] > 0:
+                kreq = n; break
+        check(f"13f 강제 정지 k={k}: k 번째 착지에서 요청(불안정 무시)", kreq == k, f"{kreq}")
+    Po = C._P({"stop_oracle": 1.0}); st = fresh_state(P_=Po)
+    for _ in range(Po.det_delay + 1):
+        C.c2_core(st, T(6.0), T(1.0), B(True), B(False), DT, Po)
+    C.c2_core(st, T(8.0), T(2.0), B(True), B(True), DT, Po, oracle_ok=B(False))
+    a0 = int(st["mode"][0])
+    C.c2_core(st, T(8.0), T(2.0), B(True), B(True), DT, Po, oracle_ok=B(True))
+    check("13g 오라클: 포획 착지 신호에서만 요청", a0 == C.REC and int(st["mode"][0]) == C.STOPREQ)
+
+
 if __name__ == "__main__":
-    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt(); t_cancel_calm(); t_margin()
+    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt(); t_cancel_calm(); t_margin(); t_diff_sweep()
     print(f"\n결과: 실패 {len(FAIL)}" + (f" {FAIL}" if FAIL else " — 전부 통과"))
     sys.exit(1 if FAIL else 0)

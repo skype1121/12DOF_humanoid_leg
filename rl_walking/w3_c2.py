@@ -55,6 +55,8 @@ class C2Params:
     v_box_s: float = 0.0          # > 0: |v| 조건을 이 길이(한 보행 주기 0.909 s) 이동평균 속도 벡터의 크기로. 1006 C2CAL: 순간 |v| 는 제자리 걸음 흔들림이
                                   #     중앙 0.32 m/s 라 정지 조건이 영원히 안 열림 → 주기 평균(제자리 p90 0.058 vs 회복 p90 0.25–0.34 m/s)로 분리됨
     tmax_s: float = 4.0           # REC 시간 초과 → 정지 요청
+    stop_td_k: int = 0            # 반사실 정지 시점 스윕(1006 문헌 권고 3): > 0 이면 정지 요청 = 회복 유효 착지 k 번째(상태 조건·취소 무시, 시간 초과는 유지)
+    stop_oracle: float = 0.0      # > 0 이면 정지 요청 = 오라클(참 ξ_eq 가 양발 지지영역 안에 처음 들어온 착지, 특권 — 진단 전용)
     cancel_calm: float = 0.0      # > 0: STOPREQ 취소 조건 = 감지기 발화(종전) 대신 '정지 규칙 미충족'(창 max|ω|·기울기·|v̄| 중 하나라도 문턱 초과).
                                   #     1006 C2EVAL(c2v): 감지 문턱(4°·0.5)을 제자리 걸음 흔들림이 늘 넘어 요청의 90 % 가 취소됨(b18 요청 8.3·취소 7.6·래치 0.7)
     refr_s: float = 0.5           # POST 진입 뒤 재켜짐 불응 [s]
@@ -86,7 +88,7 @@ def new_state(N: int, dev, P: C2Params, dt: float) -> dict:
             # 이번 틱 사건(0/1)
             "ev_trig": z(N), "ev_req": z(N), "ev_timeout": z(N), "ev_cancel": z(N), "ev_latch": z(N), "ev_settle": z(N),
             # 착지 사건 보조(발별): 회복 중 착지였는지, 포획 목표 오차
-            "td_rec": torch.zeros(N, 2, dtype=torch.bool, device=dev), "cap_err": z(N, 2), "cap_mg": z(N, 2),
+            "td_rec": torch.zeros(N, 2, dtype=torch.bool, device=dev), "cap_err": z(N, 2), "cap_mg": z(N, 2), "cap_df": z(N, 2), "phi_b": z(N, 2), "phi_a": z(N, 2), "oracle_ok": torch.zeros(N, dtype=torch.bool, device=dev),
             "gref": torch.zeros(N, 3, device=dev), "en_t": z(N), "K": K, "D": D,
             "vbuf": z(N, max(1, int(round(P.v_box_s / dt))), 2), "vi": 0}
 
@@ -105,7 +107,7 @@ def reset_envs(st: dict, mask: torch.Tensor):
 
 # ---------------------------------------------------------------- 순수 상태기계 ----------------------------------------------------------------
 def c2_core(st: dict, tilt: torch.Tensor, w: torch.Tensor, armed: torch.Tensor, td_any: torch.Tensor, dt: float, P: C2Params,
-            v_est: torch.Tensor | None = None) -> torch.Tensor:
+            v_est: torch.Tensor | None = None, oracle_ok: torch.Tensor | None = None) -> torch.Tensor:
     """한 틱 supervisor 갱신 → want(bool, N) = 이번 틱 엔진에 요청할 gait_enable.
     입력은 배포 가능 신호(기울기 deg, |ω_xy| rad/s, 직전 틱 유효 착지 사건)와 무장(학습 전용, 배포 = 참). v_est 는 C2v 변형에서만."""
     N = tilt.shape[0]
@@ -135,11 +137,16 @@ def c2_core(st: dict, tilt: torch.Tensor, w: torch.Tensor, armed: torch.Tensor, 
     if P.stop_v > 0.0 and v_est is not None:
         calm = calm & (v_est < P.stop_v)
     req = in_rec & (t_rec >= P.min_rec_s) & (n_td >= P.min_td) & calm
+    forced = P.stop_td_k > 0 or P.stop_oracle > 0.0
+    if P.stop_td_k > 0:
+        req = in_rec & (n_td >= P.stop_td_k)
+    elif P.stop_oracle > 0.0:
+        req = in_rec & (oracle_ok if oracle_ok is not None else torch.zeros_like(in_rec))
     tout = in_rec & ~req & (t_rec >= P.tmax_s)
     # STOPREQ 취소(시간 초과로 들어온 것은 취소 불가)
     in_sr = m == STOPREQ
     _cdet = ~calm if P.cancel_calm > 0.0 else det
-    cancel = in_sr & _cdet & (st["t"] + dt < P.tmax_s) & armed
+    cancel = in_sr & _cdet & (st["t"] + dt < P.tmax_s) & armed & (not forced)
     # POST → STAND
     post_end = (m == POST) & (st["t"] + dt >= P.post_s) & ~start
     new_m = m.clone()
@@ -206,6 +213,49 @@ def capture_margin_score(foot_xy: torch.Tensor, xi_xy: torch.Tensor, v_xy: torch
     vh = v_xy / vn.clamp(min=1e-9)
     m = ((foot_xy - xi_xy.unsqueeze(1)) * vh.unsqueeze(1)).sum(-1)
     return torch.where(vn > v_min, (m / scale).clamp(-1.0, 1.0), torch.zeros_like(m))
+
+
+FOOT_FRONT, FOOT_BACK, FOOT_HW = 0.085, 0.065, 0.03     # 발목축 기준 발 사각형 [m] (실측 150 mm 평발: 앞 85·뒤 65, 반폭 3 cm — eval ho_state 와 같음)
+
+
+def foot_corners(fxy: torch.Tensor, yaw: torch.Tensor, front: float = FOOT_FRONT, back: float = FOOT_BACK, hw: float = FOOT_HW) -> torch.Tensor:
+    """(N,2,4,2) 발별 사각형 꼭짓점(월드 xy). 축 = 골반 요(발 요 대신 근사 — 회복 중 발 요 차이는 문서화된 근사)."""
+    loc = torch.tensor([[front, hw], [front, -hw], [-back, -hw], [-back, hw]], device=fxy.device, dtype=fxy.dtype)
+    c, s = torch.cos(yaw), torch.sin(yaw)
+    R = torch.stack([torch.stack([c, -s], -1), torch.stack([s, c], -1)], -2)       # (N,2,2)
+    rot = torch.einsum("nij,kj->nki", R, loc)                                       # (N,4,2)
+    return fxy.unsqueeze(2) + rot.unsqueeze(1)
+
+
+def support_dist(p: torch.Tensor, corners: torch.Tensor, mask: torch.Tensor, K: int = 64) -> torch.Tensor:
+    """(N,) 점 p 와 (마스크된) 꼭짓점 볼록 껍질 사이 거리(바깥 > 0, 안 ≤ 0 근사). corners (N,M,2), mask (N,M).
+    지지 함수 방식: max_u [u·p − max_v u·v] (u = K 방향, 오차 ≤ 1 − cos(π/K) ≈ 0.1 %). 유효 꼭짓점 없음 → +inf."""
+    ang = torch.arange(K, device=p.device, dtype=p.dtype) * (2 * math.pi / K)
+    U = torch.stack([torch.cos(ang), torch.sin(ang)], -1)                          # (K,2)
+    hv = torch.einsum("nmd,kd->nmk", corners, U)                                    # (N,M,K)
+    hv = torch.where(mask.unsqueeze(-1), hv, torch.full_like(hv, -float("inf")))
+    h = hv.max(1).values                                                           # (N,K)
+    d = (p @ U.T - h).max(1).values
+    return torch.where(mask.any(1), d, torch.full_like(d, float("inf")))
+
+
+def capture_diff_score(xi: torch.Tensor, corners: torch.Tensor, cont: torch.Tensor, td: torch.Tensor, margin: float = 0.01, scale: float = 0.05):
+    """발별(N,2) 차분형 포획 점수와 (Φ_전, Φ_후). 착지 발 c: 전 = 다른 발(접촉 시)만의 지지영역, 후 = 다른 발 + 착지 발.
+    Φ = max(0, dist − margin). 이미 포획(Φ_전 = 0) → 0 점, 지지 없던 착지(전 = 공집합) → 0 점(정의 불가)."""
+    N = xi.shape[0]
+    out = torch.zeros(N, 2, device=xi.device); pb = torch.zeros(N, 2, device=xi.device); pa = torch.zeros(N, 2, device=xi.device)
+    flat = corners.reshape(N, 8, 2)
+    for c in (0, 1):
+        o = 1 - c
+        mb = torch.zeros(N, 2, dtype=torch.bool, device=xi.device); mb[:, o] = cont[:, o]
+        ma = mb.clone(); ma[:, c] = True
+        db = support_dist(xi, flat, mb.repeat_interleave(4, dim=1)); da = support_dist(xi, flat, ma.repeat_interleave(4, dim=1))
+        phb = (db - margin).clamp(min=0.0); pha = (da - margin).clamp(min=0.0)
+        ok = td[:, c] & torch.isfinite(phb)
+        sc = ((phb - pha) / scale).clamp(0.0, 1.0)
+        out[:, c] = torch.where(ok, sc, torch.zeros_like(sc))
+        pb[:, c] = torch.where(ok, phb, torch.zeros_like(phb)); pa[:, c] = torch.where(td[:, c], da, torch.zeros_like(da))
+    return out, pb, pa
 
 
 def place_value(ev_td: torch.Tensor, td_err: torch.Tensor, td_rec: torch.Tensor, cap_err: torch.Tensor, ge: torch.Tensor,
@@ -317,7 +367,7 @@ def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: d
         v_est = st["vbar"]
     elif P.stop_v > 0.0:
         v_est = (asset.data.root_lin_vel_b[:, :2] + P.kv_noise * torch.randn(env.num_envs, 2, device=env.device)).norm(dim=1)
-    want = c2_core(st, tilt, w, armed, td_any, env.step_dt, P, v_est)
+    want = c2_core(st, tilt, w, armed, td_any, env.step_dt, P, v_est, oracle_ok=st["oracle_ok"])
     if getattr(env, "_c2_march", False):
         want = torch.ones_like(want) if en is None else en.clone()     # 홀드(인계 전) 구간은 ge 0
     if getattr(env, "_ge_cmd", None) is not None:
@@ -346,13 +396,13 @@ def _com_state(asset):
 
 
 def c2_tracker(env, env_ids, nominal_half_width: float = 0.10, b: float = 0.02, v_ref: float = 0.05, max_off: float = 0.25,
-               mg_scale: float = 0.05, mg_vmin: float = 0.10):
+               mg_scale: float = 0.05, mg_vmin: float = 0.10, df_margin: float = 0.01, df_scale: float = 0.05):
     """mode="interval"(0 s), **w3_step_tracker 뒤**: 이번 틱 유효 착지(ev_td)마다 회복 중 여부·포획 목표 오차 기록(특권 CoM — 보상 전용)."""
     from . import mdp_hang as H
     st = _c2(env); s3 = W3._st(env)
     td = s3["ev_td"] > 0.5
     if not bool(td.any()):
-        st["td_rec"] = torch.zeros_like(st["td_rec"]); return
+        st["td_rec"] = torch.zeros_like(st["td_rec"]); st["oracle_ok"] = torch.zeros_like(st["oracle_ok"]); return
     asset = env.scene["robot"]
     bid = H._g21_bids(env); fp = asset.data.body_pos_w[:, bid, :]
     q = asset.data.root_quat_w
@@ -377,13 +427,27 @@ def c2_tracker(env, env_ids, nominal_half_width: float = 0.10, b: float = 0.02, 
     xi = com[:, :2] + vc[:, :2] / om.unsqueeze(1)                 # 여유형(보상 옵션·진단용으로 항상 기록)
     mg = capture_margin_score(fp[..., :2], xi, vc[:, :2], scale=mg_scale, v_min=mg_vmin)
     st["cap_mg"] = torch.where(st["td_rec"], mg, torch.zeros_like(mg))
+    # 차분형(1006 문헌 권고 1): Φ = max(0, dist(ξ_eq, 지지영역) − 여유), 점수 = clip((Φ_착지전 − Φ_착지후)/scale, 0, 1).
+    # ξ_eq = ξ + F/(m·ω0²) — 지속 외력 F(월드 수평, 특권)가 있으면 정적 평형에 필요한 CoP 가 CoM 보다 F 방향으로 F/(mω0²) 앞
+    # (LIPM ẍ = ω0²(x − p) + F/m → 평형 p = x + F/(mω0²)). 권고문의 '뺀다'는 F 를 반력 기준으로 본 표기 — 부호는 이 유도를 따름.
+    hs = H._state(env)
+    Fw = H._dist_force_w(hs, torch.arange(env.num_envs, device=env.device))
+    mtot = asset.data.default_mass.sum(1).to(Fw.device)
+    xi_eq = xi + Fw / (mtot * om ** 2).unsqueeze(1)
+    sensor = env.scene.sensors["contact_forces"]
+    cont = sensor.data.net_forces_w[:, H._feet_body_ids(env), :].norm(dim=-1) > 5.0
+    corners = foot_corners(fp[..., :2], yaw)
+    df, pb, pa = capture_diff_score(xi_eq, corners, cont, td, margin=df_margin, scale=df_scale)
+    st["cap_df"] = torch.where(st["td_rec"], df, torch.zeros_like(df))
+    st["phi_b"] = torch.where(st["td_rec"], pb, torch.zeros_like(pb)); st["phi_a"] = torch.where(st["td_rec"], pa, torch.zeros_like(pa))
+    st["oracle_ok"] = (st["td_rec"] & (pa <= 0.0)).any(1)
 
 
 # ---------------------------------------------------------------- 보상 ----------------------------------------------------------------
 def c2_place_reward(env, sig: float = 0.04, sig_cap: float = 0.05, cap_mode: str = "err") -> torch.Tensor:
     """w3_place_reward 대체: 회복 착지 = 포획 점수(cap_mode "err" = 목표 오차형(종전 기본) / "margin" = 이동 방향 포획 여유형), 나머지 = W3 명목(같은 값)."""
     s3 = W3._st(env); st = _c2(env)
-    cs = st["cap_mg"] if cap_mode == "margin" else None
+    cs = st["cap_mg"] if cap_mode == "margin" else (st["cap_df"] if cap_mode == "diff" else None)
     return place_value(s3["ev_td"], s3["td_err"], st["td_rec"], st["cap_err"], W3._ge(env), sig, sig_cap, cap_score=cs)
 
 

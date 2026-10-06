@@ -262,6 +262,8 @@ alive_time = float(w_time.sum())
 cad = S(n_valid) / max(1e-9, alive_time) / 2.0
 fall_rate = float((~al).float().mean())
 tf_ = t_fall.cpu() if torch.is_tensor(t_fall) else torch.as_tensor(t_fall)
+_tfv = tf_[~al.cpu()].numpy(); _tfv = _tfv[_tfv == _tfv]
+fall_t_hist = {f"{lo}-{hi}s": int(((_tfv > lo) & (_tfv <= hi)).sum()) for lo, hi in ((0, 0.5), (0.5, 1), (1, 1.5), (1.5, 2), (2, 3), (3, 4), (4, 5), (5, 1e9))}
 n_fall_warm = int(((~al.cpu()) & (tf_ <= a.warmup)).sum()); n_fall_score = int(((~al.cpu()) & (tf_ > a.warmup)).sum())
 dpos = pos_end - pos0
 c0, s0 = torch.cos(yaw0), torch.sin(yaw0)
@@ -316,7 +318,7 @@ L = [f"# W3 Stage 0 채점표 · {a.out_tag}",
      f"| 유효 cadence(보행 주기) | {cad:.3f} Hz |",
      f"| 수평 표류(명령 대비 잔차 속도) | {drift_v:.3f} m/s · 총 이동 {disp:.2f} m · 실제 앞 {fwd_v:+.3f} / 옆 {lat_v:+.3f} m/s |",
      f"| 요 표류(명령 대비 |Δ요|) | {yaw_drift:.1f}° · 평균 요 속도 {yaw_rate:+.2f}°/s |",
-     f"| 낙상률 | {100 * fall_rate:.1f} % ({int((~al).sum())}/{N}) — 워밍업(시작 과도) {n_fall_warm} · 채점 구간 {n_fall_score} |",
+     f"| 낙상률 | {100 * fall_rate:.1f} % ({int((~al).sum())}/{N}) — 워밍업(시작 과도) {n_fall_warm} · 채점 구간 {n_fall_score} · 시각 " + " ".join(f"{k}:{v}" for k, v in fall_t_hist.items() if v) + " |",
      f"| 10 s 창별 유효 cadence | " + " → ".join(f"{x:.2f}" for x in w_cad) + f" Hz · {'붕괴' if collapse else '붕괴 없음'} |",
      f"| 스텝 높이 cm (10/50/90 %) | " + "/".join(f"{x:.1f}" for x in pct(R_)) + " |",
      f"| 보폭 cm (수평 변위 10/50/90 %) | " + "/".join(f"{x:.1f}" for x in pct(L_)) + " · 앞축 " + "/".join(f"{x:+.1f}" for x in pct(F_)) + " |",
@@ -335,7 +337,7 @@ L += ["", "주: 접촉 = 발 링크 |F| > 5 N. 유효 cadence = 유효 스텝/(�
 txt = "\n".join(L); print(txt, flush=True)
 out_dir = os.path.join(REPO, "log_picture"); os.makedirs(out_dir, exist_ok=True)
 open(os.path.join(out_dir, f"w3eval_{a.out_tag}.txt"), "w").write(txt + "\n")
-J = {"fall_warm": n_fall_warm, "fall_score": n_fall_score, "stand_first": a.stand_first, "task": a.task, "checkpoint": ck, "num_envs": N, "seed": a.seed, "delay": a.delay, "warmup_s": a.warmup, "seconds": T, "long": a.long,
+J = {"fall_t_hist": fall_t_hist, "fall_t": [round(float(x), 2) for x in _tfv], "fall_warm": n_fall_warm, "fall_score": n_fall_score, "stand_first": a.stand_first, "task": a.task, "checkpoint": ck, "num_envs": N, "seed": a.seed, "delay": a.delay, "warmup_s": a.warmup, "seconds": T, "long": a.long,
      "cmd": CMD, "gait_enable": a.gait_enable, "assist_alpha": a.assist_alpha, "ref_off": a.ref_off, "turn_alpha": os.environ.get("TURN_ALPHA"),
      "phase_source": phase_src, "steps_done": steps,
      "lift_rate": lift_rate, "touchdown_rate": td_rate, "swing_rate": swing_rate, "load_rate": load_rate, "alternation_rate": alt_rate,

@@ -31,6 +31,8 @@ p.add_argument("--seed", type=int, default=1)
 p.add_argument("--assist_alpha", type=float, default=0.0, help="STEP_ASSIST_ALPHA 로 전달(기본 0 = 보조 없는 최종 평가)")
 p.add_argument("--ref_off", action="store_true", help="진단: W3_REF_SCALE=0 세팅(참조 잔차 끄기 — W3 코드가 읽을 때만 반영)")
 p.add_argument("--gait_enable", type=int, default=1, choices=(0, 1), help="W3_GAIT_ENABLE 로 전달(0 = STAND, 1 = STEP)")
+p.add_argument("--ramp_off", action="store_true",
+               help="1006 하네스 감사 D3: hang_support 롤 토크 램프 크기 0(난수 소비 유지 — 같은 seed 짝 유지). 기본은 학습과 같은 램프 켜짐")
 p.add_argument("--stand_first", type=float, default=0.0,
                help="1006 진단: 처음 S 초는 STAND(ge 0) 후 STEP 전환(실물 순서 STAND→STEP). 워밍업 = S + 2 s 로 자동 연장")
 p.add_argument("--stop_at", type=float, default=0.0,
@@ -76,6 +78,10 @@ act = env_cfg.actions.joint_pos
 act.lpf_beta_range = (0.27, 0.27); act.min_delay_steps = act.max_delay_steps = a.delay
 if hasattr(act, "delay_probs"):
     act.delay_probs = ()
+if a.ramp_off and getattr(env_cfg.events, "hang_support_reset", None) is not None:
+    _hp = env_cfg.events.hang_support_reset.params
+    if _hp.get("ramp_rate_range") is not None:
+        _hp["ramp_rate_range"] = (0.0, 0.0); _hp["ramp_cap_range"] = (0.0, 0.0)
 T_END = a.warmup + a.seconds
 env_cfg.episode_length_s = T_END + 2.0          # 시간 초과 종료가 채점 구간 안에 오지 않게
 env = gym.make(a.task, cfg=env_cfg)
@@ -407,7 +413,7 @@ L += ["", "주: 접촉 = 발 링크 |F| > 5 N. 유효 cadence = 유효 스텝/(�
 txt = "\n".join(L); print(txt, flush=True)
 out_dir = os.path.join(REPO, "log_picture"); os.makedirs(out_dir, exist_ok=True)
 open(os.path.join(out_dir, f"w3eval_{a.out_tag}.txt"), "w").write(txt + "\n")
-J = {"lateral": {"lat_sign_rate": lat_sign_rate, "width_viol": width_viol, "cross_rate": cross_rate, "lr_ratio": lr_ratio, "roll_mean": roll_mean,
+J = {"ramp_off": a.ramp_off, "lateral": {"lat_sign_rate": lat_sign_rate, "width_viol": width_viol, "cross_rate": cross_rate, "lr_ratio": lr_ratio, "roll_mean": roll_mean,
                "lat_p50_cm": (float(np.median(Y_)) if len(Y_) else None), "width_p50_cm": (float(np.median(W_)) if len(W_) else None)}, "stop": J_stop, "fall_t_hist": fall_t_hist, "fall_t": [round(float(x), 2) for x in _tfv], "fall_warm": n_fall_warm, "fall_score": n_fall_score, "stand_first": a.stand_first, "task": a.task, "checkpoint": ck, "num_envs": N, "seed": a.seed, "delay": a.delay, "warmup_s": a.warmup, "seconds": T, "long": a.long,
      "cmd": CMD, "gait_enable": a.gait_enable, "assist_alpha": a.assist_alpha, "ref_off": a.ref_off, "turn_alpha": os.environ.get("TURN_ALPHA"),
      "phase_source": phase_src, "steps_done": steps,

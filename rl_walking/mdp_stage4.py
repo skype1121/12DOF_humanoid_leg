@@ -44,7 +44,16 @@ def gait_clock(env, freq: float = GAIT_FREQ_HZ) -> torch.Tensor:
     실물 이식 시 배포 노드가 동일 공식(2π·1.4·t)으로 재현 가능 — 외부 입력 불필요.
     """
     phase = _gait_phase(env, freq)
-    return torch.stack([torch.sin(phase), torch.cos(phase)], dim=-1)
+    out = torch.stack([torch.sin(phase), torch.cos(phase)], dim=-1)
+    ge = getattr(env, "_ge_obs", None)              # 1006 W3: gait_enable 관측 게이트(서기 = (0,0)) — 없으면 종전
+    if ge is not None:
+        out = out * ge.unsqueeze(-1)
+    mode = os.environ.get("W3_CLOCK_DIAG")          # 1006 진단 전용: zero=(0,0) / freeze=(0,1) / 없으면 종전
+    if mode == "zero":
+        out = torch.zeros_like(out)
+    elif mode == "freeze":
+        out = torch.stack([torch.zeros_like(phase), torch.ones_like(phase)], dim=-1)
+    return out
 
 
 def feet_contact_binary(

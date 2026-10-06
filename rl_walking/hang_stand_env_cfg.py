@@ -3097,3 +3097,84 @@ class Biped12HangStandWOMXEnvCfg(Biped12HangStandWOMEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.schedule.params = {"signed": True}
+
+
+# ================================================================ W3 (1006) — 명령 조건 보행 세대, Stage 0 = 제자리 교대 스텝 엔진 ================================================================
+# 설계: reports/gen_w3/W3_DESIGN.md · 코어: rl_walking/w3.py. G21a 서기 정책 환경에서 출발(A0m 성공 조건), 외란 없음(스킬 획득 → 강건성 순서).
+from rl_walking import w3 as _w3  # noqa: E402
+
+_W3_REF = "/home/ryu/humanoid_leg_test1/reports/gen_step/ref_step_primitive_flex.npz"
+# 무게 이동(골반 +1 m 왼쪽) 관절 잔차 [rad/m] — URDF FK/IK(기하 에이전트, 크라우치 자세): hip_a 양쪽 +0.96°/cm, hip_r +0.40°/cm, ankle_r 왼 +1.04°/오 −1.04°/cm
+_W3_SHIFT = {"left_hip_a_joint": 1.676, "right_hip_a_joint": 1.676, "left_hip_r_joint": 0.698, "right_hip_r_joint": 0.698,
+             "left_ankle_r_joint": 1.815, "right_ankle_r_joint": -1.815}
+
+
+@configclass
+class Biped12HangStandW3BaseEnvCfg(Biped12HangStandG21aEnvCfg):
+    """W3 공통: gait_enable(STAND 30 % / STEP0 70 %)·위상(1.1 Hz)·스텝 추적기·STEP 보상. 기존(G21a) 보상은 STAND(ge 0)에만.
+    STEP 보상 예산(초당): 생존 +0.5 · 주기 접촉 −1.5×(스윙 하중/mg + 지지발 속도) · 스윙 높이 +2 · 유효 스텝 +15/사건 · 착지 목표 +10/사건
+    · 놓친 반주기 −10/사건 · 예정 밖 유효 스텝 −5 · 표류 −1·|v| · 기울기 −2 · ω_xy −0.05 · 행동 변화 −0.05. 종료 −75(그대로)."""
+
+    p_step: float = 0.7
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev = self.events
+        for k in ("disturbance", "push_robot", "recovery_gate"):
+            if getattr(ev, k, None) is not None:
+                setattr(ev, k, None)
+        ev.w3_cmd = EventTerm(func=_w3.install_w3_cmd, mode="startup", params={"p_step": self.p_step, "stage": 0})
+        ev.w3_gait = EventTerm(func=_w3.w3_gait_update, mode="interval", interval_range_s=(0.0, 0.0), params={"f_step": 1.1})
+        ev.w3_ref = EventTerm(func=_w3.install_w3_ref, mode="startup", params={"ref_path": _W3_REF, "ref_scale": 0.0})
+        ev.w3_track = EventTerm(func=_w3.w3_step_tracker, mode="interval", interval_range_s=(0.0, 0.0), params={})
+        rw = self.rewards
+        for n in [k for k in vars(rw) if not k.startswith("_")]:
+            t = getattr(rw, n)
+            if t is None or n == "termination_penalty":
+                continue
+            setattr(rw, n, RewTerm(func=_w3.w3_stand_gated, weight=t.weight, params={"func": t.func, "params": dict(t.params or {})}))
+        from isaaclab.envs import mdp as _imdp
+        rw.w3_alive = RewTerm(func=_w3.w3_alive_step, weight=0.5)
+        rw.w3_periodic = RewTerm(func=_w3.w3_periodic_contact, weight=-1.5)
+        rw.w3_height = RewTerm(func=_w3.w3_swing_height, weight=2.0)
+        rw.w3_valid = RewTerm(func=_w3.w3_value, weight=15.0, params={"name": "ev_valid"})
+        rw.w3_place = RewTerm(func=_w3.w3_place_reward, weight=10.0)
+        rw.w3_miss = RewTerm(func=_w3.w3_value, weight=-10.0, params={"name": "ev_miss"})
+        rw.w3_wrong = RewTerm(func=_w3.w3_value, weight=-5.0, params={"name": "ev_wrong"})
+        rw.w3_drift = RewTerm(func=_w3.w3_drift, weight=-1.0)
+        rw.w3_orient = RewTerm(func=_w3.w3_step_gated, weight=-2.0, params={"func": _imdp.flat_orientation_l2, "params": {}})
+        rw.w3_angvel = RewTerm(func=_w3.w3_step_gated, weight=-0.05, params={"func": _imdp.ang_vel_xy_l2, "params": {}})
+        rw.w3_arate = RewTerm(func=_w3.w3_step_gated, weight=-0.05, params={"func": _imdp.action_rate_l2, "params": {}})
+        self.curriculum = None
+
+
+@configclass
+class _W3ACurriculumCfg:
+    w3_assist = _CurrTerm(func=_w3.w3_assist_curriculum)
+
+
+@configclass
+class Biped12HangStandW3AEnvCfg(Biped12HangStandW3BaseEnvCfg):
+    """W3-A: A0m 레시피 — 굽힘 보조 scaffold(α 1 → 0, 절대 문턱 유효 스텝률 ≥ 0.25) + 모방(스윙발 굽힘 관절·창 가운데) +1.5. 참조 0."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.w3_ref.params = {"ref_path": _W3_REF, "ref_scale": 0.0, "assist_alpha0": 1.0}
+        self.rewards.w3_imit = RewTerm(func=_w3.w3_imitation, weight=1.5, params={"ref_path": _W3_REF})
+        self.curriculum = _W3ACurriculumCfg()
+
+
+@configclass
+class Biped12HangStandW3CEnvCfg(Biped12HangStandW3BaseEnvCfg):
+    """W3-C: 참조 잔차 상시(제어기 일부) — 굽힘 펄스 + 관상면 무게 이동 ±4 cm(y = −0.04·cos 2πu, IK 계수). 보조 0, 모방 없음."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.w3_ref.params = {"ref_path": _W3_REF, "ref_scale": 1.0, "shift_amp": 0.04, "shift_lead": 0.25, "shift_joints": dict(_W3_SHIFT)}
+
+
+@configclass
+class Biped12HangStandW3UEnvCfg(Biped12HangStandW3BaseEnvCfg):
+    """W3-U: OSS형 — 모드 플래그 없음(항상 STEP, 클록 상시), 참조·보조·모방 없음, 보상만. STAND 는 G21a 로 supervisor 전환."""
+
+    p_step: float = 1.0

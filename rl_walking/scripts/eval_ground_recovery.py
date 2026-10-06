@@ -95,6 +95,8 @@ parser.add_argument("--replay_bb", type=str, default="",
 parser.add_argument("--replay_t0", type=float, default=0.0, help="재생 시작 = 블랙박스 첫 틱 + 이 시간 [s]")
 parser.add_argument("--contact_real", action="store_true",
                     help="1001 G17: 정책 접촉 관측을 실물 계약으로(mdp_hang.feet_contact_real: 발 평평 θ_off 2–6°·10 Hz 유지·1틱 전송) — 모든 정책 공통 적용")
+parser.add_argument("--contact_ver", type=str, default="v1", choices=("v1", "v2"),
+                    help="--contact_real 함수 판: v1(기본, 기존 결과 재현 — 접촉 임계 매 틱 재추출 결함 포함) / v2(G18o 이후 학습 계약, 임계 에피소드당 1회)")
 parser.add_argument("--last_action_ema", type=float, default=0.0,
                     help="진단: 정책 관측 last_action 을 EMA(α) 로 느리게 만든 값으로 대체(0=끔). 25 Hz 2주기 자기루프(last_action 경유) 가설의 폐루프 대조")
 parser.add_argument("--obs_ema", type=str, default="",
@@ -402,8 +404,8 @@ if args_cli.contact_real:
     _fc5 = env_cfg.observations.policy.feet_contact
     _kp5 = {k: v for k, v in dict(_fc5.params).items() if k in ("sensor_cfg", "threshold", "threshold_range")}
     _kp5.update({"hold_ticks": 5, "extra_delay": 1, "tilt_off_deg": (6.0, 20.0)})
-    _fc5.func = _mh5.feet_contact_real; _fc5.params = _kp5
-    print("[contact_real] 정책 접촉 관측 = 실물 계약(평평·10 Hz·1틱)", flush=True)
+    _fc5.func = _mh5.feet_contact_real_v2 if args_cli.contact_ver == "v2" else _mh5.feet_contact_real; _fc5.params = _kp5
+    print(f"[contact_real] 정책 접촉 관측 = 실물 계약(평평·10 Hz·1틱) · {args_cli.contact_ver}", flush=True)
 if args_cli.last_action_ema > 0:
     _LA = env_cfg.observations.policy.actions; _la_orig = _LA.func; _ALPHA = float(args_cli.last_action_ema)
     def _la_ema(env, action_name=None):

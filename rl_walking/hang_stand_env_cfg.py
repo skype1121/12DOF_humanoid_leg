@@ -2939,15 +2939,6 @@ class Biped12HangStandW2omFEnvCfg(Biped12HangStandW2omR2EnvCfg):
 
 
 @configclass
-class Biped12HangStandW2omFeEnvCfg(Biped12HangStandW2omeEnvCfg):
-    """W2omF 평가용: W2ome + 서기 클록 정지(같은 관측 계약)."""
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.events.gait_phase.params = dict(self.events.gait_phase.params, freeze_stand=True)
-
-
-@configclass
 class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
     """W2om 평가용: + 회전 보조 훅(TURN_ALPHA, 0 이면 무동작) — W2qe 와 같은 평가 조건."""
 
@@ -2958,6 +2949,15 @@ class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
         self.curriculum = None
 
 
+
+
+@configclass
+class Biped12HangStandW2omFeEnvCfg(Biped12HangStandW2omeEnvCfg):
+    """W2omF 평가용: W2ome + 서기 클록 정지(같은 관측 계약)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.gait_phase.params = dict(self.events.gait_phase.params, freeze_stand=True)
 
 @configclass
 class Biped12HangStandW2omdEnvCfg(Biped12HangStandW2omeEnvCfg):

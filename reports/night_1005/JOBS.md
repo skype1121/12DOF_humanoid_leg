@@ -78,3 +78,4 @@
 | 1006 | W2omR1·R2(w2omr.sh PID 2573842: 병렬 600 반복 → 15200·끝 α0 평가) | "W2omR 끝" in scratchpad/w2omr.out | walk_eval_w2omR*_* | 감시 brfi70r76 |
 | 1006 | W2omR1·R2 | — | KILL 둘 다(원장 부분 지지) → NEXT=W2omF | — |
 | 1006 | W2omF(w2omf.sh PID 2592682: 서기 클록 정지, 600 → 15200·끝 α0 평가, 서기 인계 없음) | "W2omF 끝" | walk_eval_w2omF_* | 감시 bxer8jw62 |
+| 1006 | W2omF 재기동(w2omf.sh PID 2595606, 1차 NameError) | "W2omF 끝" | walk_eval_w2omF_* | 감시 bc5sfz1xc |

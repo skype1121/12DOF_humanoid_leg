@@ -324,6 +324,11 @@ C5_SETTLE = None
 #: odic 무릎 토크 입력 신선도 상한 [s] — analyze_fall 이 tau_est 동결값으로 보는 기준(0.1 s)과 같다. 넘으면 τ 없음(판정 불가 → 조기 복귀 막힘).
 KNEE_TAU_MAX_AGE_S = 0.1
 _ODIC_KEYS = ("v_thr", "ds_s", "min_s", "min_frac", "window_s", "k_hat", "tau_ref", "w_thr")
+#: 1007 parity 감사(**기본 꺼짐 = 종전 비트 동일 · 실물 미검증**, reports/gen_w3/PARITY_AUDIT_1007.md):
+#:  RUNNER_EMA_FRESH — 러너 S8a EMA(gyro_ema·joint_vel_ema) 재시작 틱 수. 1 = 종전(틱 0 만), 2 = 시뮬 _ema_state(틱 0·1) 계약. 기동 --runner-ema-fresh.
+#:  C5_IMU_F32 — KE 현행 IMU 조기 복귀 감지기를 시뮬과 같은 float32 경로로(종전 float64 타이머는 꺼짐이 1 틱 이름). 기동 --c5-imu-f32.
+RUNNER_EMA_FRESH = 1
+C5_IMU_F32 = False
 
 
 def parse_c5_settle(spec):
@@ -376,14 +381,19 @@ def _make_runner(checkpoint):
         _ex = C5_EXTRA.get(checkpoint, {})
         # 1007 odic(기본 꺼짐 → 인자 자체를 넘기지 않음). 켜져 있어도 조기 복귀(early)가 있는 C5 키에만 — 실행 중 다른 C5 키로 바꿔도 거부·중단 없이 종전 imu.
         _st = {"settle": dict(C5_SETTLE)} if (C5_SETTLE is not None and _ex.get("det", {}).get("early") is not None) else {}
+        if C5_IMU_F32 and not _st and _ex.get("det", {}).get("early") is not None:      # 1007 parity(기본 꺼짐)
+            _st = {"imu_f32": True}
+        _ef = {"ema_fresh_ticks": RUNNER_EMA_FRESH} if RUNNER_EMA_FRESH != 1 else {}      # 1007 parity(기본 1 = 인자 자체 없음)
         return C5Runner(CHECKPOINTS[stand], rec_path, detector=SwitchDetector(**C5_DETECTOR_KW, **_ex.get("det", {}), **_st), **_ex.get("runner", {}),
                         gait_freq=CKPT_GAIT_FREQ.get(stand, CKPT_GAIT_FREQ_DEFAULT),
                         default_pose_rad=CKPT_DEFAULT_POSE.get(stand),
                         jvel_ema_mode=ckpt_jvel_ema_mode(stand),
-                        act_obs_ema_beta=ckpt_obs_filter(stand)[0], jvel_obs_ema_beta=ckpt_obs_filter(stand)[1])
+                        act_obs_ema_beta=ckpt_obs_filter(stand)[0], jvel_obs_ema_beta=ckpt_obs_filter(stand)[1], **_ef)
     _h2 = {"hturn2": HTURN2_CKPTS[checkpoint]} if checkpoint in HTURN2_CKPTS else {}   # 1006 실험 플래그 켜짐 + HTURN2 키에만
     if checkpoint in W3_CKPTS:                                                          # 1006 W3 실험 플래그 켜짐 + W3 키에만
         _h2 = {"w3": W3_CKPTS[checkpoint]}
+    if RUNNER_EMA_FRESH != 1:                                                           # 1007 parity(기본 1 = 인자 자체 없음)
+        _h2 = dict(_h2, ema_fresh_ticks=RUNNER_EMA_FRESH)
     return PolicyRunnerStage4(
         CHECKPOINTS[checkpoint],
         gait_freq=CKPT_GAIT_FREQ.get(checkpoint, CKPT_GAIT_FREQ_DEFAULT),
@@ -3170,6 +3180,38 @@ def _selftest_w3_cmd():
     return " / ".join(notes)
 
 
+def _selftest_parity_flags():
+    """1007 parity 옵션(--runner-ema-fresh·--c5-imu-f32): 기본 = 러너·감지기 생성 인자 없음(종전 비트 동일 경로), 켜면 설정이 실제로 실린다.
+    동치 자체는 rl_walking/deploy/selftest_w3_rollout_parity.py [P1]·selftest_c5_imu_f32.py [B] 가 시뮬 소스로 검증한다."""
+    global RUNNER_EMA_FRESH, C5_IMU_F32
+    assert RUNNER_EMA_FRESH == 1 and C5_IMU_F32 is False, "기본값이 꺼짐이 아님"
+    stub = lambda o: np.zeros(ACT_DIM, np.float32)  # noqa: E731
+    out = []
+    try:
+        r0 = PolicyRunnerStage4(stub, obs_dim=320)
+        assert r0.ema_fresh_ticks == 1
+        RUNNER_EMA_FRESH = 2
+        r2 = PolicyRunnerStage4(stub, obs_dim=320, ema_fresh_ticks=RUNNER_EMA_FRESH)
+        assert r2.ema_fresh_ticks == 2
+        out.append("러너 ema_fresh 기본 1·옵션 2")
+        k = "stand_c5kr_g21a_g24ra"
+        d = CHECKPOINTS.get(k)
+        if d is not None and os.path.exists(os.path.join(d, "policy.pt")) and os.path.exists(os.path.join(C5_PAIRS[k][1], "policy.pt")):
+            RUNNER_EMA_FRESH = 1
+            c0 = _make_runner(k)
+            assert c0.det.imu_f32 is False and c0.core.ema_fresh_ticks == 1
+            C5_IMU_F32 = True; RUNNER_EMA_FRESH = 2
+            c1 = _make_runner(k)
+            assert c1.det.imu_f32 is True and c1.det.settle is None and c1.core.ema_fresh_ticks == 2
+            out.append(f"{k} 감지기 imu_f32 기본 False·옵션 True")
+        else:
+            out.append("C5 kr 실모델 없음 — 감지기 경로 SKIP")
+    finally:
+        RUNNER_EMA_FRESH = 1
+        C5_IMU_F32 = False
+    return " · ".join(out)
+
+
 def run_selftest(required=()):
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 게이트 + 정책 500틱.
     required: 파일이 반드시 있어야 하는 체크포인트(기동 --checkpoint, STAND_DEFAULT) — 없으면 FAIL."""
@@ -3197,6 +3239,7 @@ def run_selftest(required=()):
              ("W3 실험 플래그(1006)", _selftest_w3),
              ("W3 세션 감독기(1006 감사)", _selftest_w3_supervisor),
              ("W3S3d 명령 채널·리드 발·헤딩 고리(1007)", _selftest_w3_cmd),
+             ("parity 옵션(1007, 기본 꺼짐)", _selftest_parity_flags),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:
@@ -3248,6 +3291,12 @@ def main():
                          "0.9 s 주기 평균 |v̄| < 0.07 m/s·양발 ≥ 0.3 s·켜진 뒤 ≥ 0.9 s + 무릎 처짐 보상 (τ−τ_인계)/k̂(k̂ 42 가정값), "
                          "'odicw' = odic + 감지 |ω_xy| < 0.4 rad/s(1007, STOPEST §11), "
                          "JSON = 설정 덮어쓰기(키 " + ", ".join(_ODIC_KEYS) + "). 조기 복귀가 있는 C5 키(stand_c5kr_*)에서만 허용")
+    ap.add_argument("--runner-ema-fresh", type=int, default=1, choices=(1, 2),
+                    help="1007 parity(기본 1 = 종전): S8a EMA(gyro_ema·joint_vel_ema) 재시작 틱 수. 2 = 시뮬 mdp_hang._ema_state 계약"
+                         "(episode_length_buf ≤ 1 재시작) — 차이는 정책 시작 직후 과도만(selftest_w3_rollout_parity [P1])")
+    ap.add_argument("--c5-imu-f32", action="store_true",
+                    help="1007 parity(기본 꺼짐): KE 현행 IMU 조기 복귀 감지기를 시뮬 float32 경로로(종전 float64 타이머는 꺼짐 1 틱 이름 — "
+                         "selftest_c5_imu_f32). 조기 복귀가 있는 C5 키에서만, --c5-settle odic 계열과 함께 쓰지 않음(이미 float32)")
     ap.add_argument("--checkpoint", default=STAND_DEFAULT, choices=list(CHECKPOINTS) + [_H2.HTURN2_CKPT_KEY] + list(_W3.W3_KEYS),
                     help="기본값은 배포 데뷔 정책(STAND_DEFAULT). 0907: 구 walk 는 젯슨에서 삭제돼 "
                          "기본값으로 두면 selftest 가 필수 파일 없음으로 실패한다")
@@ -3294,6 +3343,17 @@ def main():
             return 2
         set_c5_settle(_c5s)
         print(f"[경고] --c5-settle: odic 조기 복귀 판정기 켜짐(실물 미검증, k̂ 가정값) — 설정 {_c5s or 'ODIC_DEFAULT'}", file=sys.stderr)
+    if args.c5_imu_f32:
+        if _c5s is not None or args.checkpoint not in C5_PAIRS or C5_EXTRA.get(args.checkpoint, {}).get("det", {}).get("early") is None:
+            print("[거부] --c5-imu-f32 는 조기 복귀가 있는 C5 키에서만, --c5-settle(odic 계열) 없이", file=sys.stderr)
+            return 2
+        global C5_IMU_F32
+        C5_IMU_F32 = True
+        print("[경고] --c5-imu-f32: KE IMU 감지기 float32 경로(시뮬 계약) — 실물 미검증", file=sys.stderr)
+    if args.runner_ema_fresh != 1:
+        global RUNNER_EMA_FRESH
+        RUNNER_EMA_FRESH = int(args.runner_ema_fresh)
+        print(f"[경고] --runner-ema-fresh {RUNNER_EMA_FRESH}: 러너 EMA 재시작 시뮬 계약 — 실물 미검증", file=sys.stderr)
     if args.selftest:
         return run_selftest(required=(args.checkpoint, STAND_DEFAULT))
 

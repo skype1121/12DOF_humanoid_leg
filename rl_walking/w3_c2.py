@@ -353,7 +353,7 @@ def _imu_signals(env):
     return asset, tilt, w
 
 
-def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: dict | None = None):
+def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: dict | None = None, lead_vy_cmin: float = 0.0, lead_wz_cmin: float = 0.0):
     """mode="interval"(0 s): **w3_gait_update 대체** — supervisor(c2 에피소드만 _ge_cmd·명령 덮기) → W3 엔진 래치 → 래치 확인.
     c2 에피소드가 아닌 env 는 _ge_cmd·명령을 건드리지 않는다(= w3_gait_update 그대로)."""
     from . import mdp_hang as H
@@ -421,7 +421,7 @@ def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: d
         env._ge_cmd = torch.where(m2, want, env._ge_cmd)
         term = env.command_manager.get_term("base_velocity")
         term.vel_command_b[m2] = 0.0                              # 회복 중 명령 0(cue 없음) — 관측 명령 채널은 그대로 0
-    W3.w3_gait_update(env, env_ids, f_step=f_step, ramp_s=ramp_s)
+    W3.w3_gait_update(env, env_ids, f_step=f_step, ramp_s=ramp_s, lead_vy_cmin=lead_vy_cmin, lead_wz_cmin=lead_wz_cmin)   # W3S2+ 리드 발 규칙 전달(1007)
     c2_after_latch(st, W3._ge(env), P)
     sensor = env.scene.sensors["contact_forces"]; fid = H._feet_body_ids(env)
     both = (sensor.data.net_forces_w[:, fid, :].norm(dim=-1) > 5.0).all(dim=1)
@@ -505,6 +505,16 @@ def c2_place_reward(env, sig: float = 0.04, sig_cap: float = 0.05, cap_mode: str
     s3 = W3._st(env); st = _c2(env)
     cs = st["cap_mg"] if cap_mode == "margin" else (st["cap_df"] if cap_mode == "diff" else None)
     return place_value(s3["ev_td"], s3["td_err"], st["td_rec"], st["cap_err"], W3._ge(env), sig, sig_cap, cap_score=cs)
+
+
+def c2_stand_or_rec_gated(env, func, params: dict | None = None) -> torch.Tensor:
+    """1007 숨기 유인 해소: 서기 보상 항을 STAND(ge 0) 뿐 아니라 **c2 회복 중(ge 1 · 외란 범주 에피소드)** 에도 적용.
+    W3 의 무외란 STEP(ge 1 · 범주 0)에는 적용하지 않음 → Stage 0/1 리허설 에피소드 보상 불변."""
+    from . import mdp_hang as H
+    val = func(env, **H._resolve_nested(env, params))
+    ge = W3._ge(env)
+    keep = (~ge) | (ge & _c2_mask(env))
+    return val * keep.to(val.dtype)
 
 
 def c2_value(env, name: str) -> torch.Tensor:

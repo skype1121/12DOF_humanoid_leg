@@ -3343,6 +3343,24 @@ class Biped12HangStandW3C2k1EnvCfg(Biped12HangStandW3C2k2EnvCfg):
     C2_EXTRA = "v_box_s=0.909,stop_w=2.0,stop_tilt=12.5,tilt_ref_tau=10,cancel_calm=1,kv_bias=0.03,kv_lf=0.02,stop_td_k=1"
 
 
+_C2_KEEP_ON_REC = ("knee_stance_flexion", "feet_contact_gated", "track_lin_vel_xy_exp", "track_ang_vel_z_exp", "survive_after_release")   # C2_DESIGN §14 최소 유지 집합
+
+
+@configclass
+class Biped12HangStandW3C2k2hEnvCfg(Biped12HangStandW3C2k2EnvCfg):
+    """c2k2h (1007, GO 후보 학습 설정): W3C2k2(차분형 v2 포획 · 고정 2 보 정지 · 상대 기울기 감지) + **회복 중 서기 보상 유지 집합**
+    (knee_stance_flexion·feet_contact_gated·track_lin_vel_xy_exp·track_ang_vel_z_exp·survive_after_release — C2UNIT 6 seed 최소 집합, C2_DESIGN §14).
+    무외란 에피소드(범주 0)는 W3 와 같은 게이팅(ge 0 만) → Stage 0/1 리허설 불변. settle_quiet_bonus 는 제외(상태 타이머 항, 기여 +0.04)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        rw = self.rewards
+        for n in _C2_KEEP_ON_REC:
+            t = getattr(rw, n)
+            assert t.func is _w3.w3_stand_gated, n
+            setattr(rw, n, RewTerm(func=_c2.c2_stand_or_rec_gated, weight=t.weight, params=dict(t.params)))
+
+
 @configclass
 class Biped12HangStandW3C2iEnvCfg(Biped12HangStandW3C2EnvCfg):
     """c2i 변형: critic 에 ICP−CoM(요 프레임 2차원, 이력 5) 추가 — critic 입력 335 → 345, **--init_expand 필요**(resume 불가). actor 불변."""
@@ -3557,3 +3575,38 @@ class Biped12HangStandW3S4dEnvCfg(Biped12HangStandW3S4EnvCfg):
         super().__post_init__()
         self.actions.joint_pos.min_delay_steps = 1
         self.actions.joint_pos.max_delay_steps = 5
+
+
+# ================================================================ c2 를 이후 W3 단계 위에(1007) ================================================================
+def _c2_apply(cfg, c2_extra: str, keep_on_rec: tuple = (), cap_mode: str = "diff", w_settle: float = 50.0):
+    """c2 변경 한 묶음을 임의의 W3 설정(cfg)에 적용(1007 — W3S3d 등 이후 단계 위에 얹기 위해). W3C2* 클래스와 같은 내용:
+    외란 g22r R3 50 % · supervisor(c2_gait_update, 기존 w3_gait 파라미터의 리드 발 규칙 유지) · c2_tracker · 착지 보상 c2_place(cap_mode) · 정착 c2_settle ·
+    c2_log · 회복 중 서기 보상 유지(keep_on_rec)."""
+    ev = cfg.events; rw = cfg.rewards
+    ev.disturbance = EventTerm(func=mdp_hang.disturbance_reset_g22r, mode="reset", params=dict(_C2_DIST))
+    c2p = {}
+    for kv in filter(None, str(c2_extra).split(",")):
+        k, v = kv.split("="); c2p[k.strip()] = float(v)
+    g = {k: v for k, v in dict(ev.w3_gait.params).items() if k in ("f_step", "ramp_s", "lead_vy_cmin", "lead_wz_cmin")}
+    g["c2"] = c2p
+    ev.w3_gait.func = _c2.c2_gait_update
+    ev.w3_gait.params = g
+    ev.c2_track = EventTerm(func=_c2.c2_tracker, mode="interval", interval_range_s=(0.0, 0.0), params={"cap_half_width": 0.18})
+    rw.w3_place = RewTerm(func=_c2.c2_place_reward, weight=10.0, params={"sig": 0.04, "sig_cap": 0.05, "cap_mode": cap_mode})
+    rw.c2_settle = RewTerm(func=_c2.c2_value, weight=float(w_settle), params={"name": "ev_settle"})
+    cfg.curriculum.c2_log = _CurrTerm(func=_c2.c2_log)
+    for n in keep_on_rec:
+        t = getattr(rw, n)
+        assert t.func is _w3.w3_stand_gated, n
+        setattr(rw, n, RewTerm(func=_c2.c2_stand_or_rec_gated, weight=t.weight, params=dict(t.params)))
+
+
+@configclass
+class Biped12HangStandW3S3dC2EnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3d-c2 (1007, c2 GO 학습 설정 — 실행은 승인 뒤): W3S3d(회전·옆·앞뒤·지연 1–5) 끝에서 이어 학습 + c2 묶음(W3C2k2h 와 같은 내용):
+    고정 2 보 정지(stop_td_k 2) · 상대 기울기 감지(τ 10 s) · 차분형 v2 포획 착지 · 회복 중 서기 보상 유지 5 항. 관측 actor 320·critic 335 불변 → --resume."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _c2_apply(self, "v_box_s=0.909,stop_w=2.0,stop_tilt=12.5,tilt_ref_tau=10,cancel_calm=1,kv_bias=0.03,kv_lf=0.02,stop_td_k=2",
+                  keep_on_rec=_C2_KEEP_ON_REC, cap_mode="diff")

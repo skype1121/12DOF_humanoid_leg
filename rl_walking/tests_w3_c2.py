@@ -388,7 +388,18 @@ def t_diff_v2():
     check("15c v1(다른 발만) 은 제자리도 점수 받음 — 결함 재현", float(s_v1[0, 0]) > 0.5, f"{float(s_v1[0, 0]):.3f}")
 
 
+# ---------------------------------------------------------------- 16. 회복 중 서기 보상 유지 게이트 ----------------------------------------------------------------
+def t_keep_gate():
+    import rl_walking.mdp_hang as H
+    e = SimpleNamespace(num_envs=4, device="cpu")
+    e._ge = torch.tensor([False, True, True, False])
+    e._g22 = {"cat": torch.tensor([0.0, 0.0, 1.0, 2.0])}
+    one = lambda env: torch.ones(4)
+    v = C.c2_stand_or_rec_gated(e, one, {})
+    check("16a 무외란 STEP(ge 1·범주 0) 은 0(W3 리허설 불변), STAND 와 c2 회복(ge 1·범주>0) 은 1", v.tolist() == [1.0, 0.0, 1.0, 1.0], f"{v.tolist()}")
+
+
 if __name__ == "__main__":
-    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt(); t_cancel_calm(); t_margin(); t_diff_sweep(); t_order(); t_diff_v2()
+    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt(); t_cancel_calm(); t_margin(); t_diff_sweep(); t_order(); t_diff_v2(); t_keep_gate()
     print(f"\n결과: 실패 {len(FAIL)}" + (f" {FAIL}" if FAIL else " — 전부 통과"))
     sys.exit(1 if FAIL else 0)

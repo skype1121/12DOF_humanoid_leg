@@ -57,3 +57,18 @@ for c in conds:
         abn = [f(r["abn_frac"]) for r in R.values() if r["fell"] != "1" and f(r.get("abn_frac")) is not None]
         print(f"{c} | {t} | {n} | {100*fell/n:5.1f} | " + " ".join(f"{100*x/n:5.1f}" for x in cum) + f" | {100*ok/n:5.1f} | "
               f"{med('abs_pitch'):.2f}/{med('abs_roll'):.2f}° · {med('dq_nom_deg'):.2f}° · {sum(abn)/max(len(abn),1):.3f}")
+
+# 짝 비교(1007): 두 태그의 같은 (seed, env) 체인 성공 차를 외란 조건 합으로 — 부트스트랩 95 %
+if len(tags) == 2:
+    import random
+    diffs = []
+    for c in conds:
+        if c.startswith("nd"):
+            continue
+        A, B = load(tags[0], c), load(tags[1], c)
+        for k in set(A) & set(B):
+            diffs.append(float(stages(A[k], False)[1]) - float(stages(B[k], False)[1]))
+    if diffs:
+        rnd = random.Random(0); n = len(diffs)
+        bs = sorted(sum(diffs[rnd.randrange(n)] for _ in range(n)) / n for _ in range(2000))
+        print(f"짝 체인 성공 차({tags[0]} − {tags[1]}, 외란 조건 합, n {n}): {100*sum(diffs)/n:+.1f} %p (95 % {100*bs[50]:+.1f}~{100*bs[1949]:+.1f})")

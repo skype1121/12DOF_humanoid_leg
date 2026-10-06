@@ -55,8 +55,9 @@ for c in conds:
                 run = run and st[k]; cum[k] += run
         med = lambda key: (lambda v: sorted(v)[len(v) // 2] if v else float("nan"))([abs(f(r[key])) for r in R.values() if r["fell"] != "1" and f(r.get(key)) is not None])
         abn = [f(r["abn_frac"]) for r in R.values() if r["fell"] != "1" and f(r.get("abn_frac")) is not None]
+        step_try = 100.0 * sum(1 for r in R.values() if f(r.get("to_first_t")) is not None) / n      # 첫 회복 스텝 시도율(낙상 env 포함) — 버티기 학습 감시
         print(f"{c} | {t} | {n} | {100*fell/n:5.1f} | " + " ".join(f"{100*x/n:5.1f}" for x in cum) + f" | {100*ok/n:5.1f} | "
-              f"{med('abs_pitch'):.2f}/{med('abs_roll'):.2f}° · {med('dq_nom_deg'):.2f}° · {sum(abn)/max(len(abn),1):.3f}")
+              f"{med('abs_pitch'):.2f}/{med('abs_roll'):.2f}° · {med('dq_nom_deg'):.2f}° · {sum(abn)/max(len(abn),1):.3f} · 스텝 시도 {step_try:.1f} %")
 
 # 짝 비교(1007): 두 태그의 같은 (seed, env) 체인 성공 차를 외란 조건 합으로 — 부트스트랩 95 %
 if len(tags) == 2:

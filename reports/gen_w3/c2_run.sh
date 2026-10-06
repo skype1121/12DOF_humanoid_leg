@@ -66,9 +66,18 @@ ke)   # KE 기준선 재측정(KABS 인자 그대로, 고친 평가기) — c2_r
       /home/ryu/IsaacLab/isaaclab.sh -p $WT/rl_walking/scripts/eval_ground_recovery.py --headless --task Biped12-HangStand-G11a-v0 --num_envs 128 \
       --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --precheck_s 3 --after_s 8 --seed $SD --enc_obs v2 --contact_real \
       --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 \
-      --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --delay_steps 2,2 --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 \
+      --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --delay_steps ${KE_DELAY:-2},${KE_DELAY:-2} --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 \
       --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --contact_ver v2 ${X[$C]} --out_tag $t
   done; done ;;
+w3reg)   # 무외란 걷기 회귀(eval_w3, W3S3d 환경, 지연 2, 30 s, 헤딩 고리 K 0.5): c2_run.sh w3reg <run> <ckpt> <태그접두> <seed>
+  SD=$1
+  for spec in "z:0,0,0" "tl:0,0,0.2" "tr:0,0,-0.2" "lat:0,0.05,0" "fwd:0.06,0,0"; do
+    IFS=: read nm CM <<< "$spec"
+    t=${PFX}_${nm}_s${SD}; f=$DATA/log_picture/w3eval_${t}.txt; rm -f $f
+    run_one "[ -f $f ]" $LOGD/$t.l \
+      /home/ryu/IsaacLab/isaaclab.sh -p $WT/rl_walking/scripts/eval_w3.py --headless --task Biped12-HangStand-W3S3d-v0 --num_envs 256 --load_run $RUN --checkpoint $CK \
+      --delay 2 --seed $SD --seconds 30 --heading_loop 0.5 --cmd $CM --out_tag $t
+  done ;;
 sweep)
   SD=$1
   for CUE in B3 B6; do for spec in ${SWEEP_SPECS:-k1:stop_td_k=1 k2:stop_td_k=2 k3:stop_td_k=3 k4:stop_td_k=4 or:stop_oracle=1 ov:stop_oracle=2}; do

@@ -125,7 +125,7 @@ alive = torch.ones(N, dtype=torch.bool, device=dev); t_fall = torch.full((N,), f
 # 발 상태(N,2) [L,R]
 prev_c = None
 st_xy0 = None; st_lifts = fz(N); st_last_lift = torch.full((N,), float("nan"), device=dev); st_qrun = fz(N); st_settle = torch.full((N,), float("nan"), device=dev)
-st_xy_end = fz(N, 2); st_tilt = fz(N); st_dq = fz(N); st_ge = torch.ones(N, device=dev); st_ge_off = torch.full((N,), float("nan"), device=dev)
+st_xy_end = fz(N, 2); st_fm0 = None; st_fm_end = fz(N, 2); st_lat_lifts = fz(N); st_alive0 = None; st_com_off = fz(N, 2); st_tilt = fz(N); st_dq = fz(N); st_ge = torch.ones(N, device=dev); st_ge_off = torch.full((N,), float("nan"), device=dev)
 in_air = torch.zeros(N, 2, dtype=torch.bool, device=dev); air_t = fz(N, 2); z0 = fz(N, 2); zmax = fz(N, 2); p0 = fz(N, 2, 2)
 pend = torch.zeros(N, 2, dtype=torch.bool, device=dev); pend_t = fz(N, 2); pend_load = fz(N, 2); pend_swing = torch.zeros(N, 2, dtype=torch.bool, device=dev)
 pend_rise = fz(N, 2); pend_len = fz(N, 2); pend_fwd = fz(N, 2)
@@ -240,6 +240,7 @@ for i in range(steps):
     if a.stop_at > 0:                                                      # 정지 품질 계측
         if st_xy0 is None and t > a.stop_at:
             st_xy0 = robot.data.root_pos_w[:, :2].clone()
+            st_fm0 = robot.data.body_pos_w[:, bid, :2].mean(1).clone(); st_alive0 = alive.clone()
         if st_xy0 is not None:
             off_ = (prev_c & ~cc) & alive.unsqueeze(1)
             st_lifts += off_.float().sum(1)
@@ -249,6 +250,11 @@ for i in range(steps):
             st_qrun = torch.where(qq, st_qrun + dt, torch.zeros_like(st_qrun))
             st_settle = torch.where(torch.isnan(st_settle) & (st_qrun >= 0.5), torch.full_like(st_settle, t - a.stop_at - 0.5), st_settle)
             st_xy_end = torch.where(alive.unsqueeze(1), robot.data.root_pos_w[:, :2], st_xy_end)
+            _fm = robot.data.body_pos_w[:, bid, :2].mean(1)                      # 1006 정지 표류 분해: 발 중점(흔들림 위상 오프셋 제외)
+            st_fm_end = torch.where(alive.unsqueeze(1), _fm, st_fm_end)
+            st_com_off = torch.where(alive.unsqueeze(1), robot.data.root_pos_w[:, :2] - _fm, st_com_off)
+            if getattr(U, "_ge", None) is not None:
+                st_lat_lifts += (off_.float().sum(1) * (~U._ge.bool()).float())   # 래치 해제(STAND) 뒤 이륙
             pg_ = robot.data.projected_gravity_b; st_tilt = torch.rad2deg(torch.atan2(pg_[:, :2].norm(dim=-1), -pg_[:, 2]))
             st_dq = torch.rad2deg((robot.data.joint_pos - robot.data.default_joint_pos).abs()).mean(-1)
             st_ge = U._ge.clone() if getattr(U, "_ge", None) is not None else st_ge
@@ -358,14 +364,20 @@ if a.stop_at > 0 and st_xy0 is not None:
     q90 = lambda x: float(torch.quantile(x[al & ~torch.isnan(x)], 0.9).item()) if (al & ~torch.isnan(x)).any() else float("nan")
     settled = al & ~torch.isnan(st_settle)
     stop_drift = (st_xy_end - st_xy0).norm(dim=-1) * 100
+    fm_drift = (st_fm_end - st_fm0).norm(dim=-1) * 100
+    n_alive_at_stop = int(st_alive0.sum()); n_fall_after_stop = int((st_alive0 & ~al).sum())
     L += ["", f"## 정지 품질(ge 0 요청 @ {a.stop_at:.1f} s, 생존 env 기준)",
           f"- ge 래치 해제(반주기 경계) 중앙 {mS(st_ge_off):.2f} s",
           f"- 요청 뒤 이륙 수 중앙 {mS(st_lifts):.0f} · 90 % {q90(st_lifts):.0f} · 마지막 이륙 중앙 {mS(st_last_lift):.2f} s",
           f"- 정착(양발·|ω|<0.15·|v|<0.05 가 0.5 s) 도달 {100 * float(settled.sum()) / max(1, int(al.sum())):.1f} % · 시간 중앙 {mS(st_settle):.2f} s · 90 % {q90(st_settle):.2f} s",
           f"- 요청 뒤 표류 중앙 {mS(stop_drift):.1f} cm · 90 % {q90(stop_drift):.1f} cm",
-          f"- 끝 자세: 기울기 중앙 {mS(st_tilt):.2f}° · 기본자세 대비 관절 평균 편차 중앙 {mS(st_dq):.2f}°"]
+          f"- 끝 자세: 기울기 중앙 {mS(st_tilt):.2f}° · 기본자세 대비 관절 평균 편차 중앙 {mS(st_dq):.2f}°",
+          f"- (주 지표) 발 중점 이동 중앙 {mS(fm_drift):.1f} cm · 90 % {q90(fm_drift):.1f} cm (골반 표류는 요청 순간 좌우 흔들림 오프셋 포함 — 참고용)",
+          f"- 래치 해제(STAND) 뒤 이륙 중앙 {mS(st_lat_lifts):.0f} · 0 회 env {100 * float(((st_lat_lifts == 0) & al).sum()) / max(1, int(al.sum())):.1f} %",
+          f"- 정지 요청 뒤 낙상 {n_fall_after_stop}/{n_alive_at_stop} · 끝 골반−발 중점 오프셋 중앙 |{mS(st_com_off.norm(dim=-1) * 100):.1f}| cm"]
     J_stop = {"ge_off_med": mS(st_ge_off), "lifts_med": mS(st_lifts), "settle_rate": float(settled.sum()) / max(1, int(al.sum())), "settle_med": mS(st_settle),
-              "settle_p90": q90(st_settle), "drift_med_cm": mS(stop_drift), "tilt_med": mS(st_tilt), "dq_med": mS(st_dq)}
+              "settle_p90": q90(st_settle), "drift_med_cm": mS(stop_drift), "tilt_med": mS(st_tilt), "dq_med": mS(st_dq), "foot_mid_drift_med_cm": mS(fm_drift), "foot_mid_drift_p90_cm": q90(fm_drift),
+              "lifts_after_latch_med": mS(st_lat_lifts), "falls_after_stop": n_fall_after_stop, "alive_at_stop": n_alive_at_stop}
 else:
     J_stop = None
 L += ["", f"## Stage 0 사전 기준 판정({'STAND, gait_enable 0' if a.gait_enable == 0 else 'STEP'}): {'PASS' if all_pass else 'FAIL'}"]

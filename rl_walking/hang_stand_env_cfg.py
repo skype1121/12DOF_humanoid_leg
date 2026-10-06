@@ -3205,3 +3205,15 @@ class Biped12HangStandW3A2EnvCfg(Biped12HangStandW3AEnvCfg):
         super().__post_init__()
         self.rewards.w3_yaw = RewTerm(func=_w3.w3_yaw_drift, weight=-0.5)
         self.curriculum.w3_assist.params = {"start_stage": 3}
+
+
+@configclass
+class Biped12HangStandW3S1EnvCfg(Biped12HangStandW3A2EnvCfg):
+    """W3 Stage 1 (1006): 같은 스텝 엔진 + 앞 / 뒤 명령 — 명령 = STAND 30 % / STEP(제자리 43 %·앞 28.5 %·뒤 28.5 %, |vx| 0.03–0.10).
+    착지 목표 x = vx/(4f)(w3_step_tracker), 표류 = |v − v_cmd|, 추종 w3_track +2(명령 ≠ 0, σ 0.05). 보조 0 고정(start_stage 4), 모방·요 벌점 유지."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.w3_cmd.params = {"p_step": 0.7, "stage": 1}
+        self.rewards.w3_track = RewTerm(func=_w3.w3_track, weight=2.0)
+        self.curriculum.w3_assist.params = {"start_stage": 4}

@@ -40,14 +40,14 @@ def _ge(env):
 
 
 # ---------------------------------------------------------------- 명령 + gait_enable ----------------------------------------------------------------
-def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0):
+def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple = (0.43, 0.285, 0.285), vx_range: tuple = (0.03, 0.10)):
     """mode="startup": 명령 리샘플 패치 — Stage 0 = STAND(ge 0, 명령 0) / STEP0(ge 1, 명령 0). 서기 env(is_standing_env)도 ge 로 덮는다.
     평가 고정: W3_GAIT_ENABLE=0|1, W3_CMD='vx,vy,wz'."""
     N, dev = env.num_envs, env.device
     env._ge = torch.zeros(N, dtype=torch.bool, device=dev)
     env._ge_cmd = torch.zeros(N, dtype=torch.bool, device=dev)      # 명령이 원하는 ge(래치 전)
     env._ge_obs = torch.zeros(N, device=dev)
-    env._w3_stage = int(stage)
+    env._w3_stage = int(stage); env._w3_mix = tuple(mix); env._w3_vx_range = tuple(vx_range)
     term = env.command_manager.get_term("base_velocity")
     orig = term._resample_command
 
@@ -63,6 +63,13 @@ def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0):
             want = torch.full((n,), fge == "1", dtype=torch.bool, device=dev)
         c = term.vel_command_b
         c[ids] = 0.0
+        if env._w3_stage >= 1:      # Stage 1: STEP env 중 앞 / 뒤 범주(vx), 나머지 제자리 — 비율은 env._w3_mix(기본 제자리 0.43·앞 0.285·뒤 0.285)
+            mix = getattr(env, "_w3_mix", (0.43, 0.285, 0.285))
+            r = torch.rand(n, device=dev)
+            fwd = r >= mix[0]; back = r >= mix[0] + mix[1]
+            mag = torch.empty(n, device=dev).uniform_(*getattr(env, "_w3_vx_range", (0.03, 0.10)))
+            vx = torch.where(back, -mag, torch.where(fwd, mag, torch.zeros_like(mag)))
+            c[ids, 0] = torch.where(want, vx, torch.zeros_like(vx))
         fc = os.environ.get("W3_CMD")
         if fc:
             v = torch.tensor([float(x) for x in fc.split(",")], device=dev)
@@ -225,7 +232,11 @@ def w3_step_tracker(env, env_ids, threshold: float = 5.0, min_air_s: float = 0.1
     rel = fxy - asset.data.root_pos_w[:, None, :2]
     rx = rel[..., 0] * cy.unsqueeze(1) + rel[..., 1] * sy.unsqueeze(1); ry = -rel[..., 0] * sy.unsqueeze(1) + rel[..., 1] * cy.unsqueeze(1)
     tgt_y = torch.tensor([nominal_half_width, -nominal_half_width], device=env.device).unsqueeze(0)
-    err = torch.sqrt(rx ** 2 + (ry - tgt_y) ** 2)
+    cmd = env.command_manager.get_command("base_velocity")
+    f_ = env._gf if getattr(env, "_gf", None) is not None else torch.full((N,), 1.1, device=env.device)
+    tgt_x = (cmd[:, 0] / (4.0 * f_.clamp(min=0.5))).unsqueeze(1)          # Raibert형: 반 지지 시간 이동(명령 0 → 0 = Stage 0 과 같음)
+    tgt_y = tgt_y + (cmd[:, 1] / (4.0 * f_.clamp(min=0.5))).unsqueeze(1)
+    err = torch.sqrt((rx - tgt_x) ** 2 + (ry - tgt_y) ** 2)
     td_ok = landed & (s["valid_swing"] > 0.5)
     s["ev_td"] = td_ok.float()
     s["td_err"] = torch.where(td_ok, err, torch.zeros_like(err))
@@ -319,10 +330,25 @@ def w3_alive_step(env) -> torch.Tensor:
     return _ge(env).float()
 
 
-def w3_drift(env) -> torch.Tensor:
-    """STEP 명령 0 의 수평 이동(몸통 xy 속도 노름) — 벌점 크기(양수)."""
+def _v_err(env):
     asset = env.scene[H._base_cfg().name]
-    return asset.data.root_lin_vel_w[:, :2].norm(dim=-1) * _ge(env).float()
+    q = asset.data.root_quat_w
+    yaw = torch.atan2(2 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]), 1 - 2 * (q[:, 2] ** 2 + q[:, 3] ** 2))
+    cmd = env.command_manager.get_command("base_velocity")
+    cw = torch.stack([cmd[:, 0] * torch.cos(yaw) - cmd[:, 1] * torch.sin(yaw), cmd[:, 0] * torch.sin(yaw) + cmd[:, 1] * torch.cos(yaw)], -1)
+    return (asset.data.root_lin_vel_w[:, :2] - cw).norm(dim=-1), cmd[:, :2].norm(dim=-1)
+
+
+def w3_drift(env) -> torch.Tensor:
+    """STEP 수평 속도 오차 |v − v_cmd|(명령 0 이면 이동 자체) — 벌점 크기(양수)."""
+    e, _ = _v_err(env)
+    return e * _ge(env).float()
+
+
+def w3_track(env, sig: float = 0.05, cmin: float = 0.02) -> torch.Tensor:
+    """Stage 1+: 명령 ≠ 0 일 때만 exp(−|v − v_cmd|²/σ²), σ 0.05(작은 속도에서 부호 구분 — 넓은 σ 는 서기에 공짜 점수)."""
+    e, cn = _v_err(env)
+    return torch.exp(-(e / sig) ** 2) * (cn >= cmin).float() * _ge(env).float()
 
 
 def w3_stand_gated(env, func, params: dict | None = None) -> torch.Tensor:

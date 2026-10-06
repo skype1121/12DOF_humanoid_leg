@@ -149,6 +149,9 @@ for _fld, _sfx in (("capm_w", "m"), ("capd_w", "d")):
           L.append(f"[기준 3·5 ({_fld} R1)] 3 {'PASS' if ok_all['3' + _sfx] else 'FAIL'}: B3 {v3:+.3f} · B5 {v5:+.3f} · B2 {v2:+.3f} · B3−B2 {d32:+.3f} ± {se32:.3f} | "
                    f"5 {'PASS' if ok_all['5' + _sfx] else 'FAIL'}: B4−B3 {d43:+.3f} ± {se43:.3f}")
           L.append(f"{_fld} 설정 학습 시작 조건(1·2{_sfx}·3{_sfx}·4·5{_sfx}): " + ("충족" if all(ok_all.get(k) for k in (1, "2" + _sfx, "3" + _sfx, 4, "5" + _sfx)) else "미충족"))
+if R["B1"] is not None and R["B3"] is not None:      # 레드팀 d: 서기만(B1) 이 회복(B3) 보다 R1 이 높으면 감지 문턱 아래로 숨는 유인
+    dd, se = pdiff("B1", "B3", r1, dist)
+    L.append(f"[유인 점검] R1 B1(서기만) − B3 짝 {dd:+.3f} ± {se:.3f} — 양수면 회복 모드 진입을 피하는(기울기를 감지 문턱 아래로 묶는) 유인 가설. 낙상 B1 {100*R['B1']['fell_w'][dist].mean():.1f} % vs B3 {100*R['B3']['fell_w'][dist].mean():.1f} %")
 kill = (2 in ok_all and not ok_all[2]) and (3 in ok_all and not ok_all[3])
 L.append(f"종합: 통과 {[k for k, v in ok_all.items() if v]} · 실패 {[k for k, v in ok_all.items() if not v]} → " +
          ("Kill(기준 2·3 모두 실패: c2 보상 설계 폐기)" if kill else ("C2 학습 시작 조건 충족" if all(ok_all.get(k) for k in ((1, "2m", 3, 4, 5) if "2m" in ok_all else (1, 2, 3, 4, 5))) else "학습 시작 조건 미충족(실패 기준 수정 뒤 재시험)")))

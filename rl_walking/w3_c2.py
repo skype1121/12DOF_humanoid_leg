@@ -51,7 +51,10 @@ class C2Params:
     stop_w: float = 0.6           # 창 안 max|ω_xy| 문턱 [rad/s] — **C2CAL 실측으로 확정 전 가정값**
     stop_tilt: float = 4.0        # 창 안 max 기울기 문턱 [deg] — 가정값
     stop_v: float = -1.0          # > 0 이면 |v| 조건 추가(운동학 속도 추정 대리, 잡음 kv_noise) — C2v 변형
-    kv_noise: float = 0.03        # [m/s] 속도 추정 잡음 σ(학습 DR, 가정)
+    kv_noise: float = 0.03        # [m/s] 속도 추정 백색 잡음 σ(학습 DR, 가정) — 주기 평균 45 틱이면 실효 ≈ 0.005 m/s 로 묻힘(레드팀 a)
+    kv_bias: float = 0.0          # [m/s] 에피소드 고정 편향 σ(벡터, 리셋마다 재표본) — 운동학 추정기 계통 오차 대리(가정)
+    kv_lf: float = 0.0            # [m/s] 저주파(OU, τ kv_lf_tau) 잡음 σ — 주기 평균에 남는 상관 오차(가정)
+    kv_lf_tau: float = 1.0
     v_box_s: float = 0.0          # > 0: |v| 조건을 이 길이(한 보행 주기 0.909 s) 이동평균 속도 벡터의 크기로. 1006 C2CAL: 순간 |v| 는 제자리 걸음 흔들림이
                                   #     중앙 0.32 m/s 라 정지 조건이 영원히 안 열림 → 주기 평균(제자리 p90 0.058 vs 회복 p90 0.25–0.34 m/s)로 분리됨
     tmax_s: float = 4.0           # REC 시간 초과 → 정지 요청
@@ -90,7 +93,7 @@ def new_state(N: int, dev, P: C2Params, dt: float) -> dict:
             # 착지 사건 보조(발별): 회복 중 착지였는지, 포획 목표 오차
             "td_rec": torch.zeros(N, 2, dtype=torch.bool, device=dev), "cap_err": z(N, 2), "cap_mg": z(N, 2), "cap_df": z(N, 2), "phi_b": z(N, 2), "phi_a": z(N, 2), "oracle_ok": torch.zeros(N, dtype=torch.bool, device=dev),
             "gref": torch.zeros(N, 3, device=dev), "en_t": z(N), "K": K, "D": D,
-            "vbuf": z(N, max(1, int(round(P.v_box_s / dt))), 2), "vi": 0}
+            "vbuf": z(N, max(1, int(round(P.v_box_s / dt))), 2), "vi": 0, "kvb": z(N, 2), "kvlf": z(N, 2)}
 
 
 def reset_envs(st: dict, mask: torch.Tensor):
@@ -268,12 +271,37 @@ def place_value(ev_td: torch.Tensor, td_err: torch.Tensor, td_rec: torch.Tensor,
 
 
 # ---------------------------------------------------------------- env 어댑터 ----------------------------------------------------------------
+def _get_P(env, c2: dict | None = None) -> C2Params:
+    """supervisor 파라미터를 한 곳에서 해석(1006 레드팀 결함 수정): 보상·커리큘럼이 supervisor 이벤트보다 먼저 _c2() 를 부르면 종전엔
+    기본 C2Params()(v_box_s 0 → 속도 버퍼 길이 1 = 순간 |v|)로 상태를 만들고 다시 안 만들었다. 이제 어느 쪽이 먼저든
+    env.cfg.events.w3_gait.params["c2"] + C2_PARAMS env var 로 같은 P 를 만든다."""
+    P = getattr(env, "_c2_P", None)
+    if P is not None:
+        return P
+    prm = dict(c2) if c2 is not None else {}
+    if c2 is None:
+        try:
+            prm = dict(env.cfg.events.w3_gait.params.get("c2", {}) or {})
+        except AttributeError:
+            prm = {}
+    for kv in filter(None, os.environ.get("C2_PARAMS", "").split(",")):   # 평가·반사실 진단 전용 덮어쓰기 'k=v,...'
+        k, v = kv.split("="); prm[k.strip()] = float(v)
+    P = _P(prm); env._c2_P = P
+    env._c2_arm_off = os.environ.get("C2_ARM", "") == "stand"          # 진단 팔 B1: 회복 켜짐 금지(발목 전략만)
+    env._c2_deploy = os.environ.get("C2_ARM", "") in ("deploy", "march")   # 평가: 배포 의미(전 env supervisor·무장 항상 참 — nd 오탐 포함)
+    env._c2_march = os.environ.get("C2_ARM", "") == "march"           # C2CAL: 전 env ge 1 고정
+    print(f"[c2] supervisor 파라미터 {P} · 켜짐 금지 {env._c2_arm_off} · 배포 의미 {env._c2_deploy}", flush=True)
+    return P
+
+
 def _c2(env, P: C2Params | None = None) -> dict:
     st = getattr(env, "_c2", None)
-    if st is None or st["mode"].shape[0] != env.num_envs:
-        P = P or getattr(env, "_c2_P", None) or C2Params()
+    P = P or _get_P(env)
+    K = max(1, int(round(P.win_s / env.step_dt))); V = max(1, int(round(P.v_box_s / env.step_dt)))
+    if st is None or st["mode"].shape[0] != env.num_envs or st["K"] != K or st["vbuf"].shape[1] != V or st["D"] != max(0, int(P.det_delay)):
+        old = st["stats"] if st is not None and "stats" in st else None
         st = new_state(env.num_envs, env.device, P, env.step_dt)
-        st["stats"] = {k: 0.0 for k in ("trig", "req", "timeout", "cancel", "latch", "settle", "rec_ticks", "c2_ticks")}
+        st["stats"] = old or {k: 0.0 for k in ("trig", "req", "timeout", "cancel", "latch", "settle", "rec_ticks", "c2_ticks")}
         env._c2 = st
     return st
 
@@ -318,16 +346,7 @@ def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: d
     """mode="interval"(0 s): **w3_gait_update 대체** — supervisor(c2 에피소드만 _ge_cmd·명령 덮기) → W3 엔진 래치 → 래치 확인.
     c2 에피소드가 아닌 env 는 _ge_cmd·명령을 건드리지 않는다(= w3_gait_update 그대로)."""
     from . import mdp_hang as H
-    P = getattr(env, "_c2_P", None)
-    if P is None:
-        prm = dict(c2 or {})
-        for kv in filter(None, os.environ.get("C2_PARAMS", "").split(",")):   # 평가·반사실 진단 전용 덮어쓰기 'k=v,...'
-            k, v = kv.split("="); prm[k.strip()] = float(v)
-        P = _P(prm); env._c2_P = P
-        env._c2_arm_off = os.environ.get("C2_ARM", "") == "stand"          # 진단 팔 B1: 회복 켜짐 금지(발목 전략만)
-        env._c2_deploy = os.environ.get("C2_ARM", "") in ("deploy", "march")   # 평가: 배포 의미(전 env supervisor·무장 항상 참 — nd 오탐 포함)
-        env._c2_march = os.environ.get("C2_ARM", "") == "march"           # C2CAL: 전 env ge 1 고정(제자리 걸음 흔들림 분포 측정, supervisor 상태는 계산만)
-        print(f"[c2] supervisor 파라미터 {P} · 켜짐 금지 {env._c2_arm_off} · 배포 의미 {env._c2_deploy}", flush=True)
+    P = _get_P(env, c2)
     st = _c2(env, P)
     fresh = env.episode_length_buf <= 1
     reset_envs(st, fresh)
@@ -359,7 +378,13 @@ def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: d
     td_any = s3["ev_td"].sum(1) > 0.5                           # 직전 틱 유효 착지(보상과 같은 20 ms 지연 규약)
     v_est = None
     if P.v_box_s > 0.0:                                        # 주기 이동평균(배포 = 다리 운동학 속도 추정기의 주기 평균, 학습 = 참 속도 + 잡음)
-        vn = asset.data.root_lin_vel_w[:, :2] + P.kv_noise * torch.randn(env.num_envs, 2, device=env.device)
+        if P.kv_bias > 0.0:
+            st["kvb"] = torch.where(fresh.unsqueeze(1), P.kv_bias * torch.randn(env.num_envs, 2, device=env.device), st["kvb"])
+        if P.kv_lf > 0.0:
+            a_ = env.step_dt / max(P.kv_lf_tau, 1e-6)
+            st["kvlf"] = st["kvlf"] * (1 - a_) + P.kv_lf * math.sqrt(2 * a_) * torch.randn(env.num_envs, 2, device=env.device)
+            st["kvlf"] = torch.where(fresh.unsqueeze(1), torch.zeros_like(st["kvlf"]), st["kvlf"])
+        vn = asset.data.root_lin_vel_w[:, :2] + P.kv_noise * torch.randn(env.num_envs, 2, device=env.device) + st["kvb"] + st["kvlf"]
         st["vbuf"][fresh] = vn[fresh].unsqueeze(1)
         st["vbuf"][:, st["vi"]] = vn; st["vi"] = (st["vi"] + 1) % st["vbuf"].shape[1]
         st["vbar"] = st["vbuf"].mean(1).norm(dim=-1)
@@ -395,7 +420,7 @@ def _com_state(asset):
     return com, vc
 
 
-def c2_tracker(env, env_ids, nominal_half_width: float = 0.10, b: float = 0.02, v_ref: float = 0.05, max_off: float = 0.25,
+def c2_tracker(env, env_ids, nominal_half_width: float = 0.10, cap_half_width: float = -1.0, b: float = 0.02, v_ref: float = 0.05, max_off: float = 0.25,
                mg_scale: float = 0.05, mg_vmin: float = 0.10, df_margin: float = 0.01, df_scale: float = 0.05):
     """mode="interval"(0 s), **w3_step_tracker 뒤**: 이번 틱 유효 착지(ev_td)마다 회복 중 여부·포획 목표 오차 기록(특권 CoM — 보상 전용)."""
     from . import mdp_hang as H
@@ -419,6 +444,8 @@ def c2_tracker(env, env_ids, nominal_half_width: float = 0.10, b: float = 0.02, 
     vy = torch.stack([vc[:, 0] * cy[:, 0] + vc[:, 1] * sy[:, 0], -vc[:, 0] * sy[:, 0] + vc[:, 1] * cy[:, 0]], -1)
     zf = fp[..., 2].min(1).values
     om = torch.sqrt(G / (com[:, 2] - zf).clamp(min=0.2))
+    if cap_half_width > 0.0:      # 레드팀 c: 포획 목표 y 명목 폭(실측 발 간격 반폭 ≈ 0.18) — 기본 −1 = W3 명목 0.10(종전)
+        nom_y = nom_y + (torch.tensor([cap_half_width, -cap_half_width], device=env.device) - torch.tensor([nominal_half_width, -nominal_half_width], device=env.device)).unsqueeze(0)
     tx, ty = capture_target_rel(nom_x, nom_y, vy, om, b=b, v_ref=v_ref, max_off=max_off)
     err = torch.sqrt((rx - tx) ** 2 + (ry - ty) ** 2)
     rec = ((st["mode"] == REC) | (st["mode"] == STOPREQ)) & W3._ge(env) & _c2_mask(env)

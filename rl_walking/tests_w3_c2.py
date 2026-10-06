@@ -351,7 +351,28 @@ def t_diff_sweep():
     check("13g 오라클: 포획 착지 신호에서만 요청", a0 == C.REC and int(st["mode"][0]) == C.STOPREQ)
 
 
+# ---------------------------------------------------------------- 14. 레드팀 수정: 보상이 supervisor 보다 먼저 _c2() 를 불러도 같은 P ----------------------------------------------------------------
+def t_order():
+    import os as _os
+    _os.environ.pop("C2_PARAMS", None)
+    def fenv(c2):
+        e = SimpleNamespace(num_envs=4, device="cpu", step_dt=DT, episode_length_buf=torch.zeros(4, dtype=torch.long))
+        e.cfg = SimpleNamespace(events=SimpleNamespace(w3_gait=SimpleNamespace(params={"f_step": 1.1, "c2": c2})))
+        return e
+    e = fenv({"v_box_s": 0.909, "stop_v": 0.07})
+    st = C._c2(e)                                   # 학습 순서: 보상 쪽이 먼저
+    check("14a 보상 먼저 불러도 속도 버퍼 = 주기(45 틱)", st["vbuf"].shape[1] == 45, f"{st['vbuf'].shape[1]}")
+    check("14b env._c2_P = 설정 c2 파라미터", abs(e._c2_P.v_box_s - 0.909) < 1e-9 and abs(e._c2_P.stop_v - 0.07) < 1e-9)
+    st2 = C._c2(e, e._c2_P)
+    check("14c supervisor 쪽 호출은 같은 상태(재생성 없음)", st2 is st)
+    e2 = fenv({}); e2._c2 = C.new_state(4, "cpu", C.C2Params(), DT); e2._c2["stats"] = {"trig": 3.0}
+    st3 = C._c2(e2, C._P({"v_box_s": 0.909}))
+    check("14d 버퍼 길이가 P 와 다르면 재생성(통계 보존)", st3["vbuf"].shape[1] == 45 and st3["stats"]["trig"] == 3.0)
+    P = C._P({"kv_bias": 0.03, "kv_lf": 0.02})
+    check("14e 상관 잡음 파라미터(kv_bias·kv_lf) 해석", P.kv_bias == 0.03 and P.kv_lf == 0.02)
+
+
 if __name__ == "__main__":
-    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt(); t_cancel_calm(); t_margin(); t_diff_sweep()
+    t_trigger(); t_stop(); t_cancel(); t_engine(); t_refractory(); t_settle(); t_capture(); t_budget(); t_arms(); t_reltilt(); t_cancel_calm(); t_margin(); t_diff_sweep(); t_order()
     print(f"\n결과: 실패 {len(FAIL)}" + (f" {FAIL}" if FAIL else " — 전부 통과"))
     sys.exit(1 if FAIL else 0)

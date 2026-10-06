@@ -140,6 +140,7 @@ parser.add_argument("--out_tag", type=str, default="rec")
 parser.add_argument("--c2", action="store_true", help="1006 c2 평가 어댑터: 단일 W3 정책 + 환경 안 supervisor(w3_c2.c2_gait_update, 배포 의미) + W3 위상·ge 래치·스텝 추적기. "
                     "회복 모드 = 실제 ge 1, 'cue 종료' = 첫 정지 요청(상태 조건/시간 초과), '서기 인계' = ge 0 래치 — CSV 열은 전환 평가와 같은 이름(stages_cmp·closure_s5 그대로)")
 parser.add_argument("--c2_arm", type=str, default="deploy", choices=("deploy", "march"), help="deploy = 감지기 켜짐(무장 항상 참) / march = 인계 뒤 ge 1 고정(C2CAL 제자리 걸음 흔들림)")
+parser.add_argument("--c2_from_task", type=str, default="", help="c2 supervisor 파라미터를 이 학습 태스크 설정(events.w3_gait.params['c2'])에서 그대로 가져옴(레드팀 b: 학습·평가 파라미터 불일치 방지). --c2_params 는 그 위에 덮어씀")
 parser.add_argument("--c2_params", type=str, default="", help="C2Params 덮어쓰기 'k=v,...'(C2_PARAMS env var 로 전달)")
 parser.add_argument("--c2_trace", action="store_true", help="C2CAL: 틱별 기울기·|ω_xy|·|v|·모드·ge·양발 접촉·생존을 log_picture/c2trace_<tag>.npz 로")
 parser.add_argument("--video", action="store_true", help="측면 카메라 프레임(10 Hz)·mp4 저장 + 힘 화살표 주석 (env --video_env)")
@@ -191,7 +192,11 @@ if C2MODE:
         if getattr(_evc, _k, None) is not None:
             raise SystemExit(f"--c2: 평가 env 에 이미 {_k} 이벤트가 있음(위상 이중 갱신 방지) — 지면 평가 태스크(G11a 등)를 쓸 것")
     _evc.w3_cmd = _ETC(func=_w3m.install_w3_cmd, mode="startup", params={"p_step": 0.0, "stage": 0})
-    _evc.w3_gait = _ETC(func=_c2m.c2_gait_update, mode="interval", interval_range_s=(0.0, 0.0), params={"f_step": 1.1, "c2": {}})
+    _c2prm = {}
+    if args_cli.c2_from_task:
+        _c2prm = dict(load_cfg_from_registry(args_cli.c2_from_task, "env_cfg_entry_point").events.w3_gait.params.get("c2", {}) or {})
+        print(f"[c2] 학습 설정 {args_cli.c2_from_task} 의 supervisor 파라미터 {_c2prm}", flush=True)
+    _evc.w3_gait = _ETC(func=_c2m.c2_gait_update, mode="interval", interval_range_s=(0.0, 0.0), params={"f_step": 1.1, "c2": _c2prm})
     _evc.w3_track = _ETC(func=_w3m.w3_step_tracker, mode="interval", interval_range_s=(0.0, 0.0), params={})
     print(f"[c2] 평가 어댑터: C2_ARM={args_cli.c2_arm} C2_PARAMS='{args_cli.c2_params}' — W3 위상·ge 래치·supervisor 이벤트 추가(외력 적용 뒤 순서)", flush=True)
 if getattr(env_cfg.events, "disturbance", None) is not None:      # G7: env 자체 외란 스케줄 끔(평가 외란은 --dist 로만)

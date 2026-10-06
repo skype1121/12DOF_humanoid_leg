@@ -3301,7 +3301,11 @@ class Biped12HangStandW3C2vEnvCfg(Biped12HangStandW3C2EnvCfg):
     학습 속도 = 참 몸통 속도 + 잡음 σ 0.03. 배포엔 다리 운동학 속도 추정기(주기 평균)가 선행 조건 — 현장 확인 필요."""
 
     C2_STOP_V = 0.07
-    C2_EXTRA = "v_box_s=0.909,stop_w=2.0,stop_tilt=12.5,tilt_ref_tau=10,cancel_calm=1"   # cancel_calm: 1006 C2EVAL 취소 결함 수정(미평가)
+    C2_EXTRA = "v_box_s=0.909,stop_w=2.0,stop_tilt=12.5,tilt_ref_tau=10,cancel_calm=1,kv_bias=0.03,kv_lf=0.02"   # cancel_calm: 취소 결함 수정 · kv_bias/kv_lf: 레드팀 a(상관 잡음, 가정)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.c2_track.params = dict(self.events.c2_track.params or {}, cap_half_width=0.18)   # 레드팀 c: 포획 목표 y 폭 = 실측 발 간격 반폭(오차형에만 영향)
 
 
 @configclass

@@ -41,10 +41,14 @@ def _ge(env):
 
 # ---------------------------------------------------------------- 명령 + gait_enable ----------------------------------------------------------------
 def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple = (0.43, 0.285, 0.285), vx_range: tuple = (0.03, 0.10),
-                   vx_back_range: tuple | None = None, mix2: tuple = (0.3, 0.3, 0.4), vy_range: tuple = (0.03, 0.04)):
+                   vx_back_range: tuple | None = None, mix2: tuple = (0.3, 0.3, 0.4), vy_range: tuple = (0.03, 0.04),
+                   mix3: tuple = (0.3, 0.3, 0.0, 0.4), wz_range: tuple = (0.1, 0.2), p_hloop: float = 0.0):
     """mode="startup": 명령 리샘플 패치 — Stage 0 = STAND(ge 0, 명령 0) / STEP0(ge 1, 명령 0). 서기 env(is_standing_env)도 ge 로 덮는다.
     Stage 1 = STEP 중 제자리 / 앞 / 뒤(vx). Stage 2(1006 W3S2) = STEP 중 제자리 mix2[0] / 앞뒤 mix2[1](반반) / 옆 mix2[2](±vy, |vy| ∈ env._w3_vy_range —
     w3_vy_curriculum 이 상한을 넓힌다). Stage 0/1 경로는 종전과 비트 동일(난수 소비 순서 포함).
+    Stage 3(1006 W3S3) = STEP 중 제자리 mix3[0] / 앞뒤 mix3[1] / 옆 mix3[2] / 제자리 회전 mix3[3](±wz, |wz| ∈ env._w3_wz_range — w3_wz_curriculum).
+    Stage 3 은 리샘플 원래 wz 를 env._w3_wz0 에, 외부 헤딩 고리 표시(확률 p_hloop, STEP·비회전 명령만)를 env._w3_hl 에 남긴다(w3_heading_loop 가 읽음).
+    **Stage 3 은 command term 의 heading_command 를 꺼야 한다**(켜 두면 _update_command 가 매 틱 wz 를 clip(·, ang_vel_z 범위) 로 덮음 — 1006 측정 사실).
     평가 고정: W3_GAIT_ENABLE=0|1, W3_CMD='vx,vy,wz'."""
     N, dev = env.num_envs, env.device
     env._ge = torch.zeros(N, dtype=torch.bool, device=dev)
@@ -53,6 +57,9 @@ def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple
     env._w3_stage = int(stage); env._w3_mix = tuple(mix); env._w3_vx_range = tuple(vx_range)
     env._w3_vx_back = tuple(vx_back_range) if vx_back_range else tuple(vx_range)
     env._w3_mix2 = tuple(mix2); env._w3_vy_range = tuple(vy_range)
+    if int(stage) >= 3:                                                   # Stage 3 상태(그 밖 stage 는 속성도 만들지 않음 — 비트 동일)
+        env._w3_mix3 = tuple(mix3); env._w3_wz_range = tuple(wz_range); env._w3_p_hloop = float(p_hloop)
+        env._w3_wz0 = torch.zeros(N, device=dev); env._w3_hl = torch.zeros(N, dtype=torch.bool, device=dev)
     term = env.command_manager.get_term("base_velocity")
     orig = term._resample_command
 
@@ -76,7 +83,7 @@ def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple
             magb = torch.empty(n, device=dev).uniform_(*getattr(env, "_w3_vx_back", getattr(env, "_w3_vx_range", (0.03, 0.10))))
             vx = torch.where(back, -magb, torch.where(fwd, mag, torch.zeros_like(mag)))
             c[ids, 0] = torch.where(want, vx, torch.zeros_like(vx))
-        elif env._w3_stage >= 2:    # Stage 2(1006 W3S2): 제자리 / 앞뒤(반반, Stage 1 범위 — 리허설) / 옆(±vy, 부호 반반)
+        elif env._w3_stage == 2:    # Stage 2(1006 W3S2): 제자리 / 앞뒤(반반, Stage 1 범위 — 리허설) / 옆(±vy, 부호 반반)
             m2 = getattr(env, "_w3_mix2", (0.3, 0.3, 0.4))
             r = torch.rand(n, device=dev); r2 = torch.rand(n, device=dev)
             fb = (r >= m2[0]) & (r < m2[0] + m2[1]); lat = r >= m2[0] + m2[1]
@@ -88,10 +95,29 @@ def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple
             vy = torch.where(lat, torch.where(neg, -magy, magy), torch.zeros_like(magy))
             c[ids, 0] = torch.where(want, vx, torch.zeros_like(vx))
             c[ids, 1] = torch.where(want, vy, torch.zeros_like(vy))
+        elif env._w3_stage >= 3:    # Stage 3(1006 W3S3): 제자리 / 앞뒤 / 옆 / 제자리 회전(±wz, 부호 반반) — 대각·이동+회전 없음
+            m3 = env._w3_mix3
+            r = torch.rand(n, device=dev); r2 = torch.rand(n, device=dev); r3 = torch.rand(n, device=dev)
+            e1 = m3[0]; e2 = e1 + m3[1]; e3 = e2 + m3[2]
+            fb = (r >= e1) & (r < e2); lat = (r >= e2) & (r < e3); turn = r >= e3
+            mag = torch.empty(n, device=dev).uniform_(*env._w3_vx_range)
+            magb = torch.empty(n, device=dev).uniform_(*env._w3_vx_back)
+            magy = torch.empty(n, device=dev).uniform_(*env._w3_vy_range)
+            magw = torch.empty(n, device=dev).uniform_(*env._w3_wz_range)
+            neg = r2 < 0.5
+            vx = torch.where(fb, torch.where(neg, -magb, mag), torch.zeros_like(mag))
+            vy = torch.where(lat, torch.where(neg, -magy, magy), torch.zeros_like(magy))
+            wz = torch.where(turn, torch.where(neg, -magw, magw), torch.zeros_like(magw))
+            c[ids, 0] = torch.where(want, vx, torch.zeros_like(vx))
+            c[ids, 1] = torch.where(want, vy, torch.zeros_like(vy))
+            c[ids, 2] = torch.where(want, wz, torch.zeros_like(wz))
+            env._w3_hl[ids] = want & ~turn & (r3 < env._w3_p_hloop)          # 외부 헤딩 고리: STEP·비회전 명령의 일부(배포: 운영자 wz 0 + 고리)
         fc = os.environ.get("W3_CMD")
         if fc:
             v = torch.tensor([float(x) for x in fc.split(",")], device=dev)
             c[ids] = v
+        if env._w3_stage >= 3:
+            env._w3_wz0[ids] = c[ids, 2]
         env._ge_cmd[ids] = want
         if hasattr(term, "is_standing_env"):
             term.is_standing_env[ids] = False                             # 명령 0 고정은 위에서; 서기 여부는 ge 가 정함
@@ -99,10 +125,12 @@ def install_w3_cmd(env, env_ids, p_step: float = 0.7, stage: int = 0, mix: tuple
     term._resample_command = _resample
 
 
-def w3_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, lead_vy_cmin: float = 0.0):
+def w3_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, lead_vy_cmin: float = 0.0, lead_wz_cmin: float = 0.0):
     """mode="interval"(0 s): 위상 누적 + gait_enable 래치 + 관측 램프. 에피소드 시작 = ge 즉시 반영·위상 0.
     lead_vy_cmin > 0(Stage 2): STEP 시작(fresh·0→1) 때 명령 vy < −lead_vy_cmin 이면 위상 0.5(오른발 리드 — 가는 쪽 발이 먼저 나감).
-    vy > 0 은 종전대로 0(왼발 리드). 0(기본) = 종전과 비트 동일."""
+    vy > 0 은 종전대로 0(왼발 리드). 0(기본) = 종전과 비트 동일.
+    lead_wz_cmin > 0(Stage 3): 옆 명령이 없고(|vy| < 0.02) wz < −lead_wz_cmin(오른쪽 회전)이면 위상 0.5(오른발 리드 — 도는 쪽 발이 먼저 바깥으로).
+    0(기본) = 종전과 비트 동일."""
     N, dev = env.num_envs, env.device
     if getattr(env, "_gu", None) is None or env._gu.shape[0] != N:
         env._gu = torch.zeros(N, device=dev); env._gf = torch.zeros(N, device=dev)
@@ -119,6 +147,9 @@ def w3_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, lead_
     if lead_vy_cmin > 0.0:
         vy = env.command_manager.get_command("base_velocity")[:, 1]
         u0 = torch.where((vy < -lead_vy_cmin) & ge & (fresh | on), torch.full_like(u0, 0.5), u0)
+    if lead_wz_cmin > 0.0:
+        cw = env.command_manager.get_command("base_velocity")
+        u0 = torch.where((cw[:, 1].abs() < 0.02) & (cw[:, 2] < -lead_wz_cmin) & ge & (fresh | on), torch.full_like(u0, 0.5), u0)
     env._gu = torch.where(reset_u, u0, torch.remainder(u_next, 1.0))
     env._gf = torch.where(ge, torch.full_like(env._gf, f_step), torch.zeros_like(env._gf))
     env._ge = ge
@@ -597,3 +628,185 @@ def w3_vy_curriculum(env, env_ids, vmax: tuple = (0.04, 0.06, 0.08), vmin: float
             g["stage"] += 1; g["since"] = it; env._w3_vy_range = (vmin, vmax[g["stage"]])
         g["b_lat"], g["b_ok"], g["b_td"], g["b_bad"] = n_lat, n_ok, n_td, n_bad
     return {"vy_max": float(env._w3_vy_range[1]), "lat_sign_ok": g["sign"], "width_bad": g["bad"]}
+
+
+# ================================================================ Stage 3(1006 W3S3) — 제자리 회전(wz). 기본 꺼짐(W3S3 계열 설정을 고를 때만) ================================================================
+# 설계·반사실 단위시험·사전 통과 기준: reports/gen_w3/S3_DESIGN.md. CPU 단위시험: rl_walking/scripts/unit_w3_s3.py.
+# 기존 상태(env._w3·env._w3lat)·함수는 손대지 않는다 — 회전 상태는 env._w3turn, 후행 추적기(w3_turn_tracker, w3_step_tracker **뒤** 정의 순서).
+# 요 측정은 프레임 독립형: 발 링크 쿼터니언의 **월드 상대 회전** q_now ⊗ q_ref* 의 요 성분(발 링크 축 규약과 무관), 몸통 대비 비틀림은 발 연결선 방향으로.
+def _qmul(a, b):
+    aw, ax, ay, az = a.unbind(-1); bw, bx, by, bz = b.unbind(-1)
+    return torch.stack([aw * bw - ax * bx - ay * by - az * bz, aw * bx + ax * bw + ay * bz - az * by,
+                        aw * by - ax * bz + ay * bw + az * bx, aw * bz + ax * by - ay * bx + az * bw], -1)
+
+
+def _qconj(q):
+    return q * torch.tensor([1.0, -1.0, -1.0, -1.0], device=q.device, dtype=q.dtype)
+
+
+def _rel_yaw(q_now, q_ref):
+    """월드 프레임 상대 회전 R_now·R_refᵀ 의 요[rad] — 링크 축 규약과 무관(기울기 작을 때 순수 수직축 회전량)."""
+    r = _qmul(q_now, _qconj(q_ref)); w, x, y, z = r.unbind(-1)
+    return torch.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+
+
+def _wrap(a):
+    return torch.atan2(torch.sin(a), torch.cos(a))
+
+
+def _feet_line_yaw(env):
+    """발 연결선 방향 요 ψ_fl = atan2(p_왼 − p_오) − π/2 (두 발이 정면 나란히면 = 몸통 요). 몸통만 비틀면 변하지 않는다."""
+    asset = env.scene[H._base_cfg().name]
+    bid = H._g21_bids(env); fxy = asset.data.body_pos_w[:, bid, :2]
+    d = fxy[:, 0] - fxy[:, 1]
+    return torch.atan2(d[:, 1], d[:, 0]) - 0.5 * math.pi
+
+
+def _turn(env):
+    T_ = getattr(env, "_w3turn", None)
+    if T_ is None or T_["td_dpsi"].shape[0] != env.num_envs:
+        N, dev = env.num_envs, env.device
+        z = lambda *sh: torch.zeros(*sh, device=dev)
+        T_ = {"q_lift": torch.tensor([1.0, 0.0, 0.0, 0.0], device=dev).repeat(N, 2, 1), "q_prev": None, "td_dpsi": z(N, 2),
+              "pivot": z(N, 2), "twist": z(N), "c_prev": torch.ones(N, 2, device=dev),
+              # 누적(커리큘럼·로그, 리셋 안 함): 회전 명령 착지 수·부호 정답·요 이득 분자/분모·지지발 피벗 |요|·스윙 착지 |요|·부호 있는 합
+              "n_turn_td": z(1), "n_turn_ok": z(1), "gain_num": z(1), "gain_den": z(1), "piv_abs": z(1), "swing_abs": z(1),
+              "piv_sgn": z(1), "swing_sgn": z(1)}
+        env._w3turn = T_
+    return T_
+
+
+def w3_turn_tracker(env, env_ids, threshold: float = 5.0, cmin: float = 0.08):
+    """mode="interval"(0 s), **w3_step_tracker 뒤**: 발별
+    - td_dpsi = 스윙발 이륙→착지 **월드 요 변위**(_st.ev_td 사건에만, 그 외 0). 목표 Δψ* = wz/f.
+    - pivot = 이번 틱 **접촉 유지 중인** 발의 요 변화[rad](지지발 비틀림 미끄럼·한발 피벗 — 감시 지표, 보상 아님).
+    - twist = wrap(ψ_골반 − ψ_발연결선)(몸통만 비틀기 감시).
+    상태는 env._w3turn(기존 env._w3·env._w3lat 키 불변)."""
+    s = _st(env); T_ = _turn(env)
+    asset = env.scene[H._base_cfg().name]
+    bid = H._g21_bids(env); qf = asset.data.body_quat_w[:, bid, :]
+    sensor = env.scene.sensors["contact_forces"]; fid = H._feet_body_ids(env)
+    c = (sensor.data.net_forces_w[:, fid, :].norm(dim=-1) > threshold)
+    fresh = (env.episode_length_buf <= 1)
+    if T_["q_prev"] is None:
+        T_["q_prev"] = qf.clone()
+    if bool(fresh.any()):
+        T_["q_lift"][fresh] = qf[fresh]; T_["q_prev"][fresh] = qf[fresh]; T_["c_prev"][fresh] = 1.0
+    lifted = s["ev_takeoff"] > 0.5
+    T_["q_lift"] = torch.where(lifted.unsqueeze(-1), qf, T_["q_lift"])
+    td = s["ev_td"] > 0.5
+    dpsi = _rel_yaw(qf, T_["q_lift"])
+    T_["td_dpsi"] = torch.where(td, dpsi, torch.zeros_like(dpsi))
+    stance = c & (T_["c_prev"] > 0.5) & ~fresh.unsqueeze(1)
+    dtick = _rel_yaw(qf, T_["q_prev"])
+    T_["pivot"] = torch.where(stance, dtick, torch.zeros_like(dtick))
+    psi = _yaw_of(asset.data.root_quat_w)
+    T_["twist"] = _wrap(psi - _feet_line_yaw(env))
+    T_["q_prev"] = qf.clone(); T_["c_prev"] = c.float()
+    # 누적 지표(STEP·회전 명령만)
+    ge = _ge(env)
+    wz = env.command_manager.get_command("base_velocity")[:, 2]
+    tm = ge & (wz.abs() >= cmin); sg = torch.sign(wz).unsqueeze(1)
+    tdg = td & tm.unsqueeze(1)
+    T_["n_turn_td"] += tdg.float().sum(); T_["n_turn_ok"] += (tdg & (dpsi * sg > 0.0)).float().sum()
+    T_["gain_num"] += (_yaw_box(env) * torch.sign(wz) * tm.float()).sum(); T_["gain_den"] += (wz.abs() * tm.float()).sum()
+    T_["piv_abs"] += (T_["pivot"].abs() * tm.unsqueeze(1).float()).sum(); T_["swing_abs"] += (T_["td_dpsi"].abs() * tdg.float()).sum()
+    T_["piv_sgn"] += (T_["pivot"] * sg * tm.unsqueeze(1).float()).sum(); T_["swing_sgn"] += (T_["td_dpsi"] * sg * tdg.float()).sum()
+
+
+def w3_turn_stride(env, sig: float = 0.0873, cmin: float = 0.08, k_opp: float = 0.5) -> torch.Tensor:
+    """Stage 3: 스윙발 착지 사건마다 발 요 변위 Δψ 가 Δψ* = wz/f 에 맞는 정도(Stage 2 w3_stride2 와 같은 설계):
+    [exp(−(Δψ − Δψ*)²/σ²) − exp(−Δψ*²/σ²)] + k_opp·clip(Δψ·Δψ*/Δψ*², −1, 0). σ 5°(0.0873 rad).
+    제자리 디딤(Δψ 0) = 0, 몸통만 비틀기(발 요 불변) = 0, 반대 방향 < 0. |wz| < cmin 이면 **정확히 0**(Stage 0–2 와 총 보상 비트 동일)."""
+    s = _st(env); T_ = _turn(env)
+    wz = env.command_manager.get_command("base_velocity")[:, 2]
+    f_ = env._gf if getattr(env, "_gf", None) is not None else torch.full((env.num_envs,), 1.1, device=env.device)
+    tp = (wz / f_.clamp(min=0.5)).unsqueeze(1)
+    d = T_["td_dpsi"]
+    r = (torch.exp(-((d - tp) / sig) ** 2) - torch.exp(-(tp / sig) ** 2)) * s["ev_td"]
+    r = r + k_opp * ((d * tp) / (tp * tp).clamp(min=1e-8)).clamp(-1.0, 0.0) * s["ev_td"]
+    on = (wz.abs() >= cmin) & _ge(env)
+    return torch.where(on, r.sum(1), torch.zeros_like(wz))
+
+
+def _feet_yaw_box(env, period_s: float = 1.0 / 1.1):
+    """한 보행 주기 발 연결선 요 순속도 = wrap(ψ_fl,t − ψ_fl,t−T)/T — 걸음 주기 성분 소거. 몸통 비틀기로는 못 만든다."""
+    psi = _feet_line_yaw(env)
+    tick = int(env.common_step_counter)
+    K = max(2, int(round(period_s / env.step_dt)))
+    st = getattr(env, "_w3_fybox", None)
+    if st is None or st["buf"].shape[0] != env.num_envs or st["buf"].shape[1] != K:
+        st = {"buf": psi.unsqueeze(1).repeat(1, K).clone(), "i": 0, "tick": -1, "w": torch.zeros_like(psi)}; env._w3_fybox = st
+    if st["tick"] != tick:
+        fresh = env.episode_length_buf <= 1
+        if bool(fresh.any()):
+            st["buf"][fresh] = psi[fresh].unsqueeze(1)
+        i = st["i"]; old = st["buf"][:, i].clone()
+        st["buf"][:, i] = psi; st["i"] = (i + 1) % K
+        n = env.episode_length_buf.clamp(min=1, max=K).float()
+        st["w"] = _wrap(psi - old) / (n * env.step_dt); st["tick"] = tick
+    return st["w"]
+
+
+def w3_yaw_track_rel(env, sig: float = 0.2, cmin: float = 0.08, src: str = "feet") -> torch.Tensor:
+    """Stage 3: 회전 추종 개선분 exp(−(ψ̇_T − wz)²/σ²) − exp(−wz²/σ²) — 가만히 = 0, 반대 < 0. |wz| < cmin 이면 정확히 0.
+    src="feet"(기본): 발 연결선 요 한 주기 순속도(_feet_yaw_box) — 몸통만 톱니형으로 비틀어 지수형 추종 점수를 따는 해킹 차단
+    (CPU 단위시험 [C]: src="pelvis" 는 톱니 비틀기만으로 + 점수 → 기각). 순 요 오차 선형 벌점 w3_yaw_net(골반)은 그대로 둔다."""
+    wz = env.command_manager.get_command("base_velocity")[:, 2]
+    w = _feet_yaw_box(env) if src == "feet" else _yaw_box(env)
+    r = torch.exp(-((w - wz) / sig) ** 2) - torch.exp(-(wz / sig) ** 2)
+    on = (wz.abs() >= cmin) & _ge(env)
+    return torch.where(on, r, torch.zeros_like(wz))
+
+
+def w3_heading_loop(env, env_ids, kp: float = 0.5, wz_max: float = 0.4):
+    """mode="interval"(0 s), 선택(W3S3h): **배포와 같은 외부 헤딩 P 고리** — env._w3_hl(리샘플 때 STEP·비회전 명령 일부) env 에서
+    wz 명령 = clip(wz₀ + kp·wrap(ψ* − ψ), ±wz_max), ψ* = 걷기 시작(에피소드 시작 또는 고리 켜짐) 요에서 wz₀ 로 적분(비회전 명령은 wz₀ = 0 → ψ* 고정).
+    그 외 env 는 wz = wz₀(리샘플 값) 그대로, ψ* = 현재 요로 따라간다. W3_HLOOP=0 이면 끔(eval_w3 는 자체 고리 --heading_loop 사용).
+    관측·보상은 이 고리 출력(배포에서 정책이 보는 값)을 본다. 이벤트는 command 갱신 뒤에 돌아 다음 틱 관측·보상에 반영된다."""
+    if os.environ.get("W3_HLOOP", "1") == "0" or getattr(env, "_w3_hl", None) is None:
+        return
+    term = env.command_manager.get_term("base_velocity")
+    asset = env.scene[H._base_cfg().name]
+    psi = _yaw_of(asset.data.root_quat_w)
+    tgt = getattr(env, "_w3_hl_tgt", None)
+    if tgt is None or tgt.shape[0] != env.num_envs:
+        tgt = psi.clone()
+    act = env._w3_hl & _ge(env)
+    prev_act = getattr(env, "_w3_hl_prev", None)
+    if prev_act is None or prev_act.shape[0] != env.num_envs:
+        prev_act = torch.zeros_like(act)
+    start = (env.episode_length_buf <= 1) | (act & ~prev_act)
+    wz0 = env._w3_wz0
+    tgt = torch.where(start | ~act, psi, _wrap(tgt + wz0 * env.step_dt))
+    err = _wrap(tgt - psi)
+    wz = (wz0 + kp * err).clamp(-wz_max, wz_max)
+    term.vel_command_b[:, 2] = torch.where(act, wz, wz0)
+    env._w3_hl_tgt = tgt; env._w3_hl_prev = act
+
+
+def w3_wz_curriculum(env, env_ids, vmax: tuple = (0.2, 0.3, 0.4), vmin: float = 0.1, min_sign: float = 0.90, min_gain: float = 0.5,
+                     min_iters: int = 100, min_turn_td: float = 3000.0, steps_per_iter: int = 24, start_stage: int = 0):
+    """|wz| 상한 커리큘럼(0.2 → 0.3 → 0.4, 하한 0.1). 블록(회전 명령 착지 ≥ min_turn_td) 판정 — 착지 발 요 부호 정답률 ≥ min_sign 이고
+    요 이득(골반 한 주기 순 요 속도·부호 / |wz|) ≥ min_gain, 체류 ≥ min_iters 면 다음 상한. 절대 문턱(톱니 금지). 피벗 비율은 로그만."""
+    T_ = _turn(env); g = getattr(env, "_w3_wzcur", None)
+    if g is None:
+        g = {"stage": int(start_stage), "since": 0, "b_td": 0.0, "b_ok": 0.0, "b_gn": 0.0, "b_gd": 0.0, "b_pa": 0.0, "b_sa": 0.0,
+             "sign": float("nan"), "gain": float("nan"), "pivot_frac": float("nan")}
+        env._w3_wzcur = g
+        env._w3_wz_range = (vmin, vmax[g["stage"]])
+    # 피벗 비율 = 명령 방향 부호 기여 피벗 / (피벗 + 스윙). |·| 합은 제자리 걸음에도 지지발 요 떨림(≈ 21–25°/s, 1006 GPU 지형)이 지배해 쓰지 않는다.
+    n_td, n_ok, gn, gd, pa, sa = (float(T_[k].sum()) for k in ("n_turn_td", "n_turn_ok", "gain_num", "gain_den", "piv_sgn", "swing_sgn"))
+    it = int(env.common_step_counter) // steps_per_iter
+    if n_td - g["b_td"] >= min_turn_td:
+        sg = (n_ok - g["b_ok"]) / (n_td - g["b_td"]); gain = (gn - g["b_gn"]) / max(gd - g["b_gd"], 1e-9)
+        _dp, _ds = pa - g["b_pa"], sa - g["b_sa"]
+        pf = _dp / (_dp + _ds) if abs(_dp + _ds) > 1e-9 else float("nan")
+        g["sign"], g["gain"], g["pivot_frac"] = sg, gain, pf
+        adv = sg >= min_sign and gain >= min_gain and it - g["since"] >= min_iters and g["stage"] < len(vmax) - 1
+        print(f"[W3S3 wz 블록] 반복 {it} |wz|≤{vmax[g['stage']]}: 발 요 부호 정답 {sg:.3f} · 요 이득 {gain:.3f} · 피벗 비율 {pf:.3f}"
+              + (" → 상한 확대" if adv else ""), flush=True)
+        if adv:
+            g["stage"] += 1; g["since"] = it; env._w3_wz_range = (vmin, vmax[g["stage"]])
+        g["b_td"], g["b_ok"], g["b_gn"], g["b_gd"], g["b_pa"], g["b_sa"] = n_td, n_ok, gn, gd, pa, sa
+    return {"wz_max": float(env._w3_wz_range[1]), "turn_sign_ok": g["sign"], "yaw_gain": g["gain"], "pivot_frac": g["pivot_frac"]}

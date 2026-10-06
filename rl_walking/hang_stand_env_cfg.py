@@ -3366,3 +3366,78 @@ class Biped12HangStandW3S1eEnvCfg(Biped12HangStandW3S1cEnvCfg):
         self.events.w3_track.params = {"nominal_half_width": 0.17}
         self.rewards.w3_place = RewTerm(func=_w3.w3_place_valid, weight=10.0)
         self.rewards.w3_stride = RewTerm(func=_w3.w3_stride_valid, weight=10.0)
+
+
+# ================================================================ W3 Stage 3 (1006) — 제자리 회전(wz). 기본 꺼짐(이 클래스들을 고를 때만 적용) ================================================================
+# 설계·반사실 단위시험·사전 통과 기준: reports/gen_w3/S3_DESIGN.md. CPU 단위시험: rl_walking/scripts/unit_w3_s3.py.
+# 측정 사실(1006 요 표류 후속): W3 태스크 command term 은 heading_command=True·ang_vel_z (0,0) → 직접 넣은 wz 가 매 틱 0 으로 덮여 정책 wz 응답 이득 ≈ 0.
+# Stage 3 설정에서만 heading_command 를 끈다(기존 태스크 불변).
+@configclass
+class _W3S3CurriculumCfg:
+    w3_assist = _CurrTerm(func=_w3.w3_assist_curriculum, params={"start_stage": 4})
+    w3_wz = _CurrTerm(func=_w3.w3_wz_curriculum)
+
+
+@configclass
+class _W3S3s2CurriculumCfg:
+    w3_assist = _CurrTerm(func=_w3.w3_assist_curriculum, params={"start_stage": 4})
+    w3_vy = _CurrTerm(func=_w3.w3_vy_curriculum)
+    w3_wz = _CurrTerm(func=_w3.w3_wz_curriculum)
+
+
+def _w3s3_apply(cfg, mix3: tuple, p_hloop: float = 0.0):
+    """Stage 3 공통 변경(한 묶음): ① command term heading 끔 ② 명령 stage 3(회전 범주 ±wz, |wz| 0.1–0.2 → 커리큘럼 0.4)
+    ③ wz < 0 오른발 리드 ④ 회전 추적기(w3_track 뒤) ⑤ 보상 2개: 발 요 착지(w3_turn_stride +10/사건) · 발 연결선 순 요 추종 개선분(w3_ytrack +3).
+    p_hloop > 0 이면 외부 헤딩 P 고리(w3_heading_loop, kp 0.5 — 배포·eval_w3 --heading_loop 와 같은 식)를 STEP·비회전 명령의 그 비율에 건다."""
+    c = cfg.commands.base_velocity
+    c.heading_command = False
+    if hasattr(c, "rel_heading_envs"):
+        c.rel_heading_envs = 0.0
+    ev = cfg.events; rw = cfg.rewards
+    p = dict(ev.w3_cmd.params)
+    p.update({"stage": 3, "mix3": tuple(mix3), "wz_range": (0.1, 0.2), "p_hloop": float(p_hloop)})
+    ev.w3_cmd.params = p
+    g = dict(ev.w3_gait.params); g["lead_wz_cmin"] = 0.08
+    ev.w3_gait.params = g
+    ev.w3_turn = EventTerm(func=_w3.w3_turn_tracker, mode="interval", interval_range_s=(0.0, 0.0), params={"cmin": 0.08})   # w3_track 뒤(정의 순서)
+    if p_hloop > 0:
+        ev.w3_hloop = EventTerm(func=_w3.w3_heading_loop, mode="interval", interval_range_s=(0.0, 0.0), params={"kp": 0.5, "wz_max": 0.4})
+    rw.w3_turn = RewTerm(func=_w3.w3_turn_stride, weight=10.0, params={"sig": 0.0873, "cmin": 0.08, "k_opp": 0.5})
+    rw.w3_ytrack = RewTerm(func=_w3.w3_yaw_track_rel, weight=3.0, params={"sig": 0.2, "cmin": 0.08, "src": "feet"})
+
+
+@configclass
+class Biped12HangStandW3S3EnvCfg(Biped12HangStandW3S1cEnvCfg):
+    """W3 Stage 3 (1006): W3S1c 끝에서 이어 학습(관측 actor 320·critic 335 불변 → --resume 그대로; wz 는 velocity_commands 3 번째 채널에 이미 있음).
+    - 명령: STAND 30 % / STEP(제자리 0.3·앞뒤 0.3(Stage 1 리허설)·회전 0.4(±wz)), |wz| 0.1–0.2 → 0.3 → 0.4(w3_wz_curriculum:
+      발 요 부호 정답 ≥ 90 %·요 이득 ≥ 0.5·체류 ≥ 100 반복). heading_command 끔(이 설정만).
+    - 보상 추가 2개(명령 wz 0 이면 정확히 0 → Stage 0/1 경로 총 보상 비트 동일): w3_turn_stride +10/사건(Δψ* = wz/f, σ 5°, 제자리 기준선 차감 + 반대 투영 벌점 0.5),
+      w3_ytrack +3(발 연결선 한 주기 순 요 속도, σ 0.2, 개선분형). 순 요 벌점 w3_yaw_net −4(이미 명령 wz 대비)는 그대로.
+    - 위상: wz < −0.08(옆 명령 없음)이면 오른발 리드(배포 러너 위상 생성기 계약 변경 — 실물 전 반영 필요)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _w3s3_apply(self, (0.3, 0.3, 0.0, 0.4))
+        self.curriculum = _W3S3CurriculumCfg()
+
+
+@configclass
+class Biped12HangStandW3S3hEnvCfg(Biped12HangStandW3S1cEnvCfg):
+    """W3S3 + 외부 헤딩 고리 학습(선택): STEP·비회전 명령 env 의 50 % 에서 wz = clip(kp·wrap(ψ* − ψ), ±0.4), kp 0.5, ψ* = 걷기 시작 요.
+    배포(정책 밖 헤딩 P 고리)와 같은 형태를 학습 분포에 넣는다. W3S3 과의 단일 변경 짝 비교용."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _w3s3_apply(self, (0.3, 0.3, 0.0, 0.4), p_hloop=0.5)
+        self.curriculum = _W3S3CurriculumCfg()
+
+
+@configclass
+class Biped12HangStandW3S3s2EnvCfg(Biped12HangStandW3S2EnvCfg):
+    """W3 Stage 3 (S2 상속판, S2 통과 시 사용): W3S2 끝에서 이어 학습. 명령 STEP 중 제자리 0.25·앞뒤 0.2·옆 0.25(S2 리허설)·회전 0.3.
+    vy 커리큘럼은 이어서 돈다(start_stage 는 S2 결과에 맞춰 덮어쓸 것). 그 밖은 W3S3 과 같다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _w3s3_apply(self, (0.25, 0.2, 0.25, 0.3))
+        self.curriculum = _W3S3s2CurriculumCfg()

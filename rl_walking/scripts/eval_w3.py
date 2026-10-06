@@ -38,6 +38,10 @@ p.add_argument("--stand_first", type=float, default=0.0,
 p.add_argument("--stop_at", type=float, default=0.0,
                help="1006 closure 2 정지 품질: 시작 후 T 초에 ge 0(STAND) 요청 → 정지까지 시간·추가 이륙·표류·최종 정지·자세 측정(채점 지표는 그대로)")
 p.add_argument("--cmd", default="0,0,0", help="'vx,vy,wz' 고정 명령")
+p.add_argument("--heading_loop", type=float, default=0.0,
+               help="1006 W3S3: > 0 이면 외부 헤딩 P 고리(배포·W3S3h 학습과 같은 식) wz = clip(wz_cmd + K·wrap(ψ* − ψ), ±--hl_wzmax), ψ* = 시작 요에서 wz_cmd 로 적분")
+p.add_argument("--hl_wzmax", type=float, default=0.4)
+p.add_argument("--turn_metrics", action="store_true", help="회전 지표 표 강제 출력(|wz| > 0 또는 --heading_loop 이면 자동)")
 p.add_argument("--out_tag", default="w3")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
@@ -52,6 +56,7 @@ os.environ["W3_GAIT_ENABLE"] = str(int(a.gait_enable))
 if a.ref_off:
     os.environ["W3_REF_SCALE"] = "0"
 os.environ.setdefault("TURN_ALPHA", "0")
+os.environ["W3_HLOOP"] = "0"                    # 환경 내장 헤딩 고리(W3S3h) 끔 — 평가는 --heading_loop 로만(같은 식)
 CMD = [float(x) for x in a.cmd.split(",")]
 assert len(CMD) == 3, "--cmd 는 'vx,vy,wz'"
 app = AppLauncher(a).app
@@ -100,8 +105,20 @@ _scale = getattr(act, "scale", None)
 ACT_SCALE = float(_scale) if isinstance(_scale, (int, float)) else None
 
 
+HL = {"tgt": None, "wz": None}
+
+
+def _wrap(x):
+    return torch.atan2(torch.sin(x), torch.cos(x))
+
+
 def set_cmd():
     cmd_term.vel_command_b[:, 0] = CMD[0]; cmd_term.vel_command_b[:, 1] = CMD[1]; cmd_term.vel_command_b[:, 2] = CMD[2]
+    if a.heading_loop > 0:                       # 외부 헤딩 P 고리(정책 밖) — rl_walking/w3.py w3_heading_loop 와 같은 식
+        psi = yaw_of(robot.data.root_quat_w)
+        HL["tgt"] = psi.clone() if HL["tgt"] is None else _wrap(HL["tgt"] + CMD[2] * dt)
+        HL["wz"] = (CMD[2] + a.heading_loop * _wrap(HL["tgt"] - psi)).clamp(-a.hl_wzmax, a.hl_wzmax)
+        cmd_term.vel_command_b[:, 2] = HL["wz"]
     if hasattr(cmd_term, "is_standing_env"):
         cmd_term.is_standing_env[:] = False
     if hasattr(cmd_term, "is_heading_env"):
@@ -111,6 +128,17 @@ def set_cmd():
 def yaw_of(q):
     w, x, y, z = q.unbind(-1)
     return torch.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+
+
+def _qmul(p_, q_):
+    aw, ax, ay, az = p_.unbind(-1); bw, bx, by, bz = q_.unbind(-1)
+    return torch.stack([aw * bw - ax * bx - ay * by - az * bz, aw * bx + ax * bw + ay * bz - az * by,
+                        aw * by - ax * bz + ay * bw + az * bx, aw * bz + ax * by - ay * bx + az * bw], -1)
+
+
+def rel_yaw(q_now, q_ref):
+    """월드 상대 회전 R_now·R_refᵀ 의 요(링크 축 규약 무관) — rl_walking/w3.py _rel_yaw 와 같은 식."""
+    return yaw_of(_qmul(q_now, q_ref * torch.tensor([1.0, -1.0, -1.0, -1.0], device=q_ref.device)))
 
 
 def phase_now():
@@ -148,6 +176,12 @@ w_valid, w_time = np.zeros(NW), np.zeros(NW)
 rises, lens, fwds = [], [], []
 lats, widths, foot_ids = [], [], []   # 1006 Stage 2: 착지 옆 변위·착지 순간 발 간격·발
 roll_s, roll_n = fz(N), fz(N)
+# 1006 Stage 3 회전 지표(프레임 독립: 발 링크 쿼터니언 월드 상대 회전의 요) — 착지 발 요 변위·지지발 피벗·몸통 비틀림·고리 명령
+TURN_ON = a.turn_metrics or abs(CMD[2]) > 0 or a.heading_loop > 0
+q_lift = robot.data.body_quat_w[:, bid, :].clone(); q_prevf = q_lift.clone(); pend_dpsi = fz(N, 2)
+dpsis, dpsi_feet = [], []
+piv_abs, piv_sgn, sw_abs, sw_sgn = fz(N), fz(N), fz(N), fz(N)
+tw_s, tw_ss, hlwz_s, hlwz_ss = fz(N), fz(N), fz(N), fz(N)
 # 자세
 pit_s, pit_ss, pit_n = fz(N), fz(N), fz(N); wy_ss = fz(N)
 pos0 = yaw0 = None
@@ -212,6 +246,8 @@ for i in range(steps):
     air_t = torch.where(lifted, torch.zeros_like(air_t), air_t)
     z0 = torch.where(lifted, fpos[..., 2], z0); zmax = torch.where(lifted, fpos[..., 2], zmax)
     p0 = torch.where(lifted.unsqueeze(-1), fpos[..., :2], p0)
+    fq = robot.data.body_quat_w[:, bid, :]
+    q_lift = torch.where(lifted.unsqueeze(-1), fq, q_lift)
     air_now = in_air & ~cc
     air_t = air_t + dt * air_now.float(); zmax = torch.where(air_now, torch.maximum(zmax, fpos[..., 2]), zmax)
     # ── 착지 ──
@@ -231,6 +267,7 @@ for i in range(steps):
         pend_lat = torch.where(landed, (dp * hy).sum(-1), pend_lat)
         _wd = ((fpos[:, 0, :2] - fpos[:, 1, :2]) * hy[:, 0]).sum(-1)          # 왼 − 오 (요 프레임 y, 양수 = 정상)
         pend_w = torch.where(landed, _wd.unsqueeze(1).expand(-1, 2), pend_w)
+        pend_dpsi = torch.where(landed, rel_yaw(fq, q_lift), pend_dpsi)
     # ── 하중 수용 ──
     pend = pend & m2
     pend_load = pend_load + dt * (pend & (fzv > 0.5 * MG)).float()
@@ -243,6 +280,8 @@ for i in range(steps):
     if val.any():
         rises.append(pend_rise[val].cpu()); lens.append(pend_len[val].cpu()); fwds.append(pend_fwd[val].cpu())
         lats.append(pend_lat[val].cpu()); widths.append(pend_w[val].cpu())
+        dpsis.append(pend_dpsi[val].cpu())
+        sw_abs += (pend_dpsi.abs() * val.float()).sum(1); sw_sgn += (pend_dpsi * val.float()).sum(1)
         foot_ids.append(torch.arange(2, device=dev).unsqueeze(0).expand(N, 2)[val].cpu())
         for k in (0, 1):
             vk = val[:, k]
@@ -273,6 +312,7 @@ for i in range(steps):
             st_dq = torch.rad2deg((robot.data.joint_pos - robot.data.default_joint_pos).abs()).mean(-1)
             st_ge = U._ge.clone() if getattr(U, "_ge", None) is not None else st_ge
             st_ge_off = torch.where(torch.isnan(st_ge_off) & ~st_ge.bool(), torch.full_like(st_ge_off, t - a.stop_at), st_ge_off)
+    prev_cc_t = prev_c.clone()                    # 직전 틱 접촉(지지발 피벗 판정용) — prev_c 갱신 전에 보관
     prev_c = cc.clone()
     if ev:
         wi = min(NW - 1, int((t - a.warmup - 1e-9) / 10.0))
@@ -281,6 +321,15 @@ for i in range(steps):
         pit = torch.rad2deg(torch.atan2(pg[:, 0], -pg[:, 2])); af = alive.float()
         pit_s += pit * af; pit_ss += pit * pit * af; pit_n += af
         rol = torch.rad2deg(torch.atan2(-pg[:, 1], -pg[:, 2])); roll_s += rol * af; roll_n += af
+        if TURN_ON:
+            stance_ = (cc & prev_cc_t).float() * af.unsqueeze(1)
+            dq_ = rel_yaw(fq, q_prevf) * stance_
+            piv_abs += dq_.abs().sum(1); piv_sgn += dq_.sum(1)
+            _d = fpos[:, 0, :2] - fpos[:, 1, :2]
+            tw = _wrap(yaw - (torch.atan2(_d[:, 1], _d[:, 0]) - 0.5 * math.pi))
+            tw_s += tw * af; tw_ss += tw * tw * af
+            if HL["wz"] is not None:
+                hlwz_s += HL["wz"] * af; hlwz_ss += HL["wz"] * HL["wz"] * af
         wy_ss += robot.data.root_ang_vel_b[:, 1] ** 2 * af
         a_raw = act_.detach()
         am = alive.unsqueeze(1).float()
@@ -294,6 +343,7 @@ for i in range(steps):
         yaw_end = yaw.clone(); pos_end = robot.data.root_pos_w[:, :2].clone()
         _dy = torch.atan2(torch.sin(yaw - yaw_prev), torch.cos(yaw - yaw_prev))   # 1006 감사 D4: 틱별 누적(±180° 감싸기 없음)
         yaw_acc = torch.where(alive, yaw_acc + _dy, yaw_acc); yaw_prev = yaw.clone()
+    q_prevf = fq.clone()                          # 지지발 피벗용 직전 틱 발 자세(틱 끝에서 갱신)
 print(f"[eval_w3] {steps} 틱 완료 · {time.time() - t0:.0f} s", flush=True)
 
 # ───────────── 집계 ─────────────
@@ -333,6 +383,40 @@ width_viol = float((W_ < 23.8).mean()) if len(W_) else float("nan")
 cross_rate = float((W_ < 0).mean()) if len(W_) else float("nan")
 lr_ratio = float((FI_ == 0).sum() / max(1, (FI_ == 1).sum())) if len(FI_) else float("nan")
 roll_mean = mA(roll_s / roll_n.clamp(min=1))
+
+
+def turn_summary():
+    """1006 Stage 3 회전 지표(별도 함수 — 기존 지표·판정 불변). 단위: 도, 도/s.
+    - 착지 발 요 변위 Δψ(유효 스텝) 분포·명령 부호 일치율, 목표 Δψ* = wz/1.1 Hz
+    - 요 이득 = 실제 평균 요 속도 / 명령 wz(감싸지 않은 누적)
+    - 회전 출처: 스윙 착지 Δψ 합 vs 지지발 피벗(접촉 유지 중 발 요 변화) 합(부호 = 명령 방향), 피벗 몫 = 피벗 / (피벗 + 스윙)(부호 기여)
+    - 몸통 비틀림 ψ − ψ_발연결선 평균·RMS, 헤딩 고리 명령 wz 평균·RMS(고리 켰을 때)"""
+    D_ = (torch.cat(dpsis).numpy() if dpsis else np.zeros(0)) * 180.0 / math.pi
+    sg = np.sign(CMD[2]) if abs(CMD[2]) > 1e-6 else 0.0
+    sign_rate = float((np.sign(D_) == sg).mean()) if (len(D_) and sg != 0) else float("nan")
+    at = alive_time if alive_time > 0 else 1e-9
+    deg = 180.0 / math.pi
+    sgn = sg if sg != 0 else 1.0
+    piv_a = S(piv_abs[al]) * deg; sw_a = S(sw_abs[al]) * deg
+    out = {"dpsi_deg_p10_50_90": pct(D_), "dpsi_target_deg": math.degrees(CMD[2] / 1.1), "dpsi_sign_rate": sign_rate,
+           "yaw_gain": (yaw_rate / math.degrees(CMD[2])) if abs(CMD[2]) > 1e-6 else float("nan"),
+           "swing_yaw_dps": sgn * S(sw_sgn[al]) * deg / at, "pivot_yaw_dps": sgn * S(piv_sgn[al]) * deg / at,
+           "pivot_abs_dps": piv_a / at, "pivot_frac_abs": piv_a / max(piv_a + sw_a, 1e-9),
+           "twist_mean_deg": mA(tw_s / pit_n.clamp(min=1)) * deg,
+           "twist_rms_deg": mA((tw_ss / pit_n.clamp(min=1)).sqrt()) * deg,
+           "hl_wz_mean": (mA(hlwz_s / pit_n.clamp(min=1)) if a.heading_loop > 0 else None),
+           "hl_wz_rms": (mA((hlwz_ss / pit_n.clamp(min=1)).sqrt()) if a.heading_loop > 0 else None)}
+    _ps, _ss = out["pivot_yaw_dps"], out["swing_yaw_dps"]
+    out["pivot_share"] = _ps / (_ps + _ss) if abs(_ps + _ss) > 1e-9 else float("nan")     # 판정용: 명령 방향 부호 기여(|·| 는 지지발 떨림 지배)
+    rows = ["", f"## 회전 지표(Stage 3 — 명령 wz {CMD[2]:+.2f}" + (f", 외부 헤딩 고리 K {a.heading_loop} ±{a.hl_wzmax}" if a.heading_loop > 0 else "") + ")",
+            f"- 착지 발 요 변위 Δψ(유효 스텝, 10/50/90 %) " + "/".join(f"{x:+.1f}" for x in out["dpsi_deg_p10_50_90"])
+            + f"° · 목표 {out['dpsi_target_deg']:+.1f}° · 명령 부호 일치 {100 * sign_rate:.1f} %",
+            f"- 요 이득(실제/명령) {out['yaw_gain']:.2f} · 평균 요 속도 {yaw_rate:+.2f}°/s",
+            f"- 회전 출처(명령 방향 +): 스윙 착지 {out['swing_yaw_dps']:+.2f}°/s · 지지발 피벗 {out['pivot_yaw_dps']:+.2f}°/s · 피벗 몫(부호) {out['pivot_share']:.2f} · |피벗| {out['pivot_abs_dps']:.2f}°/s(떨림 포함 참고)",
+            f"- 몸통 비틀림(골반 − 발 연결선) 평균 {out['twist_mean_deg']:+.1f}° · RMS {out['twist_rms_deg']:.1f}°"]
+    if a.heading_loop > 0:
+        rows.append(f"- 헤딩 고리 명령 wz 평균 {out['hl_wz_mean']:+.3f} · RMS {out['hl_wz_rms']:.3f} rad/s(요 표류 {yaw_drift:.1f}° = 시작 요 대비)")
+    return out, rows
 pct = lambda x: [float(np.percentile(x, q)) for q in (10, 50, 90)] if len(x) else [float("nan")] * 3
 LP = cat(lift_phase)
 act_rms = math.sqrt(act_ss / max(1, act_n))
@@ -406,6 +490,9 @@ if a.stop_at > 0 and st_xy0 is not None:
               "lifts_after_latch_med": mS(st_lat_lifts), "falls_after_stop": n_fall_after_stop, "alive_at_stop": n_alive_at_stop}
 else:
     J_stop = None
+J_turn = None
+if TURN_ON:
+    J_turn, _rows = turn_summary(); L += _rows
 L += ["", f"## Stage 0 사전 기준 판정({'STAND, gait_enable 0' if a.gait_enable == 0 else 'STEP'}): {'PASS' if all_pass else 'FAIL'}"]
 L += [f"- {'PASS' if ok else 'FAIL'} · {nm} · {val}" for nm, ok, val in crit]
 L += ["", "주: 접촉 = 발 링크 |F| > 5 N. 유효 cadence = 유효 스텝/(생존 env·s)/2. 표류 = 시작 요 프레임 변위/채점 시간 − 명령(vx,vy). "
@@ -413,7 +500,7 @@ L += ["", "주: 접촉 = 발 링크 |F| > 5 N. 유효 cadence = 유효 스텝/(�
 txt = "\n".join(L); print(txt, flush=True)
 out_dir = os.path.join(REPO, "log_picture"); os.makedirs(out_dir, exist_ok=True)
 open(os.path.join(out_dir, f"w3eval_{a.out_tag}.txt"), "w").write(txt + "\n")
-J = {"ramp_off": a.ramp_off, "lateral": {"lat_sign_rate": lat_sign_rate, "width_viol": width_viol, "cross_rate": cross_rate, "lr_ratio": lr_ratio, "roll_mean": roll_mean,
+J = {"ramp_off": a.ramp_off, "turn": J_turn, "heading_loop": a.heading_loop, "hl_wzmax": a.hl_wzmax, "lateral": {"lat_sign_rate": lat_sign_rate, "width_viol": width_viol, "cross_rate": cross_rate, "lr_ratio": lr_ratio, "roll_mean": roll_mean,
                "lat_p50_cm": (float(np.median(Y_)) if len(Y_) else None), "width_p50_cm": (float(np.median(W_)) if len(W_) else None)}, "stop": J_stop, "fall_t_hist": fall_t_hist, "fall_t": [round(float(x), 2) for x in _tfv], "fall_warm": n_fall_warm, "fall_score": n_fall_score, "stand_first": a.stand_first, "task": a.task, "checkpoint": ck, "num_envs": N, "seed": a.seed, "delay": a.delay, "warmup_s": a.warmup, "seconds": T, "long": a.long,
      "cmd": CMD, "gait_enable": a.gait_enable, "assist_alpha": a.assist_alpha, "ref_off": a.ref_off, "turn_alpha": os.environ.get("TURN_ALPHA"),
      "phase_source": phase_src, "steps_done": steps,

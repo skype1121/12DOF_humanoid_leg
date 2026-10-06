@@ -31,9 +31,11 @@ p.add_argument("--no_dist", action="store_true", help="외란·속도 밀기 끔
 p.add_argument("--out_tag", default="landscape")
 p.add_argument("--stand_obs", default="", help="쉼표 목록: 이 행동 그룹은 정책 관측의 gait_clock 블록을 (0,0)으로 덮는다(STEP 채점 아래 '서기' 궤적 대리)")
 p.add_argument("--lat_force", default="", help="'LABEL:Fy;...' 행동 그룹별 몸통(base 링크 프레임) y 방향 일정 힘[N](시간 평균) — 옆 이동 대리")
+p.add_argument("--yaw_torque", default="", help="1006 W3S3: 'LABEL:Tz;...' 행동 그룹별 몸통 z 축 일정 토크[N·m](시간 평균) — 제자리 회전 대리")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args()
+os.environ["W3_HLOOP"] = "0"                               # 환경 내장 헤딩 고리(W3S3h) 끔 — 보상 명령 wz 는 force_cmd 가 정한다
 app = AppLauncher(a).app
 
 import torch, gymnasium as gym  # noqa: E402
@@ -114,19 +116,24 @@ _stand_lab = {x.strip() for x in a.stand_obs.split(",") if x.strip()}
 stand_mask = torch.tensor([B[combos[k][0]][0] in _stand_lab for k in range(len(combos))], device=dev)[gi]
 _lf = {lab: v for lab, v in ((g.split(":")[0].strip(), float(g.split(":")[1])) for g in a.lat_force.split(";") if g.strip())}
 fy = torch.tensor([_lf.get(B[combos[k][0]][0], 0.0) for k in range(len(combos))], device=dev)[gi]
+_lt = {lab: v for lab, v in ((g.split(":")[0].strip(), float(g.split(":")[1])) for g in a.yaw_torque.split(";") if g.strip())}
+tz = torch.tensor([_lt.get(B[combos[k][0]][0], 0.0) for k in range(len(combos))], device=dev)[gi]
 _om = U.observation_manager; _off = 0; clk = None
 for _n, _cf, _d in zip(_om._group_obs_term_names["policy"], _om._group_obs_term_cfgs["policy"], _om._group_obs_term_dim["policy"]):
     _w = int(torch.tensor(_d).prod())
     if getattr(_cf.func, "__name__", "") == "gait_clock":
         clk = slice(_off, _off + _w)
     _off += _w
-print(f"[landscape] gait_clock 관측 {clk} · 서기 대리 그룹 {sorted(_stand_lab)} · 옆 힘 {_lf}", flush=True)
+print(f"[landscape] gait_clock 관측 {clk} · 서기 대리 그룹 {sorted(_stand_lab)} · 옆 힘 {_lf} · 요 토크 {_lt}", flush=True)
 if bool(stand_mask.any()):
     assert clk is not None, "gait_clock 관측 항을 못 찾음"
 _dec = int(env_cfg.decimation)
 rob0 = U.scene["robot"]
 w3s = {"n_td": torch.zeros(N, device=dev), "dy": torch.zeros(N, device=dev), "dx": torch.zeros(N, device=dev), "bad": torch.zeros(N, device=dev),
-       "ok": torch.zeros(N, device=dev), "roll": torch.zeros(N, device=dev), "wsum": torch.zeros(N, device=dev), "wn": torch.zeros(N, device=dev)}
+       "ok": torch.zeros(N, device=dev), "roll": torch.zeros(N, device=dev), "wsum": torch.zeros(N, device=dev), "wn": torch.zeros(N, device=dev),
+       # W3S3 회전 추적기: 착지 발 요 Δψ 합·부호 정답(보상 명령 wz 기준)·지지발 피벗 |요| 합·피벗 부호 합·비틀림 제곱합
+       "n_ttd": torch.zeros(N, device=dev), "dpsi": torch.zeros(N, device=dev), "tok": torch.zeros(N, device=dev),
+       "piv": torch.zeros(N, device=dev), "pivs": torch.zeros(N, device=dev), "tw2": torch.zeros(N, device=dev)}
 obs = venv.get_observations()
 sum_c = torch.zeros(N, T, device=dev); nz = torch.zeros(N, T, device=dev); n_t = torch.zeros(N, device=dev)
 alive = torch.ones(N, dtype=torch.bool, device=dev)
@@ -146,9 +153,10 @@ for i in range(steps):
         o2["policy"] = _po
     with torch.inference_mode():
         act = policy(o2)
-    if bool((fy != 0).any()):                            # 순간 렌치: 첫 물리 서브스텝만 적용되고 지워짐 → ×decimation 으로 시간 평균 Fy
+    if bool((fy != 0).any()) or bool((tz != 0).any()):   # 순간 렌치: 첫 물리 서브스텝만 적용되고 지워짐 → ×decimation 으로 시간 평균
         Fb = torch.zeros(N, 1, 3, device=dev); Fb[:, 0, 1] = fy * _dec
-        rob0.instantaneous_wrench_composer.add_forces_and_torques(forces=Fb, torques=None, positions=None, body_ids=[0], env_ids=None, is_global=False)
+        Tb = torch.zeros(N, 1, 3, device=dev); Tb[:, 0, 2] = tz * _dec
+        rob0.instantaneous_wrench_composer.add_forces_and_torques(forces=Fb, torques=Tb, positions=None, body_ids=[0], env_ids=None, is_global=False)
     obs, _, dones, _ = venv.step(act)
     sr = RM._step_reward.clone()                        # (N,T) = raw × weight [초당]
     m = alive & (i >= w0)
@@ -159,6 +167,13 @@ for i in range(steps):
         w3s["bad"] += (_L["width_bad"] * td).sum(1)
         w3s["ok"] += ((_L["td_dy"] * torch.sign(rvec[:, 1]).unsqueeze(1) > 0) & td).float().sum(1)
         w3s["wsum"] += _L["width"] * m; w3s["wn"] += m.float()
+    _T3 = getattr(U, "_w3turn", None)
+    if _T3 is not None and _S is not None:              # W3S3 회전 추적기
+        td = (_S["ev_td"] > 0.5) & m.unsqueeze(1)
+        w3s["n_ttd"] += td.float().sum(1); w3s["dpsi"] += (_T3["td_dpsi"] * td).sum(1)
+        w3s["tok"] += ((_T3["td_dpsi"] * torch.sign(rvec[:, 2]).unsqueeze(1) > 0) & td).float().sum(1)
+        w3s["piv"] += (_T3["pivot"].abs() * m.unsqueeze(1)).sum(1); w3s["pivs"] += (_T3["pivot"] * m.unsqueeze(1)).sum(1)
+        w3s["tw2"] += _T3["twist"] ** 2 * m
     pgb = rob0.data.projected_gravity_b
     w3s["roll"] += torch.rad2deg(torch.atan2(pgb[:, 1], -pgb[:, 2])) * m
     sum_c += sr * m.unsqueeze(1); nz += (sr.abs() > 1e-9).float() * m.unsqueeze(1); n_t += m.float()
@@ -179,6 +194,12 @@ for k, (bi, ri) in enumerate(combos):
     L.append(f"  [W3] 유효 착지 {ntd:.0f} · 평균 Δx {float(w3s['dx'][mk].sum())/max(ntd,1):+.4f} · Δy {float(w3s['dy'][mk].sum())/max(ntd,1):+.4f} m"
              f" · vy 부호 정답 {float(w3s['ok'][mk].sum())/max(ntd,1):.3f} · 폭 위반 {float(w3s['bad'][mk].sum())/max(ntd,1):.3f}"
              f" · 평균 발 간격 {float(w3s['wsum'][mk].sum())/max(float(w3s['wn'][mk].sum()),1):.3f} m · 몸통 롤 평균 {float(w3s['roll'][mk].sum())/float(nt):+.2f}°")
+    nttd = float(w3s["n_ttd"][mk].sum())
+    if nttd > 0:
+        _deg = 180.0 / math.pi; _sec = float(nt) * dt
+        L.append(f"  [W3S3] 착지 {nttd:.0f} · 평균 발 요 Δψ {_deg * float(w3s['dpsi'][mk].sum()) / nttd:+.2f}° · wz 부호 정답 {float(w3s['tok'][mk].sum()) / nttd:.3f}"
+                 f" · 스윙 착지 요 {_deg * float(w3s['dpsi'][mk].sum()) / _sec:+.2f}°/s · 지지발 피벗 {_deg * float(w3s['pivs'][mk].sum()) / _sec:+.2f}°/s(|·| {_deg * float(w3s['piv'][mk].sum()) / _sec:.2f})"
+                 f" · 비틀림 RMS {_deg * math.sqrt(float(w3s['tw2'][mk].sum()) / float(nt)):.1f}°")
     order = torch.argsort(contrib.abs(), descending=True)
     for j in order.tolist():
         if abs(float(contrib[j])) < 1e-4:

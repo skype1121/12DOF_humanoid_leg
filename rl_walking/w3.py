@@ -330,13 +330,29 @@ def w3_alive_step(env) -> torch.Tensor:
     return _ge(env).float()
 
 
+def _v_ema(env, tau: float = 0.5):
+    """1006 S1 단위시험: 순간 속도는 걸음 흔들림(±0.1 m/s)이 명령 차(0.08)를 덮는다 → 한 보행 주기 수준 EMA(τ 0.5 s) 월드 수평 속도.
+    틱당 1회 갱신(같은 틱 재호출은 캐시), 에피소드 시작에 현재 속도로 초기화."""
+    asset = env.scene[H._base_cfg().name]
+    v = asset.data.root_lin_vel_w[:, :2]
+    tick = int(env.common_step_counter)
+    st = getattr(env, "_w3_vema", None)
+    if st is None or st[0].shape[0] != env.num_envs:
+        st = [v.clone(), -1]; env._w3_vema = st
+    if st[1] != tick:
+        a = min(1.0, env.step_dt / tau)
+        fresh = (env.episode_length_buf <= 1).unsqueeze(1)
+        st[0] = torch.where(fresh, v, st[0] + a * (v - st[0])); st[1] = tick
+    return st[0]
+
+
 def _v_err(env):
     asset = env.scene[H._base_cfg().name]
     q = asset.data.root_quat_w
     yaw = torch.atan2(2 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]), 1 - 2 * (q[:, 2] ** 2 + q[:, 3] ** 2))
     cmd = env.command_manager.get_command("base_velocity")
     cw = torch.stack([cmd[:, 0] * torch.cos(yaw) - cmd[:, 1] * torch.sin(yaw), cmd[:, 0] * torch.sin(yaw) + cmd[:, 1] * torch.cos(yaw)], -1)
-    return (asset.data.root_lin_vel_w[:, :2] - cw).norm(dim=-1), cmd[:, :2].norm(dim=-1)
+    return (_v_ema(env) - cw).norm(dim=-1), cmd[:, :2].norm(dim=-1)
 
 
 def w3_drift(env) -> torch.Tensor:

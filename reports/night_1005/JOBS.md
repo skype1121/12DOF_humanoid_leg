@@ -105,3 +105,8 @@
 | 1006 | W3-A 400 | — | 보조 0 자립 제자리 교대(4/7 통과) → NEXT = W3-A2 | — |
 | 1006 | W3-A2(w3a2.sh PID 2720822: W3-A 400 → 1000, 보조 → 0 + 요 벌점) | "W3A2 500 끝"·"W3A2 끝" | w3eval_w3A2_* | 감시 b5fzmogfy |
 | 1006 | SGATE | — | KILL(효과 없음) → 인계 계열 폐기 → NEXT = 회복 구조 (c) 설계 | — |
+| 1006 | W3 Stage 1 단위시험(s1unit.sh PID 2723463) | "S1UNIT 끝" | landscape_s1_* | 감시 bocgm0071 |
+| 1006 | 서브에이전트: 회복 (c) 구조·W3 통합 설계 | 완료 알림 | — | — |
+| 1006 | Stage 1 단위시험 1차 FAIL → EMA 수정 → 2차(s1unit2) | "S1UNIT2 끝" | landscape_s1b_* | 감시 b0j6t120r |
+| 1006 | 트랙 B RW3Z(rw3z.sh PID 2727441: KE 전환 대상 → W3-A) | "RW3Z 끝" | ground_recovery_rw3z* | 감시 bp15tmlds |
+| 1006 | 서브에이전트 4: Stage0 진단·Stage1 적대 검토·옆/요 설계·W3 브리지 플래그 | 완료 알림 | — | — |

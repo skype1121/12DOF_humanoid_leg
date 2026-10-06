@@ -3208,6 +3208,18 @@ class Biped12HangStandW3A2EnvCfg(Biped12HangStandW3AEnvCfg):
 
 
 @configclass
+class Biped12HangStandW3A3EnvCfg(Biped12HangStandW3A2EnvCfg):
+    """W3-A3 (1006, W3-A2 12200 이어): 표류 0.060 m/s(뒤)·요 65° 미해결 — 순간값 벌점은 걸음 흔들림이 지배.
+    w3_yaw −0.5(순간 |ω_z|) → w3_yaw_net −4(한 주기 순 요 속도), w3_drift −1(EMA) → w3_drift_net −3(한 주기 이동평균). 나머지·보조 0 동일."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.w3_yaw = RewTerm(func=_w3.w3_yaw_net, weight=-4.0)
+        self.rewards.w3_drift = RewTerm(func=_w3.w3_drift_net, weight=-3.0)
+        self.curriculum.w3_assist.params = {"start_stage": 4}
+
+
+@configclass
 class Biped12HangStandW3S1EnvCfg(Biped12HangStandW3A2EnvCfg):
     """W3 Stage 1 (1006): 같은 스텝 엔진 + 앞 / 뒤 명령 — 명령 = STAND 30 % / STEP(제자리 43 %·앞 28.5 %·뒤 28.5 %, |vx| 0.03–0.10).
     착지 목표 x = vx/(4f)(w3_step_tracker), 표류 = |v − v_cmd|, 추종 w3_track +2(명령 ≠ 0, σ 0.05). 보조 0 고정(start_stage 4), 모방·요 벌점 유지."""

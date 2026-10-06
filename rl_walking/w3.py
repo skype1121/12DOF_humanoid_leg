@@ -412,6 +412,40 @@ def w3_stride(env, sig: float = 0.03, cmin: float = 0.02) -> torch.Tensor:
     return r.sum(1) * (cmd[:, 0].abs() >= cmin).float() * _ge(env).float()
 
 
+def _yaw_box(env, period_s: float = 1.0 / 1.1):
+    """한 보행 주기 순 요 속도 = wrap(ψ_t − ψ_{t−T})/T — 걸음마다의 요 흔들림 소거, 누적 표류만 남김."""
+    asset = env.scene[H._base_cfg().name]
+    q = asset.data.root_quat_w
+    psi = torch.atan2(2 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]), 1 - 2 * (q[:, 2] ** 2 + q[:, 3] ** 2))
+    tick = int(env.common_step_counter)
+    K = max(2, int(round(period_s / env.step_dt)))
+    st = getattr(env, "_w3_ybox", None)
+    if st is None or st["buf"].shape[0] != env.num_envs or st["buf"].shape[1] != K:
+        st = {"buf": psi.unsqueeze(1).repeat(1, K).clone(), "i": 0, "tick": -1, "w": torch.zeros_like(psi)}; env._w3_ybox = st
+    if st["tick"] != tick:
+        fresh = env.episode_length_buf <= 1
+        if bool(fresh.any()):
+            st["buf"][fresh] = psi[fresh].unsqueeze(1)
+        i = st["i"]; old = st["buf"][:, i].clone()
+        st["buf"][:, i] = psi; st["i"] = (i + 1) % K
+        n = env.episode_length_buf.clamp(min=1, max=K).float()
+        d = torch.atan2(torch.sin(psi - old), torch.cos(psi - old))
+        st["w"] = d / (n * env.step_dt); st["tick"] = tick
+    return st["w"]
+
+
+def w3_yaw_net(env) -> torch.Tensor:
+    """W3-A3: 한 주기 순 요 속도 오차 |ψ̇_T − wz_cmd| — 벌점 크기. 순간 |ω_z|(w3_yaw_drift)는 걸음 요 흔들림이 지배해 표류를 못 잡음(W3-A2 69 → 65°)."""
+    c = env.command_manager.get_command("base_velocity")
+    return (_yaw_box(env) - c[:, 2]).abs() * _ge(env).float()
+
+
+def w3_drift_net(env) -> torch.Tensor:
+    """W3-A3: 한 주기 이동평균 속도 오차 |v_T − v_cmd| — 벌점 크기(EMA 잔여 흔들림 0.07 m/s 제거)."""
+    e, _ = _v_err(env, box=True)
+    return e * _ge(env).float()
+
+
 def w3_stand_gated(env, func, params: dict | None = None) -> torch.Tensor:
     """기존(서기) 보상을 STAND(ge 0)에만."""
     val = func(env, **H._resolve_nested(env, params))

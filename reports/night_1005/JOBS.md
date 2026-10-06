@@ -100,3 +100,4 @@
 | 1006 | W3-CI(w3ci.sh PID 2685179: W3-C 400 → 1000, 참조 내재화) | "W3CI 500 끝"·"W3CI 끝" | w3eval_w3CI_* | 감시 bq1w4g1x1 |
 | 1006 | 트랙 B SGATE(sgate.sh PID 2686659: SWMON 끝 뒤 sg3·sg2) | "SGATE 끝" | ground_recovery_sg*_* | 감시 bwm90n5b3 |
 | 1006 | SWMON·SGATE 재기동(옵션 충돌 수정: swmon PID 2690331, sgate PID 2690332) | "SWMON 끝"→"SGATE 끝" | smon*/sg* | 감시 byy4iwhwq·bwm90n5b3 |
+| 1006 | W3-U | — | KILL(낙상 100 %, 학습 붕괴) | — |

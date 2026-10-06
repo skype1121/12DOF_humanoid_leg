@@ -101,3 +101,4 @@
 | 1006 | 트랙 B SGATE(sgate.sh PID 2686659: SWMON 끝 뒤 sg3·sg2) | "SGATE 끝" | ground_recovery_sg*_* | 감시 bwm90n5b3 |
 | 1006 | SWMON·SGATE 재기동(옵션 충돌 수정: swmon PID 2690331, sgate PID 2690332) | "SWMON 끝"→"SGATE 끝" | smon*/sg* | 감시 byy4iwhwq·bwm90n5b3 |
 | 1006 | W3-U | — | KILL(낙상 100 %, 학습 붕괴) | — |
+| 1006 | SWMON | — | 효과 없음(미발동) → 중단 | — |

@@ -323,15 +323,18 @@ C5_DETECTOR_KW = dict(on_tilt_deg=3.0, on_w=0.5, off_tilt_deg=1.5, off_w=0.3, ca
 C5_SETTLE = None
 #: odic 무릎 토크 입력 신선도 상한 [s] — analyze_fall 이 tau_est 동결값으로 보는 기준(0.1 s)과 같다. 넘으면 τ 없음(판정 불가 → 조기 복귀 막힘).
 KNEE_TAU_MAX_AGE_S = 0.1
-_ODIC_KEYS = ("v_thr", "ds_s", "min_s", "min_frac", "window_s", "k_hat", "tau_ref")
+_ODIC_KEYS = ("v_thr", "ds_s", "min_s", "min_frac", "window_s", "k_hat", "tau_ref", "w_thr")
 
 
 def parse_c5_settle(spec):
-    """--c5-settle 값 → C5_SETTLE. None/'imu' = None(현행), 'odic' = {}(ODIC_DEFAULT), JSON = 키 검증·범위 검증(OdicSettle 생성으로) 뒤 dict."""
+    """--c5-settle 값 → C5_SETTLE. None/'imu' = None(현행), 'odic' = {}(ODIC_DEFAULT), 'odicw' = {"w_thr": 0.4}(1007, odic + 감지 |ω_xy| < 0.4),
+    JSON = 키 검증·범위 검증(OdicSettle 생성으로) 뒤 dict."""
     if spec is None or spec == "imu":
         return None
     if spec == "odic":
         cfg = {}
+    elif spec == "odicw":
+        cfg = {"w_thr": 0.4}
     else:
         cfg = json.loads(spec)
         if not isinstance(cfg, dict):
@@ -1730,6 +1733,11 @@ def _selftest_c5_odic():
             pass
     assert parse_c5_settle(None) is None and parse_c5_settle("imu") is None and parse_c5_settle("odic") == {}
     assert parse_c5_settle('{"k_hat": 35}') == {"k_hat": 35}
+    assert parse_c5_settle("odicw") == {"w_thr": 0.4} and parse_c5_settle('{"w_thr": 0.3}') == {"w_thr": 0.3}
+    try:
+        parse_c5_settle('{"w_thr": -0.1}'); raise AssertionError("w_thr 음수 거부 안 됨")
+    except ValueError:
+        pass
     dmap = {"left_knee_joint": -1, "right_knee_joint": -1}
     assert knee_tau_joint({"left_knee_joint": 2.0, "right_knee_joint": -3.0}, 0.005, dmap) == (-2.0, 3.0)
     assert knee_tau_joint({"left_knee_joint": 2.0, "right_knee_joint": -3.0}, 0.2, dmap) is None, "낡은 τ 통과"
@@ -3238,6 +3246,7 @@ def main():
     ap.add_argument("--c5-settle", default=None,
                     help="1007 병목 2 (기본 꺼짐·실물 미검증): C5 KE 조기 복귀 판정기. 생략/'imu' = 현행 IMU 규칙, 'odic' = 다리 운동학 오도메트리 "
                          "0.9 s 주기 평균 |v̄| < 0.07 m/s·양발 ≥ 0.3 s·켜진 뒤 ≥ 0.9 s + 무릎 처짐 보상 (τ−τ_인계)/k̂(k̂ 42 가정값), "
+                         "'odicw' = odic + 감지 |ω_xy| < 0.4 rad/s(1007, STOPEST §11), "
                          "JSON = 설정 덮어쓰기(키 " + ", ".join(_ODIC_KEYS) + "). 조기 복귀가 있는 C5 키(stand_c5kr_*)에서만 허용")
     ap.add_argument("--checkpoint", default=STAND_DEFAULT, choices=list(CHECKPOINTS) + [_H2.HTURN2_CKPT_KEY] + list(_W3.W3_KEYS),
                     help="기본값은 배포 데뷔 정책(STAND_DEFAULT). 0907: 구 walk 는 젯슨에서 삭제돼 "

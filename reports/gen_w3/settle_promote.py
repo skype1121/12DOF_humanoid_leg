@@ -1,5 +1,6 @@
-"""STOPEST §8/§8a 사전 승격 기준 P1–P5 판정(KE 종료 판정기 odi/odic vs imu).
-사용: python3 settle_promote.py [out.txt]   — 지연 2 = 태그 sab_*, 지연 3 = sabd3_*.
+"""STOPEST §8/§8a 사전 승격 기준 P1–P5 판정(KE 종료 판정기 odi/odic vs imu) · §11 odicw(같은 P1–P5 + 보조 odicw vs odic).
+사용: python3 settle_promote.py [out.txt] [팔 ...]   — 지연 2 = 태그 sab_*, 지연 3 = sabd3_*. 팔 생략 = odi odic(§9 재현).
+      python3 settle_promote.py stopest_results/settle_promote_odicw.txt odicw   — §11
 """
 import csv, os, sys, math
 import numpy as np
@@ -116,18 +117,49 @@ def judge(pfx, arm, strict_p1, P):
     return allp
 
 
-def main(out):
+def secondary(pfx, arm, ref, P):
+    """§11 보조(판정 아님): arm vs ref 짝(둘 다 생존, 외란 3 조건) — 끈 뒤 진동·재켜짐(sw_on_n ≥ 2)·끈 뒤 이륙."""
+    data = {c: (load(pfx, ref, c), load(pfx, arm, c)) for c in DIST}
+    if any(a is None or b is None for a, b in data.values()):
+        P(f"  보조 {arm} vs {ref}: 자료 부족"); return
+    for c, (A, B) in data.items():
+        if not rng_same(A, B):
+            P(f"  보조 {arm} vs {ref}: {c} RNG 짝 불일치 → 무효"); return
+    for nm, fn in (("끈 뒤 진동 osc_flag_post", lambda r: r.get("osc_flag_post") == "1"),
+                   ("재켜짐 sw_on_n≥2", lambda r: (f(r.get("sw_on_n")) or 0) >= 2),
+                   ("끈 뒤 이륙 to_after_off≥1", lambda r: (f(r.get("to_after_off")) or 0) >= 1),
+                   ("낙상", lambda r: r["fell"] == "1")):
+        b = c_ = n = 0
+        for c in DIST:
+            A, B = data[c]
+            for k in A:
+                if A[k]["pre_pass"] != "1": continue
+                if nm != "낙상" and (A[k]["fell"] == "1" or B[k]["fell"] == "1"): continue
+                n += 1; x, y = fn(A[k]), fn(B[k]); b += x and not y; c_ += y and not x
+        P(f"  보조 {nm}: {ref}만 {b} / {arm}만 {c_} (짝 {n}, p {mcnemar(b, c_):.3g})")
+    dt = []
+    for c in DIST:
+        A, B = data[c]
+        for k in A:
+            if A[k]["pre_pass"] == "1" and A[k]["fell"] != "1" and B[k]["fell"] != "1":
+                dt.append(f(B[k]["sw_time_s"]) - f(A[k]["sw_time_s"]))
+    P(f"  보조 회복 모드 시간 차({arm} − {ref}) 평균 {np.mean(dt):+.3f} s · 차 ≠ 0 인 짝 {100 * np.mean(np.abs(dt) > 1e-6):.1f}%")
+
+
+def main(out, arms=("odi", "odic")):
     L = []
     P = lambda x="": (L.append(x), print(x, flush=True))
-    P("# STOPEST §8/§8a 사전 승격 기준 판정 (KE 종료 판정기)")
+    P(f"# STOPEST 사전 승격 기준 판정 (KE 종료 판정기) — 팔 {' '.join(arms)} vs imu" + (" · §11" if "odicw" in arms else " · §8/§8a"))
     R = {}
     for pfx, dl, strict in (("sab", 2, True), ("sabd3", 3, False)):
         P(f"\n## 지연 {dl} ({'주 판정' if strict else '강건성 확인 — P1 방향만'})")
-        for arm in ("odi", "odic"):
+        for arm in arms:
             P(f"### {arm}")
             R[(arm, dl)] = judge(pfx, arm, strict, P)
+            if arm == "odicw":
+                secondary(pfx, arm, "odic", P)
     P("\n## 결론")
-    for arm in ("odi", "odic"):
+    for arm in arms:
         v = (R.get((arm, 2)), R.get((arm, 3)))
         P(f"- {arm}: 지연 2 {v[0]} · 지연 3 {v[1]} → {'승격 후보' if all(x is True for x in v) else '미승격'}")
     if out:
@@ -135,4 +167,4 @@ def main(out):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "")
+    main(sys.argv[1] if len(sys.argv) > 1 else "", tuple(sys.argv[2:]) or ("odi", "odic"))

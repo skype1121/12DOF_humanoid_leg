@@ -140,6 +140,7 @@ parser.add_argument("--settle_knee_inject", type=float, default=0.0,
                          "정책 관측·물리는 G11a 그대로(가설 관측 모델 — --knee_sea 물리 플랜트는 홀드·KE 가 0.2 s 안에 무너져 사용 불가, 1006 밤 측정)")
 parser.add_argument("--settle_v", type=float, default=0.07, help="odo 판정 |v̄| 문턱 [m/s]")
 parser.add_argument("--settle_ds", type=float, default=0.3, help="odo 판정 양발 접촉 연속 [s]")
+parser.add_argument("--settle_w", type=float, default=0.0, help="1007 odicw: odo 판정에 감지기 |ω_xy|(det_filt 필터 뒤, imu 조기 복귀와 같은 신호) < 이 값 [rad/s] 조건 추가 (0 = 끔, 기본 — 종전 비트 동일)")
 parser.add_argument("--settle_min", type=float, default=0.9, help="odo 판정 회복 켜진 뒤 최소 시간 [s](창 0.9 s 가 켜짐 전 서기를 품지 않게)")
 parser.add_argument("--early_gate", type=str, default="", help="1005 KE: 조기 복귀는 켜진 뒤 최대 기울기 편차 ≥ tilt° 또는 최대 |ω_xy| ≥ w 였던 활성화에만 허용 'tilt,w' — 작은 오탐은 종전 calm 1 s 경로로만 꺼짐(채터 억제)")
 parser.add_argument("--spawn_dz", type=float, default=0.0, help="1006 착지 출발: 스폰 높이 +dz [m](지그 해제 낙하 모사, 홀드 상태로 떨어진 뒤 precheck 끝에 정책 인계)")
@@ -926,7 +927,7 @@ for i in range(STEPS):
                     from rl_walking import mdp_hang as _mh_odo  # noqa: E402
                     _ODO = _LO(list(robot.data.joint_names), n=N)
                     odo_ds = torch.zeros(N, device=dev)
-                    print(f"[settle_judge] odo · |v̄| < {args_cli.settle_v} · 양발 ≥ {args_cli.settle_ds}s · 켜진 뒤 ≥ {args_cli.settle_min}s", flush=True)
+                    print(f"[settle_judge] odo · |v̄| < {args_cli.settle_v} · 양발 ≥ {args_cli.settle_ds}s · 켜진 뒤 ≥ {args_cli.settle_min}s · 감지 |ω_xy| < {args_cli.settle_w if args_cli.settle_w > 0 else '끔'}", flush=True)
                 _enc_o = _mh_odo.encoder_joint_pos_v2(uenv)
                 _pb_o = getattr(uenv, "_default_pose_bias", None)
                 if _pb_o is not None:
@@ -971,6 +972,8 @@ for i in range(STEPS):
                 if args_cli.settle_judge == "odo":
                     _ec2 = sw_mode & (sw_t_on >= float(args_cli.settle_min) - 1e-6) & (odo_spd < float(args_cli.settle_v)) & (odo_frac >= 0.5) \
                         & (odo_ds >= float(args_cli.settle_ds) - 1e-6)
+                    if float(args_cli.settle_w) > 0.0:      # 1007 odicw: 양발 지지 진동(평균 속도 0)에서의 조기 복귀 차단
+                        _ec2 = _ec2 & (_w < float(args_cli.settle_w))
                 if args_cli.early_gate:
                     _gt, _gw = [float(x) for x in args_cli.early_gate.split(",")]
                     if "eg_pt" not in dir():

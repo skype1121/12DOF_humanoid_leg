@@ -13,6 +13,10 @@
       팔 2 개: odic(주입 42 + 보상 42, 기준 = 인계 토크 → 배포 tau_ref 'handover') · odoc(주입 없음 + 보상 42 → 시뮬은 절대 τ/k̂ → 'absolute').
       민감도 확인(1007, 수동): t_on 문턱의 −1e-6 제거·τ 부호 반대 뮤턴트를 [B] 가 각각 2 건·9584 건 불일치로 잡는다.
   [C] 브리지 코어 기본 경로(--c5-settle 생략) = --ref 커밋 브리지와 비트 동일(실모델 C5 kr·C5·G21a, 기울기 펄스로 전환 포함).
+  [B'] (1007 odicw) 시뮬 --settle_w 0.4 = 배포 settle w_thr 0.4: 입력열에 '다리 정지 + 몸통 진동'(양발 지지 진동 모사, 평균 0 인 자이로 3–6 Hz
+      0.5–2 rad/s) 구간을 더해 |ω_xy| 조건이 실제로 조기 복귀를 막는 틱(n_w_block > 0)을 덮는다. 진동 난수는 별도 RNG(기존 [B] 입력열 불변).
+  [D] (1007) odic(w_thr 0) 배포 경로 = --ref-odic 커밋(28657c3f, odicw 도입 전) c5_switch 의 odic 와 비트 동일(진동 입력열 포함, 모드·|v̄|·블랙박스).
+      민감도 확인(1007, 수동): odicw 를 필터 전 |ω| 로 바꾼 뮤턴트를 [B'] 가 잡는지 — STOPEST §11 기록.
 """
 from __future__ import annotations
 
@@ -40,7 +44,7 @@ KE = dict(on_tilt_deg=3.0, on_w=0.5, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dw
 #: --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33)
 SIM_ARGS = dict(det_from_obs=True, det_filt=0.33, contact_drop="", sw_ref_tau=10.0, sw_ref_init_s=1.5, settle_judge="odo", settle_v=0.07,
                 settle_ds=0.3, settle_min=0.9, sw_off_contact="any", sw_early_imu="0.6,6,0.4,0.2", early_gate="5,1.0", sw_refrac="1.5,6,1.0",
-                sw_early="", ho_state="", sw_guard="", ho_at_load="", sw_oracle=False)
+                sw_early="", ho_state="", sw_guard="", ho_at_load="", sw_oracle=False, settle_w=0.0)
 EVAL = os.path.join(REPO, "rl_walking", "scripts", "eval_ground_recovery.py")
 BEGIN = "        if policy2 is not None and i >= STEPS_PRE:\n"
 END = "            swc_n += (_new_on & alive).float(); sw_mode = (sw_mode | _new_on) & ~_swoff\n"
@@ -51,9 +55,12 @@ def _git_show(ref, path):
 
 
 # ------------------------------------------------------------------ [A] 기본(imu) 경로 비트 동일
-def _load_ref_c5(ref):
+def _load_ref_c5(ref, expect_odic=False):
     src = _git_show(ref, "rl_walking/deploy/c5_switch.py")
-    assert "OdicSettle" not in src, f"{ref} 의 c5_switch 에 이미 odic 가 있다 — 기준 커밋 확인"
+    if expect_odic:
+        assert "OdicSettle" in src and "w_thr" not in src, f"{ref} 의 c5_switch 가 odic 有·odicw 無 커밋이 아니다"
+    else:
+        assert "OdicSettle" not in src, f"{ref} 의 c5_switch 에 이미 odic 가 있다 — 기준 커밋 확인"
     tmp = tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, dir=os.path.join(REPO, "rl_walking", "deploy"))
     tmp.write(src); tmp.close()
     try:
@@ -129,9 +136,11 @@ class _NS(types.SimpleNamespace):
     pass
 
 
-def _scenario(N, T, seed):
-    """env 별 입력 시계열(넘파이 float32): 기울기·자이로·접촉·엔코더(링크각 + 편향)·무릎 적용 토크·τ 잡음."""
+def _scenario(N, T, seed, osc=False):
+    """env 별 입력 시계열(넘파이 float32): 기울기·자이로·접촉·엔코더(링크각 + 편향)·무릎 적용 토크·τ 잡음.
+    osc(1007 odicw): 사건 뒤 다리 정지 구간에 몸통 진동(자이로 x·y 3–6 Hz, 0.5–2 rad/s, 0.5–2 s)을 별도 RNG 로 더한다."""
     rng = np.random.default_rng(seed)
+    rng_o = np.random.default_rng(seed + 1000)
     q0 = np.asarray(DEFAULT_POSE_RAD, np.float64)
     J = {n: JOINT_ORDER.index(n) for n in JOINT_ORDER}
     G = np.zeros((T, N, 3), np.float32); W = np.zeros((T, N, 3), np.float32); Cc = np.ones((T, N, 2), np.float32)
@@ -149,6 +158,13 @@ def _scenario(N, T, seed):
             k2 = np.arange(t0 + d, min(T, t0 + d + 40)); tilt[k2] += rng.uniform(-2.5, 2.5) * np.exp(-(k2 - t0 - d) / 15.0)
             if rng.random() < 0.6:      # 회복 뒤 잔류 기울기 1.6–2.8°(조용함 1.5° 초과 → calm 경로 막힘, 켜기 3° 미만) — odic 조기 복귀 경로를 덮는다
                 k3 = np.arange(t0 + d, min(T, t0 + d + int(rng.uniform(1.0, 3.0) * 50))); tilt[k3] += rng.uniform(1.6, 2.8)
+        if osc:      # 양발 지지 진동 모사: 평균 속도 0(다리 정지) + 큰 |ω| — odic 는 '정착', odicw 는 막아야 하는 상태
+            for t0 in t_ev:
+                if rng_o.random() < 0.8:
+                    s0 = int(t0 + rng_o.integers(40, 90)); L = int(rng_o.uniform(0.5, 2.0) * 50)
+                    k4 = np.arange(s0, min(T, s0 + L)); f_o = rng_o.uniform(3.0, 6.0); a_o = rng_o.uniform(0.5, 2.0); ph0 = rng_o.uniform(0, 2 * np.pi)
+                    gy[k4, 0] += a_o * np.sin(2 * np.pi * f_o * 0.02 * (k4 - s0) + ph0)
+                    gy[k4, 1] += 0.7 * a_o * np.cos(2 * np.pi * f_o * 0.02 * (k4 - s0) + ph0)
         tilt += 0.4 * np.sin(0.03 * np.arange(T) + e); roll += 0.5 * np.sin(0.021 * np.arange(T) + 2 * e)
         th, ph = np.radians(tilt), np.radians(roll)
         g = np.stack([np.sin(th), np.sin(ph) * np.cos(th), -np.cos(th) * np.cos(ph)], -1) + rng.normal(0, 0.004, (T, 3))
@@ -174,10 +190,10 @@ def _scenario(N, T, seed):
     return G, W, Cc, Q, TAU, BIAS, NOISE
 
 
-def check_sim_equiv(N=48, T=900, seed=7, inject=True):
+def check_sim_equiv(N=48, T=900, seed=7, inject=True, w=0.0, osc=False):
     import torch
     code, (l0, l1) = _sim_block()
-    G, W, Cc, Q, TAU, BIAS, NOISE = _scenario(N, T, seed)
+    G, W, Cc, Q, TAU, BIAS, NOISE = _scenario(N, T, seed, osc=osc)
     dev = "cpu"
     ik = [JOINT_ORDER.index("left_knee_joint"), JOINT_ORDER.index("right_knee_joint")]
     # 가짜 Isaac 객체(블록이 읽는 속성만)
@@ -200,14 +216,17 @@ def check_sim_equiv(N=48, T=900, seed=7, inject=True):
             assert (mu, sd) == (0.0, 0.3) and tuple(size) == (N, 2)
             v = NOISE[self.k]; self.k += 1; return v
 
-    args = _NS(**dict(SIM_ARGS, settle_knee_inject=(42.0 if inject else 0.0), settle_knee_comp=42.0))
+    args = _NS(**dict(SIM_ARGS, settle_knee_inject=(42.0 if inject else 0.0), settle_knee_comp=42.0, settle_w=float(w)))
     ns = dict(torch=torch, math=math, args_cli=args, robot=robot, uenv=uenv, dev=dev, N=N, STEPS_PRE=0, dists=[], policy2=object(),
               _cs=_NS(data=_NS(net_forces_w=torch.zeros(N, 2, 3))), _fl=0, _fr=1,
               _rp=lambda: (torch.zeros(N), torch.zeros(N)), alive=torch.ones(N, dtype=torch.bool),
               _SW_ON=[3.0, 0.5], _SW_OFF=[1.5, 0.3, 1.0, 0.4],
               sw_mode=torch.zeros(N, dtype=torch.bool), sw_t_on=torch.zeros(N), sw_calm=torch.zeros(N), early_hold=torch.zeros(N),
               swc_n=torch.zeros(N), _KC_IDX=ik, _KC_RNG=_FakeRng())
-    dets = [C5.SwitchDetector(**KE, settle=dict(tau_ref=("handover" if inject else "absolute"))) for _ in range(N)]
+    _st = dict(tau_ref=("handover" if inject else "absolute"))
+    if w > 0.0:
+        _st["w_thr"] = float(w)
+    dets = [C5.SwitchDetector(**KE, settle=_st) for _ in range(N)]
     # 주입 플랜트(시뮬 줄 그대로, float32 torch): 엔코더 = 링크 + 편향 − 편향 + (τ − τ(인계)) / k_env — 배포 qpos 는 이 값
     KI_K = torch.as_tensor(42.0 * np.random.default_rng(777).uniform(0.8, 1.25, size=(N, 1)), dtype=torch.float32)
     T0 = torch.as_tensor(TAU[0][:, ik])
@@ -248,8 +267,40 @@ def check_sim_equiv(N=48, T=900, seed=7, inject=True):
     assert eoffs >= N // 2, f"[B] 조기 복귀가 너무 적어 판정 경로를 덮지 못함({eoffs})"
     # 시각 대조: 조기 복귀 틱 목록(배포) — 위 모드 전 틱 일치로 같은 시각이 보장된다
     tag = "odic(주입 42·보상 42·기준 인계 τ)" if inject else "odoc(주입 없음·보상 42·절대 τ)"
-    return (f"[B] 시뮬 소스(eval_ground_recovery.py:{l0}-{l1}) = 배포 SwitchDetector(settle) — {tag}: {N} env × {T} 틱 = {n_cmp} 비교, "
-            f"모드·|v̄|(float32 비트)·유효비·양발 시간 불일치 0 · 켜짐 {n_on} · 조기 복귀 {eoffs} · 회복 모드 틱 {n_mode1}")
+    extra = ""
+    if w > 0.0:
+        n_wb = sum(d.settle.n_w_block for d in dets)
+        assert n_wb > 0, "[B'] |ω_xy| 조건이 막은 틱 0 — 진동 입력열이 odicw 경로를 덮지 못함"
+        tag = f"odicw(w {w}) + " + tag; extra = f" · |ω| 차단 틱 {n_wb}"
+    if osc:
+        tag += " · 진동 입력열"
+    return (f"[B{chr(39) if w > 0.0 else ''}] 시뮬 소스(eval_ground_recovery.py:{l0}-{l1}) = 배포 SwitchDetector(settle) — {tag}: {N} env × {T} 틱 = {n_cmp} 비교, "
+            f"모드·|v̄|(float32 비트)·유효비·양발 시간 불일치 0 · 켜짐 {n_on} · 조기 복귀 {eoffs} · 회복 모드 틱 {n_mode1}{extra}")
+
+
+# ------------------------------------------------------------------ [D] odic(w_thr 0) = odicw 도입 전 커밋 odic 비트 동일
+def check_odic_prev(ref, N=24, T=900, seed=11):
+    old = _load_ref_c5(ref, expect_odic=True)
+    G, W, Cc, Q, TAU, BIAS, NOISE = _scenario(N, T, seed, osc=True)
+    ik = [JOINT_ORDER.index("left_knee_joint"), JOINT_ORDER.index("right_knee_joint")]
+    a = [C5.SwitchDetector(**KE, settle={}) for _ in range(N)]
+    b = [old.SwitchDetector(**KE, settle={}) for _ in range(N)]
+    a0 = [C5.SwitchDetector(**KE, settle={"w_thr": 0.0}) for _ in range(N)]      # 명시적 0 = 끔
+    n = 0
+    for i in range(T):
+        for e in range(N):
+            tau = (TAU[i, e, ik] + NOISE[i, e]).astype(np.float32)
+            q = (Q[i, e] - BIAS[e]).astype(np.float32)
+            ma = a[e].update(G[i, e], W[i, e], Cc[i, e], qpos_rad=q, tau_knee_nm=tau)
+            mb = b[e].update(G[i, e], W[i, e], Cc[i, e], qpos_rad=q, tau_knee_nm=tau)
+            m0 = a0[e].update(G[i, e], W[i, e], Cc[i, e], qpos_rad=q, tau_knee_nm=tau)
+            assert ma == mb == m0, f"[D] 틱 {i} env {e} 모드 {ma}/{mb}/{m0}"
+            assert a[e].settle.spd.view(np.uint32) == b[e].settle.spd.view(np.uint32) or (np.isnan(a[e].settle.spd) and np.isnan(b[e].settle.spd))
+            assert a[e].settle.blackbox() == b[e].settle.blackbox() == a0[e].settle.blackbox(), f"[D] 틱 {i} env {e} 블랙박스"
+            n += 1
+    ne = sum(d.n_early for d in a)
+    assert ne == sum(d.n_early for d in b) and ne >= N // 2, f"[D] 조기 복귀 {ne}"
+    return f"[D] odic(w_thr 0·생략) = {ref} odic 비트 동일: {N} env × {T} 틱(진동 입력열) = {n} 비교, 조기 복귀 {ne}"
 
 
 # ------------------------------------------------------------------ [C] 브리지 코어 기본 경로 비트 동일(실모델)
@@ -295,10 +346,15 @@ def check_bridge_off(ref):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ref", default="f44e8701")
+    ap.add_argument("--ref-odic", default="28657c3f", help="odicw 도입 전 odic 커밋([D])")
     a = ap.parse_args()
     fails = 0
     for f, kw in ((check_default_bitident, dict(ref=a.ref)), (check_bridge_off, dict(ref=a.ref)),
-                  (check_sim_equiv, dict(inject=True)), (check_sim_equiv, dict(inject=False, seed=8))):
+                  (check_sim_equiv, dict(inject=True)), (check_sim_equiv, dict(inject=False, seed=8)),
+                  (check_sim_equiv, dict(inject=True, osc=True, seed=9)),
+                  (check_sim_equiv, dict(inject=True, w=0.4, osc=True, seed=9)),
+                  (check_sim_equiv, dict(inject=False, w=0.4, osc=True, seed=10)),
+                  (check_odic_prev, dict(ref=a.ref_odic))):
         try:
             print("[PASS]", f(**kw), flush=True)
         except Exception as ex:  # noqa: BLE001

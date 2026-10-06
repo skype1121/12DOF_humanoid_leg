@@ -37,6 +37,9 @@ RATE_HZ = 50.0
 #: --settle_min 0.9 --settle_knee_comp 42 [+ --settle_knee_inject 42 플랜트]). k_hat = 0919 무릎 처짐 역산 k 35–45 의 중앙(가정값 —
 #: 실물 k 식별 전). tau_ref "handover" = 시뮬 odic 과 같은 기준(인계 첫 틱 토크), "absolute" = 처짐 τ/k̂ 전부(엔코더 = 링크 + τ/k 모형).
 ODIC_DEFAULT = dict(v_thr=0.07, ds_s=0.3, min_s=0.9, min_frac=0.5, window_s=0.9, k_hat=42.0, tau_ref="handover")
+#: 1007 odicw = odic + 감지기 |ω_xy|(감지 EMA 뒤 — 현행 imu 조기 복귀와 같은 신호) < w_thr [rad/s] (시뮬 --settle_w 0.4).
+#: 실물 재생에서 odic 이 양발 지지 진동(평균 속도 0) 중 조기 복귀한 3 건 차단용(STOPEST §10–§11). w_thr 0 = 끔(odic 그대로).
+ODICW_DEFAULT = dict(ODIC_DEFAULT, w_thr=0.4)
 
 
 def _leg_odometry_cls():
@@ -62,15 +65,16 @@ class OdicSettle:
     """
 
     def __init__(self, v_thr=0.07, ds_s=0.3, min_s=0.9, min_frac=0.5, window_s=0.9, k_hat=42.0, tau_ref="handover",
-                 dt: float = 1.0 / RATE_HZ, joint_order=None):
+                 dt: float = 1.0 / RATE_HZ, joint_order=None, w_thr: float = 0.0):
         if tau_ref not in ("handover", "absolute"):
             raise ValueError(f"tau_ref {tau_ref!r} — handover|absolute")
         for nm, v, lo, hi in (("v_thr", v_thr, 0.01, 0.3), ("ds_s", ds_s, 0.0, 2.0), ("min_s", min_s, 0.0, 5.0), ("min_frac", min_frac, 0.0, 1.0),
-                              ("window_s", window_s, 0.2, 3.0), ("k_hat", k_hat, 0.0, 1000.0)):
+                              ("window_s", window_s, 0.2, 3.0), ("k_hat", k_hat, 0.0, 1000.0), ("w_thr", w_thr, 0.0, 5.0)):
             if not (math.isfinite(float(v)) and lo <= float(v) <= hi):
                 raise ValueError(f"odic {nm}={v} 범위 [{lo}, {hi}] 밖")
         self.v_thr, self.ds_s, self.min_s, self.min_frac = float(v_thr), float(ds_s), float(min_s), float(min_frac)
         self.k_hat, self.tau_ref, self.dt = float(k_hat), tau_ref, float(dt)
+        self.w_thr = float(w_thr)      # 1007 odicw: > 0 이면 ok() 에 감지기 |ω_xy| < w_thr (0 = 끔 → odic 와 비트 동일)
         self.joint_order = list(JOINT_ORDER if joint_order is None else joint_order)
         self.ik = [self.joint_order.index("left_knee_joint"), self.joint_order.index("right_knee_joint")]
         self.odo = _leg_odometry_cls()(self.joint_order, n=1, dt=self.dt, window_s=float(window_s))
@@ -81,6 +85,7 @@ class OdicSettle:
         self.ds = np.float32(0.0); self.spd = np.float32(np.nan); self.frac = np.float32(0.0)
         self.tau0 = None; self.tau_last = None; self.tau_ok = self.k_hat <= 0.0
         self.n_tau_bad = 0
+        self.w_block = False; self.n_w_block = 0      # odicw: 오도메트리는 정착인데 |ω_xy| 로 막힌 틱(진단)
 
     @property
     def needs_tau(self) -> bool:
@@ -114,15 +119,23 @@ class OdicSettle:
         both = bool(c[0, 0] > 0.5) and bool(c[0, 1] > 0.5)
         self.ds = np.float32(self.ds + np.float32(self.dt)) if both else np.float32(0.0)
 
-    def ok(self, t_on) -> bool:
-        """시뮬 _ec2(odo) 의 판정부(모드·early_gate 제외): 켜진 뒤 ≥ min_s & |v̄| < v_thr & 유효비 ≥ min_frac & 양발 ≥ ds_s & τ 유효."""
-        return bool(self.tau_ok and (np.float32(t_on) >= np.float32(self.min_s - 1e-6)) and (self.spd < np.float32(self.v_thr))
-                    and (self.frac >= np.float32(self.min_frac)) and (self.ds >= np.float32(self.ds_s - 1e-6)))
+    def ok(self, t_on, w_det=None) -> bool:
+        """시뮬 _ec2(odo) 의 판정부(모드·early_gate 제외): 켜진 뒤 ≥ min_s & |v̄| < v_thr & 유효비 ≥ min_frac & 양발 ≥ ds_s & τ 유효
+        [& odicw: 감지기 |ω_xy|(float32, 감지 EMA 뒤) < w_thr — 시뮬 `_ec2 & (_w < settle_w)`]. w_thr > 0 인데 w_det 없음 → 판정 불가(False)."""
+        r = bool(self.tau_ok and (np.float32(t_on) >= np.float32(self.min_s - 1e-6)) and (self.spd < np.float32(self.v_thr))
+                 and (self.frac >= np.float32(self.min_frac)) and (self.ds >= np.float32(self.ds_s - 1e-6)))
+        if self.w_thr > 0.0:
+            self.w_block = bool(r and not (w_det is not None and np.isfinite(w_det) and np.float32(w_det) < np.float32(self.w_thr)))
+            if self.w_block:
+                self.n_w_block += 1
+            r = r and not self.w_block
+        return r
 
     def blackbox(self) -> dict:
         return {"spd": (None if not np.isfinite(self.spd) else round(float(self.spd), 4)), "frac": round(float(self.frac), 3),
                 "ds": round(float(self.ds), 3), "tau_ok": int(self.tau_ok), "n_tau_bad": int(self.n_tau_bad),
-                "k_hat": self.k_hat, "tau_ref": self.tau_ref}
+                "k_hat": self.k_hat, "tau_ref": self.tau_ref,
+                **({"w_thr": self.w_thr, "w_block": int(self.w_block), "n_w_block": int(self.n_w_block)} if self.w_thr > 0.0 else {})}
 
 
 class SwitchDetector:
@@ -283,7 +296,7 @@ class SwitchDetector:
         S["calm"] = f32(S["calm"] + dt) if (m and quiet) else f32(0)
         S["t_on"] = f32(S["t_on"] + dt) if m else f32(0)
         off = bool(m and S["calm"] >= f32(self.calm_s) and S["t_on"] >= f32(self.dwell_s))
-        ec = bool(m and self.settle.ok(S["t_on"]))
+        ec = bool(m and self.settle.ok(S["t_on"], w))      # odicw(w_thr > 0): w = 감지 EMA 뒤 |ω_xy| float32 — 시뮬 _w 와 같은 값
         if self.early_gate is not None:
             S["pk_t"] = f32(max(S["pk_t"], tilt)) if m else f32(0); S["pk_w"] = f32(max(S["pk_w"], w)) if m else f32(0)
             ec = ec and bool((S["pk_t"] >= f32(self.early_gate[0])) or (S["pk_w"] >= f32(self.early_gate[1])))

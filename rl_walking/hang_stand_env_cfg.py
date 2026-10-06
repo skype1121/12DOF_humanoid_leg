@@ -3441,3 +3441,14 @@ class Biped12HangStandW3S3s2EnvCfg(Biped12HangStandW3S2EnvCfg):
         super().__post_init__()
         _w3s3_apply(self, (0.25, 0.2, 0.25, 0.3))
         self.curriculum = _W3S3s2CurriculumCfg()
+
+
+@configclass
+class Biped12HangStandW3S2dEnvCfg(Biped12HangStandW3S2EnvCfg):
+    """W3S2 d (1006 밤, 병목 3 delay robustness 단일 변경): 학습 액션 지연 0–3 → 1–5 틱(실물 실효 2–4 틱 추정, 0930 수정 뒤 미측정).
+    W3-A3 섭동: 지연 3 채점 낙상 1.7–3.3 %, 지연 4(학습 밖) 4.6 %. 그 외 W3S2 와 동일. W3S2 끝에서 이어 학습, 짝 = 같은 체크포인트의 지연 2/3/4/5 평가."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.min_delay_steps = 1
+        self.actions.joint_pos.max_delay_steps = 5

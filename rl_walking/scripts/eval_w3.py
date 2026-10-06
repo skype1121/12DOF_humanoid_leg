@@ -33,6 +33,8 @@ p.add_argument("--ref_off", action="store_true", help="진단: W3_REF_SCALE=0 �
 p.add_argument("--gait_enable", type=int, default=1, choices=(0, 1), help="W3_GAIT_ENABLE 로 전달(0 = STAND, 1 = STEP)")
 p.add_argument("--stand_first", type=float, default=0.0,
                help="1006 진단: 처음 S 초는 STAND(ge 0) 후 STEP 전환(실물 순서 STAND→STEP). 워밍업 = S + 2 s 로 자동 연장")
+p.add_argument("--stop_at", type=float, default=0.0,
+               help="1006 closure 2 정지 품질: 시작 후 T 초에 ge 0(STAND) 요청 → 정지까지 시간·추가 이륙·표류·최종 정지·자세 측정(채점 지표는 그대로)")
 p.add_argument("--cmd", default="0,0,0", help="'vx,vy,wz' 고정 명령")
 p.add_argument("--out_tag", default="w3")
 cli_args.add_rsl_rl_args(p)
@@ -122,6 +124,8 @@ fz = lambda *s: torch.zeros(*s, device=dev)
 alive = torch.ones(N, dtype=torch.bool, device=dev); t_fall = torch.full((N,), float("nan"), device=dev)
 # 발 상태(N,2) [L,R]
 prev_c = None
+st_xy0 = None; st_lifts = fz(N); st_last_lift = torch.full((N,), float("nan"), device=dev); st_qrun = fz(N); st_settle = torch.full((N,), float("nan"), device=dev)
+st_xy_end = fz(N, 2); st_tilt = fz(N); st_dq = fz(N); st_ge = torch.ones(N, device=dev); st_ge_off = torch.full((N,), float("nan"), device=dev)
 in_air = torch.zeros(N, 2, dtype=torch.bool, device=dev); air_t = fz(N, 2); z0 = fz(N, 2); zmax = fz(N, 2); p0 = fz(N, 2, 2)
 pend = torch.zeros(N, 2, dtype=torch.bool, device=dev); pend_t = fz(N, 2); pend_load = fz(N, 2); pend_swing = torch.zeros(N, 2, dtype=torch.bool, device=dev)
 pend_rise = fz(N, 2); pend_len = fz(N, 2); pend_fwd = fz(N, 2)
@@ -148,6 +152,8 @@ for i in range(steps):
     set_cmd()
     if a.stand_first > 0 and getattr(U, "_ge_cmd", None) is not None:
         U._ge_cmd[:] = bool(t > a.stand_first)
+    if a.stop_at > 0 and getattr(U, "_ge_cmd", None) is not None and t > a.stop_at:
+        U._ge_cmd[:] = False
     with torch.inference_mode():
         act_ = policy(obs)
     obs, _, dones, _ = venv.step(act_)
@@ -230,6 +236,22 @@ for i in range(steps):
             last_valid = torch.where(vk, torch.full_like(last_valid, k), last_valid)
         wi = min(NW - 1, int((t - a.warmup) / 10.0))
         w_valid[wi] += float(val.float().sum())
+    if a.stop_at > 0:                                                      # 정지 품질 계측
+        if st_xy0 is None and t > a.stop_at:
+            st_xy0 = robot.data.root_pos_w[:, :2].clone()
+        if st_xy0 is not None:
+            off_ = (prev_c & ~cc) & alive.unsqueeze(1)
+            st_lifts += off_.float().sum(1)
+            st_last_lift = torch.where(off_.any(1), torch.full_like(st_last_lift, t - a.stop_at), st_last_lift)
+            wq = robot.data.root_ang_vel_b[:, :2].norm(dim=-1); vq = robot.data.root_lin_vel_w[:, :2].norm(dim=-1)
+            qq = alive & cc.all(1) & (wq < 0.15) & (vq < 0.05)
+            st_qrun = torch.where(qq, st_qrun + dt, torch.zeros_like(st_qrun))
+            st_settle = torch.where(torch.isnan(st_settle) & (st_qrun >= 0.5), torch.full_like(st_settle, t - a.stop_at - 0.5), st_settle)
+            st_xy_end = torch.where(alive.unsqueeze(1), robot.data.root_pos_w[:, :2], st_xy_end)
+            pg_ = robot.data.projected_gravity_b; st_tilt = torch.rad2deg(torch.atan2(pg_[:, :2].norm(dim=-1), -pg_[:, 2]))
+            st_dq = torch.rad2deg((robot.data.joint_pos - robot.data.default_joint_pos).abs()).mean(-1)
+            st_ge = U._ge.clone() if getattr(U, "_ge", None) is not None else st_ge
+            st_ge_off = torch.where(torch.isnan(st_ge_off) & ~st_ge.bool(), torch.full_like(st_ge_off, t - a.stop_at), st_ge_off)
     prev_c = cc.clone()
     if ev:
         wi = min(NW - 1, int((t - a.warmup - 1e-9) / 10.0))
@@ -330,6 +352,21 @@ L = [f"# W3 Stage 0 채점표 · {a.out_tag}",
      "| 발 | 이륙 | 예정창 | 예정창 이륙 | 착지 | 의미 스윙 | 하중 수용 | 유효 |", "|---|---|---|---|---|---|---|---|"]
 for nm, v in per_foot.items():
     L.append(f"| {nm} | {v['이륙']:.0f} | {v['예정창']:.0f} | {v['예정창_이륙']:.0f} | {v['착지']:.0f} | {v['의미스윙']:.0f} | {v['하중수용']:.0f} | {v['유효']:.0f} |")
+if a.stop_at > 0 and st_xy0 is not None:
+    mS = lambda x: float(torch.nanmedian(x[al]).item()) if al.any() else float("nan")
+    q90 = lambda x: float(torch.quantile(x[al & ~torch.isnan(x)], 0.9).item()) if (al & ~torch.isnan(x)).any() else float("nan")
+    settled = al & ~torch.isnan(st_settle)
+    stop_drift = (st_xy_end - st_xy0).norm(dim=-1) * 100
+    L += ["", f"## 정지 품질(ge 0 요청 @ {a.stop_at:.1f} s, 생존 env 기준)",
+          f"- ge 래치 해제(반주기 경계) 중앙 {mS(st_ge_off):.2f} s",
+          f"- 요청 뒤 이륙 수 중앙 {mS(st_lifts):.0f} · 90 % {q90(st_lifts):.0f} · 마지막 이륙 중앙 {mS(st_last_lift):.2f} s",
+          f"- 정착(양발·|ω|<0.15·|v|<0.05 가 0.5 s) 도달 {100 * float(settled.sum()) / max(1, int(al.sum())):.1f} % · 시간 중앙 {mS(st_settle):.2f} s · 90 % {q90(st_settle):.2f} s",
+          f"- 요청 뒤 표류 중앙 {mS(stop_drift):.1f} cm · 90 % {q90(stop_drift):.1f} cm",
+          f"- 끝 자세: 기울기 중앙 {mS(st_tilt):.2f}° · 기본자세 대비 관절 평균 편차 중앙 {mS(st_dq):.2f}°"]
+    J_stop = {"ge_off_med": mS(st_ge_off), "lifts_med": mS(st_lifts), "settle_rate": float(settled.sum()) / max(1, int(al.sum())), "settle_med": mS(st_settle),
+              "settle_p90": q90(st_settle), "drift_med_cm": mS(stop_drift), "tilt_med": mS(st_tilt), "dq_med": mS(st_dq)}
+else:
+    J_stop = None
 L += ["", f"## Stage 0 사전 기준 판정({'STAND, gait_enable 0' if a.gait_enable == 0 else 'STEP'}): {'PASS' if all_pass else 'FAIL'}"]
 L += [f"- {'PASS' if ok else 'FAIL'} · {nm} · {val}" for nm, ok, val in crit]
 L += ["", "주: 접촉 = 발 링크 |F| > 5 N. 유효 cadence = 유효 스텝/(생존 env·s)/2. 표류 = 시작 요 프레임 변위/채점 시간 − 명령(vx,vy). "
@@ -337,7 +374,7 @@ L += ["", "주: 접촉 = 발 링크 |F| > 5 N. 유효 cadence = 유효 스텝/(�
 txt = "\n".join(L); print(txt, flush=True)
 out_dir = os.path.join(REPO, "log_picture"); os.makedirs(out_dir, exist_ok=True)
 open(os.path.join(out_dir, f"w3eval_{a.out_tag}.txt"), "w").write(txt + "\n")
-J = {"fall_t_hist": fall_t_hist, "fall_t": [round(float(x), 2) for x in _tfv], "fall_warm": n_fall_warm, "fall_score": n_fall_score, "stand_first": a.stand_first, "task": a.task, "checkpoint": ck, "num_envs": N, "seed": a.seed, "delay": a.delay, "warmup_s": a.warmup, "seconds": T, "long": a.long,
+J = {"stop": J_stop, "fall_t_hist": fall_t_hist, "fall_t": [round(float(x), 2) for x in _tfv], "fall_warm": n_fall_warm, "fall_score": n_fall_score, "stand_first": a.stand_first, "task": a.task, "checkpoint": ck, "num_envs": N, "seed": a.seed, "delay": a.delay, "warmup_s": a.warmup, "seconds": T, "long": a.long,
      "cmd": CMD, "gait_enable": a.gait_enable, "assist_alpha": a.assist_alpha, "ref_off": a.ref_off, "turn_alpha": os.environ.get("TURN_ALPHA"),
      "phase_source": phase_src, "steps_done": steps,
      "lift_rate": lift_rate, "touchdown_rate": td_rate, "swing_rate": swing_rate, "load_rate": load_rate, "alternation_rate": alt_rate,

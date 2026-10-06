@@ -80,3 +80,5 @@
 | 1006 | W2omF(w2omf.sh PID 2592682: 서기 클록 정지, 600 → 15200·끝 α0 평가, 서기 인계 없음) | "W2omF 끝" | walk_eval_w2omF_* | 감시 bxer8jw62 |
 | 1006 | W2omF 재기동(w2omf.sh PID 2595606, 1차 NameError) | "W2omF 끝" | walk_eval_w2omF_* | 감시 bc5sfz1xc |
 | 1006 | W2omF | — | KILL(학습 붕괴), 새 방향 이어학습 계열 중단 | — |
+| 1006 | LANDSCAPE(landscape.sh PID 2612777: 5 정책 반사실 보상 재생) | "LANDSCAPE 끝" | log_picture/landscape_*.{txt,csv} | 감시 bw9xzexcn |
+| 1006 | 서브에이전트 5(감사·구조조사✓·A0m 분석·지연 배포 준비·HTURN2 플래그) | 완료 알림 | — | — |

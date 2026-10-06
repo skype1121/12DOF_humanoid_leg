@@ -76,3 +76,5 @@
 | 1006 | DLYGAIN2(dlygain2.sh PID 2566183: KE sf12·bi30 × d2·d3) | "DLYGAIN2 끝" | ground_recovery_fked{2,3}_{sf12,bi30}_* | 감시 bzj91gw8a |
 | 1006 | 진단자 보고 | — | ANALYZED → NEXT=W2omR1·R2 | — |
 | 1006 | W2omR1·R2(w2omr.sh PID 2573842: 병렬 600 반복 → 15200·끝 α0 평가) | "W2omR 끝" in scratchpad/w2omr.out | walk_eval_w2omR*_* | 감시 brfi70r76 |
+| 1006 | W2omR1·R2 | — | KILL 둘 다(원장 부분 지지) → NEXT=W2omF | — |
+| 1006 | W2omF(w2omf.sh PID 2592682: 서기 클록 정지, 600 → 15200·끝 α0 평가, 서기 인계 없음) | "W2omF 끝" | walk_eval_w2omF_* | 감시 bxer8jw62 |

@@ -2929,6 +2929,25 @@ class Biped12HangStandW2omR2EnvCfg(Biped12HangStandW2omR1EnvCfg):
 
 
 @configclass
+class Biped12HangStandW2omFEnvCfg(Biped12HangStandW2omR2EnvCfg):
+    """W2omF (1006, 관측 걷기 플래그): W2omR2 + **서기 모드 gait 클록 정지(위상 0 고정)** 단일 변경 — 클록이 도는 것 = 걷기 모드.
+    근거(진단자): 클록은 서기에서도 돌아 걷기 모드 구분 신호가 명령 벡터뿐; R1·R2 원장 수정은 α 0.2 하중 유지를 4배 개선했으나 내재화 실패. **배포 계약 변경**."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.gait_phase.params = dict(self.events.gait_phase.params, freeze_stand=True)
+
+
+@configclass
+class Biped12HangStandW2omFeEnvCfg(Biped12HangStandW2omeEnvCfg):
+    """W2omF 평가용: W2ome + 서기 클록 정지(같은 관측 계약)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.gait_phase.params = dict(self.events.gait_phase.params, freeze_stand=True)
+
+
+@configclass
 class Biped12HangStandW2omeEnvCfg(Biped12HangStandW2omEnvCfg):
     """W2om 평가용: + 회전 보조 훅(TURN_ALPHA, 0 이면 무동작) — W2qe 와 같은 평가 조건."""
 

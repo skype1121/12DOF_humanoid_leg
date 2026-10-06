@@ -3130,7 +3130,8 @@ def cadence_of_cmd(vx: torch.Tensor, f0: float = 1.1, a: float = 0.7, b: float =
     return torch.where(w, (a + b * vx.abs()).clamp(fmin, fmax), torch.full_like(vx, f0))
 
 
-def gait_phase_update(env, env_ids, f0: float = 1.1, a: float = 0.7, b: float = 4.0, fmin: float = 0.8, fmax: float = 1.6, walk_min: float = 0.03):
+def gait_phase_update(env, env_ids, f0: float = 1.1, a: float = 0.7, b: float = 4.0, fmin: float = 0.8, fmax: float = 1.6, walk_min: float = 0.03,
+                      freeze_stand: bool = False):
     """mode="interval"(0 s): 위상 누적 u += f(명령)·dt (주기 단위). 에피소드 시작(episode_length_buf ≤ 1)에 0 — 종전 freq·t 와 같은 출발 위상."""
     N, dev = env.num_envs, env.device
     if getattr(env, "_gu", None) is None or env._gu.shape[0] != N:
@@ -3142,6 +3143,10 @@ def gait_phase_update(env, env_ids, f0: float = 1.1, a: float = 0.7, b: float = 
     else:
         env._gf = cadence_of_cmd(vx, f0, a, b, fmin, fmax, walk_min)
     fresh = env.episode_length_buf <= 1
+    if freeze_stand:   # 1006 W2omF: 서기 모드는 클록 위상 0 고정(관측 클록 정지 = 걷기 플래그) — 걷기 모드 진입 시 위상 0 부터 출발. **배포 계약 변경**
+        wm = _walk_mode(env, walk_min)
+        env._gf = torch.where(wm, env._gf, torch.zeros_like(env._gf))
+        fresh = fresh | ~wm
     env._gu = torch.where(fresh, torch.zeros_like(env._gu), torch.remainder(env._gu + env._gf * env.step_dt, 1.0))
 
 

@@ -13,6 +13,10 @@ eval_w3.py 와 같은 평가 조건(학습 태스크·학습 DR·관측 잡음 �
   enc=raw|q|qb          관절 엔코더 관측: raw = 시뮬 계약(연속값·매 틱 단순 차분), q = MIT 16 bit 양자화(±12.5 rad → 3.81e-4 rad) + 단순 차분,
                         qb = 양자화 + 브리지 _tick qvel 식(같은 값 반복 시 0, 바뀌면 Δ/(dt·머문 틱), 캡 12) — 실물 블랙박스 1001–1004 반복 53–68 % 대조용.
   stand=s               서기 시간(기본 --stand_first) 뒤 STEP.   kp=K  그룹별 헤딩 고리 이득(기본 --hl_kp).
+  clamp=train|s8        최종 관절 목표 클램프: train = 학습(config soft 를 발목 앞뒤만), s8 = stage8 노드와 같이 **전 관절** config soft 경계 클램프
+                        (stage8_12axis_mit_control_node: soft 초과 → 경계 클램프, 25° 초과는 거부 — 여기선 클램프만).
+  push=F                몸통 수평 밀기 F[N] 0.2 s 를 채점 구간 t = 서기+워밍업+{8, 23, 38, 53} s 에(60 s 기준), 방향은 env 마다 앞·뒤·왼·오 순환
+                        (몸통 요 프레임 → 월드, eval_w3 --dist 와 같은 permanent_wrench_composer 경로). 낙상은 채점 낙상에 포함.
 지표(채점 = 워밍업 뒤): 낙상(종료), 유효 스텝률(env._w3 유효/예정 반주기), 시작 요 프레임 평균 속도, 요 속도·요 표류, 기울기 RMS·최대,
   |ω_xy| RMS, 고리 wz 분포(활성 틱 중 0<|wz|<0.1 비율 = 학습 밖 크기). 판정은 산출물(.txt 끝 COMPLETE).
 사용: isaaclab.sh -p rl_walking/scripts/eval_w3_parity.py --headless --load_run <run> --checkpoint model_N.pt --num_envs 1024 --groups '...' --out_tag <t>
@@ -68,22 +72,23 @@ def parse_groups(s):
     out = []
     for g in [x.strip() for x in s.split(";") if x.strip()]:
         name, _, kv = g.partition(":")
-        d = {"cmd": (0.0, 0.0, 0.0), "hl": "none", "contact": "train", "delay": 3, "seq": None, "dwell": 0.0, "stand": a.stand_first, "enc": "raw", "kp": a.hl_kp}
+        d = {"cmd": (0.0, 0.0, 0.0), "hl": "none", "contact": "train", "delay": 3, "seq": None, "dwell": 0.0, "stand": a.stand_first, "enc": "raw", "kp": a.hl_kp, "clamp": "train", "push": 0.0}
         for tok in [t.strip() for t in kv.split(",") if t.strip()]:
             k, _, v = tok.partition("=")
             if k == "cmd":
                 d["cmd"] = tuple(float(x) for x in v.split("/"))
                 assert len(d["cmd"]) == 3
-            elif k in ("hl", "contact", "seq", "enc"):
+            elif k in ("hl", "contact", "seq", "enc", "clamp"):
                 d[k] = v
             elif k == "delay":
                 d[k] = int(v)
-            elif k in ("dwell", "stand", "kp"):
+            elif k in ("dwell", "stand", "kp", "push"):
                 d[k] = float(v)
             else:
                 raise ValueError(f"모르는 그룹 키 {k}")
         assert d["hl"] in ("none", "stale", "same"), d
         assert d["enc"] in ("raw", "q", "qb"), d
+        assert d["clamp"] in ("train", "s8"), d
         assert d["seq"] is None or d["seq"] in SEQS, d
         assert 1 <= d["delay"] <= 7
         out.append((name, d))
@@ -247,6 +252,26 @@ if any(d["contact"] != "train" for _, d in GROUPS):
               "held": torch.zeros(N, 2, device=dev), "q": torch.zeros(Dm + 1, N, 2, device=dev), "out": torch.zeros(N, 2, device=dev), "step": None}
 hl_mode = per_env(lambda d: {"none": 0, "stale": 1, "same": 2}[d["hl"]], torch.long)
 hl_kp_env = per_env(lambda d: d["kp"]).to(torch.float64)        # 그룹 키 kp(기본 --hl_kp)
+push_F = per_env(lambda d: d["push"])
+push_dir = (torch.arange(N, device=dev) // G) % 4                 # 0 앞 1 뒤 2 왼 3 오
+_bn = list(robot.body_names); PUSH_BODY = _bn.index("base") if "base" in _bn else 0
+if any(d["clamp"] == "s8" for _, d in GROUPS):
+    sys.path.insert(0, CODE)
+    from robot_runtime.joint_limits import get_absolute_limits_deg as _gl
+    _L = _gl(); _jn = [robot.joint_names[i] for i in (term._joint_ids if not isinstance(term._joint_ids, slice) else range(len(robot.joint_names)))]
+    S8_LO = torch.tensor([math.radians(_L[j]["soft_min"]) for j in _jn], device=dev)
+    S8_HI = torch.tensor([math.radians(_L[j]["soft_max"]) for j in _jn], device=dev)
+    S8_M = per_env(lambda d: d["clamp"] == "s8", torch.bool).view(-1, 1)
+    U._s8_clamp_n = torch.zeros(N, len(_jn), device=dev)
+    _orig_pa = term.process_actions
+
+    def _pa_s8(actions):
+        _orig_pa(actions)
+        x = term._processed_actions
+        c = torch.maximum(torch.minimum(x, S8_HI), S8_LO)
+        U._s8_clamp_n += (S8_M & (c != x)).float()
+        term._processed_actions = torch.where(S8_M, c, x)
+    term.process_actions = _pa_s8
 if any(d["enc"] != "raw" for _, d in GROUPS):
     U._encq = {"q": per_env(lambda d: d["enc"] in ("q", "qb"), torch.bool), "b": per_env(lambda d: d["enc"] == "qb", torch.bool),
                "prev": None, "hold": None, "vb": None, "step": None}
@@ -333,6 +358,22 @@ for i in range(steps):
     HL["lat"] = HL["lat"] & act_hl                      # 고리 꺼지면 ψ* 해제(배포 release)
     HL["act"] = act_hl
     hl_update(act_hl & (hl_mode == 1))                  # stale: step 전(한 틱 전 물리) 요
+    if bool((push_F > 0).any()):
+        _ts = t - 0.5 * dt - (stand_t + a.warmup)
+        _on = torch.zeros(N, dtype=torch.bool, device=dev)
+        for _p0 in (8.0, 23.0, 38.0, 53.0):
+            _on |= (_ts >= _p0) & (_ts < _p0 + 0.2)
+        _on &= push_F > 0
+        if bool(_on.any()):
+            from isaaclab.utils.math import quat_apply, quat_apply_inverse
+            _q = robot.data.root_quat_w
+            _ex = torch.tensor([1.0, 0.0, 0.0], device=dev).expand(N, 3); _ey = torch.tensor([0.0, 1.0, 0.0], device=dev).expand(N, 3)
+            _vx = quat_apply(_q, _ex); _vy = quat_apply(_q, _ey); _vx[:, 2] = 0; _vy[:, 2] = 0
+            _vx = _vx / _vx.norm(dim=-1, keepdim=True).clamp(min=1e-6); _vy = _vy / _vy.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+            _d = torch.where((push_dir == 0).unsqueeze(1), _vx, torch.where((push_dir == 1).unsqueeze(1), -_vx, torch.where((push_dir == 2).unsqueeze(1), _vy, -_vy)))
+            _fw = _d * (push_F * _on.float()).unsqueeze(1)
+            _fb = quat_apply_inverse(_q, _fw).unsqueeze(1).contiguous()
+            robot.permanent_wrench_composer.add_forces_and_torques(forces=_fb, torques=None, positions=None, body_ids=[PUSH_BODY], env_ids=None, is_global=False)
     with torch.inference_mode():
         act_ = policy(obs)
     obs, _, dones, _ = venv.step(act_)
@@ -398,7 +439,7 @@ for gi, (name, d) in enumerate(GROUPS):
     trms = float((tilt_ss[sv] / n_tick[sv].clamp(min=1)).sqrt().mean()) if bool(sv.any()) else float("nan")
     wrms = float((w_ss[sv] / n_tick[sv].clamp(min=1)).sqrt().mean()) if bool(sv.any()) else float("nan")
     tmax = float(tilt_max[sv].max()) if bool(sv.any()) else float("nan")
-    desc = (f"cmd {d['cmd']}" if d["seq"] is None else f"seq {d['seq']} 체류 {d['dwell']}s") + f" · hl {d['hl']} · 접촉 {d['contact']} · 지연 {d['delay']}" + (f" · 엔코더 {d['enc']}" if d['enc'] != 'raw' else "") + (f" · K {d['kp']}" if d['hl'] != 'none' and d['kp'] != a.hl_kp else "")
+    desc = (f"cmd {d['cmd']}" if d["seq"] is None else f"seq {d['seq']} 체류 {d['dwell']}s") + f" · hl {d['hl']} · 접촉 {d['contact']} · 지연 {d['delay']}" + (f" · 엔코더 {d['enc']}" if d['enc'] != 'raw' else "") + (f" · K {d['kp']}" if d['hl'] != 'none' and d['kp'] != a.hl_kp else "") + (" · 클램프 s8" if d['clamp'] == 's8' else "") + (f" · 밀기 {d['push']:g} N" if d['push'] > 0 else "")
     he = (f"{float(torch.rad2deg(hl_err_max[sv]).median()):.1f} / {float(torch.rad2deg(hl_err_max[sv]).max()):.1f} · "
           f"{int((torch.rad2deg(hl_err_max[sv]) > 15.0).sum())}") if hn > 0 else "—"
     rows.append(f"| {name} | {desc} | {n} | {nf} ({100.0 * nf / max(n, 1):.1f} %) | {f(vr):.3f} | {f(vx):+.4f} | {f(vy):+.4f} | {math.degrees(f(yrate)):+.2f} | "
@@ -408,7 +449,8 @@ for gi, (name, d) in enumerate(GROUPS):
                          "hl_ticks": hn, "hl_small_frac": (float(hl_small[sv].sum()) / hn if hn > 0 else None),
                          "hl_big_frac": (float(hl_big[sv].sum()) / hn if hn > 0 else None), "hl_mean_abs": (float(hl_abs[sv].sum()) / hn if hn > 0 else None),
                          "hl_err_max_deg": ([round(float(x), 2) for x in torch.rad2deg(hl_err_max[sv]).cpu()] if hn > 0 else None),
-                         "t_fall": [round(float(x), 2) for x in t_fall[mg & ~torch.isnan(t_fall)].cpu()]}
+                         "t_fall": [round(float(x), 2) for x in t_fall[mg & ~torch.isnan(t_fall)].cpu()],
+                         "s8_clamp_frac_per_joint": ((U._s8_clamp_n[sv].sum(0) / (n_tick[sv].sum() + 1e-9)).cpu().tolist() if getattr(U, '_s8_clamp_n', None) is not None and d['clamp'] == 's8' and bool(sv.any()) else None)}
 wall = time.time() - wall0
 head = [f"# eval_w3_parity {a.out_tag}", f"- ckpt {ck}", f"- task {a.task} seed {a.seed} envs {N} (그룹 {G} × ~{N // G}) · 서기 {a.stand_first}s → STEP, 워밍업 {a.warmup}s, 채점 {a.seconds}s · "
         f"고리 K {a.hl_kp} ±{a.hl_wzmax} · LPF β 0.27 · 관측 잡음·학습 DR 유지 · wall {wall:.0f}s", ""]

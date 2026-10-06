@@ -129,6 +129,13 @@ parser.add_argument("--sw_refrac", type=str, default="", help="1005: 조기 복�
 parser.add_argument("--cue_end_back", type=str, default="", help="1005 H-B1: cue 를 몸통이 뒤로 돌아서는 순간 종료 'pitch_deg,wy' — 기준 대비 피치 < −pitch_deg 또는 IMU ω_y < −wy (IMU 만)")
 parser.add_argument("--det_from_obs", action="store_true", help="1005 검토 14: 감지기·cue 방향·조기 복귀 입력을 참값 대신 정책 관측 최신 프레임(지연·잡음 자이로·중력, 실물 계약 패드 0/1)으로 — 배포 브리지 입력과 같은 성질")
 parser.add_argument("--det_filt", type=float, default=0.0, help="1005 KD: --det_from_obs 감지 입력(자이로·중력)에 EMA α (0 = 끔, 0.5 ≈ 2틱) — 브리지 구현 가능한 감지 전용 필터(정책 입력 불변)")
+parser.add_argument("--settle_judge", type=str, default="imu", choices=("imu", "odo"),
+                    help="1006 병목 2: KE 조기 복귀(--sw_early_imu) 판정기. imu = 현행(기울기·|ω|·양발, 기본 — 종전 결과 비트 동일) / "
+                         "odo = rl_walking/deploy/leg_odometry(엔코더 FK·관측 자이로/중력·관측 접촉 0/1)의 0.9 s 주기 평균 속도 < --settle_v "
+                         "& 양발 접촉 연속 ≥ --settle_ds & 켜진 뒤 ≥ --settle_min. 유지 시간·early_gate·불응기·calm 1 s 경로는 그대로")
+parser.add_argument("--settle_v", type=float, default=0.07, help="odo 판정 |v̄| 문턱 [m/s]")
+parser.add_argument("--settle_ds", type=float, default=0.3, help="odo 판정 양발 접촉 연속 [s]")
+parser.add_argument("--settle_min", type=float, default=0.9, help="odo 판정 회복 켜진 뒤 최소 시간 [s](창 0.9 s 가 켜짐 전 서기를 품지 않게)")
 parser.add_argument("--early_gate", type=str, default="", help="1005 KE: 조기 복귀는 켜진 뒤 최대 기울기 편차 ≥ tilt° 또는 최대 |ω_xy| ≥ w 였던 활성화에만 허용 'tilt,w' — 작은 오탐은 종전 calm 1 s 경로로만 꺼짐(채터 억제)")
 parser.add_argument("--spawn_dz", type=float, default=0.0, help="1006 착지 출발: 스폰 높이 +dz [m](지그 해제 낙하 모사, 홀드 상태로 떨어진 뒤 precheck 끝에 정책 인계)")
 parser.add_argument("--delay_switch", type=str, default="", help="1006 검토 16: 액션 지연을 첫 외란 뒤 첫 착지 전/후로 바꾼다 'pre,post'[틱] — --delay_steps 를 범위(예 1,4)로 같이 줄 것(버퍼 크기). 착지 뒤 지연 효과 분리")
@@ -911,6 +918,23 @@ for i in range(STEPS):
                 _upd = (~sw_mode) & (_w < 0.1) & _cf[:, 0] & _cf[:, 1]
                 sw_ref = torch.where(_upd.unsqueeze(1), sw_ref + (_rp2 - sw_ref) * (0.02 / float(args_cli.sw_ref_tau)), sw_ref).clamp(-8.0, 8.0)
                 _tilt = (_rp2 - sw_ref).norm(dim=-1)
+            if args_cli.settle_judge == "odo":      # 1006 병목 2: 오도메트리 상시 갱신(감독기 전용 신호, 정책·RNG 경로 불변)
+                if "_ODO" not in dir():
+                    from rl_walking.deploy.leg_odometry import LegOdometry as _LO  # noqa: E402
+                    from rl_walking import mdp_hang as _mh_odo  # noqa: E402
+                    _ODO = _LO(list(robot.data.joint_names), n=N)
+                    odo_ds = torch.zeros(N, device=dev)
+                    print(f"[settle_judge] odo · |v̄| < {args_cli.settle_v} · 양발 ≥ {args_cli.settle_ds}s · 켜진 뒤 ≥ {args_cli.settle_min}s", flush=True)
+                _enc_o = _mh_odo.encoder_joint_pos_v2(uenv)
+                _pb_o = getattr(uenv, "_default_pose_bias", None)
+                if _pb_o is not None:
+                    _enc_o = _enc_o - _pb_o
+                _gy_o = _gy_raw if args_cli.det_from_obs else robot.data.root_ang_vel_b
+                _pg_o = _pg_raw if args_cli.det_from_obs else robot.data.projected_gravity_b
+                _oo = _ODO.step(_enc_o.cpu().numpy(), _gy_o.cpu().numpy(), _pg_o.cpu().numpy(), _cf.float().cpu().numpy())
+                odo_spd = torch.as_tensor(_oo["speed_bar"], device=dev, dtype=torch.float32)
+                odo_frac = torch.as_tensor(_oo["frac"], device=dev, dtype=torch.float32)
+                odo_ds = torch.where(_cf[:, 0] & _cf[:, 1], odo_ds + 0.02, torch.zeros_like(odo_ds))
             _on = (_tilt > _SW_ON[0]) | (_w > _SW_ON[1])
             _cq = {"both": _cf[:, 0] & _cf[:, 1], "any": _cf[:, 0] | _cf[:, 1], "none": torch.ones_like(_cf[:, 0])}[args_cli.sw_off_contact]
             _quiet = (_tilt < _SW_OFF[0]) & (_w < _SW_OFF[1]) & _cq
@@ -920,6 +944,9 @@ for i in range(STEPS):
             if args_cli.sw_early_imu:
                 _im, _it, _iw, _ih = [float(x) for x in args_cli.sw_early_imu.split(',')]
                 _ec2 = sw_mode & (sw_t_on >= _im) & (_tilt < _it) & (_w < _iw) & _cf[:, 0] & _cf[:, 1]
+                if args_cli.settle_judge == "odo":
+                    _ec2 = sw_mode & (sw_t_on >= float(args_cli.settle_min) - 1e-6) & (odo_spd < float(args_cli.settle_v)) & (odo_frac >= 0.5) \
+                        & (odo_ds >= float(args_cli.settle_ds) - 1e-6)
                 if args_cli.early_gate:
                     _gt, _gw = [float(x) for x in args_cli.early_gate.split(",")]
                     if "eg_pt" not in dir():
@@ -1561,8 +1588,6 @@ with open(os.path.join(DATA, "log_picture", f"ground_recovery_{args_cli.out_tag}
             row += [_fx_(cue_end_rec[e]), round(_ct_, 2), _fx_(to_first_t[e]), _fx_(td_first_t[e]), _fx_(load_first_t[e]), float(to_after_cue[e]), (round(_dr_, 1) if _dr_ != "" else ""), _fx_(rec_off_t[e]), int(osc_flag_post[e]), float(to_after_off[e]), _fx_(cue_end_v[e]), _fx_(cue_end_w[e])]
         row += [("" if math.isnan(float(TDM[k][e])) else round(float(TDM[k][e]), 2)) for k in ('t1','mf1','ml1','len1','p1','pr1','t2','mf2','ml2','len2','p2','pr2')]
         row += [("" if math.isnan(float(x[e])) else round(float(x[e]), 3)) for x in (rest_t, end_dq, end_dh, end_dt, end_w)]
-        row += [("" if math.isnan(float(x[e])) else round(float(x[e]), 3)) for x in (ab_pitch, ab_roll, ab_h, ab_dqn, ab_both, nrm_t)]
-        row += [round(float(abn_ticks[e] / post_ticks[e]), 3) if float(post_ticks[e]) > 0 else ""]
         row += [("" if math.isnan(float(x[e])) else round(float(x[e]), 3)) for x in (ab_pitch, ab_roll, ab_h, ab_dqn, ab_both, nrm_t)]
         row += [round(float(abn_ticks[e] / post_ticks[e]), 3) if float(post_ticks[e]) > 0 else ""]
         if C2MODE:

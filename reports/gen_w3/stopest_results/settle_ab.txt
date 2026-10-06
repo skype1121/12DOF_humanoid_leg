@@ -1,0 +1,100 @@
+# KE 조기 복귀 판정기 폐루프 A/B — imu(현행 기울기<6°·|ω|<0.4·양발 0.2 s) vs odo(|v̄|<θ·양발≥0.3 s·켜진 뒤≥0.9 s·0.2 s)
+G11a 128 env × seed 1–6 · 지연 2 · 접촉 v2 · kabs KE 인자 · 사전검사 통과 env 만 · 짝 = 같은 (seed, env)
+
+## nd
+RNG 경로 동일성 imu↔o07: 짝 768 · 불일치 0 → OK
+RNG 경로 동일성 imu↔o05: 짝 768 · 불일치 0 → OK
+imu  n  629 | 낙상   0.0% (seed sd 0.0) | 엄격  96.3% (seed sd 1.4) | F00 F10 F2a0 F2b0 S323 S40 S50 S60 |생존 평균: abs_pitch 0.577 abs_roll -0.0384 dq_nom_deg 1.32 end_both 1 nrm_t nan abn_frac 0.0239 to_after_cue 0 to_after_off 0 sw_time_s 0.158 sw_on_n 0.0366 rec_off_t nan
+o07  n  629 | 낙상   0.0% (seed sd 0.0) | 엄격  96.5% (seed sd 1.8) | F00 F10 F2a0 F2b0 S322 S40 S50 S60 |생존 평균: abs_pitch 0.58 abs_roll -0.0381 dq_nom_deg 1.32 end_both 1 nrm_t nan abn_frac 0.0247 to_after_cue 0 to_after_off 0 sw_time_s 0.145 sw_on_n 0.0334 rec_off_t nan
+o05  n  629 | 낙상   0.0% (seed sd 0.0) | 엄격  96.5% (seed sd 1.8) | F00 F10 F2a0 F2b0 S322 S40 S50 S60 |생존 평균: abs_pitch 0.579 abs_roll -0.0381 dq_nom_deg 1.32 end_both 1 nrm_t nan abn_frac 0.025 to_after_cue 0 to_after_off 0 sw_time_s 0.145 sw_on_n 0.0334 rec_off_t nan
+   짝 imu↔o07 낙상: imu만 0 / o07만 0 · McNemar p 1
+   짝 imu↔o07 엄격 성공: imu만 2 / o07만 3 · McNemar p 1
+   짝 imu↔o07 다보낙상+추가스텝: imu만 0 / o07만 0 · McNemar p 1
+   짝 생존 629 sw_time_s: o07−imu 평균 -0.013 (95% ±0.030)
+   짝 생존 629 to_after_off: o07−imu 평균 +0.000 (95% ±0.000)
+   짝 생존 629 abs_pitch: o07−imu 평균 +0.003 (95% ±0.012)
+   짝 생존 629 dq_nom_deg: o07−imu 평균 +0.001 (95% ±0.002)
+   짝 생존 629 abn_frac: o07−imu 평균 +0.001 (95% ±0.001)
+   짝 imu↔o05 낙상: imu만 0 / o05만 0 · McNemar p 1
+   짝 imu↔o05 엄격 성공: imu만 2 / o05만 3 · McNemar p 1
+   짝 imu↔o05 다보낙상+추가스텝: imu만 0 / o05만 0 · McNemar p 1
+   짝 생존 629 sw_time_s: o05−imu 평균 -0.013 (95% ±0.030)
+   짝 생존 629 to_after_off: o05−imu 평균 +0.000 (95% ±0.000)
+   짝 생존 629 abs_pitch: o05−imu 평균 +0.002 (95% ±0.012)
+   짝 생존 629 dq_nom_deg: o05−imu 평균 +0.001 (95% ±0.002)
+   짝 생존 629 abn_frac: o05−imu 평균 +0.001 (95% ±0.002)
+
+## sf15
+RNG 경로 동일성 imu↔o07: 짝 768 · 불일치 0 → OK
+RNG 경로 동일성 imu↔o05: 짝 768 · 불일치 0 → OK
+imu  n  630 | 낙상  18.3% (seed sd 0.9) | 엄격  50.2% (seed sd 6.0) | F011 F10 F2a6 F2b98 S356 S42 S5141 S60 |생존 평균: abs_pitch 0.319 abs_roll 0.0626 dq_nom_deg 2.27 end_both 1 nrm_t 0.675 abn_frac 0.0928 to_after_cue 1.17 to_after_off 0.326 sw_time_s 1.82 sw_on_n 1.12 rec_off_t 4.25
+o07  n  630 | 낙상  17.6% (seed sd 1.7) | 엄격  53.2% (seed sd 4.6) | F011 F10 F2a6 F2b94 S361 S40 S5123 S60 |생존 평균: abs_pitch 0.284 abs_roll 0.0889 dq_nom_deg 2.28 end_both 0.998 nrm_t 0.679 abn_frac 0.0977 to_after_cue 1.02 to_after_off 0.0328 sw_time_s 2.31 sw_on_n 1.05 rec_off_t 4.84
+o05  n  630 | 낙상  17.5% (seed sd 1.6) | 엄격  51.6% (seed sd 4.2) | F09 F11 F2a7 F2b93 S351 S41 S5143 S60 |생존 평균: abs_pitch 0.33 abs_roll 0.0698 dq_nom_deg 2.28 end_both 0.998 nrm_t 0.688 abn_frac 0.0958 to_after_cue 1.04 to_after_off 0.0135 sw_time_s 2.49 sw_on_n 1.03 rec_off_t 5.08
+   짝 imu↔o07 낙상: imu만 14 / o07만 10 · McNemar p 0.541
+   짝 imu↔o07 엄격 성공: imu만 38 / o07만 57 · McNemar p 0.0642
+   짝 imu↔o07 다보낙상+추가스텝: imu만 56 / o07만 34 · McNemar p 0.0263
+   짝 생존 505 sw_time_s: o07−imu 평균 +0.483 (95% ±0.061)
+   짝 생존 505 to_after_off: o07−imu 평균 -0.297 (95% ±0.079)
+   짝 생존 505 abs_pitch: o07−imu 평균 -0.047 (95% ±0.060)
+   짝 생존 505 dq_nom_deg: o07−imu 평균 +0.006 (95% ±0.032)
+   짝 생존 503 nrm_t: o07−imu 평균 +0.000 (95% ±0.020)
+   짝 생존 505 abn_frac: o07−imu 평균 +0.004 (95% ±0.009)
+   짝 imu↔o05 낙상: imu만 14 / o05만 9 · McNemar p 0.405
+   짝 imu↔o05 엄격 성공: imu만 40 / o05만 49 · McNemar p 0.397
+   짝 imu↔o05 다보낙상+추가스텝: imu만 47 / o05만 44 · McNemar p 0.834
+   짝 생존 506 sw_time_s: o05−imu 평균 +0.657 (95% ±0.064)
+   짝 생존 506 to_after_off: o05−imu 평균 -0.316 (95% ±0.082)
+   짝 생존 506 abs_pitch: o05−imu 평균 -0.008 (95% ±0.056)
+   짝 생존 506 dq_nom_deg: o05−imu 평균 +0.011 (95% ±0.033)
+   짝 생존 505 nrm_t: o05−imu 평균 -0.003 (95% ±0.021)
+   짝 생존 506 abn_frac: o05−imu 평균 +0.001 (95% ±0.007)
+
+## fi40
+RNG 경로 동일성 imu↔o07: 짝 768 · 불일치 0 → OK
+RNG 경로 동일성 imu↔o05: 짝 768 · 불일치 0 → OK
+imu  n  630 | 낙상  27.0% (seed sd 2.7) | 엄격  36.5% (seed sd 3.7) | F04 F12 F2a38 F2b126 S351 S42 S5177 S60 |생존 평균: abs_pitch 0.497 abs_roll -0.115 dq_nom_deg 2.46 end_both 1 nrm_t 2.4 abn_frac 0.0714 to_after_cue 1.31 to_after_off 0.537 sw_time_s 1.77 sw_on_n 1.21 rec_off_t 3.62
+o07  n  630 | 낙상  25.1% (seed sd 1.7) | 엄격  37.3% (seed sd 3.3) | F05 F12 F2a37 F2b114 S353 S43 S5181 S60 |생존 평균: abs_pitch 0.506 abs_roll -0.118 dq_nom_deg 2.49 end_both 1 nrm_t 2.38 abn_frac 0.0697 to_after_cue 1.21 to_after_off 0.0254 sw_time_s 2.31 sw_on_n 1.05 rec_off_t 4.38
+o05  n  630 | 낙상  24.9% (seed sd 1.7) | 엄격  38.4% (seed sd 4.6) | F05 F12 F2a37 F2b113 S346 S42 S5183 S60 |생존 평균: abs_pitch 0.525 abs_roll -0.127 dq_nom_deg 2.5 end_both 1 nrm_t 2.39 abn_frac 0.0725 to_after_cue 1.17 to_after_off 0.0106 sw_time_s 2.52 sw_on_n 1.04 rec_off_t 4.61
+   짝 imu↔o07 낙상: imu만 26 / o07만 14 · McNemar p 0.0807
+   짝 imu↔o07 엄격 성공: imu만 40 / o07만 45 · McNemar p 0.665
+   짝 imu↔o07 다보낙상+추가스텝: imu만 46 / o07만 38 · McNemar p 0.445
+   짝 생존 446 sw_time_s: o07−imu 평균 +0.498 (95% ±0.067)
+   짝 생존 446 to_after_off: o07−imu 평균 -0.498 (95% ±0.115)
+   짝 생존 446 abs_pitch: o07−imu 평균 +0.027 (95% ±0.057)
+   짝 생존 446 dq_nom_deg: o07−imu 평균 +0.017 (95% ±0.035)
+   짝 생존 445 nrm_t: o07−imu 평균 -0.057 (95% ±0.052)
+   짝 생존 446 abn_frac: o07−imu 평균 -0.003 (95% ±0.008)
+   짝 imu↔o05 낙상: imu만 25 / o05만 12 · McNemar p 0.047
+   짝 imu↔o05 엄격 성공: imu만 36 / o05만 48 · McNemar p 0.23
+   짝 imu↔o05 다보낙상+추가스텝: imu만 47 / o05만 40 · McNemar p 0.52
+   짝 생존 448 sw_time_s: o05−imu 평균 +0.722 (95% ±0.071)
+   짝 생존 448 to_after_off: o05−imu 평균 -0.509 (95% ±0.115)
+   짝 생존 448 abs_pitch: o05−imu 평균 +0.043 (95% ±0.058)
+   짝 생존 448 dq_nom_deg: o05−imu 평균 +0.029 (95% ±0.038)
+   짝 생존 447 nrm_t: o05−imu 평균 -0.035 (95% ±0.055)
+   짝 생존 448 abn_frac: o05−imu 평균 -0.001 (95% ±0.009)
+
+## b18
+RNG 경로 동일성 imu↔o07: 짝 768 · 불일치 0 → OK
+RNG 경로 동일성 imu↔o05: 짝 768 · 불일치 0 → OK
+imu  n  630 | 낙상   5.9% (seed sd 2.4) | 엄격  80.2% (seed sd 1.7) | F04 F10 F2a1 F2b32 S384 S40 S54 S60 |생존 평균: abs_pitch 0.756 abs_roll -0.17 dq_nom_deg 2.6 end_both 1 nrm_t 2.03 abn_frac 0.058 to_after_cue 0.0506 to_after_off 0.11 sw_time_s 1.42 sw_on_n 1.12 rec_off_t 3.44
+o07  n  630 | 낙상   3.8% (seed sd 1.8) | 엄격  82.5% (seed sd 5.2) | F00 F10 F2a0 F2b24 S382 S40 S54 S60 |생존 평균: abs_pitch 0.798 abs_roll -0.185 dq_nom_deg 2.63 end_both 1 nrm_t 2.04 abn_frac 0.0612 to_after_cue 0.0347 to_after_off 0.0165 sw_time_s 1.86 sw_on_n 1.06 rec_off_t 4
+o05  n  630 | 낙상   4.0% (seed sd 1.7) | 엄격  82.2% (seed sd 4.9) | F00 F10 F2a0 F2b25 S382 S41 S54 S60 |생존 평균: abs_pitch 0.807 abs_roll -0.18 dq_nom_deg 2.63 end_both 1 nrm_t 2.05 abn_frac 0.0619 to_after_cue 0.0331 to_after_off 0.0132 sw_time_s 2.05 sw_on_n 1.06 rec_off_t 4.19
+   짝 imu↔o07 낙상: imu만 15 / o07만 2 · McNemar p 0.00235
+   짝 imu↔o07 엄격 성공: imu만 50 / o07만 65 · McNemar p 0.191
+   짝 imu↔o07 다보낙상+추가스텝: imu만 10 / o07만 2 · McNemar p 0.0386
+   짝 생존 591 sw_time_s: o07−imu 평균 +0.427 (95% ±0.051)
+   짝 생존 591 to_after_off: o07−imu 평균 -0.098 (95% ±0.046)
+   짝 생존 591 abs_pitch: o07−imu 평균 +0.017 (95% ±0.048)
+   짝 생존 591 dq_nom_deg: o07−imu 평균 +0.021 (95% ±0.022)
+   짝 생존 588 nrm_t: o07−imu 평균 +0.006 (95% ±0.038)
+   짝 생존 591 abn_frac: o07−imu 평균 -0.002 (95% ±0.007)
+   짝 imu↔o05 낙상: imu만 14 / o05만 2 · McNemar p 0.00418
+   짝 imu↔o05 엄격 성공: imu만 48 / o05만 61 · McNemar p 0.25
+   짝 imu↔o05 다보낙상+추가스텝: imu만 9 / o05만 2 · McNemar p 0.0654
+   짝 생존 591 sw_time_s: o05−imu 평균 +0.619 (95% ±0.058)
+   짝 생존 591 to_after_off: o05−imu 평균 -0.096 (95% ±0.046)
+   짝 생존 591 abs_pitch: o05−imu 평균 +0.028 (95% ±0.049)
+   짝 생존 591 dq_nom_deg: o05−imu 평균 +0.023 (95% ±0.021)
+   짝 생존 588 nrm_t: o05−imu 평균 +0.012 (95% ±0.038)
+   짝 생존 591 abn_frac: o05−imu 평균 -0.000 (95% ±0.007)

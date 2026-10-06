@@ -745,6 +745,9 @@ pr_q0 = None; pr_rp0 = None; pr_h0 = None; pr_hold = torch.zeros(N, device=dev);
 ab_pitch = torch.full((N,), float('nan'), device=dev); ab_roll = torch.full((N,), float('nan'), device=dev); ab_h = torch.full((N,), float('nan'), device=dev)
 ab_dqn = torch.full((N,), float('nan'), device=dev); ab_both = torch.zeros(N, device=dev); nrm_hold = torch.zeros(N, device=dev); nrm_t = torch.full((N,), float('nan'), device=dev)
 abn_ticks = torch.zeros(N, device=dev); post_ticks = torch.zeros(N, device=dev)   # 1006 승윤님 회복 체인: 절대 자세(수평·명목 관절) 기준
+ab_pitch = torch.full((N,), float('nan'), device=dev); ab_roll = torch.full((N,), float('nan'), device=dev); ab_h = torch.full((N,), float('nan'), device=dev)
+ab_dqn = torch.full((N,), float('nan'), device=dev); ab_both = torch.zeros(N, device=dev); nrm_hold = torch.zeros(N, device=dev); nrm_t = torch.full((N,), float('nan'), device=dev)
+abn_ticks = torch.zeros(N, device=dev); post_ticks = torch.zeros(N, device=dev)   # 1006 승윤님 회복 체인: 절대 자세(수평·명목 관절) 기준
 end_dq = torch.full((N,), float('nan'), device=dev); end_dh = torch.full((N,), float('nan'), device=dev); end_dt = torch.full((N,), float('nan'), device=dev); end_w = torch.full((N,), float('nan'), device=dev)
 # 1005 ③a 진단: 외란 뒤 1·2번째 착지의 캡처 여유(발 − ξ, 몸통 앞/왼축, cm)·걸음 길이·시각·피치·피치율
 _MASS = robot.root_physx_view.get_masses().to(dev).float(); _MTOT = _MASS.sum(-1, keepdim=True)
@@ -1253,6 +1256,17 @@ for i in range(STEPS):
             if dists and t_rel >= max(d.t0 for d in dists) + 0.3:
                 rest_t = torch.where((pr_hold >= 0.5) & torch.isnan(rest_t), torch.full_like(rest_t, t_rel - min(d.t0 for d in dists)), rest_t)
             end_dq = torch.where(_ok_, _dq3, end_dq); end_dh = torch.where(_ok_, _dh3, end_dh); end_dt = torch.where(_ok_, _dt3, end_dt); end_w = torch.where(_ok_, _w3, end_w)
+            # 1006 절대 기준: "정상 자세" = |피치|·|롤| < 3° · |ω_xy| < 0.2 · 양발 · 명목 관절(default_joint_pos) 평균 편차 < 5° · 높이 ≥ 외란 전 − 2 cm, 0.5 s 지속
+            _dqn = torch.rad2deg((robot.data.joint_pos - robot.data.default_joint_pos).abs()).mean(-1)
+            _nrm = _ok_ & (_pp3.abs() < 3.0) & (_rr3.abs() < 3.0) & (_w3 < 0.2) & _bothc & (_dqn < 5.0) & (_dh3 > -2.0)
+            nrm_hold = torch.where(_nrm, nrm_hold + 0.02, torch.zeros_like(nrm_hold))
+            if dists and t_rel >= max(d.t0 for d in dists) + 0.3:
+                nrm_t = torch.where((nrm_hold >= 0.5) & torch.isnan(nrm_t), torch.full_like(nrm_t, t_rel - min(d.t0 for d in dists)), nrm_t)
+            if (not dists and t_rel >= 3.0) or (dists and t_rel >= max(d.t0 for d in dists) + 1.0):
+                _calm = _ok_ & (_w3 < 0.2)                                   # 조용한데 자세 비정상 = 괴상한 자세 체류
+                post_ticks += _calm.float(); abn_ticks += (_calm & ~_nrm).float()
+            ab_pitch = torch.where(_ok_, _pp3, ab_pitch); ab_roll = torch.where(_ok_, _rr3, ab_roll); ab_h = torch.where(_ok_, robot.data.root_pos_w[:, 2], ab_h)
+            ab_dqn = torch.where(_ok_, _dqn, ab_dqn); ab_both = torch.where(_ok_, _bothc.float(), ab_both)
             # 1006 절대 기준: 수평(피치·롤 0)·명목 관절(default_joint_pos)·높이·양발·각속도. "정상 자세" = |피치|·|롤| < 3° · |ω_xy| < 0.2 · 양발 · 명목 관절 평균 편차 < 5° · 높이 ≥ 외란 전 − 2 cm, 0.5 s 지속
             _dqn = torch.rad2deg((robot.data.joint_pos - robot.data.default_joint_pos).abs()).mean(-1)
             _nrm = _ok_ & (_pp3.abs() < 3.0) & (_rr3.abs() < 3.0) & (_w3 < 0.2) & _bothc & (_dqn < 5.0) & (_dh3 > -2.0)
@@ -1512,7 +1526,7 @@ with open(os.path.join(DATA, "log_picture", f"ground_recovery_{args_cli.out_tag}
     wcsv = csv.writer(fh)
     _bcols = [f"bias_{n}" for n in robot.joint_names] if _BIAS0 is not None else []
     _ccols = ["com_x", "com_y", "com_z"] if _COM0 is not None else []
-    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s", "cue_end_t", "cue_time_s", "to_first_t", "td_first_t", "load_first_t", "to_after_cue", "drift_after_cue_cm", "rec_off_t", "osc_flag_post", "to_after_off", "cue_end_v", "cue_end_w"] if (policy2 is not None or C2MODE) else []) + ["td1_t", "td1_mf_cm", "td1_ml_cm", "td1_len_cm", "td1_pitch", "td1_prate", "td2_t", "td2_mf_cm", "td2_ml_cm", "td2_len_cm", "td2_pitch", "td2_prate", "rest_t", "end_dq_deg", "end_dh_cm", "end_dtilt_deg", "end_w"] + (["c2_req_n", "c2_timeout_n", "c2_cancel_n", "c2_latch_n", "c2_first_req_timeout"] if C2MODE else []))
+    wcsv.writerow(["env", "pre_pass", "pre_pitch", "fell", "t_fall_rel", "alive_end", "final_quiet", "lifts_total"] + [f"d{k+1}_{s}" for k in range(D) for s in ("fell", "lifts", "recovered", "t_rec", "pmax")] + _bcols + _ccols + [f"p2p_{k}" for k in range(NB_OSC)] + ["takeoffs", "surv_takeoffs", "swing_travel_mean_cm", "fall_pitch", "fall_roll", "sep0_cm", "sep_min_ds_cm", "roll_max_post", "vlat_max", "single_support_s", "term_reason", "fall_h_prev", "t_sep_min", "t_sep18", "t_roll8", "h_min_post", "td_sep_mean_cm", "td_sep_min_cm", "ramp_rate", "ramp_cap", "ramp_start", "osc_rev_max", "osc_flag", "osc_flag_rec", "osc_flag_hipf"] + (["sw_on_n", "sw_first_t", "sw_on_pre", "sw_time_s", "cue_end_t", "cue_time_s", "to_first_t", "td_first_t", "load_first_t", "to_after_cue", "drift_after_cue_cm", "rec_off_t", "osc_flag_post", "to_after_off", "cue_end_v", "cue_end_w"] if (policy2 is not None or C2MODE) else []) + ["td1_t", "td1_mf_cm", "td1_ml_cm", "td1_len_cm", "td1_pitch", "td1_prate", "td2_t", "td2_mf_cm", "td2_ml_cm", "td2_len_cm", "td2_pitch", "td2_prate", "rest_t", "end_dq_deg", "end_dh_cm", "end_dtilt_deg", "end_w", "abs_pitch", "abs_roll", "abs_h_m", "dq_nom_deg", "end_both", "nrm_t", "abn_frac"] + (["c2_req_n", "c2_timeout_n", "c2_cancel_n", "c2_latch_n", "c2_first_req_timeout"] if C2MODE else []))
     for e in range(N):
         row = [e, int(pre_pass[e]), round(float(pre_pitch[e]), 2), int(fell[e]), round(float(t_fall_post[e]), 2) if fell[e] else "", int(alive[e]), int(final_quiet[e]), float(lift_total[e])]
         for k in range(D):
@@ -1542,6 +1556,8 @@ with open(os.path.join(DATA, "log_picture", f"ground_recovery_{args_cli.out_tag}
             row += [_fx_(cue_end_rec[e]), round(_ct_, 2), _fx_(to_first_t[e]), _fx_(td_first_t[e]), _fx_(load_first_t[e]), float(to_after_cue[e]), (round(_dr_, 1) if _dr_ != "" else ""), _fx_(rec_off_t[e]), int(osc_flag_post[e]), float(to_after_off[e]), _fx_(cue_end_v[e]), _fx_(cue_end_w[e])]
         row += [("" if math.isnan(float(TDM[k][e])) else round(float(TDM[k][e]), 2)) for k in ('t1','mf1','ml1','len1','p1','pr1','t2','mf2','ml2','len2','p2','pr2')]
         row += [("" if math.isnan(float(x[e])) else round(float(x[e]), 3)) for x in (rest_t, end_dq, end_dh, end_dt, end_w)]
+        row += [("" if math.isnan(float(x[e])) else round(float(x[e]), 3)) for x in (ab_pitch, ab_roll, ab_h, ab_dqn, ab_both, nrm_t)]
+        row += [round(float(abn_ticks[e] / post_ticks[e]), 3) if float(post_ticks[e]) > 0 else ""]
         row += [("" if math.isnan(float(x[e])) else round(float(x[e]), 3)) for x in (ab_pitch, ab_roll, ab_h, ab_dqn, ab_both, nrm_t)]
         row += [round(float(abn_ticks[e] / post_ticks[e]), 3) if float(post_ticks[e]) > 0 else ""]
         if C2MODE:

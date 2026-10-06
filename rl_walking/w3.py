@@ -27,7 +27,7 @@ def _st(env):
         z = lambda *sh: torch.zeros(*(sh or (N,)), device=dev)
         s = {"prev_c": torch.ones(N, 2, device=dev), "air_t": z(N, 2), "lift_z": z(N, 2), "apex": z(N, 2), "lift_xy": z(N, 2, 2),
              "lift_half": torch.full((N, 2), -1.0, device=dev), "valid_swing": z(N, 2), "load_t": z(N, 2), "load_win": z(N, 2), "pending": z(N, 2),
-             "ev_takeoff": z(N, 2), "ev_td": z(N, 2), "ev_valid": z(N, 2), "ev_wrong": z(N, 2), "td_err": z(N, 2), "td_dx": z(N, 2), "half": torch.full((N,), -1.0, device=dev),
+             "ev_takeoff": z(N, 2), "ev_td": z(N, 2), "ev_valid": z(N, 2), "ev_wrong": z(N, 2), "td_err": z(N, 2), "td_dx": z(N, 2), "td_err_h": z(N, 2), "td_dx_h": z(N, 2), "half": torch.full((N,), -1.0, device=dev),
              "valid_in_half": z(), "ev_miss": z(), "last_valid_foot": torch.full((N,), -1.0, device=dev), "ev_alt": z(),
              "n_valid": z(N, 2), "n_sched": z(), "n_alt": z()}
         env._w3 = s
@@ -264,9 +264,11 @@ def w3_step_tracker(env, env_ids, threshold: float = 5.0, min_air_s: float = 0.1
     td_ok = landed & (s["valid_swing"] > 0.5)
     s["ev_td"] = td_ok.float()
     s["td_err"] = torch.where(td_ok, err, torch.zeros_like(err))
+    s["td_err_h"] = torch.where(td_ok, err, s["td_err_h"])                # 1006 레드팀: 유효 스텝(하중 수용) 때 지급하려고 착지값 보관
     d = fxy - s["lift_xy"]                                                # 스윙발 이륙→착지 월드 변위(요 프레임 x) — 몸 기울임으로 못 만드는 진행량
     dx = d[..., 0] * cy.unsqueeze(1) + d[..., 1] * sy.unsqueeze(1)
     s["td_dx"] = torch.where(td_ok, dx, torch.zeros_like(dx))
+    s["td_dx_h"] = torch.where(td_ok, dx, s["td_dx_h"])
     s["pending"] = torch.where(td_ok, torch.ones_like(s["pending"]), s["pending"])
     s["load_win"] = torch.where(td_ok, torch.zeros_like(s["load_win"]), s["load_win"] + dt * s["pending"])
     s["load_t"] = torch.where(td_ok, torch.zeros_like(s["load_t"]), s["load_t"] + dt * ((fz > load_frac) & (s["pending"] > 0.5)).float())
@@ -465,6 +467,23 @@ def w3_drift_net(env) -> torch.Tensor:
     """W3-A3: 한 주기 이동평균 속도 오차 |v_T − v_cmd| — 벌점 크기(EMA 잔여 흔들림 0.07 m/s 제거)."""
     e, _ = _v_err(env, box=True)
     return e * _ge(env).float()
+
+
+def w3_place_valid(env, sig: float = 0.04) -> torch.Tensor:
+    """1006 레드팀 결함 1·4 수정판: 착지 오차 보상을 **유효 스텝(공중·정점·하중 수용 통과) 사건에만** — 착지 사건마다 지급하던 w3_place_reward 는
+    두드리기·잘게 딛기로 반주기당 여러 번 받을 수 있었음(목표 폭이 틀려 죽어 있던 동안은 잠복)."""
+    s = _st(env)
+    return (torch.exp(-(s["td_err_h"] / sig) ** 2) * s["ev_valid"]).sum(1) * _ge(env).float()
+
+
+def w3_stride_valid(env, sig: float = 0.03, cmin: float = 0.02) -> torch.Tensor:
+    """w3_stride 의 유효 스텝 지급판(같은 식, ev_td → ev_valid, 착지 변위는 보관값)."""
+    s = _st(env)
+    cmd = env.command_manager.get_command("base_velocity")
+    f_ = env._gf if getattr(env, "_gf", None) is not None else torch.full((env.num_envs,), 1.1, device=env.device)
+    tx = (cmd[:, 0] / f_.clamp(min=0.5)).unsqueeze(1)
+    r = (torch.exp(-((s["td_dx_h"] - tx) / sig) ** 2) - torch.exp(-(tx / sig) ** 2)) * s["ev_valid"]
+    return r.sum(1) * (cmd[:, 0].abs() >= cmin).float() * _ge(env).float()
 
 
 def w3_stand_gated(env, func, params: dict | None = None) -> torch.Tensor:

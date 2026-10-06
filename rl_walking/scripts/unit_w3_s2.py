@@ -168,7 +168,8 @@ def test_A(old, new):
     fo = {n.name: ast.dump(n) for n in src_o.body if isinstance(n, ast.FunctionDef)}
     fn = {n.name: ast.dump(n) for n in src_n.body if isinstance(n, ast.FunctionDef)}
     changed = sorted(k for k in fo if fo[k] != fn.get(k))
-    check(changed == ["install_w3_cmd", "w3_gait_update"], f"기존 함수 중 바뀐 것 = install_w3_cmd·w3_gait_update 뿐 (실제 {changed})")
+    # 1006 레드팀 수리(W3S1e): _st·w3_step_tracker 에 보관 필드(td_err_h·td_dx_h)만 추가 — 기존 출력 동일성은 아래 추적기 상태 비교가 검증
+    check(changed == ["_st", "install_w3_cmd", "w3_gait_update", "w3_step_tracker"], f"기존 함수 중 바뀐 것 = _st(보관 필드)·install_w3_cmd·w3_gait_update·w3_step_tracker(보관 필드) 뿐 (실제 {changed})")
     for label, kw in (("S0", {"stage": 0}), ("S1", {"stage": 1}), ("S1b/c", {"stage": 1, "vx_back_range": (0.03, 0.06)}),
                       ("S1d", {"stage": 1, "vx_range": (0.03, 0.06), "vx_back_range": (0.03, 0.06)})):
         outs = []

@@ -3353,3 +3353,16 @@ class Biped12HangStandW3S2EnvCfg(Biped12HangStandW3S1cEnvCfg):
         rw.w3_stride = RewTerm(func=_w3.w3_stride2, weight=10.0)
         rw.w3_width = RewTerm(func=_w3.w3_width_pen, weight=-10.0)
         self.curriculum = _W3S2CurriculumCfg()
+
+
+@configclass
+class Biped12HangStandW3S1eEnvCfg(Biped12HangStandW3S1cEnvCfg):
+    """W3 Stage 1 e (1006, 레드팀 결함 1·4 수리): 착지 목표 폭이 ±0.10(발 간격 20 cm)인데 실제 걷기 간격 36 cm → 착지 보상 exp(−4) ≈ 0.02(가중 10 항이 사실상 죽음,
+    명령 0 발 x 를 잡을 신호 부재 = 영점 편향 후보). 수리 = 목표 반폭 0.17(실측 걷기 0.18·서기 0.144 사이) + 착지·보폭 보상을 유효 스텝 사건에만 지급(수리로 살아나는
+    두드리기 유인 차단). 그 밖 보상·명령 분포는 W3S1c 와 동일. 짝 비교: 같은 시작(S1c seed 2 끝)·같은 seed 로 W3S1c 이어학습(S1c2x)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.w3_track.params = {"nominal_half_width": 0.17}
+        self.rewards.w3_place = RewTerm(func=_w3.w3_place_valid, weight=10.0)
+        self.rewards.w3_stride = RewTerm(func=_w3.w3_stride_valid, weight=10.0)

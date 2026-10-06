@@ -9,18 +9,20 @@ S=/tmp/claude-1000/-home-ryu-humanoid-leg-test1/e53dc80b-9c62-45a7-a400-3cd12071
 wait_mem() { while true; do u=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1); [ "$u" -le 10500 ] && return; sleep 20; done; }
 bad_log() { grep -aqE "PxgCudaDeviceMemoryAllocator failed|CUDA error|ALLOC|PhysX error|fail to launch|Unable to allocate" "$1"; }
 declare -A X=( [nd]="" [sf15]="--dist ramp:f:2:15:0.5:1.0" [fi40]="--dist push:f:2:40:0.2" [b18]="--dist push:b:2:18:0.3" )
-declare -A ARM=( [imu]="" [o07]="--settle_judge odo --settle_v 0.07" [o05]="--settle_judge odo --settle_v 0.05" )
-BASE="--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 \
+declare -A ARM=( [imu]="" [o07]="--settle_judge odo --settle_v 0.07" [o05]="--settle_judge odo --settle_v 0.05" [odo]="--settle_judge odo --settle_v 0.07" [odoc]="--settle_judge odo --settle_v 0.07 --settle_knee_comp 42" [odi]="--settle_judge odo --settle_v 0.07 --settle_knee_inject 42" [odic]="--settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42" )
+# SAB_PFX(태그 접두, 기본 sab)·SAB_DLY(지연, 기본 2)·SAB_EXTRA(추가 인자, 예 "--knee_sea 42")
+PFX=${SAB_PFX:-sab}; DLY=${SAB_DLY:-2}
+BASE="--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps $DLY,$DLY ${SAB_EXTRA:-} \
  --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 \
  --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any \
  --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33"
 ARMS=${@:-imu o07 o05}
-J=$S/jobs.txt; : > $J
+J=$S/jobs_${PFX}.txt; : > $J
 for SD in 1 2 3 4 5 6; do for C in nd sf15 fi40 b18; do for A in $ARMS; do echo "$A|$C|$SD" >> $J; done; done; done
 lane() { local L=$1; local i=0
   while IFS='|' read -r A C SD; do
     if [ $((i % 2)) -eq $L ]; then
-      t=sab_${A}_${C}_s${SD}; f=$DATA/log_picture/ground_recovery_${t}_envs.csv; lg=$S/$t.l
+      t=${PFX}_${A}_${C}_s${SD}; f=$DATA/log_picture/ground_recovery_${t}_envs.csv; lg=$S/$t.l
       tx=$DATA/log_picture/ground_recovery_${t}.txt
       ok() { [ -f $f ] && ! bad_log $lg && grep -aq "HangStand-G11a-v0 |" $tx && grep -aq "seed=$SD |" $tx && grep -aq "사전 검사(무개입 자립 [0-9.]*s) 통과: [1-9]" $tx; }
       if ok 2>/dev/null; then i=$((i+1)); continue; fi

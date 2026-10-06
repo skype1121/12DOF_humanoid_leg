@@ -133,6 +133,11 @@ parser.add_argument("--settle_judge", type=str, default="imu", choices=("imu", "
                     help="1006 병목 2: KE 조기 복귀(--sw_early_imu) 판정기. imu = 현행(기울기·|ω|·양발, 기본 — 종전 결과 비트 동일) / "
                          "odo = rl_walking/deploy/leg_odometry(엔코더 FK·관측 자이로/중력·관측 접촉 0/1)의 0.9 s 주기 평균 속도 < --settle_v "
                          "& 양발 접촉 연속 ≥ --settle_ds & 켜진 뒤 ≥ --settle_min. 유지 시간·early_gate·불응기·calm 1 s 경로는 그대로")
+parser.add_argument("--settle_knee_comp", type=float, default=0.0,
+                    help="odo 판정 무릎 처짐 보상: 엔코더 무릎각에서 τ_knee/k̂ 를 뺀다(k̂ = 이 값 N·m/rad, 0 = 끔). τ = 무릎 적용 토크 + 잡음 σ 0.3 N·m(numpy RNG — torch RNG 경로 불변). 실물 대응 = tau_est_nm(모터 전류)")
+parser.add_argument("--settle_knee_inject", type=float, default=0.0,
+                    help="odo 판정 입력에만 '엔코더가 못 보는 무릎 동적 처짐' 주입: 엔코더 무릎 += (τ_knee − τ_knee(인계 시점))/k_env, k_env = 이 값 × U(0.8,1.25) env 별(numpy RNG). "
+                         "정책 관측·물리는 G11a 그대로(가설 관측 모델 — --knee_sea 물리 플랜트는 홀드·KE 가 0.2 s 안에 무너져 사용 불가, 1006 밤 측정)")
 parser.add_argument("--settle_v", type=float, default=0.07, help="odo 판정 |v̄| 문턱 [m/s]")
 parser.add_argument("--settle_ds", type=float, default=0.3, help="odo 판정 양발 접촉 연속 [s]")
 parser.add_argument("--settle_min", type=float, default=0.9, help="odo 판정 회복 켜진 뒤 최소 시간 [s](창 0.9 s 가 켜짐 전 서기를 품지 않게)")
@@ -926,12 +931,34 @@ for i in range(STEPS):
                 _pb_o = getattr(uenv, "_default_pose_bias", None)
                 if _pb_o is not None:
                     _enc_o = _enc_o - _pb_o
+                if float(args_cli.settle_knee_inject) > 0.0:
+                    if "_KI_IDX" not in dir():
+                        _KI_IDX = [list(robot.data.joint_names).index(n_) for n_ in ("left_knee_joint", "right_knee_joint")]
+                        import numpy as _np_ki
+                        _KI_K = torch.as_tensor(float(args_cli.settle_knee_inject) * _np_ki.random.default_rng(777).uniform(0.8, 1.25, size=(N, 1)), device=dev, dtype=torch.float32)
+                        _KI_T0 = robot.data.applied_torque[:, _KI_IDX].clone()
+                    if i == STEPS_PRE:
+                        _KI_T0 = robot.data.applied_torque[:, _KI_IDX].clone()
+                    _enc_o = _enc_o.clone(); _enc_o[:, _KI_IDX] = _enc_o[:, _KI_IDX] + (robot.data.applied_torque[:, _KI_IDX] - _KI_T0) / _KI_K
+                if float(args_cli.settle_knee_comp) > 0.0:
+                    if "_KC_IDX" not in dir():
+                        _KC_IDX = [list(robot.data.joint_names).index(n_) for n_ in ("left_knee_joint", "right_knee_joint")]
+                        import numpy as _np_kc; _KC_RNG = _np_kc.random.default_rng(12345)
+                    _tq = robot.data.applied_torque[:, _KC_IDX]
+                    _tq = _tq + torch.as_tensor(_KC_RNG.normal(0.0, 0.3, size=tuple(_tq.shape)), device=dev, dtype=_tq.dtype)
+                    if "_KI_T0" in dir():      # 주입과 같은 기준(인계 시점 토크) — 시뮬 엔코더−편향 = 링크라 정적 처짐은 이미 빠져 있음. 실물은 절대 τ/k̂
+                        _tq = _tq - _KI_T0
+                    _enc_o = _enc_o.clone(); _enc_o[:, _KC_IDX] = _enc_o[:, _KC_IDX] - _tq / float(args_cli.settle_knee_comp)
                 _gy_o = _gy_raw if args_cli.det_from_obs else robot.data.root_ang_vel_b
                 _pg_o = _pg_raw if args_cli.det_from_obs else robot.data.projected_gravity_b
                 _oo = _ODO.step(_enc_o.cpu().numpy(), _gy_o.cpu().numpy(), _pg_o.cpu().numpy(), _cf.float().cpu().numpy())
                 odo_spd = torch.as_tensor(_oo["speed_bar"], device=dev, dtype=torch.float32)
                 odo_frac = torch.as_tensor(_oo["frac"], device=dev, dtype=torch.float32)
                 odo_ds = torch.where(_cf[:, 0] & _cf[:, 1], odo_ds + 0.02, torch.zeros_like(odo_ds))
+                if "_ODO_Q" not in dir():
+                    _ODO_Q = []
+                if 1.5 <= t_rel < (min(d.t0 for d in dists) if dists else 1e9):      # 진단: 외란 전 조용한 서기의 추정 |v̄|(참 ≈ 0)
+                    _ODO_Q.append(odo_spd[alive & ~sw_mode].cpu())
             _on = (_tilt > _SW_ON[0]) | (_w > _SW_ON[1])
             _cq = {"both": _cf[:, 0] & _cf[:, 1], "any": _cf[:, 0] | _cf[:, 1], "none": torch.ones_like(_cf[:, 0])}[args_cli.sw_off_contact]
             _quiet = (_tilt < _SW_OFF[0]) & (_w < _SW_OFF[1]) & _cq
@@ -1579,6 +1606,15 @@ with open(os.path.join(DATA, "log_picture", f"ground_recovery_{args_cli.out_tag}
         if C2MODE:
             row += [float(c2_req_n[e]), float(c2_to_n[e]), float(c2_cancel_n[e]), float(c2_latch_n[e]), int(c2_cue_timeout[e])]
         wcsv.writerow(row)
+if "_ODO_Q" in dir() and _ODO_Q and torch.cat(_ODO_Q).numel() > 0:
+    _oq = torch.cat(_ODO_Q)
+    _ln = f"[settle_judge] 외란 전 서기 추정 |v̄| 중앙 {float(_oq.median()):.4f} · p90 {float(_oq.quantile(0.9)):.4f} · θ 초과 {100*float((_oq >= float(args_cli.settle_v)).float().mean()):.1f}% (n {_oq.numel()})"
+    print(_ln, flush=True)
+    try:
+        with open(os.path.join(DATA, "log_picture", f"ground_recovery_{args_cli.out_tag}.txt"), "a") as _fo:
+            _fo.write(_ln + "\n")
+    except Exception:
+        pass
 if C2MODE and _C2TR is not None:
     import numpy as _np2
     _np2.savez_compressed(os.path.join(DATA, "log_picture", f"c2trace_{args_cli.out_tag}.npz"), t_rel=_np2.array(_C2TR["t_rel"], dtype=_np2.float32),

@@ -5,8 +5,9 @@
 import csv, os, sys, math
 import numpy as np
 
-LP = "/home/ryu/humanoid_leg_test1/log_picture/ground_recovery_sab_{}_{}_s{}_envs.csv"
-SEEDS = (1, 2, 3, 4, 5, 6); CONDS = ("nd", "sf15", "fi40", "b18"); ARMS = ("imu", "o07", "o05")
+PFX = os.environ.get("SAB_PFX", "sab")
+LP = "/home/ryu/humanoid_leg_test1/log_picture/ground_recovery_" + PFX + "_{}_{}_s{}_envs.csv"
+SEEDS = (1, 2, 3, 4, 5, 6); CONDS = ("nd", "sf15", "fi40", "b18"); ARMS = tuple(os.environ.get("SAB_ARMS", "imu o07 o05").split())
 f = lambda x: None if x in ("", None) else float(x)
 
 

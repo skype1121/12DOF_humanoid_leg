@@ -122,10 +122,11 @@ def install_w3_ref(env, env_ids, ref_path: str = "", ref_scale: float = 1.0, fle
         u = env._gu if getattr(env, "_gu", None) is not None else torch.zeros(env.num_envs, device=env.device)
         ul = torch.remainder(u + lead_ticks * env.step_dt * getattr(env, "_gf", torch.zeros_like(u)), 1.0)
         half = (ul >= 0.5).long(); v = torch.remainder(2.0 * ul, 1.0); k = (v * 23.0).long().clamp(0, 22)
-        flex = R["q"][half, k] - R["q"][half, 0]
-        y = -shift_amp * torch.sin(2.0 * math.pi * (u + shift_lead))
+        fg = float(os.environ.get("W3_FLEX_GAIN", flex_gain)); sa = float(os.environ.get("W3_SHIFT_AMP", shift_amp))
+        flex = (R["q"][half, k] - R["q"][half, 0])
+        y = -sa * torch.sin(2.0 * math.pi * (u + shift_lead))
         shift = y.unsqueeze(1) * J.unsqueeze(0)
-        ref = rs * (flex_gain * flex + shift) * ge
+        ref = rs * (fg * flex + shift) * ge
         assist = a_s * flex * ge
         env._w3_ref_last = ref; env._w3_assist_last = assist
         return target + ref + assist
@@ -262,7 +263,9 @@ def w3_swing_height(env, h: float = 0.05, sig: float = 0.02, win: tuple = (0.12,
     ar = torch.arange(env.num_envs, device=env.device)
     dz = fz[ar, half] - fz[ar, 1 - half]
     zr = h * torch.sin(math.pi * vp)
-    return torch.exp(-((dz - zr) / sig) ** 2) * inw * _ge(env).float()
+    sensor = env.scene.sensors["contact_forces"]; fid = H._feet_body_ids(env)
+    air = (sensor.data.net_forces_w[:, fid, :].norm(dim=-1)[ar, half] <= 5.0).float()   # 1006 단위시험: 서기도 창 가장자리에서 +0.36/s 받음 → 공중일 때만
+    return torch.exp(-((dz - zr) / sig) ** 2) * inw * air * _ge(env).float()
 
 
 def w3_imitation(env, ref_path: str = "", sig_q: float = 0.10, win: tuple = (0.25, 0.75)) -> torch.Tensor:

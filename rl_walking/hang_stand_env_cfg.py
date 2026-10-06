@@ -3136,7 +3136,7 @@ class Biped12HangStandW3BaseEnvCfg(Biped12HangStandG21aEnvCfg):
         from isaaclab.envs import mdp as _imdp
         rw.w3_alive = RewTerm(func=_w3.w3_alive_step, weight=0.5)
         rw.w3_periodic = RewTerm(func=_w3.w3_periodic_contact, weight=-1.5)
-        rw.w3_height = RewTerm(func=_w3.w3_swing_height, weight=2.0)
+        rw.w3_height = RewTerm(func=_w3.w3_swing_height, weight=3.0)   # 1006 단위시험 2차 뒤 2→3(밀집 기울기 강화, 학습 전)
         rw.w3_valid = RewTerm(func=_w3.w3_value, weight=15.0, params={"name": "ev_valid"})
         rw.w3_place = RewTerm(func=_w3.w3_place_reward, weight=10.0)
         rw.w3_miss = RewTerm(func=_w3.w3_value, weight=-10.0, params={"name": "ev_miss"})

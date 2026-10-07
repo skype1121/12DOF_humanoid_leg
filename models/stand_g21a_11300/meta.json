@@ -1,0 +1,18 @@
+{
+  "name": "stand_g21a_11300",
+  "run": "2026-10-02_21-23-08_g21a",
+  "checkpoint": "model_11300.pt",
+  "checkpoint_md5": "599c47d3c3f190ad91a80a1ab7ff9fa7",
+  "task": "Biped12-HangStand-G21a-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "g19v model_10700",
+  "summary": "서기(STAND) · 합성 구조 1007 · 브리지 키 stand_crouch_g21a",
+  "legacy": false,
+  "files": {
+    "policy.pt": "2464f5cdba2e819d03ffa2d8d03bbb69",
+    "policy.onnx": "43f113109a369a60e976a391cf8f17cd",
+    "env.yaml": "ebda410ec37987f788df920ccac4f264",
+    "agent.yaml": "8e61e739e6fd6c6536c40e030cb6180c"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a"
+}

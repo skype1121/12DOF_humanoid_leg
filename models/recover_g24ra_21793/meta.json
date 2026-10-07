@@ -1,0 +1,18 @@
+{
+  "name": "recover_g24ra_21793",
+  "run": "2026-10-04_10-08-41_g24ra_seed1_from_w2e20294",
+  "checkpoint": "model_21793.pt",
+  "checkpoint_md5": "05e6b8ee4109ef40fd24bd8437bdfcba",
+  "task": "Biped12-HangStand-G24Ra-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "w2e model_20294",
+  "summary": "회복(RECOVERY) · 합성 구조 1007 · 브리지 C5_PAIRS 회복 경로",
+  "legacy": false,
+  "files": {
+    "policy.pt": "896ca613bc402de02caa8302988f9a68",
+    "policy.onnx": "57547697918f679543413a5b24c36555",
+    "env.yaml": "7ff27617abdb9dd8ee6155c5d7703eaf",
+    "agent.yaml": "df9cf6e61457ef195920966519d1a558"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294"
+}

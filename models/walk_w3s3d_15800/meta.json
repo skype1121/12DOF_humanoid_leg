@@ -1,0 +1,18 @@
+{
+  "name": "walk_w3s3d_15800",
+  "run": "2026-10-07_00-11-12_w3S3d_from_s2d",
+  "checkpoint": "model_15800.pt",
+  "checkpoint_md5": "3da9f2e5b6c435d6b6df220e3a7969b2",
+  "task": "Biped12-HangStand-W3S3d-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "w3s2d model_15694",
+  "summary": "걷기·회전(WALK/TURN) · 합성 구조 1007 · 브리지 키 stand_w3s3d_15800",
+  "legacy": false,
+  "files": {
+    "policy.pt": "10e3ee405e1534ebe67574ddbeb9a2a2",
+    "policy.onnx": "d908cd92ba0916e790f9e3e28ff1d882",
+    "env.yaml": "41d1e62aed455029be7351a1db43f48f",
+    "agent.yaml": "8757acfb3435503cec55a32227b75b27"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d"
+}

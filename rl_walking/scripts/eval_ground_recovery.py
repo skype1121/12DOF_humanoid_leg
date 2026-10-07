@@ -149,6 +149,10 @@ parser.add_argument("--cue_clock", type=str, default="", choices=("", "reset"), 
 parser.add_argument("--sw_monitor", action="store_true", help="감지기만 돌리고 전환하지 않음(주 정책 유지) — 감지 순간 상태 snapshot 비교용(C5 원인 B)")
 parser.add_argument("--sw_on", type=str, default="4.0,0.5", help="전환 켜기: 기울기 deg, |ω_xy| rad/s (어느 하나 초과)")
 parser.add_argument("--sw_off", type=str, default="2.5,0.25,1.0,1.5", help="전환 끄기: 기울기 deg, |ω| rad/s 둘 다 미만 & 양발 접촉이 calm s 연속 & 켜진 뒤 최소 hold s")
+parser.add_argument("--osc_inj", type=str, default="",
+                    help="1007 STOPEST §13b: 몸통 피치 축 외부 토크 정현 버스트 'f,τ_lo,τ_hi,t0,on,gap_lo,gap_hi,n' (f Hz · 진폭 env 별 U(τ_lo,τ_hi) N·m · "
+                         "인계 기준 t0 s 부터 on s 버스트 n 회, 틈 env 별 U(gap_lo,gap_hi) s · 램프 0.1 s). numpy RNG(4242) — torch RNG 경로 불변. 빈 값 = 끔(종전 비트 동일)")
+parser.add_argument("--trace_npz", action="store_true", help="1007 §13b: 틱별 회복 모드·참 |ω_xy|·감지 |ω_xy|·생존 기록 → log_picture/ground_recovery_<tag>_trace.npz (회복 전환 평가 전용)")
 parser.add_argument("--out_tag", type=str, default="rec")
 parser.add_argument("--c2", action="store_true", help="1006 c2 평가 어댑터: 단일 W3 정책 + 환경 안 supervisor(w3_c2.c2_gait_update, 배포 의미) + W3 위상·ge 래치·스텝 추적기. "
                     "회복 모드 = 실제 ge 1, 'cue 종료' = 첫 정지 요청(상태 조건/시간 초과), '서기 인계' = ge 0 래치 — CSV 열은 전환 평가와 같은 이름(stages_cmp·closure_s5 그대로)")
@@ -869,7 +873,26 @@ for i in range(STEPS):
     elif float(args_cli.land_s) > 0.0 and i == int(round(float(args_cli.land_s) * 50)) + 1:
         _z = torch.zeros(N, robot.num_bodies, 3, device=dev)
         robot.set_external_force_and_torque(_z, _z)
-    if dists:
+    if args_cli.osc_inj:      # 1007 §13b: 몸통 피치 토크 버스트(몸통 로컬 y 축 — 몸통 +x = 앞). 힘 외란과 한 번에 건다.
+        if "_OSC" not in dir():
+            import numpy as _np_osc
+            _of, _olo, _ohi, _ot0, _oon, _oglo, _oghi, _on_ = [float(x) for x in args_cli.osc_inj.split(",")]
+            _org = _np_osc.random.default_rng(4242)
+            _OSC = dict(f=_of, t0=_ot0, on=_oon, n=int(_on_), amp=torch.as_tensor(_org.uniform(_olo, _ohi, N), device=dev, dtype=torch.float32),
+                        gap=torch.as_tensor(_org.uniform(_oglo, _oghi, N), device=dev, dtype=torch.float32))
+            osc_amp_env = _OSC["amp"].clone(); osc_gap_env = _OSC["gap"].clone()
+            print(f"[osc_inj] {_of} Hz · τ U({_olo},{_ohi}) N·m · t0 {_ot0} s · 버스트 {_oon} s × {int(_on_)} · 틈 U({_oglo},{_oghi}) s", flush=True)
+        _env_ = torch.zeros(N, device=dev)
+        if i >= STEPS_PRE:
+            for _kb in range(_OSC["n"]):
+                _s0 = _OSC["t0"] + _kb * (_OSC["on"] + _OSC["gap"])
+                _a_ = ((t_rel - _s0) / 0.1).clamp(0, 1) * ((_s0 + _OSC["on"] - t_rel) / 0.1).clamp(0, 1)
+                _env_ = _env_ + 0.5 - 0.5 * torch.cos(math.pi * _a_)
+        _tq_ = _OSC["amp"] * _env_ * math.sin(2 * math.pi * _OSC["f"] * max(0.0, t_rel - _OSC["t0"]))
+        tvec_b = torch.zeros(N, 1, 3, device=dev); tvec_b[:, 0, 1] = _tq_
+        fvec_b = quat_apply_inverse(robot.data.root_quat_w, fvec[:, 0, :]).unsqueeze(1)
+        robot.set_external_force_and_torque(fvec_b, tvec_b, body_ids=[_base_id])
+    elif dists:
         # 0920 검증: Isaac Lab 2.3.2 의 is_global=True 가 실제로는 로컬로 걸렸다(1 env 검증에서 뒤 밀기에 골반이 앞으로) → 월드 힘을 base 쿼터니언으로 직접 로컬 변환해 기본 경로(로컬)로 건다
         fvec_b = quat_apply_inverse(robot.data.root_quat_w, fvec[:, 0, :]).unsqueeze(1)
         robot.set_external_force_and_torque(fvec_b, torch.zeros_like(fvec_b), body_ids=[_base_id])
@@ -1049,6 +1072,11 @@ for i in range(STEPS):
             if dists and t_rel < min(d.t0 for d in dists):
                 swc_pre += _new_on.float()
             sw_ticks += (sw_mode & alive).float()
+            if args_cli.trace_npz:      # 1007 §13b: 모드·참/감지 |ω_xy|·생존
+                if "_TRC" not in dir():
+                    _TRC = {"t_rel": [], "mode": [], "w_true": [], "w_det": [], "alive": []}
+                _TRC["t_rel"].append(t_rel); _TRC["mode"].append(sw_mode.cpu()); _TRC["alive"].append(alive.cpu())
+                _TRC["w_true"].append(robot.data.root_ang_vel_b[:, :2].norm(dim=-1).half().cpu()); _TRC["w_det"].append(_w.half().cpu())
             if dists and t_rel < min(d.t0 for d in dists):
                 sw_ticks_pre_dist += (sw_mode & alive).float()
             if args_cli.sw_rec_vx is not None:
@@ -1618,6 +1646,13 @@ if "_ODO_Q" in dir() and _ODO_Q and torch.cat(_ODO_Q).numel() > 0:
             _fo.write(_ln + "\n")
     except Exception:
         pass
+if args_cli.trace_npz and "_TRC" in dir():
+    import numpy as _np3
+    _np3.savez_compressed(os.path.join(DATA, "log_picture", f"ground_recovery_{args_cli.out_tag}_trace.npz"), t_rel=_np3.array(_TRC["t_rel"], dtype=_np3.float32),
+                          **{k: torch.stack(v, 0).numpy() for k, v in _TRC.items() if k != "t_rel"}, pre_pass=pre_pass.cpu().numpy(), fell=fell.cpu().numpy(),
+                          osc_amp=(osc_amp_env.cpu().numpy() if "osc_amp_env" in dir() else _np3.zeros(0)), osc_gap=(osc_gap_env.cpu().numpy() if "osc_gap_env" in dir() else _np3.zeros(0)),
+                          osc_inj=args_cli.osc_inj, dist=args_cli.dist, settle_judge=args_cli.settle_judge, settle_w=args_cli.settle_w)
+    print(f"[trace_npz] log_picture/ground_recovery_{args_cli.out_tag}_trace.npz", flush=True)
 if C2MODE and _C2TR is not None:
     import numpy as _np2
     _np2.savez_compressed(os.path.join(DATA, "log_picture", f"c2trace_{args_cli.out_tag}.npz"), t_rel=_np2.array(_C2TR["t_rel"], dtype=_np2.float32),

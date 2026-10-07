@@ -112,6 +112,7 @@ def main():
             pol = os.path.join(a.policy_root, rel)
             cnd = os.path.join(cand, os.path.basename(rel))
             if os.path.isfile(wt) and md5_file(wt) == want:
+                os.makedirs(os.path.dirname(dst), exist_ok=True)      # 1008: logs/ 가 있는 메인 체크아웃에서 돌리면 정책 파일이 이 가지로 온다(폴더가 아직 없음)
                 shutil.copyfile(wt, dst)
                 src_note = "워크트리(HEAD 와 같음)"
             elif rel.startswith("jetson/scripts/") and os.path.isfile(cnd) and md5_file(cnd) == want:

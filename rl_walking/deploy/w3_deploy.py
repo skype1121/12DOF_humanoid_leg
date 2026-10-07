@@ -245,7 +245,7 @@ def validate_w3_cmd(d, lim: W3CmdLimits) -> tuple:
     nz = [k for k in ("vx", "vy", "wz") if v[k] != 0.0]
     if len(nz) > 1:
         raise ValueError(f"단일 축만 허용(받음 {nz}) — W3S3d 학습 = 제자리/앞뒤/옆/회전 한 축, 혼합은 학습 밖")
-    eps = 1e-9
+    eps = 1e-6      # 1007: 1e-9 → 1e-6 — 경계값이 float32 를 한 번 거치면(0.1f = 0.1 + 1.5e-9, 0.2f = 0.2 + 3.0e-9) 거부되던 것 방지. 1e-6 m/s·rad/s 는 물리적으로 무의미한 여유
 
     def inr(x, r):
         return r[0] - eps <= abs(x) <= r[1] + eps

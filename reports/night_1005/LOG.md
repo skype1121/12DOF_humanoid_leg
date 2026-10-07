@@ -1587,3 +1587,7 @@ vx .053/.073/.078/.090(기울기 0.25), 뒤 명령 낙상 54 %·걸음 없음, �
   nostop 연기: 걷는 중 전환 → 감지기 즉시 켜짐 100 %, 피크 |롤| 11°·|ω| 1.9, 낙상 0/16, 정상 자세 1.5 s.
 - **imuH 독립 seed 7–12**(STOPEST §16 사전 등록 15:20): imu(기준)+imuH × 지연 2·3 × nd/sf15/fi40/b18, 96 실행 큐(scratchpad imuh_q.sh). 판정 `settle_promote_x.py`(P1–P5 + P6 해제 뒤 1 s 재흔들림/재켜짐).
 - 15:50 격자 체인 기동(공용 잠금, 순차): ke2w3 연기 → w3ke 지연 2(restart/none → nostop/reset/direct, 45) → ke2w3 지연 2(36) → w3ke 지연 3·4(24) → Q4(6) → ke2w3 지연 3·4(24). 요약 `trans_summ.py`.
+## 1007 15:44 — W3 → STOP → 정착 → KE restart: 지연 2 seed 1–3 **R1–R3 통과** (TRANSITION_W3KE §5.1)
+- 316 env/조건: nd KE 뒤 5 s 낙상 0 · 감지기 오탐 0.6 % · 정상 자세 복귀 0.48 s(100 %) · 전환 목표 불연속 0.02°/틱. b18(16 s) restart 4.7 % vs W3 STAND 유지 12.0 %(p 0.001), sf15 17.1 % vs 99.7 %.
+  KE 는 걷기 뒤에도 홀드→KE 기준선(b18 5.9·sf15 18.3 %)과 같은 급. 남은 것 = hot-swap(reset/direct) 비교·수동 홀드 창 외란·지연 3·4.
+- imuH 지연 2 seed 7–12(STOPEST §16a): P1·P3–P6 통과, P2 fi40 −2.3 %p 로 규칙(−2 %p) 0.3 %p 초과 → 등록 규칙상 불통과(짝 검정은 악화 아님). 지연 3 뒤 최종, 승격은 사용자 결정.

@@ -27,6 +27,8 @@ LABELS = {
     "auto_level_on": "자동 수평 ON", "auto_level_off": "자동 수평 OFF",
     "zero_multiple": "영점 배수 보정", "zero_recapture": "영점 재캡처", "zero_kin": "영점 기구학 검증",
     "policy_on": "정책 ON(착지 자동 인수)",
+    # 1007 걷기 조작(W3 세션 전용) — 버튼 하나 = 시간 제한 걷기 한 번(끄기 기한은 브리지 몫)
+    "w3_move": "걷기 버튼(시간 제한 걷기)", "w3_off": "걷기 끄기(서기)", "w3_stop": "걷기 정지 래치", "w3_rearm": "걷기 재무장",
 }
 MANUAL = {"joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd", "air_gait_on", "air_gait_off", "auto_level_on", "auto_level_off"}
 ZERO_TOOLS = {"zero_multiple", "zero_recapture", "zero_kin"}   # 0914 영점 도구 — 제어 시작 전(준비)에서만   # 0914 12축 개별 제어기(자세 유지 스크립트의 관절 트림). 운용 게인 뒤에만.
@@ -93,6 +95,431 @@ def finite(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
+# ---------------------------------------------------------------------------
+# 1007 걷기 조작 — 시간 제한 걷기 버튼 한 번의 수명 상태기 (W3 세션 전용)
+# ---------------------------------------------------------------------------
+#: 걷기 실험 키: 브리지가 실험 플래그(--experimental-w3 [--experimental-kew3])로만 등록하는 정책 키.
+#: 값은 여기 한 곳에 적고 콘솔 selftest 가 원본(w3_deploy.W3S3D_CKPT_KEY · 브리지 KEW3_CKPT_KEY)과 대조한다.
+#:   composite = 합성 러너(서 있는 동안 KE, 걷는 동안 W3) — '서기 복귀' 판정에 kew3.mode == "ke" 를 더 요구한다.
+WALK_KEYS = {
+    "stand_w3s3d_15800": {"composite": False, "label": "걷기 실험 · W3 단독"},
+    "stand_kew3_g21a_g24ra_w3s3d15800": {"composite": True, "label": "걷기 실험 · 서기 KE + 걷기 W3 합성"},
+}
+WALK_KIND = {"w3_move": "move", "w3_off": "off", "w3_stop": "stop", "w3_rearm": "rearm"}
+WALK_SAFE = {"w3_off", "w3_stop"}      # 안전 방향(걷기 끄기·정지 래치) — 단계·고장 래치·앞 요청과 무관하게 받는다
+WALK_ACK_TIMEOUT_S = 2.0               # 응답 대기 [s]. 넘으면 '응답 없음' — 같은 명령을 다시 보내지 않는다
+WALK_END_GRACE_S = 3.0                 # 표시 전용: 수락 뒤 기한 + 이 시간이 지나도 걷기 끝이 확인되지 않으면 경고(콘솔은 끄기 타이머를 갖지 않는다)
+WALK_STAND_GRACE_S = 6.0               # 표시 전용: 걷기 끝 요청 뒤 이 시간이 지나도 서기가 확인되지 않으면 경고(반주기 0.45 s + 합성 정착 상한 3 s)
+WALK_SETTLE_MARGIN_S = 0.15            # 콘솔(20 Hz 표본)과 브리지(정책 틱)가 세는 '조용한 양발 서기' 시간의 차이 여유 [s]
+WALK_ACTIVE = ("sent", "walking", "ending")
+WALK_STAGE_LABEL = {
+    "sent": "발행함 · 브리지 응답 대기", "walking": "수락됨 · 걷는 중(서기 복귀 미확인)",
+    "ending": "걷기 끝 요청됨 · 서기 복귀 확인 중", "done": "서기 복귀 확인됨", "rejected": "거부됨",
+    "no_ack": "응답 없음 — 상태 확인 필요", "interrupted": "중단됨",
+    "accepted": "수락됨",              # 보조 명령(끄기·정지 래치·재무장)에만 쓰는 끝 단계
+}
+
+
+class WalkState:
+    """걷기 버튼(시간 제한 걷기) 한 번의 수명. 서버가 갖는 상태라 새로고침·재접속·중복 클릭과 무관하다.
+
+        sent(발행함) → walking(같은 req_id 의 수락 응답) → ending(같은 req_id 의 burst_end 응답 = 브리지가 스스로 끄기 요청)
+                     → done(디버그 토픽이 서기를 보임: want 0·ge 0, 합성 키면 mode ke)
+        · rejected(거부 응답) · no_ack(응답 대기 초과 — 재전송 없음, 디버그가 서기를 보일 때까지 새 버튼 차단)
+        · interrupted(정지 요청·고장 래치·브리지 정지 래치)
+
+    이 클래스는 명령을 보내지 않는다. 콘솔이 발행 직전에 begin() 으로 알리고, 응답은 feed(), 디버그 상태는 update() 로 받는다.
+    '수락됨'(walking)과 '서기 복귀 확인됨'(done)은 다른 단계다 — 클릭 성공·수락 응답을 동작 완료로 취급하지 않는다.
+    끄기 기한은 브리지 몫이다(step 켜기의 dur_s). 여기에는 끄기 타이머가 없고, 기한이 실제로 걸렸는지를 수락 응답에서 확인만 한다.
+    디버그 프레임과 응답은 서로 다른 토픽이라 도착 순서가 보장되지 않는다 → 프레임이 응답보다 '뒤의 것'인지는 둘의 브리지 timestamp 로 가린다.
+    """
+
+    def __init__(self):
+        self.cur = None          # 현재/마지막 걷기 버튼 기록
+        self.cmd = None          # 마지막 보조 명령(끄기·정지 래치·재무장) 기록
+        self.rev = 0             # 기록 단계가 바뀔 때마다 증가(화면 갱신·진단용)
+        self.acks = []           # 최근 응답 요약(표시용, 최대 8)
+        self.guard_mode = None   # 마지막 응답이 알려 준 guard_mode (디버그 토픽은 safe 일 때 이 필드를 싣지 않는다)
+        self._inbox = []
+        self._steady_since = None   # 콘솔이 본 '조용한 양발 서기'가 이어지기 시작한 시각(끊기면 None) — 브리지 켜기 조건을 따라 세는 표시용 시계
+        self.broken = None       # 이 상태기 안에서 난 예외(첫 것) — 걷기 버튼·재무장을 잠그되 기립 시험 상태기로 번지지 않게 가둔다(fail)
+
+    # ---- 입력 ----
+    def feed(self, items):
+        """수신한 응답 [{"t": 수신 시각, "ack": dict}, …] 을 쌓아 둔다 — 처리는 update() 가 수신 순서대로 한다."""
+        self._inbox.extend(i for i in items if isinstance(i, dict) and isinstance(i.get("ack"), dict))
+
+    def begin(self, trial, kind, req_id, seq, cmd, name=None, label=None):
+        """콘솔이 발행 **직전에** 부른다(발행은 한 번뿐). kind = "move" | "off" | "stop" | "rearm"."""
+        rec = {"kind": kind, "req_id": req_id, "seq": int(seq), "name": name, "label": label or kind, "stage": "sent",
+               "why": None, "note": None, "accepted": None, "cmd": dict(cmd),
+               "wall_sent": self._wall(trial), "_t_sent": trial.clock()}
+        if kind == "move":
+            rec.update(dur_s=cmd.get("dur_s"), deadline=None, end_by=None, late_ack=False, seen_walking=False, stand_seen=None)
+            self.cur = rec
+        else:
+            self.cmd = rec
+        self.rev += 1
+        trial.emit("walk_request", req_id=req_id, walk=name or kind, stage="sent", cmd=dict(cmd),
+                   message=f"{rec['label']} 발행(1 회) · seq {int(seq)}")
+        return rec
+
+    def not_sent(self, trial, rec, why):
+        """발행 자체가 실패했다(명령이 나가지 않음) — 브리지의 거부와 구분해 by=console 로 남긴다."""
+        self._set(trial, rec, "rejected", "walk_not_sent", why=why, accepted=False, by="console")
+
+    def interrupt(self, trial, reason):
+        """정지 요청·고장 래치 — 진행 중인 걷기 버튼(응답 없음으로 서기 확인을 기다리던 것 포함)을 중단으로 닫는다."""
+        cur = self.cur
+        if cur is not None and (cur["stage"] in WALK_ACTIVE or (cur["stage"] == "no_ack" and not cur.get("stand_seen"))):
+            self._set(trial, cur, "interrupted", "walk_interrupted", why=str(reason), stand_seen=None)
+
+    def fail(self, trial, exc):
+        """걷기 패널(실험 기능) 안에서 난 예외를 가둔다 — 걷기 버튼·재무장은 잠그고(끄기·정지 래치·정지 요청은 그대로), 기립 시험의
+        단계·고장 래치·기록은 건드리지 않는다. 첫 예외만 남기고 타임라인에 한 번 적는다."""
+        if self.broken is None:
+            self.broken = f"{type(exc).__name__}: {exc}"[:300]
+            self.rev += 1
+            trial.emit("walk_internal_error", message=f"걷기 패널 내부 오류 — 걷기 버튼 잠금: {self.broken}")
+
+    # ---- 내부 ----
+    @staticmethod
+    def _wall(trial):
+        stamp = (trial.view or {}).get("server_time")
+        return stamp if finite(stamp) else time.time()
+
+    @staticmethod
+    def describe(rec):
+        """화면·기록에 쓰는 한 줄 요약. 사유(why)는 거부·중단·응답 없음과 보조 명령의 수락에만 붙인다 — 걷기 버튼의 수락 사유는
+        길어서 기록의 why 필드와 '최근 응답' 줄에 두고, 끝난 뒤에는 무엇으로 끝났는지를 보인다."""
+        stage = rec["stage"]
+        text = f"{rec['label']} · {WALK_STAGE_LABEL.get(stage, stage)}"
+        if stage in ("rejected", "interrupted", "no_ack", "accepted") and rec.get("why"):
+            text += f" — {rec['why']}"
+        elif stage == "ending":
+            text += " — " + {"burst": "브리지 기한 종료", "off": "운영자 걷기 끄기",
+                            "observed": "디버그에서 걷기 요청 해제 관측"}.get(rec.get("end_by"), str(rec.get("end_by")))
+        elif stage == "done":
+            # 콘솔이 본 시간이다(브리지 틱이 아니라 콘솔 상태 주기 기준): 수락 응답 → 걷기 끝 요청 → 서기 확인
+            parts = ([f"수락→끝 요청 {rec['walked_s']:.2f} s"] if finite(rec.get("walked_s")) else []) \
+                + ([f"끝 요청→서기 확인 {rec['settle_s']:.2f} s"] if finite(rec.get("settle_s")) else [])
+            if parts:
+                text += " — " + " · ".join(parts)
+        if stage == "walking" and rec.get("deadline") is False:
+            text += " · ⚠ 브리지가 이 요청으로 기한(burst)을 걸지 않았습니다 — 스스로 서지 않을 수 있음. '걷기 끄기(서기)'나 정지 요청으로 끝내세요"
+        if rec.get("note"):
+            text += f" · {rec['note']}"
+        return text
+
+    def _set(self, trial, rec, stage, event, **fields):
+        rec.update(fields)
+        rec["stage"] = stage
+        rec["wall_" + stage] = self._wall(trial)
+        rec["_t_" + stage] = trial.clock()
+        self.rev += 1
+        trial.emit(event, req_id=rec["req_id"], walk=rec.get("name") or rec["kind"], stage=stage, message=self.describe(rec),
+                   **({"why": rec["why"]} if rec.get("why") else {}))      # 브리지·콘솔이 준 사유 원문(타임라인용)
+
+    def _end(self, trial, cur, by, ts, wall, **fields):
+        """걷기 끝 '요청'이 확인됐다(브리지 기한 burst_end · 운영자 끄기 · 디버그의 want 0). 서기 복귀 확인은 아직 아니다."""
+        self._set(trial, cur, "ending", "walk_burst_end" if by == "burst" else "walk_end",
+                  end_by=by, _end_ts=ts, _end_wall=wall, **fields)
+
+    @staticmethod
+    def bridge_status(trial):
+        """**신선한** 디버그 프레임에서만 걷기 상태를 읽는다 — 오래된 프레임의 want 0·ge 0 을 '서 있음'으로 쓰지 않는다."""
+        view = trial.view or {}
+        b = view.get("bridge") or {}
+        fresh = bool((view.get("fresh") or {}).get("bridge"))
+        w3 = b.get("w3") if fresh and isinstance(b.get("w3"), dict) else None
+        sup = b.get("w3_sup") if fresh and isinstance(b.get("w3_sup"), dict) else None
+        kew3 = b.get("kew3") if fresh and isinstance(b.get("kew3"), dict) else None
+        key = b.get("checkpoint") if b.get("checkpoint") in WALK_KEYS else trial.checkpoint
+        composite = kew3 is not None or bool(WALK_KEYS.get(key, {}).get("composite"))
+        want, ge = (w3 or {}).get("want"), (w3 or {}).get("ge")
+        mode = (kew3 or {}).get("mode")
+        return {"fresh": fresh, "w3": w3, "sup": sup, "kew3": kew3, "composite": composite, "mode": mode,
+                # 서기 = 걷기 요청 없음·래치 꺼짐(합성 키는 KE 로 인계까지). 필드가 없거나 bool 이 아니면 서기로 보지 않는다.
+                "standing": w3 is not None and want is False and ge is False and (not composite or mode == "ke"),
+                "walking": w3 is not None and (want is True or ge is True or (composite and mode == "w3")),
+                "ts": b.get("ts") if finite(b.get("ts")) else None,
+                "recv": (view.get("received") or {}).get("bridge")}
+
+    @staticmethod
+    def _end_stand_observation(trial, why):
+        """서기(무보조) 관찰 구간은 걷기가 시작되면 끝난다 — 한발 지지의 접촉 상실로 무효 처리되기 전에 사유를 정확히 남긴다."""
+        if trial.slack_at is not None and trial.measurement.get("state") == "measuring":
+            trial.invalidate(f"{why} — 서기(무보조) 관찰 구간 종료")
+            trial.measurement["ended_by"] = "walk"
+
+    @staticmethod
+    def _after(st, ref_ts, ref_wall):
+        """디버그 프레임이 기준 시점(응답)보다 뒤의 것인가 — 브리지 시계끼리 비교하고, 없으면 콘솔 수신 시각으로."""
+        if finite(st["ts"]) and finite(ref_ts):
+            return st["ts"] > ref_ts
+        return finite(st["recv"]) and finite(ref_wall) and st["recv"] > ref_wall
+
+    def _on_ack(self, trial, item):
+        ack = item["ack"]
+        rid, event, ts, wall = ack.get("req_id"), ack.get("event"), ack.get("timestamp"), item.get("t")
+        accepted = ack.get("accepted") is True
+        why = str(ack.get("why") if ack.get("why") is not None else "")[:300]
+        if isinstance(ack.get("guard_mode"), str):
+            self.guard_mode = ack["guard_mode"]
+        brief = {"t": wall, "req_id": rid, "cmd": ack.get("cmd"), "event": event, "accepted": accepted,
+                 "why": why, "action": ack.get("action"), "match": None}
+        self.acks = (self.acks + [brief])[-8:]
+        cur, cmd = self.cur, self.cmd
+        if cur is not None and isinstance(rid, str) and rid == cur["req_id"]:
+            brief["match"] = "walk"
+            if event == "burst_end":
+                if cur["stage"] in ("sent", "walking", "no_ack"):
+                    lost = cur["stage"] != "walking"      # 수락 응답은 못 받았지만 같은 req_id 의 기한 종료가 왔다 = 수락됐었다
+                    self._end(trial, cur, "burst", ts, wall, end_why=why, accepted=True,
+                              **({"late_ack": True, "note": "수락 응답 미수신 — burst_end 로 수락 확인"} if lost else {}))
+            elif cur["stage"] in ("sent", "no_ack"):
+                late = cur["stage"] == "no_ack"
+                if accepted:
+                    sup = ack.get("sup") if isinstance(ack.get("sup"), dict) else {}
+                    burst = sup.get("burst")
+                    armed = isinstance(burst, dict) and burst.get("req_id") == rid
+                    # deadline = 브리지가 이 요청으로 끄기 기한(burst)을 실제로 걸었는가. 아니면(옛 브리지·이미 켜져 있던 걷기 등)
+                    # 스스로 서지 않을 수 있다 — 콘솔은 끄기를 대신 보내지 않고 경고만 띄운다(describe).
+                    self._set(trial, cur, "walking", "walk_ack", accepted=True, why=why, late_ack=late, deadline=armed,
+                              ack_action=ack.get("action"), _ack_ts=ts, _ack_wall=wall, stand_seen=None)
+                    self._end_stand_observation(trial, f"걷기 버튼 실행({cur['label']})")
+                else:
+                    self._set(trial, cur, "rejected", "walk_ack", accepted=False, why=why, late_ack=late, by="bridge")
+            return
+        if cmd is not None and isinstance(rid, str) and rid == cmd["req_id"]:
+            brief["match"] = "cmd"
+            if cmd["stage"] in ("sent", "no_ack"):
+                self._set(trial, cmd, "accepted" if accepted else "rejected", "walk_cmd_ack", accepted=accepted, why=why)
+                if accepted and cur is not None:
+                    if cmd["kind"] == "off" and cur["stage"] == "walking":
+                        self._end(trial, cur, "off", ts, wall, end_why="운영자 걷기 끄기")
+                    elif cmd["kind"] == "stop" and cur["stage"] in WALK_ACTIVE:
+                        self._set(trial, cur, "interrupted", "walk_interrupted", why="운영자 정지 래치(stop)")
+
+    # ---- 주기 갱신(브라우저와 무관하게 콘솔 샘플러가 부른다) ----
+    def update(self, trial):
+        inbox, self._inbox = self._inbox, []
+        for item in inbox:
+            self._on_ack(trial, item)
+        now = trial.clock()
+        st = self.bridge_status(trial)
+        w3, sup = st["w3"], st["sup"] or {}
+        latched = sup.get("stop_latched") is True
+        if st["walking"]:        # 응답을 못 받았거나 콘솔 밖 명령이어도, 브리지가 걷는 중이면 서기 관찰은 끝난 것이다
+            self._end_stand_observation(trial, "걷기 시작(브리지 want/ge 1)")
+        # 브리지 감독기의 켜기 조건(양발 접촉·|ω_xy| 조용함이 각각 연속 N 초)을 콘솔 표본으로 따라 센다. 걷기 직후 곧바로 누른 버튼이
+        # 브리지에서 '양발 접촉 0.5s < 1s' 로 거부되는 일을 줄이는 **표시용** 문턱이다 — 최종 판정은 브리지가 한다(reason 참조).
+        view = trial.view or {}
+        ready = view.get("walk_ready") if isinstance(view.get("walk_ready"), dict) else None
+        gyro = (view.get("imu") or {}).get("gyro")
+        quiet = (ready is None or not finite(ready.get("quiet_w"))
+                 or (isinstance(gyro, (list, tuple)) and len(gyro) >= 2 and finite(gyro[0]) and finite(gyro[1])
+                     and math.hypot(gyro[0], gyro[1]) < ready["quiet_w"]))
+        steady = st["standing"] and (view.get("foot") or {}).get("contact") == [True, True] and quiet
+        self._steady_since = (self._steady_since if self._steady_since is not None else now) if steady else None
+        cur = self.cur
+        if cur is not None:
+            if trial.fault and (cur["stage"] in WALK_ACTIVE or (cur["stage"] == "no_ack" and not cur.get("stand_seen"))):
+                self.interrupt(trial, f"정지·고장: {trial.fault}")
+            if cur["stage"] == "sent" and now - cur["_t_sent"] > WALK_ACK_TIMEOUT_S:
+                self._set(trial, cur, "no_ack", "walk_no_ack",
+                          why=f"{WALK_ACK_TIMEOUT_S:g} s 안에 응답 없음 — 재전송하지 않음. 디버그가 서기를 보일 때까지 새 걷기 버튼 차단")
+            elif cur["stage"] == "walking":
+                after = self._after(st, cur.get("_ack_ts"), cur.get("_ack_wall"))
+                last_end, burst = sup.get("last_burst_end"), sup.get("burst")
+                if isinstance(last_end, dict) and last_end.get("req_id") == cur["req_id"]:
+                    self._end(trial, cur, "burst", st["ts"], st["recv"], note="burst_end 응답 미수신 — 디버그의 기한 종료 기록으로 확인")
+                elif after and isinstance(burst, dict) and burst.get("req_id") != cur["req_id"]:
+                    self._set(trial, cur, "interrupted", "walk_interrupted", why="다른 요청이 걷기 명령을 넘겨받았습니다 — 콘솔 밖 명령 확인")
+                elif after and w3 is not None and w3.get("want") is False:
+                    if latched:
+                        self._set(trial, cur, "interrupted", "walk_interrupted", why=f"브리지 정지 래치({sup.get('latch_reason')})")
+                    else:       # 끄기·기한 종료 응답은 못 받았지만 브리지가 걷기 요청을 내렸다(want 0)
+                        self._end(trial, cur, "observed", st["ts"], st["recv"])
+            elif cur["stage"] == "ending":
+                after = self._after(st, cur.get("_end_ts"), cur.get("_end_wall"))
+                if after and st["standing"]:
+                    took = cur["_t_ending"] - cur["_t_walking"] if "_t_walking" in cur else None
+                    self._set(trial, cur, "done", "walk_done", stand_seen=self._wall(trial),
+                              walked_s=round(took, 2) if took is not None else None,
+                              settle_s=round(now - cur["_t_ending"], 2))
+                elif after and latched:
+                    self._set(trial, cur, "interrupted", "walk_interrupted", why=f"브리지 정지 래치({sup.get('latch_reason')})")
+                elif after and w3 is not None and w3.get("want") is True:
+                    self._set(trial, cur, "interrupted", "walk_interrupted", why="걷기가 다시 켜졌습니다 — 콘솔 밖 명령 확인")
+            if cur["stage"] in ("no_ack", "interrupted") and not cur.get("stand_seen"):
+                if st["walking"] and not cur.get("seen_walking"):
+                    cur["seen_walking"] = True          # 응답은 없었지만 디버그상 걷는 중 — 화면에 그대로 보인다
+                    self.rev += 1
+                t_ref = cur.get("wall_" + cur["stage"])
+                if st["standing"] and finite(st["recv"]) and finite(t_ref) and st["recv"] > t_ref:
+                    cur["stand_seen"] = self._wall(trial)
+                    self.rev += 1
+                    trial.emit("walk_standing_confirmed", req_id=cur["req_id"], walk=cur.get("name"), stage=cur["stage"],
+                               message=f"{cur['label']} · 디버그에서 서기(want 0·ge 0) 확인")
+        cmd = self.cmd
+        if cmd is not None and cmd["stage"] == "sent" and now - cmd["_t_sent"] > WALK_ACK_TIMEOUT_S:
+            self._set(trial, cmd, "no_ack", "walk_cmd_no_ack", why=f"{WALK_ACK_TIMEOUT_S:g} s 안에 응답 없음 — 디버그 상태로 확인")
+
+    # ---- 서버 선행조건(브리지가 최종 판정, 콘솔도 거른다) ----
+    def session(self, trial):
+        """이 시험이 걷기 세션인가 — 실행 중(디버그)·로드(프로세스 출력)·선택 순으로 본 걷기 키, 없으면 None."""
+        b = (trial.view or {}).get("bridge") or {}
+        return next((k for k in (b.get("checkpoint"), b.get("loaded_checkpoint"), trial.checkpoint) if k in WALK_KEYS), None)
+
+    def safe_reason(self, trial):
+        """걷기 끄기·정지 래치: 걷기 세션이고 브리지가 떠 있으면 언제든(고장 래치·회수 중·진행 중 단계와 무관)."""
+        view = trial.view or {}
+        b = view.get("bridge") or {}
+        if self.session(trial) is None and not isinstance(b.get("w3_sup"), dict):
+            return "걷기 세션이 아닙니다 — 선택·로드된 정책이 걷기 실험 키가 아님"
+        if not ((view.get("procs") or {}).get("bridge", {}).get("alive") or (view.get("fresh") or {}).get("bridge")):
+            return "브리지가 실행 중이 아닙니다"
+        return None
+
+    def reason(self, action, trial):
+        """걷기 버튼(w3_move)·재무장(w3_rearm). 고장 래치·회수 중·추적 밖 제어기·진행 중 단계는 TrialState.reason 이 먼저 거른다."""
+        view = trial.view or {}
+        if view.get("walk_error"):
+            return f"걷기 모듈을 불러오지 못했습니다 — {view['walk_error']}"
+        if self.broken:
+            return f"걷기 패널 내부 오류 — 걷기 버튼을 잠갔습니다({self.broken}). 콘솔 로그 확인"
+        b, s, fresh = view.get("bridge") or {}, view.get("stage8") or {}, view.get("fresh") or {}
+        ck = trial.checkpoint
+        if ck not in WALK_KEYS:
+            return "선택한 정책이 걷기 실험 키가 아닙니다 — 설정·점검에서 걷기 실험 키를 고른 시험에서만"
+        if "stand" not in trial.completed:
+            return "정책 실행 단계가 아닙니다 — 정책 제어 시작 확인 뒤에만"
+        if not (view.get("procs") or {}).get("bridge", {}).get("alive"):
+            return "브리지 프로세스가 콘솔 추적 아래 실행 중이 아닙니다"
+        if not view.get("process_check_ok"):
+            return "잔존 제어 프로세스 확인 필요"
+        r = trial._sensor_reason(True)
+        if r:
+            return r
+        if not fresh.get("bridge"):
+            return "정책 상태(디버그 토픽) 수신 없음/오래됨"
+        if trial.start_gate_waiting(b):
+            return "착지 대기 중 — 정책이 아직 구동되지 않았습니다"
+        if b.get("live") is not True:
+            return "브리지가 live 가 아닙니다"
+        if not (b.get("armed") and s.get("armed") and s.get("running")):
+            return "제어기 ARM·정책 명령 실행 상태 확인 필요"
+        if b.get("loaded_checkpoint") != ck or b.get("checkpoint") != ck:
+            return "실제 로드·실행 중인 정책이 선택한 걷기 키와 다릅니다"
+        st = self.bridge_status(trial)
+        w3, sup, kew3 = st["w3"], st["sup"], st["kew3"]
+        if w3 is None or sup is None:
+            return "브리지가 걷기 세션 상태(w3·w3_sup)를 보내지 않습니다 — 실험 플래그 기동 확인"
+        if WALK_KEYS[ck]["composite"] and kew3 is None:
+            return "합성 러너 상태(kew3)를 받지 못했습니다"
+        cur, cmd = self.cur, self.cmd
+        if cur is not None and cur["stage"] in WALK_ACTIVE:
+            return f"앞 걷기 버튼 진행 중 — {cur['label']} · {WALK_STAGE_LABEL[cur['stage']]}"
+        if cur is not None and cur["stage"] == "no_ack" and not cur.get("stand_seen"):
+            return "앞 걷기 버튼 응답 없음 — 디버그가 서기(want 0·ge 0)를 보일 때까지 대기"
+        if cmd is not None and cmd["stage"] == "sent":
+            return f"앞 명령({cmd['label']}) 응답 대기 중"
+        if sup.get("freeze"):
+            return f"가드 동결 대기 중({sup.get('freeze_why')})"
+        want, ge, latched = w3.get("want"), w3.get("ge"), sup.get("stop_latched")
+        if type(want) is not bool or type(ge) is not bool or type(latched) is not bool:
+            return "브리지 걷기 상태(want·ge·정지 래치)를 읽지 못했습니다"      # 읽지 못한 값을 '서 있음·래치 없음'으로 보지 않는다
+        if action == "w3_rearm":
+            if not latched:
+                return "정지 래치가 없습니다 — 재무장할 것이 없음"
+            if want or ge:
+                return "서기 전환 뒤에만 재무장할 수 있습니다(지금 want/ge 1)"
+            return None
+        if latched:
+            return f"정지 래치({sup.get('latch_reason')}) — 재무장 뒤에만 걷기 가능"
+        if want or ge:
+            return "지금 걷는 중입니다(want/ge 1) — 서기 복귀 뒤에"
+        if WALK_KEYS[ck]["composite"] and kew3.get("mode") != "ke":
+            return "합성 러너가 아직 걷기 정책(W3) 모드입니다 — 서기(KE) 인계 뒤에"
+        if WALK_KEYS[ck]["composite"] and kew3.get("block"):
+            return f"브리지 러너 선행조건: {kew3['block']}"
+        if (view.get("foot") or {}).get("contact") != [True, True]:
+            return "양발 접촉 확인 필요"
+        if finite(b.get("blend")) and b["blend"] < 1.0:
+            return "정책 인계 직후의 온셋 블렌딩 진행 중"
+        ready = view.get("walk_ready") if isinstance(view.get("walk_ready"), dict) else None
+        if ready is not None and finite(ready.get("contact_s")) and finite(ready.get("quiet_s")):
+            need = max(ready["contact_s"], ready["quiet_s"]) + WALK_SETTLE_MARGIN_S
+            held = trial.clock() - self._steady_since if self._steady_since is not None else 0.0
+            if held < need:
+                return f"서기 정착 대기 중 — 조용한 양발 서기 {max(0.0, held):.1f} / {need:.2f} s (브리지 켜기 조건)"
+        return None
+
+    # ---- 화면·기록용 ----
+    @staticmethod
+    def _public(rec):
+        if rec is None:
+            return None
+        out = {k: v for k, v in rec.items() if not k.startswith("_")}
+        out["stage_label"] = WALK_STAGE_LABEL.get(rec["stage"], rec["stage"])
+        out["text"] = WalkState.describe(rec)
+        return out
+
+    def snapshot(self, trial):
+        view = trial.view or {}
+        b = view.get("bridge") or {}
+        st = self.bridge_status(trial)
+        w3, sup = st["w3"] or {}, st["sup"] or {}
+        now, stamp = trial.clock(), view.get("server_time")
+        cur = self._public(self.cur)
+        if cur is not None:
+            raw = self.cur
+            overdue = False                      # 표시 전용 — 콘솔은 끄기를 보내지 않는다(운영자가 '걷기 끄기'·정지 요청으로 판단)
+            if raw["stage"] == "walking" and finite(raw.get("dur_s")):
+                overdue = now - raw["_t_walking"] > raw["dur_s"] + WALK_END_GRACE_S
+            elif raw["stage"] == "ending":
+                overdue = now - raw["_t_ending"] > WALK_STAND_GRACE_S
+            cur["overdue"] = overdue
+            cur["blocking"] = raw["stage"] in WALK_ACTIVE or (raw["stage"] == "no_ack" and not raw.get("stand_seen"))
+        burst = sup.get("burst") if isinstance(sup.get("burst"), dict) else None
+        remaining = None
+        if burst is not None and finite(burst.get("t_off")) and finite(st["ts"]):
+            age = stamp - st["recv"] if finite(stamp) and finite(st["recv"]) else 0.0
+            remaining = round(max(0.0, burst["t_off"] - st["ts"] - max(0.0, age)), 2)
+        w3c = b.get("w3_cmd") if st["fresh"] and isinstance(b.get("w3_cmd"), dict) else None
+        key = self.session(trial)
+        if st["sup"] is not None:
+            guard = b.get("guard_mode") if isinstance(b.get("guard_mode"), str) else "safe"
+        else:
+            guard = self.guard_mode
+        return {
+            "rev": self.rev,
+            "session": key is not None or isinstance(b.get("w3_sup"), dict),
+            "profile": ({"checkpoint": key, **WALK_KEYS[key]} if key else None),
+            "current": cur,
+            "command": self._public(self.cmd),
+            "bridge": {
+                "fresh": st["w3"] is not None, "want": w3.get("want"), "ge": w3.get("ge"), "ge_obs": w3.get("ge_obs"),
+                "standing": st["standing"], "walking": st["walking"],
+                "stop_latched": sup.get("stop_latched"), "latch_reason": sup.get("latch_reason"),
+                "freeze": sup.get("freeze"), "freeze_why": sup.get("freeze_why"), "last_seq": sup.get("last_seq"),
+                "burst": ({"req_id": burst.get("req_id"), "dur_s": burst.get("dur_s"), "remaining_s": remaining}
+                          if burst is not None else None),
+                "last_burst_end": sup.get("last_burst_end") if isinstance(sup.get("last_burst_end"), dict) else None,
+                "contact": sup.get("contact"), "tilt_deg": sup.get("tilt_deg"), "w_xy": sup.get("w_xy"),
+                "cmd": b.get("cmd") if st["fresh"] and isinstance(b.get("cmd"), list) else None,
+                "heading_loop": (bool(w3c.get("hl_on")) and w3c.get("hl") is not None) if w3c is not None else None,
+            },
+            # 합성 키: 지금 도는 러너("ke" 서기 | "w3" 걷기). W3 단독 키는 서기·걷기가 같은 정책이라 늘 "w3".
+            "mode": st["mode"] if st["composite"] else ("w3" if st["w3"] is not None else None),
+            "composite": st["composite"],
+            "kew3": st["kew3"],
+            "guard_mode": guard,
+            "recent_acks": list(self.acks[-5:]),
+        }
+
+
 class TrialState:
     def __init__(self, checkpoint, clock=time.monotonic):
         self.clock = clock
@@ -120,6 +547,7 @@ class TrialState:
         self._pose_stamps = None
         self.macro = None        # 1005 정책 ON 자동 순서 진행 상태 {action, step, started} — 진행 중 다른 조작 차단
         self.policy_on = False   # 1005 이 시험이 '정책 ON(착지 자동 인수)' 경로인지 — 접지 마커·stand 의 접촉 게이트를 브리지 착지 게이트가 대신한다
+        self.walk = WalkState()  # 1007 걷기 버튼 수명 상태기(W3 세션에서만 움직인다) — 시험마다 새로
 
     def emit(self, event, **data):
         row = {"event": event, "trial": self.number, **data}
@@ -194,6 +622,7 @@ class TrialState:
             self.revision += 1
             self.emit("fault", reason=reason, hint=self.fault_hint)
         self.invalidate(reason)
+        self.walk.interrupt(self, f"정지·고장: {reason}")   # 1007 진행 중인 걷기 버튼은 '중단'으로 닫는다(없으면 무동작)
 
     def _sensor_reason(self, need_status=False):
         fresh = self.view.get("fresh", {})
@@ -218,6 +647,13 @@ class TrialState:
             return None
         if action not in LABELS:
             return "현재 기립 시험에서 제공하지 않는 동작입니다"
+        if action in WALK_SAFE:
+            # 1007 걷기 끄기·정지 래치 = 안전 방향: 진행 중 단계·고장 래치·회수 중에도 받는다(걷기 세션·브리지 실행만 확인)
+            try:
+                return self.walk.safe_reason(self)
+            except Exception as exc:
+                self.walk.fail(self, exc)
+                return None                            # 판정 자체의 오류가 안전 방향 명령을 막지 않게
         if self.macro and not _macro and not self.fault and action not in EVENTS | {"support_confirm"}:
             return (f"정책 ON 자동 진행 중({LABELS.get(self.macro.get('step'), '시작')}) — 중단은 '정지 요청'")
         if self.pending and action not in (EVENTS - {"op_slack_done"}) | {"support_confirm"}:
@@ -279,6 +715,12 @@ class TrialState:
             return "회수 중입니다. 회수 완료 후 새 시험을 준비하세요"
         if external:
             return "콘솔 추적 밖 제어기 감지 — 기존 제어 상태를 확인하세요"
+        if action in ("w3_move", "w3_rearm"):          # 1007 걷기 버튼·재무장 — 브리지가 최종 판정, 콘솔도 거른다
+            try:
+                return self.walk.reason(action, self)
+            except Exception as exc:                   # 판정 중 예외 = 허용하지 않는다(잠금) — 기립 시험 쪽으로는 번지지 않게 가둔다
+                self.walk.fail(self, exc)
+                return f"걷기 패널 내부 오류 — 걷기 버튼을 잠갔습니다({self.walk.broken}). 콘솔 로그 확인"
         if action == "policy_on":
             return self._policy_on_reason()
         if action in MANUAL:
@@ -489,6 +931,13 @@ class TrialState:
             r = self._sensor_reason(True)
             if r:
                 self.latch(r)
+        # 1007 걷기 버튼 수명 갱신(응답·디버그 상태 반영) — 위의 고장 래치 판정 뒤에, 매번(아래 단계 응답 확인의 조기 반환과 무관).
+        # 서기 관찰(아래)보다 먼저 돈다: 걷기가 시작되면 관찰 구간을 '걷기 시작' 사유로 끝낸다(한발 지지의 접촉 상실 사유로 남기지 않게).
+        # 걷기 패널은 실험 기능이다 — 그 안의 예외가 기립 시험 상태기를 멈추거나 '상태·기록 처리 오류' 고장 래치로 번지지 않게 가둔다.
+        try:
+            self.walk.update(self)
+        except Exception as exc:
+            self.walk.fail(self, exc)
         if self.slack_at is not None:
             reason = self._sensor_reason(True) or self._contact_reason()
             if not view.get("session", {}).get("active"):
@@ -610,7 +1059,11 @@ class TrialState:
         elif self.fault:
             phase, owner = "정지·상태 확인 필요", "실제 상태 확인 필요"
         elif self.measurement["state"] == "interrupted":
-            phase, owner = "무보조 관찰 중단 · 회수 필요", "정책 실행 상태는 별도 확인"
+            if self.measurement.get("ended_by") == "walk" and self.commander() == "policy":
+                # 1007: 걷기 버튼이 서기 관찰 구간을 끝낸 경우 — 보조·가드로 깨진 것이 아니므로 '회수 필요'로 표시하지 않는다
+                phase, owner = "정책 제어 · 걷기 조작(서기 관찰 종료)", "정책 → 12축 제어기"
+            else:
+                phase, owner = "무보조 관찰 중단 · 회수 필요", "정책 실행 상태는 별도 확인"
         elif self.macro:
             phase, owner = f"정책 ON 진행 중 · {LABELS.get(self.macro.get('step'), '시작')}", "기존 단계 자동 진행(같은 게이트·응답 확인)"
         elif fresh.get("bridge") and self.start_gate_waiting(b) and fresh.get("status") and s.get("running"):

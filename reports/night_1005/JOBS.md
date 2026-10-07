@@ -143,3 +143,6 @@
 - 1007 15:50 claude2: 전환 격자 체인 기동(scratchpad tr/grid.pid): ke2w3 연기 → w3ke 지연2(restart/none → nostop/reset/direct) → ke2w3 지연2 → w3ke 지연3·4 → Q4 → ke2w3 지연3·4. 산출 log_picture/ground_recovery_tr_*·k2w_*, 요약 reports/gen_w3/trans_summ.py
 - 1007 16:10 claude2: hang_stand_env_cfg.py·__init__.py 수정 중(W3S3dR 클래스·등록 추가만, 기존 클래스 불변) — ROBUST_DESIGN.md 사전 등록
 - 1007 17:00 claude2 체인(공용 잠금, scratchpad f0e5…/): 홀드 창 보강 g(tr/g_chain.pid) · nostop n(주 체인 종료 뒤 고아 실행 중) · X1·X2 창 없는 전환(tr/x12_chain.pid) · Q6a·b(tr/q6_chain.pid, g 뒤) · 주 체인(tr/grid.pid: X12·Q6AB·n 뒤 → KE→W3 창 → 지연 3·4 → GRID_DONE) · imuH v2(imuh2_chain.pid, GRID_DONE 뒤) · W3S3dR 학습(PID 487647, 16:49–) → 평가 체인(rob/eval_chain.pid)
+- 1007 19:45 claude2 실행 중 체인(scratchpad f0e5…/tr/*.pid, 평가 3 레인): X6b 배포 코드 폐루프 + 감지기 갇힘 해소(x6b_chain.pid 668453) → X7 왕복 대본(x7_chain.pid 671082, X6b 뒤) ·
+  X2f 창 외란 잔여(x2f_chain.pid 650811) · X9 롤 램프 끔 대조(x9_chain.pid 701932) → KE-q 확증 배터리(keq_chain.pid 709224, X9 뒤, keq_q.sh main → aux) ·
+  주 체인 492530(tr2_q ab 613791 → tr_q c → tr2_q c → GRID_DONE) → imuH v2 체인 485643(GRID_DONE 뒤 ab3 → imuh2_q.sh). 서브에이전트 5(브리지 연결[워크트리]·코드 리뷰 진행 중, 검산·실물 로그·헤딩 완료).

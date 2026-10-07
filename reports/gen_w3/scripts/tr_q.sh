@@ -117,4 +117,9 @@ if [ $ST = x2f ]; then   # X2f: 래치 직후 상태 이어받기 + 갇힘 해�
   for SD in 1 2; do for C in f12x sf15x b18x; do run tr_latchdq_${C}_d2_s${SD} $LD --seed $SD ${XW[$C]}; done; done
   unset TR_SCRIPT
 fi
+if [ $ST = x6b ]; then   # X6b: 배포 코드 합성 러너 폐루프 + 배포 감지기 갇힘 해소 옵션(requiet 2.0,0.3)
+  export TR_SCRIPT=rl_walking/scripts/eval_transition_kw.py
+  for SD in 1 2 3; do for C in nd sf15 b18; do run tr_kew3q_${C}_d2_s${SD} --ke_mode direct --runner_loop --kw_requiet 2.0,0.3 --delay_steps 2,2 --seed $SD ${X[$C]} --trace_all 128; done; done
+  unset TR_SCRIPT
+fi
 echo "$(date +%H:%M) TRQ_DONE $ST"

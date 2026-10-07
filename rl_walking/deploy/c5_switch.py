@@ -143,7 +143,7 @@ class SwitchDetector:
 
     def __init__(self, on_tilt_deg: float = 4.0, on_w: float = 0.5, off_tilt_deg: float = 2.5, off_w: float = 0.3,
                  calm_s: float = 1.0, dwell_s: float = 0.4, dt: float = 1.0 / RATE_HZ, ref_tau_s: float = 0.0, ref_cap_deg: float = 8.0, ref_init_s: float = 0.0, off_contact: str = "both",
-                 early=None, refrac=None, in_filt: float = 0.0, early_gate=None, settle=None, imu_f32: bool = False):
+                 early=None, refrac=None, in_filt: float = 0.0, early_gate=None, settle=None, imu_f32: bool = False, requiet=None):
         """ref_tau_s > 0: 기울기를 **기준 자세 대비 편차**로(1004 실물 로그 재생: 실물 서기 기울기 3–4° → 절대 기준이면 회복 모드 70–99 % 체류).
         기준 = 첫 update 의 (롤, 피치), 서기 모드·|ω|<0.1·양발일 때 EMA(τ) 갱신, |ref| ≤ ref_cap_deg. 0 = 절대 기울기(시뮬 SW-1 정의)."""
         self.on_tilt, self.on_w, self.off_tilt, self.off_w = float(on_tilt_deg), float(on_w), float(off_tilt_deg), float(off_w)
@@ -174,6 +174,13 @@ class SwitchDetector:
         # 1007 parity 감사: imu_f32=True(기본 False = 종전 비트 동일) — 현행 IMU 조기 복귀 규칙을 odic 와 같은 float32 경로(_update_odic,
         # 시뮬 eval_ground_recovery 감지 블록 순서·정밀도)로 계산한다. 종전 float64 타이머는 calm 1.0 s·hold 0.2 s 를 시뮬보다 1 틱 일찍
         # 채운다(STOPEST §9 부수 측정: 82 꺼짐 중 46 건 −1 틱). odic 와 같은 전제(상대 기울기 ref_tau_s > 0, early 설정)에서만.
+        # 1007 X5(**기본 None = 종전 비트 동일 · 실물 미검증**): 회복 모드 갇힘 해소 (T_s, w) — 모드 중 감지 |ω_xy| < w ∧ 양발 접촉이 T s 이어지면
+        # 기준 자세를 현재 자세로 다시 잡고 모드를 끈다. 배경: 밀린 뒤 서는 자세가 기준과 off_tilt 넘게 달라지면 평온 경로가 영영 안 채워지고
+        # (모드 중 기준 미갱신), 가벼운 활성화는 조기 복귀 자격(early_gate)도 없어 조용히 서 있는 채로 회복 모드에 갇힌다
+        # (reports/gen_w3/TRANSITION_W3KE.md §5.6f–§5.6h). 시뮬 eval_transition_dev.py --sw_requiet 와 같은 정의·순서.
+        self.requiet = None if requiet is None else tuple(float(x) for x in requiet)
+        if self.requiet is not None and (len(self.requiet) != 2 or self.requiet[0] <= 0.0 or self.requiet[1] <= 0.0):
+            raise ValueError(f"requiet 는 (T_s > 0, w > 0) (받음 {requiet!r})")
         self.imu_f32 = bool(imu_f32)
         if self.imu_f32:
             if self.settle is not None:
@@ -194,6 +201,7 @@ class SwitchDetector:
         self.t_since_early = 1e9
         self._fg = None; self._fw = None
         self.pk_tilt = 0.0; self.pk_w = 0.0
+        self.rq_run = 0.0; self.n_requiet = 0
         if getattr(self, "settle", None) is not None or getattr(self, "imu_f32", False):      # odic·imu_f32 상태(시뮬 float32 텐서와 같은 정밀도)
             if self.settle is not None:
                 self.settle.reset()
@@ -261,6 +269,12 @@ class SwitchDetector:
         on = self.mode == 0 and ((tilt > self.on_tilt) or (w > self.on_w))
         if on and self.refrac is not None and self.t_since_early < self.refrac[0]:
             on = (tilt > self.refrac[1]) or (w > self.refrac[2])
+        if self.requiet is not None:          # 갇힘 해소: 조용한 양발 서기 T s → 기준 := 현재 자세, 모드 끔(다른 꺼짐이 없을 때만 집계)
+            self.rq_run = self.rq_run + self.dt if (self.mode == 1 and w < self.requiet[1] and bool(c[0] and c[1])) else 0.0
+            if self.mode == 1 and self.rq_run >= self.requiet[0] - 1e-9 and not off:
+                if self.ref_tau_s > 0.0:
+                    self.ref = rp.copy()
+                off = True; self.n_requiet += 1
         self.t_since += self.dt
         if on:
             self.n_on += 1
@@ -325,6 +339,11 @@ class SwitchDetector:
                 S["refr_t"] = f32(t_rel)
             in_ref = bool(f32(f32(t_rel) - S["refr_t"]) < f32(self.refrac[0]))
             on = on and ((not in_ref) or bool(tilt > f32(self.refrac[1])) or bool(w > f32(self.refrac[2])))
+        if self.requiet is not None:          # 갇힘 해소(시뮬 --sw_requiet 와 같은 순서: 모든 꺼짐 판정 뒤, 켜기 반영 전)
+            self.rq_run = float(f32(f32(self.rq_run) + dt)) if (m and w < f32(self.requiet[1]) and bool(c[0] and c[1])) else 0.0
+            if m and f32(self.rq_run) >= f32(self.requiet[0] - 1e-6) and not off:
+                self.ref = rp.copy()
+                off = True; self.n_requiet += 1
         new_on = (not m) and on
         if new_on:
             self.n_on += 1
@@ -374,6 +393,8 @@ class C5Runner:
         bb = self._blackbox_base(d)
         if getattr(d, "settle", None) is not None:      # 1007 odic 진단(odic 감지기에서만 키 추가 — imu 경로 스키마 불변)
             bb["odic"] = d.settle.blackbox()
+        if getattr(d, "requiet", None) is not None:     # 1007 갇힘 해소(옵션 켠 감지기에서만 키 추가 — 기본 스키마 불변)
+            bb["requiet"] = {"n": int(d.n_requiet), "run": round(float(d.rq_run), 2)}
         return bb
 
     def _blackbox_base(self, d) -> dict:
@@ -653,8 +674,50 @@ def _selftest_odic() -> str:
     return "odic 감지기 OK (정지 55 틱 조기 복귀·τ 미수신/끊김 막힘·움직임 막힘·기본 경로 settle 없음)"
 
 
+def _selftest_requiet() -> str:
+    """갇힘 해소(1007): 기본(None)은 종전과 틱 단위 동일 · 기준과 2.2° 다른 자세로 조용히 서면 종전은 갇히고 옵션은 2.0 s 뒤 재기준·꺼짐 ·
+    흔들리는 동안(|ω| ≥ w)·한발 접촉에서는 발동하지 않음 · float32 경로도 같은 틱(±1)."""
+    kw = dict(on_tilt_deg=3.0, on_w=0.5, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, ref_tau_s=10.0, ref_init_s=1.5, off_contact="any",
+              early=(0.6, 6.0, 0.4, 0.2), refrac=(1.5, 6.0, 1.0), in_filt=0.33, early_gate=(5.0, 1.0))
+
+    def g(p_deg, r_deg=0.0):
+        p, r = math.radians(p_deg), math.radians(r_deg)
+        v = np.array([math.sin(p) * math.cos(r), math.sin(r), -math.cos(p) * math.cos(r)]); return v / np.linalg.norm(v)
+
+    def run(det, seq):
+        out = []
+        for (p, w, c) in seq:
+            out.append(det.update(g(p), np.array([0.0, w, 0.0]), np.array(c, dtype=np.float32)))
+        return out
+    both, one = (1.0, 1.0), (1.0, 0.0)
+    # 서기 2 s(기준 0°) → 가벼운 밀림(|ω| 0.6, 0.3 s: 최대 편차 < 5°·|ω| < 1 → 조기 복귀 자격 없음) → 2.2° 어긋난 자세로 조용히 6 s
+    seq = [(0.0, 0.0, both)] * 100 + [(1.5, 0.6, both)] * 15 + [(2.2, 0.02, both)] * 300
+    a = run(SwitchDetector(**kw), seq); b = run(SwitchDetector(requiet=None, **kw), seq)
+    assert a == b, "requiet None 이 종전과 다름"
+    assert a[-1] == 1 and sum(a[115:]) == 300, "종전 감지기는 이 자세에서 갇혀야 함(전제 깨짐)"
+    d = SwitchDetector(requiet=(2.0, 0.3), **kw); c_ = run(d, seq)
+    k_off = next(i for i in range(115, len(c_)) if c_[i] == 0)
+    assert c_[:k_off] == a[:k_off] and d.n_requiet == 1 and c_[-1] == 0 and sum(c_[k_off:]) == 0, "재기준 뒤 꺼짐·재켜짐 없음"
+    t_off = (k_off - 115) * 0.02
+    assert 1.9 <= t_off <= 2.7, f"조용해진 뒤 약 2 s 에 꺼져야 함: {t_off:.2f}s"       # 감지 입력 EMA(0.33)로 |ω| 가 문턱 아래로 내려오는 틱 포함
+    assert abs(float(d.ref[1]) - 2.2) < 0.15, f"기준이 현재 자세로 재설정돼야 함: {d.ref}"
+    # 흔들림 유지(|ω| 0.35 ≥ w)·한발 접촉에서는 발동 없음
+    for bad in ([(2.2, 0.35, both)] * 300, [(2.2, 0.02, one)] * 300):
+        d2 = SwitchDetector(requiet=(2.0, 0.3), **kw); run(d2, [(0.0, 0.0, both)] * 100 + [(1.5, 0.6, both)] * 15 + bad)
+        assert d2.n_requiet == 0 and d2.mode == 1, "조용한 양발 서기가 아닌데 재기준 발동"
+    # float32 경로(imu_f32) — 같은 규칙, 꺼짐 틱 ±1
+    d3 = SwitchDetector(requiet=(2.0, 0.3), imu_f32=True, **kw); e_ = run(d3, seq)
+    k3 = next(i for i in range(115, len(e_)) if e_[i] == 0)
+    assert abs(k3 - k_off) <= 1 and d3.n_requiet == 1 and e_[-1] == 0, f"float32 경로 꺼짐 틱 {k3} vs {k_off}"
+    try:
+        SwitchDetector(requiet=(0.0, 0.3), **kw); raise AssertionError("잘못된 requiet 를 받아들임")
+    except ValueError:
+        pass
+    return f"갇힘 해소 OK (기본 None = 종전 동일 · 종전은 갇힘 · 옵션은 조용해진 뒤 {t_off:.2f} s 에 재기준·꺼짐 · 흔들림/한발에서는 미발동 · float32 경로 ±1 틱)"
+
+
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
-        for f in (_selftest_detector, _selftest_equivalence, _selftest_continuity, _selftest_cue_early, _selftest_odic):
+        for f in (_selftest_detector, _selftest_equivalence, _selftest_continuity, _selftest_cue_early, _selftest_odic, _selftest_requiet):
             print(f())
         print("C5 selftest PASS")

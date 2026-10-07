@@ -186,6 +186,7 @@ parser.add_argument("--runner_loop", action="store_true", help="1007: 합성 러
 parser.add_argument("--kw_script", type=str, default="", help="명령 대본 'walk@t:vx,vy,wz;stop@t;...' (인계 기준 s). '' = walk@w3_on:w3_cmd; stop@w3_stop")
 parser.add_argument("--kw_handoff", type=str, default="carry", choices=("carry", "fresh"))
 parser.add_argument("--kw_settle", type=float, default=0.5, help="W3 → KE 정착 대기(조용한 양발 서기) [s]. 0 = 래치 다음 틱")
+parser.add_argument("--kw_requiet", type=str, default="", help="1007 X6b: 배포 감지기 갇힘 해소 옵션 'T,w'(SwitchDetector.requiet) — '' = 끔(현행 KE)")
 parser.add_argument("--sw_requiet", type=str, default="", help="1007 X5: 'T,w' — 회복 모드 중 감지 |ω_xy| < w ∧ 양발 접촉이 T s 이어지면 기준 자세를 현재 자세로 다시 잡고 모드 끔(갇힘 해소). '' = 끔")
 parser.add_argument("--w3_fresh", action="store_true", help="ke2w3 즉시 켜기를 배포 러너 fresh 시작(게이트 즉시 1·위상 2 틱 고정)으로 모사(기본 = 에피소드 중 0→1 램프)")
 parser.add_argument("--trace_all", type=int, default=0, help="앞 N env 의 인계 뒤 전 구간 틱 추적 → log_picture/transall_<tag>.npz (기록 전용)")
@@ -995,6 +996,12 @@ if KWL:
     _KW_KEYS = ("stand_w3s3d_15800", "stand_c5kr_g21a_g24ra")
     KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle)) for _ in range(N)]
     KWS = [_W3D.W3Supervisor(_BR.W3_SAFETY, cmd_limits=_BR.W3_CMD_LIMITS[_KW_KEYS[0]]) for _ in range(N)]
+    if args_cli.kw_requiet:                               # 배포 감지기(c5_switch.SwitchDetector)의 갇힘 해소 옵션 — 생성자 인자와 같은 검증을 거쳐 설정
+        _rq_ = tuple(float(x) for x in args_cli.kw_requiet.split(","))
+        assert len(_rq_) == 2 and _rq_[0] > 0.0 and _rq_[1] > 0.0, f"--kw_requiet 'T,w' (받음 {args_cli.kw_requiet!r})"
+        for R in KWR:
+            R.ke.det.requiet = _rq_; R.ke.det.reset()
+        print(f"[runner_loop] 배포 감지기 requiet = {_rq_}", flush=True)
     _KW_POSE = _npk.asarray(_BR.CKPT_DEFAULT_POSE[_KW_KEYS[1]], dtype=_npk.float32)
     assert list(_BR.JOINT_ORDER) == list(robot.data.joint_names), f"관절 순서 불일치: {robot.data.joint_names}"
     assert _npk.allclose(_KW_POSE, _npk.asarray(_BR.CKPT_DEFAULT_POSE[_KW_KEYS[0]], dtype=_npk.float32)), "두 키의 기본자세가 다름"
@@ -1010,7 +1017,7 @@ if KWL:
     sw_mode = torch.zeros(N, dtype=torch.bool, device=dev)
     kw_des = torch.zeros(N, dtype=torch.bool, device=dev); kw_cmd = torch.zeros(N, 3, device=dev)
     kw_cur = [(0.0, 0.0, 0.0)] * N; kw_seq = [1] * N; kw_events = [[] for _ in range(N)]; kw_rej = [None] * N; kw_req_t = [None] * N
-    kw_kind_tl = []; kw_want_tl = []; kw_ge_tl = []; kw_t_tl = []; kw_obs_err = [0.0]
+    kw_kind_tl = []; kw_want_tl = []; kw_ge_tl = []; kw_t_tl = []; kw_lastq = [0] * N
 
     def _kw_parse(s):
         ev = []
@@ -1093,6 +1100,10 @@ if KWL:
                 kw_events[e].append((round(now, 2), R.last_event))
             if kind[e] != 2 and R.ke.last_switch:
                 kw_events[e].append((round(now, 2), "rec_" + R.ke.last_switch))
+            _nq = int(getattr(R.ke.det, "n_requiet", 0))                  # 감지기 재기준(갇힘 해소) 발동 — 감지기는 KE 인계마다 새로 시작하므로 증가분만 사건으로
+            if _nq > kw_lastq[e]:
+                kw_events[e].append((round(now, 2), "requiet"))
+            kw_lastq[e] = _nq
         kind_t = torch.as_tensor(kind, device=dev); ge_t = torch.as_tensor(ge_top, device=dev); fk = torch.as_tensor(first_ke, device=dev); en_t = torch.as_tensor(en_now, device=dev)
         ke_act = (kind_t == 0) | (kind_t == 1); w3_act = kind_t == 2; sw_mode = kind_t == 1
         tr_want = torch.as_tensor(want_v, device=dev); tr_cmdv = torch.where(tr_want.unsqueeze(1), torch.as_tensor(_npk.asarray(kw_cur, _npk.float32), device=dev), torch.zeros(N, 3, device=dev))
@@ -2180,7 +2191,8 @@ if KWL:
                           want=_npk.stack(kw_want_tl, 0) if kw_want_tl else _npk.zeros((0, N), bool), ge=_npk.stack(kw_ge_tl, 0) if kw_ge_tl else _npk.zeros((0, N), bool),
                           pre_pass=pre_pass.cpu().numpy(), fell=fell.cpu().numpy(), t_fall_post=t_fall_post.cpu().numpy(), events=json.dumps(kw_events), rej=json.dumps(kw_rej),
                           script=json.dumps(_KW_SCRIPT), ev_t=torch.stack(_KW_EVT).cpu().numpy(), n_to_w3=_npk.asarray([R.n_to_w3 for R in KWR]), n_to_ke=_npk.asarray([R.n_to_ke for R in KWR]),
-                          handoff=args_cli.kw_handoff, settle=float(args_cli.kw_settle), dist=args_cli.dist, args=" ".join(sys.argv[1:]))
+                          handoff=args_cli.kw_handoff, settle=float(args_cli.kw_settle), dist=args_cli.dist, args=" ".join(sys.argv[1:]),
+                          requiet=args_cli.kw_requiet)
     _pp_ = pre_pass.cpu().numpy()
     _rj_ = _colk.Counter((r[1][:40] if r is not None else "거부 없음") for r, p in zip(kw_rej, _pp_) if p)
     print(f"[runner_loop] log_picture/kwloop_{args_cli.out_tag}.npz · 통과 env {int(_pp_.sum())} · KE→W3 전환 합 {int(sum(R.n_to_w3 for R, p in zip(KWR, _pp_) if p))} · W3→KE 전환 합 {int(sum(R.n_to_ke for R, p in zip(KWR, _pp_) if p))}"

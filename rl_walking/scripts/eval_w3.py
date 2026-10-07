@@ -59,6 +59,8 @@ p.add_argument("--walk_tol_ang", type=float, default=2.0, help="창 평균 피�
 p.add_argument("--walk_rate_frac", type=float, default=0.6, help="창 유효 스텝률 ≥ 외란 전 × 이 값")
 p.add_argument("--dist_jitter", type=float, default=0.0,
                help="env 별 외란 시각 오프셋 U[0,J) s — 0(기본)이면 모든 env 가 같은 보행 위상에서 맞는다. 0.91(= 1.1 Hz 한 주기)이면 위상 전체 표본 + 위상 구간별 낙상 표")
+p.add_argument("--rsup", default="off", choices=("off", "a", "b", "ab"), help="1007 회복 supervisor(rl_walking/w3_rsup.py, 실물 관측만): a = 정지 래치 지연, b = 포획점 명령 오프셋")
+p.add_argument("--rsup_params", default="", help="RSupParams 덮어쓰기 'k=v,...'")
 cli_args.add_rsl_rl_args(p)
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args(); a.headless = True
@@ -174,6 +176,16 @@ ACT_SCALE = float(_scale) if isinstance(_scale, (int, float)) else None
 
 
 HL = {"tgt": None, "wz": None}
+RSUP = None
+if a.rsup != "off" or a.rsup_params:
+    from rl_walking.w3_rsup import RSup, RSupParams  # noqa: E402
+    _rp = RSupParams(use_stopgate="a" in a.rsup, use_offset="b" in a.rsup)
+    for _kv in filter(None, a.rsup_params.split(",")):
+        _k, _v = _kv.split("="); setattr(_rp, _k.strip(), type(getattr(_rp, _k.strip()))(float(_v)))
+    RSUP = RSup(N, dev, _rp, dt)
+    print(f"[eval_w3] rsup {a.rsup} {_rp}", flush=True)
+RS_DEV0, RS_DEVP = [], []
+RS_TRIG_PRE = torch.zeros(N, device=dev); RS_TRIG_T = torch.full((N,), float("nan"), device=dev); RS_QUIET_T = torch.zeros(N, device=dev)                     # 감지 편차 |devs| 표본: 무외란(0 N 그룹 전체·모든 그룹 외란 전) / 외란 뒤 1 s
 
 
 def _wrap(x):
@@ -329,6 +341,8 @@ for i in range(steps):
         if DG_HAS_CMD:
             cmd_term.vel_command_b[:] = CMD3                                  # 그룹별 명령(덮기 없는 그룹 = --cmd)
         _stp = dg_isstop & (t > dg_stop)                                   # 그룹별 정지(외란 끝 + 지연) — --stop_at 과 같은 계약
+        if RSUP is not None:
+            _stp = RSUP.stop_ok(_stp)                                       # (a) 정지 래치 지연(꺼짐이면 그대로)
         if bool(_stp.any()):
             cmd_term.vel_command_b[_stp] = 0.0
             if getattr(U, "_ge_cmd", None) is not None:
@@ -348,6 +362,8 @@ for i in range(steps):
             _fb = quat_apply_inverse(robot.data.root_quat_w, _fw).unsqueeze(1).contiguous()
             robot.permanent_wrench_composer.add_forces_and_torques(forces=_fb, torques=None, positions=None,
                                                                    body_ids=[dg_base], env_ids=None, is_global=False)
+    if RSUP is not None:
+        cmd_term.vel_command_b[:, :2] = RSUP.offset(cmd_term.vel_command_b[:, :2].clone())   # (b) 포획점 오프셋(꺼짐이면 그대로)
     with torch.inference_mode():
         act_ = policy(obs)
     obs, _, dones, _ = venv.step(act_)
@@ -498,6 +514,24 @@ for i in range(steps):
         _dy = torch.atan2(torch.sin(yaw - yaw_prev), torch.cos(yaw - yaw_prev))   # 1006 감사 D4: 틱별 누적(±180° 감싸기 없음)
         yaw_acc = torch.where(alive, yaw_acc + _dy, yaw_acc); yaw_prev = yaw.clone()
     q_prevf = fq.clone()                          # 지지발 피벗용 직전 틱 발 자세(틱 끝에서 갱신)
+    if RSUP is not None:                           # 회복 supervisor 갱신(IMU 중력 방향·자이로만)
+        _pg = robot.data.projected_gravity_b
+        _pit = torch.rad2deg(torch.atan2(_pg[:, 0], -_pg[:, 2])); _rol = torch.rad2deg(torch.atan2(-_pg[:, 1], -_pg[:, 2]))
+        _ge = getattr(U, "_ge", None); _ge = _ge if _ge is not None else torch.ones(N, dtype=torch.bool, device=dev)
+        _nt0 = RSUP.n_trig.clone()
+        RSUP.step(_pit, _rol, robot.data.root_ang_vel_b[:, :2].norm(dim=-1), _ge & alive)
+        if DG and ev:
+            _rel = t - dg_t0; _new = (RSUP.n_trig > _nt0) & alive
+            _sham = torch.tensor([all(d_.F == 0.0 for d_ in g_[1]) for g_ in DG], device=dev)[dg_id]
+            RS_TRIG_PRE = RS_TRIG_PRE + (_new & ((_rel < 0) | _sham)).float()
+            RS_TRIG_T = torch.where(_new & (_rel >= 0) & ~_sham & torch.isnan(RS_TRIG_T), _rel, RS_TRIG_T)
+            RS_QUIET_T = RS_QUIET_T + (((_rel < 0) | _sham) & alive).float() * dt
+            _m0 = (((_rel < 0) | _sham) & alive)
+            if bool(_m0.any()):
+                RS_DEV0.append(RSUP.devs[_m0].norm(dim=-1).cpu())
+            _mp = (_rel >= 0) & (_rel < 1.0) & ~_sham & alive
+            if bool(_mp.any()):
+                RS_DEVP.append(torch.cat([RSUP.devs[_mp], dg_id[_mp].float().unsqueeze(1)], 1).cpu())
     if DG and ev:                                  # ── 외란 회복 체인 계측(1006 우선순위 4) ──
         pg_ = robot.data.projected_gravity_b
         pit_ = torch.rad2deg(torch.atan2(pg_[:, 0], -pg_[:, 2])); rol_ = torch.rad2deg(torch.atan2(-pg_[:, 1], -pg_[:, 2]))
@@ -836,6 +870,21 @@ J = {"ramp_off": a.ramp_off, "mix": J_mix, "turn": J_turn, "heading_loop": a.hea
      "per_foot": per_foot, "criteria": [{"name": nm, "pass": bool(ok), "value": val} for nm, ok, val in crit], "pass": all_pass}
 if DG:
     J["dist"] = J_dist
+    if RSUP is not None:
+        import numpy as _np
+        _gd = []
+        for gi, (lab, ds, stp) in enumerate(DG):
+            m0 = (dg_id == gi) & on_alive
+            _gd.append({"label": lab, "n": int(m0.sum()), "det_1s": int((m0 & (RS_TRIG_T <= 1.0)).sum()), "det_t_med": float(torch.nanmedian(RS_TRIG_T[m0])) if bool(m0.any()) else float("nan")})
+        _d0 = torch.cat(RS_DEV0).numpy() if RS_DEV0 else _np.zeros(1)
+        J["rsup"] = {"mode": a.rsup, "params": vars(RSUP.P), "false_trig": float(RS_TRIG_PRE.sum()), "quiet_env_s": float(RS_QUIET_T.sum()),
+                     "false_per_env_min": float(RS_TRIG_PRE.sum() / RS_QUIET_T.sum().clamp(min=1e-6) * 60.0),
+                     "dev0_q": {q_: float(_np.quantile(_d0, q_)) for q_ in (0.5, 0.9, 0.99, 0.999)}, "groups": _gd}
+        if RS_DEVP:
+            _P = torch.cat(RS_DEVP)
+            J["rsup"]["dev_push_by_group"] = {DG[int(g_)][0]: {"mean_dpitch": float(_P[_P[:, 2] == g_, 0].mean()), "mean_droll": float(_P[_P[:, 2] == g_, 1].mean()),
+                                                                 "p50_mag": float(_P[_P[:, 2] == g_, :2].norm(dim=-1).median())} for g_ in _P[:, 2].unique().tolist()}
+        print("[eval_w3] rsup " + json.dumps(J["rsup"], ensure_ascii=False)[:600], flush=True)
 json.dump(J, open(os.path.join(out_dir, f"w3eval_{a.out_tag}.json"), "w"), ensure_ascii=False, indent=1)
 print(f"[eval_w3] 저장: log_picture/w3eval_{a.out_tag}.txt/.json", flush=True)
 sys.stdout.flush(); os._exit(0)   # app.close() 가 종료에서 멈추는 경우가 있어(1006 스모크: 300 s 타임아웃) 산출물 저장 뒤 즉시 종료

@@ -1,0 +1,37 @@
+# §13b 진동 주입 비교 — osc2 · osc · 팔 imu odic odicw odicwN odicwH
+짝 env 203 (seed ['1', '3'])
+      imu: 낙상 9.9% · 끄기/env 1.58 · 조기 해제 env 29.6% (총 73) · 노출 평균 0.081 s · 재켜짐(≥2) 52.7% · 마지막 끄기 지연 중앙 +1.01 s · 끝까지 켜짐 20.2% · 버스트 중 참|ω| 최대 중앙 1.45
+     odic: 낙상 15.3% · 끄기/env 1.48 · 조기 해제 env 25.6% (총 69) · 노출 평균 0.076 s · 재켜짐(≥2) 52.7% · 마지막 끄기 지연 중앙 +1.26 s · 끝까지 켜짐 25.1% · 버스트 중 참|ω| 최대 중앙 1.47
+    odicw: 낙상 11.8% · 끄기/env 1.38 · 조기 해제 env 19.2% (총 44) · 노출 평균 0.061 s · 재켜짐(≥2) 46.3% · 마지막 끄기 지연 중앙 +1.12 s · 끝까지 켜짐 20.7% · 버스트 중 참|ω| 최대 중앙 1.48
+   odicwN: 낙상 12.3% · 끄기/env 1.58 · 조기 해제 env 20.2% (총 49) · 노출 평균 0.000 s · 재켜짐(≥2) 53.2% · 마지막 끄기 지연 중앙 +1.45 s · 끝까지 켜짐 35.5% · 버스트 중 참|ω| 최대 중앙 1.43
+   odicwH: 낙상 9.9% · 끄기/env 1.18 · 조기 해제 env 10.3% (총 21) · 노출 평균 0.035 s · 재켜짐(≥2) 32.5% · 마지막 끄기 지연 중앙 +1.32 s · 끝까지 켜짐 19.7% · 버스트 중 참|ω| 최대 중앙 1.41
+    imu vs odic 낙상: imu만 4 / odic만 15 · p 0.0192
+    imu vs odic 조기 해제: imu만 20 / odic만 12 · p 0.215
+    imu vs odic 노출>0: imu만 20 / odic만 12 · p 0.215
+    imu vs odicw 낙상: imu만 5 / odicw만 9 · p 0.424
+    imu vs odicw 조기 해제: imu만 27 / odicw만 6 · p 0.000324
+    imu vs odicw 노출>0: imu만 25 / odicw만 7 · p 0.0021
+    imu vs odicwN 낙상: imu만 8 / odicwN만 13 · p 0.383
+    imu vs odicwN 조기 해제: imu만 32 / odicwN만 13 · p 0.00661
+    imu vs odicwN 노출>0: imu만 93 / odicwN만 0 · p 2.02e-28
+    imu vs odicwH 낙상: imu만 9 / odicwH만 9 · p 1
+    imu vs odicwH 조기 해제: imu만 49 / odicwH만 10 · p 2.71e-07
+    imu vs odicwH 노출>0: imu만 49 / odicwH만 5 · p 3.89e-10
+    odic vs odicw 낙상: odic만 11 / odicw만 4 · p 0.118
+    odic vs odicw 조기 해제: odic만 17 / odicw만 4 · p 0.0072
+    odic vs odicw 노출>0: odic만 14 / odicw만 4 · p 0.0309
+    odic vs odicwN 낙상: odic만 14 / odicwN만 8 · p 0.286
+    odic vs odicwN 조기 해제: odic만 22 / odicwN만 11 · p 0.0801
+    odic vs odicwN 노출>0: odic만 85 / odicwN만 0 · p 5.17e-26
+    odic vs odicwH 낙상: odic만 16 / odicwH만 5 · p 0.0266
+    odic vs odicwH 조기 해제: odic만 37 / odicwH만 6 · p 1.64e-06
+    odic vs odicwH 노출>0: odic만 43 / odicwH만 7 · p 2.1e-07
+    odicw vs odicwN 낙상: odicw만 9 / odicwN만 10 · p 1
+    odicw vs odicwN 조기 해제: odicw만 14 / odicwN만 16 · p 0.856
+    odicw vs odicwN 노출>0: odicw만 75 / odicwN만 0 · p 5.29e-23
+    odicw vs odicwH 낙상: odicw만 8 / odicwH만 4 · p 0.388
+    odicw vs odicwH 조기 해제: odicw만 27 / odicwH만 9 · p 0.00393
+    odicw vs odicwH 노출>0: odicw만 32 / odicwH만 6 · p 2.43e-05
+    odicwN vs odicwH 낙상: odicwN만 9 / odicwH만 4 · p 0.267
+    odicwN vs odicwH 조기 해제: odicwN만 31 / odicwH만 11 · p 0.00289
+    odicwN vs odicwH 노출>0: odicwN만 0 / odicwH만 49 · p 3.55e-15

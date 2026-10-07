@@ -3631,6 +3631,19 @@ class Biped12HangStandW3S3eEnvCfg(Biped12HangStandW3S3dEnvCfg):
 
 
 @configclass
+class Biped12HangStandW3S3fEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3 f (1007 claude2, reports/gen_w3/TORQUE_BUDGET_1007.md §7): W3S3d 와 보상·관측·커리큘럼·명령·학습 지연 동일, **토크 한계 무작위화만 추가** —
+    리셋마다 전 관절 토크 한계 0.7–1.0 배(mdp_stage4.resample_effort_scale: PhysX 한계 + 액추에이터 모델 한계). 관측·행동 계약 불변.
+    근거(X13): W3S3d-15800 은 한계 0.8 배에서 걷기 낙상 14.2 %, 0.7 배에서 98 % — 피크 토크에 기댄 걸음. 정책이 한계를 관측하지 못하므로
+    낮은 한계에서도 성립하는 걸음(지지발 쪽으로 더 옮기는 걸음)을 배우게 하려는 단일 변경. 시작 = W3S3d-15800 이어 학습. 기준은 문서(학습 전 고정)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        from . import mdp_stage4 as _m4
+        self.events.effort_scale = EventTerm(func=_m4.resample_effort_scale, mode="reset", params={"scale_range": (0.7, 1.0)})
+
+
+@configclass
 class Biped12HangStandW3S3dC2EnvCfg(Biped12HangStandW3S3dEnvCfg):
     """W3S3d-c2 (1007, c2 GO 학습 설정 — 실행은 승인 뒤): W3S3d(회전·옆·앞뒤·지연 1–5) 끝에서 이어 학습 + c2 묶음(W3C2k2h 와 같은 내용):
     고정 2 보 정지(stop_td_k 2) · 상대 기울기 감지(τ 10 s) · 차분형 v2 포획 착지 · 회복 중 서기 보상 유지 5 항. 관측 actor 320·critic 335 불변 → --resume."""

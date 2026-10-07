@@ -5,6 +5,10 @@
   python3 reports/gen_w3/torque_phase.py --sections phase --seg 15,20
   python3 reports/gen_w3/torque_phase.py --sections scale     # X13(토크 한계 배율별) 위상 비교
   python3 reports/gen_w3/torque_phase.py --lp /다른/log_picture
+  python3 reports/gen_w3/torque_phase.py --judge s3t  --prefix tr_s3t16299_x13     # TORQUE_BUDGET_1007.md §10 의 T1·T2·T3 수치와 충족/미달(W3S3t 팔)
+  python3 reports/gen_w3/torque_phase.py --judge s3tk --prefix tr_s3tk16299_x13    # 같은 표, W3S3tK 팔(T1 = 지지 무릎 각·무릎 RMS, T3 에 힙 외전 포화 시간)
+  python3 reports/gen_w3/torque_phase.py --judge s3t  --prefix tr_s3dctl16193_x13  # 같은 반복 대조(변경 없음)도 같은 명령 — 기준선은 --base(기본 tr_x13)
+    (X13 실행 이름 = <prefix>_d2_s<seed>: transall_·kwloop_ npz 와 ground_recovery_…_envs.csv 를 읽는다. 판정 기준의 정본은 TORQUE_BUDGET_1007.md §10.)
 
 입력: log_picture/transall_<TAG>.npz (eval_transition_kwx.py --trace_all: t·tq(적용 토크)·q·cmd·roll·pitch·u(위상)·ge·alive·h·flat …),
       X13 은 kwloop_<TAG>.npz 의 effort_scale(env 별 한계 배율)도 읽는다. 자산 = rl_walking/assets/biped12_final3.urdf.
@@ -481,6 +485,109 @@ def sec_bounds(model, lp, tag):
     print("  d = 한 다리의 한발 지지 시간 / 보폭 주기. 무릎 식: 주기 평균 수직 지지 = 몸무게 ⇒ τ_lim·(한발 비율 + 2·양발 비율) ≥ τk (무릎이 내내 한계에 붙어 있을 때의 최소 — 제어 여유 0).")
 
 
+# ================================================================ 판정 보조(TORQUE_BUDGET_1007.md §10) ================================================================
+def _wilson(k, n, z=1.96):
+    if n <= 0:
+        return 0.0, 1.0
+    ph = k / n; den = 1 + z * z / n; c = (ph + z * z / (2 * n)) / den; h = z * np.sqrt(ph * (1 - ph) / n + z * z / (4 * n * n)) / den
+    return max(0.0, c - h), min(1.0, c + h)
+
+
+def x13_metrics(model, lp, prefix, seeds, scales=(1.0, 0.8, 0.7, 0.6)):
+    """X13 한 실행 묶음(<prefix>_d2_s<seed>)의 배율별 수치. 낙상·전진·RMS·포화 시간은 x13_summ.py 와 같은 정의(구간 2–8·8–16 s, 전진 = 8→16 s 변위를 8 s 요로 투영,
+    RMS·포화 = 9–16 s·16 s 까지 생존한 추적 env·seed 평균). 포화 벌점 값·지지 무릎 각·스윙발 높이·한발 지지 비율·몸통 롤은 걷기 틱(제자리 3–8 s + 앞 9–16 s, 낙상 전)."""
+    import csv
+    out = {g: dict(n=[0, 0], f=[0, 0], fwd=[], rms=[], sat=[], tq=[], kn=[], dz=[], v=[], sroll=[], ss=[]) for g in scales}
+    missing = []
+    for sd in seeds:
+        tag = f"{prefix}_d2_s{sd}"
+        pk = os.path.join(lp, f"kwloop_{tag}.npz"); pc = os.path.join(lp, f"ground_recovery_{tag}_envs.csv"); pt = os.path.join(lp, f"transall_{tag}.npz")
+        if not (os.path.exists(pk) and os.path.exists(pc) and os.path.exists(pt)):
+            missing.append(tag); continue
+        z = np.load(pk, allow_pickle=True); pre = z["pre_pass"].astype(bool); sc = z["effort_scale"].astype(float); t = z["t"].astype(float)
+        xy = z["xy"].astype(float); yaw = z["yaw"].astype(float)
+        tf = np.full(pre.shape[0], np.inf)
+        for r in csv.DictReader(open(pc)):
+            if r["fell"] == "1" and r["t_fall_rel"] not in ("", "nan"):
+                tf[int(r["env"])] = float(r["t_fall_rel"])
+        Kt = lambda x: min(int(np.searchsorted(t, x - 1e-6)), len(t) - 1)      # noqa: E731
+        zt = np.load(pt, allow_pickle=True); tqa = np.abs(zt["tq"].astype(np.float32)); n128 = tqa.shape[1]
+        for g in scales:
+            m = pre & (np.abs(sc - g) < 1e-6); A = out[g]
+            for i, (t0, t1) in enumerate(((2.0, 8.0), (8.0, 16.0))):
+                al = m & (tf >= t0); A["n"][i] += int(al.sum()); A["f"][i] += int((al & (tf < t1)).sum())
+            ok = m & (tf >= 16.0); d = xy[Kt(16.0)] - xy[Kt(8.0)]; c0, s0 = np.cos(yaw[Kt(8.0)]), np.sin(yaw[Kt(8.0)])
+            A["fwd"] += list((c0 * d[:, 0] + s0 * d[:, 1])[ok])
+            mm = m[:n128] & (tf[:n128] >= 16.0)
+            if mm.any():
+                X = tqa[Kt(9.0):Kt(16.0)][:, mm]
+                A["rms"].append(np.sqrt((X[..., [2, 3, 6, 7]] ** 2).mean((0, 1)))); A["sat"].append((X[..., [2, 3, 6, 7]] >= 25.0 * g - 0.5).mean((0, 1)))
+            for a_, b_ in ((3.0, 8.0), (9.0, 16.0)):
+                d_ = load_seg(lp, tag, a_, b_, scale=g)
+                if d_["al"].sum() < 50:
+                    continue
+                f = fold(d_, model); al_ = f["al"]
+                A["tq"].append(d_["tq"][al_]); A["dz"].append(f["dzf"][al_]); A["v"].append(f["v"][al_]); A["sroll"].append(f["sroll"][al_])
+                A["kn"].append(f["kn_st"][al_ & (f["dzf"] > 0.008)]); A["ss"].append((f["dzf"][al_] > 0.008))
+    res = {}
+    for g in scales:
+        A = out[g]; r = dict(n_walk=A["n"][0], f_walk=A["f"][0] + A["f"][1], n_trace=0)
+        r["fall"] = 100.0 * r["f_walk"] / max(r["n_walk"], 1); r["fall_ci"] = tuple(100 * x for x in _wilson(r["f_walk"], max(r["n_walk"], 1)))
+        r["fwd"] = float(np.median(A["fwd"])) if A["fwd"] else float("nan")
+        r["rms"] = np.mean(A["rms"], 0) if A["rms"] else np.full(4, np.nan); r["sat"] = 100 * np.mean(A["sat"], 0) if A["sat"] else np.full(4, np.nan)
+        if A["tq"]:
+            tq = np.concatenate(A["tq"]); dz = np.concatenate(A["dz"]); v = np.concatenate(A["v"]); sr = np.concatenate(A["sroll"]); kn = np.concatenate(A["kn"])
+            r["n_trace"] = len(tq); r["tsat"] = float(sat_term(tq, LIM, 0.6).mean()); r["tsat_env"] = float(sat_term(tq, LIM * g, 0.6).mean())
+            r["kn_st"] = float(kn.mean()) if len(kn) else float("nan"); r["apex"] = 1e3 * float(np.percentile(dz, 95)); r["ss"] = 100 * float(np.concatenate(A["ss"]).mean())
+            vb = np.minimum((v * 23).astype(int), 22); r["roll_pk"] = float(np.nanmax([sr[vb == i].mean() if (vb == i).any() else np.nan for i in range(23)]))
+        else:
+            r.update(tsat=float("nan"), tsat_env=float("nan"), kn_st=float("nan"), apex=float("nan"), ss=float("nan"), roll_pk=float("nan"))
+        res[g] = r
+    return res, missing
+
+
+def judge(model, lp, kind, prefix, base, seeds):
+    """§10 의 T1(기전)·T2(낮은 한계)·T3(해치지 않음) 수치와 충족/미달. T4(왕복)는 이 도구가 계산하지 않는다. 기준 문턱의 정본은 TORQUE_BUDGET_1007.md §10."""
+    C, miss = x13_metrics(model, lp, prefix, seeds)
+    B, miss_b = x13_metrics(model, lp, base, seeds)
+    print(f"# 판정 보조(TORQUE_BUDGET_1007.md §10) — 팔 {kind} · 후보 {prefix} · 기준선 {base} · seed {','.join(str(x) for x in seeds)} · lp {lp}")
+    if miss or miss_b:
+        print("- 없는 실행:", ", ".join(miss + miss_b), "(transall_·kwloop_ npz 와 ground_recovery_…_envs.csv 셋 다 있어야 한다)")
+        if miss:
+            return 2
+    c, b = C[1.0], B[1.0]; ok = {}
+    yn = lambda x: "**충족**" if x else "미달"                                 # noqa: E731
+    fl = lambda r: f"{r['f_walk']} / {r['n_walk']} ({r['fall']:.1f} %, {r['fall_ci'][0]:.1f}–{r['fall_ci'][1]:.1f})"   # noqa: E731
+    print("| # | 항목(한계 배율) | 기준 | 기준선 | 후보 | 판정 |"); print("|---|---|---|---|---|---|")
+    if kind == "s3t":
+        ok["T1"] = c["tsat"] <= 0.0035
+        print(f"| T1 기전 | torque_saturation 평균(문턱 0.6·명목 한계, 1.0 배 걷기 {c['n_trace']} 틱) | ≤ 0.0035 | {b['tsat']:.4f} | {c['tsat']:.4f} | {yn(ok['T1'])} |")
+    else:
+        kr_c = float(np.mean(c["rms"][2:])); kr_b = float(np.mean(b["rms"][2:])); o1, o2 = c["kn_st"] <= 52.0, kr_c <= 11.0; ok["T1"] = o1 and o2
+        print(f"| T1 기전 | 한발 지지 중 지지 무릎 굽힘(1.0 배 걷기 틱, 운동학 접지) | ≤ 52° | {b['kn_st']:.1f}° | {c['kn_st']:.1f}° | {yn(o1)} |")
+        print(f"| T1 기전 | 무릎 RMS(앞 0.06 9–16 s, L·R 평균; L/R {c['rms'][2]:.1f}/{c['rms'][3]:.1f}) | ≤ 11.0 N·m | {kr_b:.1f} | {kr_c:.1f} | {yn(o2)} |")
+    o8, o7 = C[0.8]["fall"] <= 5.0, C[0.7]["fall"] <= 30.0; ok["T2"] = o8 and o7
+    print(f"| T2 낮은 한계 | 걷기 구간(2–16 s) 낙상, 0.8 배 | ≤ 5 % | {fl(B[0.8])} | {fl(C[0.8])} | {yn(o8)} |")
+    print(f"| T2 낮은 한계 | 걷기 구간 낙상, 0.7 배 | ≤ 30 % | {fl(B[0.7])} | {fl(C[0.7])} | {yn(o7)} |")
+    oa, ob, oc = c["fall"] <= 2.0, c["fwd"] >= 0.53, c["apex"] >= 45.0; ok["T3"] = oa and ob and oc
+    print(f"| T3 해치지 않음 | 걷기 구간 낙상, 1.0 배 | ≤ 2 % | {fl(b)} | {fl(c)} | {yn(oa)} |")
+    print(f"| T3 해치지 않음 | 8 s 전진 중앙(앞 0.06, 8→16 s), 1.0 배 | ≥ 0.53 m | {b['fwd']:+.2f} | {c['fwd']:+.2f} | {yn(ob)} |")
+    print(f"| T3 해치지 않음 | 스윙발 높이 p95(1.0 배 걷기 틱) | ≥ 45 mm | {b['apex']:.0f} | {c['apex']:.0f} | {yn(oc)} |")
+    if kind == "s3tk":
+        hs_c = float(np.mean(c["sat"][:2])); hs_b = float(np.mean(b["sat"][:2])); od = hs_c <= hs_b + 3.0; ok["T3"] = ok["T3"] and od
+        print(f"| T3 해치지 않음 | 힙 외전 포화 시간(9–16 s, L·R 평균), 1.0 배 | ≤ 기준선 + 3 %p ({hs_b + 3.0:.1f} %) | {hs_b:.1f} % | {hs_c:.1f} % | {yn(od)} |")
+    print(f"| 참고 | 8 s 전진이 명령 거리의 0.75–1.5 배(0.36–0.72 m) | (판정 아님) | {'안' if 0.36 <= b['fwd'] <= 0.72 else '밖'} | {'안' if 0.36 <= c['fwd'] <= 0.72 else '밖'} | — |")
+    print("| 참고 | RMS 힙 외전 L/R · 무릎 L/R [N·m], 1.0 배 | (판정 아님) | " + f"{b['rms'][0]:.1f}/{b['rms'][1]:.1f} · {b['rms'][2]:.1f}/{b['rms'][3]:.1f} | {c['rms'][0]:.1f}/{c['rms'][1]:.1f} · {c['rms'][2]:.1f}/{c['rms'][3]:.1f} | — |")
+    print("| 참고 | 한계 포화 시간 힙 외전 L/R · 무릎 L/R [%], 1.0 배 | (판정 아님) | " + f"{b['sat'][0]:.0f}/{b['sat'][1]:.0f} · {b['sat'][2]:.0f}/{b['sat'][3]:.0f} | {c['sat'][0]:.0f}/{c['sat'][1]:.0f} · {c['sat'][2]:.0f}/{c['sat'][3]:.0f} | — |")
+    print(f"| 참고 | 한발 지지 비율 % · 몸통 롤 최대 ° · 지지 무릎 ° · torque_saturation, 1.0 배 | (판정 아님) | {b['ss']:.0f} · {b['roll_pk']:.1f} · {b['kn_st']:.1f} · {b['tsat']:.4f} | {c['ss']:.0f} · {c['roll_pk']:.1f} · {c['kn_st']:.1f} · {c['tsat']:.4f} | — |")
+    for g in (0.8, 0.7):
+        print(f"| 참고 | {g:g} 배: 지지 무릎 ° · 한발 지지 % · 스윙발 p95 mm · 무릎 포화 L/R % · 8 s 전진 m | (판정 아님) | {B[g]['kn_st']:.1f} · {B[g]['ss']:.0f} · {B[g]['apex']:.0f} · {B[g]['sat'][2]:.0f}/{B[g]['sat'][3]:.0f} · {B[g]['fwd']:+.2f} | "
+              f"{C[g]['kn_st']:.1f} · {C[g]['ss']:.0f} · {C[g]['apex']:.0f} · {C[g]['sat'][2]:.0f}/{C[g]['sat'][3]:.0f} · {C[g]['fwd']:+.2f} | — |")
+    print("- 종합: " + " · ".join(f"{k} {yn(v_)}" for k, v_ in ok.items()) + " · T4(왕복)는 X7c C0 요약으로 따로 본다.")
+    print("- 낙상·전진·RMS·포화 시간 정의 = x13_summ.py(전 env 256·seed 합). 포화 벌점 값·무릎 각·스윙발 높이·한발 지지 = 추적 env(앞 128 개 중 그 배율)·걷기 틱(제자리 3–8 s + 앞 9–16 s, 낙상 전).")
+    return 0
+
+
 # ================================================================ main ================================================================
 def main():
     ap = argparse.ArgumentParser()
@@ -490,7 +597,15 @@ def main():
     ap.add_argument("--seg", default="3,8", help="phase·decomp·steps·scale 절의 구간 [s] 'a,b'(기본 = 제자리 걸음)")
     ap.add_argument("--sections", default="model,phase,decomp,steps,cmds,sat,knee,scale,bounds")
     ap.add_argument("--urdf", default=os.path.join(REPO, "rl_walking", "assets", "biped12_final3.urdf"))
+    ap.add_argument("--judge", default="", choices=("", "s3t", "s3tk"), help="TORQUE_BUDGET_1007.md §10 의 T1·T2·T3 수치와 충족/미달만 찍는다(팔 이름)")
+    ap.add_argument("--prefix", default="", help="--judge 의 후보 X13 실행 접두(예: tr_s3t16299_x13 → <prefix>_d2_s<seed>)")
+    ap.add_argument("--base", default="tr_x13", help="--judge 의 기준선 X13 실행 접두")
+    ap.add_argument("--seeds", default="1,2")
     a = ap.parse_args()
+    if a.judge:
+        if not a.prefix:
+            ap.error("--judge 에는 --prefix 가 필요하다")
+        return judge(Model(a.urdf), a.lp, a.judge, a.prefix, a.base, [int(x) for x in a.seeds.split(",")])
     sec = a.sections.split(","); s0, s1 = [float(x) for x in a.seg.split(",")]; x13 = [t for t in a.x13.split(",") if t]
     model = Model(a.urdf)
     print(f"# torque_phase.py — tag {a.tag} · lp {a.lp} · 구간 {s0:g}–{s1:g} s · 절 {a.sections}")

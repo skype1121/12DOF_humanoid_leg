@@ -225,4 +225,43 @@ rep("""    if args_cli.osc_inj:      # 1007 §13b""", """    if float(args_cli.k
         _ufb = quat_apply_inverse(robot.data.body_quat_w.reshape(-1, 4), _ufw.reshape(-1, 3)).reshape(N, _uB, 3)
         robot.set_external_force_and_torque(_ufb, torch.zeros_like(_ufb))
     if args_cli.osc_inj:      # 1007 §13b""")
+# 1008 X19: 접촉 관측 교란(정책·감독기·감지기가 보는 접촉 비트만 — 물리 접촉·채점 불변). --contact_drop(누락·고착 0) 뒤에 한 겹 더 씌운다.
+#   'delay:N' = 비트를 N 정책 틱 더 늦게 · 'flip:p' = 틱마다 각 발 비트를 확률 p 로 뒤집음(채터·오판, 고정 난수) · 't0:x' = 인계 뒤 x s 부터만 적용(기본 0).
+rep("""parser.add_argument("--kw_soft_clamp_all", action="store_true",""", """parser.add_argument("--contact_pert", type=str, default="", help="X19: 접촉 관측 교란 'delay:N;flip:p;t0:x'(관측 비트만, 물리·채점 불변). '' = 끔")
+parser.add_argument("--kw_soft_clamp_all", action="store_true",""")
+rep("""    print(f"[contact_drop] 정책 접촉 비트 강제 0: {args_cli.contact_drop}", flush=True)
+""", """    print(f"[contact_drop] 정책 접촉 비트 강제 0: {args_cli.contact_drop}", flush=True)
+if args_cli.contact_pert:
+    _CP = {"delay": 0, "flip": 0.0, "t0": 0.0}
+    for _it in args_cli.contact_pert.split(";"):
+        _k, _v = _it.split(":"); assert _k.strip() in _CP, _k; _CP[_k.strip()] = float(_v)
+    _CP["delay"] = int(_CP["delay"]); assert 0 <= _CP["delay"] <= 10 and 0.0 <= _CP["flip"] <= 0.5
+    _fcp = getattr(env_cfg.observations.policy, "feet_contact", None)
+    if _fcp is None:
+        raise SystemExit("--contact_pert: 정책 관측에 feet_contact 항 없음")
+    _fcp_orig = _fcp.func; _CPS = {"buf": None, "gen": None, "n": 0, "nflip": 0}
+
+    import inspect as _insp_cp
+    _fcp_names = set(_insp_cp.signature(_fcp_orig).parameters) - {"env"}
+
+    def _fc_pert(env, sensor_cfg=None, threshold: float = 5.0, delay_steps: int = 0, threshold_range=None,
+                 hold_ticks=None, extra_delay=None, tilt_off_deg=None):      # 매니저가 인자 이름을 검사하므로 --contact_drop 포장과 같은 꼴로 받는다
+        _kw = dict(sensor_cfg=sensor_cfg, threshold=threshold, delay_steps=delay_steps, threshold_range=threshold_range,
+                   hold_ticks=hold_ticks, extra_delay=extra_delay, tilt_off_deg=tilt_off_deg)
+        out = _fcp_orig(env, **{k: v for k, v in _kw.items() if k in _fcp_names and v is not None}).clone()
+        if _CPS["gen"] is None:
+            _CPS["gen"] = torch.Generator(device="cpu"); _CPS["gen"].manual_seed(int(args_cli.seed) * 1000 + 19)
+            _CPS["buf"] = [out.clone() for _ in range(_CP["delay"] + 1)]
+        _CPS["buf"].append(out.clone()); _CPS["buf"].pop(0)
+        t_rel = env.episode_length_buf.to(out.dtype) * float(env.step_dt) - float(args_cli.precheck_s)
+        act = (t_rel >= _CP["t0"]).unsqueeze(-1)
+        y = _CPS["buf"][0] if _CP["delay"] > 0 else out
+        if _CP["flip"] > 0.0:
+            fl = (torch.rand(tuple(out.shape), generator=_CPS["gen"]) < _CP["flip"]).to(out.device)
+            _CPS["nflip"] += int((fl & act).sum()); y = torch.where(fl, 1.0 - (y > 0.5).to(out.dtype), y)
+        _CPS["n"] += 1
+        return torch.where(act, y, out)
+    _fcp.func = _fc_pert
+    print(f"[contact_pert] 접촉 관측 교란 {_CP} (관측 비트만 — 물리·채점 불변, --contact_drop 뒤에 적용)", flush=True)
+""")
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

@@ -193,6 +193,7 @@ parser.add_argument("--kw_w3_export", type=str, default="", help="S3E: W3 하위
 parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토크 한계 배율 목록 '1.0,0.8,0.7,0.6'(env i → i % len). '' = 끔")
 parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
 parser.add_argument("--kw_unload", type=float, default=0.0, help="X18: 인계 뒤 링크마다 자기 무게의 이 비율(0–0.9)을 위로 받친다(부분지지의 이상화, 1 s 램프). --dist 와 함께 쓰지 않는다")
+parser.add_argument("--contact_pert", type=str, default="", help="X19: 접촉 관측 교란 'delay:N;flip:p;t0:x'(관측 비트만, 물리·채점 불변). '' = 끔")
 parser.add_argument("--kw_soft_clamp_all", action="store_true", help="X17: 실물 stage8 처럼 전 관절 목표각을 config soft 한계로 자른다(기본 = 학습과 같이 발목 앞뒤만)")
 parser.add_argument("--kw_soft_clamp_json", type=str, default="", help="X17b: --kw_soft_clamp_all 이 읽을 한계 표(기본 = config/joint_limits_12dof.json). 넓힌 soft 한계 제안의 대조 평가용")
 parser.add_argument("--kw_hl", type=str, default="", help="1007 HD: 헤딩 고리 — '' 끔 | 'on' 브리지 기본 | JSON")
@@ -568,6 +569,38 @@ if args_cli.contact_drop:
         return out
     _fc.func = _fc_drop
     print(f"[contact_drop] 정책 접촉 비트 강제 0: {args_cli.contact_drop}", flush=True)
+if args_cli.contact_pert:
+    _CP = {"delay": 0, "flip": 0.0, "t0": 0.0}
+    for _it in args_cli.contact_pert.split(";"):
+        _k, _v = _it.split(":"); assert _k.strip() in _CP, _k; _CP[_k.strip()] = float(_v)
+    _CP["delay"] = int(_CP["delay"]); assert 0 <= _CP["delay"] <= 10 and 0.0 <= _CP["flip"] <= 0.5
+    _fcp = getattr(env_cfg.observations.policy, "feet_contact", None)
+    if _fcp is None:
+        raise SystemExit("--contact_pert: 정책 관측에 feet_contact 항 없음")
+    _fcp_orig = _fcp.func; _CPS = {"buf": None, "gen": None, "n": 0, "nflip": 0}
+
+    import inspect as _insp_cp
+    _fcp_names = set(_insp_cp.signature(_fcp_orig).parameters) - {"env"}
+
+    def _fc_pert(env, sensor_cfg=None, threshold: float = 5.0, delay_steps: int = 0, threshold_range=None,
+                 hold_ticks=None, extra_delay=None, tilt_off_deg=None):      # 매니저가 인자 이름을 검사하므로 --contact_drop 포장과 같은 꼴로 받는다
+        _kw = dict(sensor_cfg=sensor_cfg, threshold=threshold, delay_steps=delay_steps, threshold_range=threshold_range,
+                   hold_ticks=hold_ticks, extra_delay=extra_delay, tilt_off_deg=tilt_off_deg)
+        out = _fcp_orig(env, **{k: v for k, v in _kw.items() if k in _fcp_names and v is not None}).clone()
+        if _CPS["gen"] is None:
+            _CPS["gen"] = torch.Generator(device="cpu"); _CPS["gen"].manual_seed(int(args_cli.seed) * 1000 + 19)
+            _CPS["buf"] = [out.clone() for _ in range(_CP["delay"] + 1)]
+        _CPS["buf"].append(out.clone()); _CPS["buf"].pop(0)
+        t_rel = env.episode_length_buf.to(out.dtype) * float(env.step_dt) - float(args_cli.precheck_s)
+        act = (t_rel >= _CP["t0"]).unsqueeze(-1)
+        y = _CPS["buf"][0] if _CP["delay"] > 0 else out
+        if _CP["flip"] > 0.0:
+            fl = (torch.rand(tuple(out.shape), generator=_CPS["gen"]) < _CP["flip"]).to(out.device)
+            _CPS["nflip"] += int((fl & act).sum()); y = torch.where(fl, 1.0 - (y > 0.5).to(out.dtype), y)
+        _CPS["n"] += 1
+        return torch.where(act, y, out)
+    _fcp.func = _fc_pert
+    print(f"[contact_pert] 접촉 관측 교란 {_CP} (관측 비트만 — 물리·채점 불변, --contact_drop 뒤에 적용)", flush=True)
 if args_cli.delay_steps:
     _dlo, _dhi = _pair(args_cli.delay_steps)
     env_cfg.actions.joint_pos.min_delay_steps = int(_dlo); env_cfg.actions.joint_pos.max_delay_steps = int(_dhi)

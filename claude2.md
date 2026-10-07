@@ -185,6 +185,7 @@
 
 - **최종 보고**: `reports/night_1007/FINAL_REPORT.md`(7 항목) · 시간순 기록 `reports/night_1007/LOG.md`
 - **최종 후보는 그대로다**: 서기 G21a-11300 · 회복 G24Ra-21793 + IMU 감지기 · 걷기 W3S3d-15800(`models/` 에 역할 이름으로 등록). 밤사이 이어 학습 팔 10 개 중 승격 0.
+  실물 이력 주의: 회복 키 `stand_c5kr_…` 은 실물에서 돈 적이 없다. 돌아 본 것은 `stand_c5krh_…` 한 번(1007, 35.6 s)과 1005 의 옛 감지기 키뿐이다.
 - **젯슨 = 저장소 판**(묶음 `head_1008`, 원본 커밋 `f1ad8221`, 매니페스트 `8f4373d3…`). 기록 `reports/night_1007/JETSON_DEPLOY_1008.md`.
   새 것: 콘솔 걷기 패널(버튼 6 활성·2 비활성)·모터 오류 바이트 기록·합성 키 2 개(`stand_kew3_…` 갇힘 해소 끔 / `stand_kew3q_…` 켬 = 시뮬 평가 구성).
   재배포는 `deploy/deploy_head_1008.sh`(드라이런 기본, `--apply --restart-console`, 되돌리기 `--rollback --restart-console`). 재적용 전에 `deploy/head_1008.accept` 를 직전 배포 md5 로 맞춘다.

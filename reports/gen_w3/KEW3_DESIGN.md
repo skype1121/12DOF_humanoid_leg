@@ -60,3 +60,66 @@
 
 ## 7. 결과·결정 기록
 (X1·X2 결과와 구현 여부를 아래에 추가)
+
+## 8. 브리지 연결 구현 기록 (1007, **로컬 구현·오프라인 검증만 — 젯슨 미배포·ROS/CAN 미실행·실물 미검증**)
+전환 규칙은 §3 표(초안: 러너 새 시작 + 슬루 기준만)가 아니라 그 뒤 시뮬로 확정된 것(TRANSITION_W3KE.md §5.6·§5.6b·§5.6e·§5.6k)을 쓴다:
+KE → W3 = 켜기 수락 뒤 첫 정책 틱 / W3 → KE = 끄기 → 반주기 래치 → W3 STAND 로 조용한 양발 서기 0.5 s(|ω_xy| < 0.15, 상한 3 s) → 상태 이어받기(carry).
+같은 부품(브리지 `_make_runner` 가 만든 두 러너 + `KeW3Runner` + `W3Supervisor`)의 시뮬 폐루프 동등성은 X6 이 통과했다(TRANSITION §5.10c) — 이 절은 그 부품을 노드에 잇는 배선과 그 계약 검증이다.
+
+### 8.1 무엇을 붙였나 (`jetson/scripts/rl_bridge_node.py`)
+- 기동 인자 `--experimental-kew3`. **`--experimental-w3` 와 함께만** 받는다(없으면 exit 2). 합성 키는 W3 키 집합(`W3_CKPTS`·`W3_CMD_LIMITS`)에
+  속해 W3 세션의 `step`·seq·ack·감독기·헤딩 고리·감시를 `runner._w3_clock` 으로 그대로 쓰고, 하위 W3 키가 등록돼 있어야 만들어지기 때문이다.
+  `disable_experimental_w3()` 는 합성 키도 함께 내리고, 다시 켜면 복원한다(selftest 가 W3 등록을 껐다 켜도 플래그 상태가 유지된다).
+- 합성 키 `stand_kew3_g21a_g24ra_w3s3d15800` = `KeW3Runner(_make_runner("stand_w3s3d_15800"), _make_runner("stand_c5kr_g21a_g24ra"),
+  handoff="carry", settle_quiet_s=0.5)`. 값은 `KEW3_SPECS` 한 곳. 하위 러너는 기존 `_make_runner` 경로 그대로라 기본자세·관측 필터·env.yaml 요구·
+  감지기 설정이 각 하위 키에서만 정해진다. 레지스트리 값(경로 = KE 서기 정책·기본자세·명령 범위)은 하위 키의 것을 가리킨다.
+- `--runner-ema-fresh 2` 와 함께면 기동 거부(인자 검사 exit 2 + `_make_runner` 가 모델을 읽기 전에 ValueError + 러너 생성자 거부, 세 겹).
+  `--c5-settle`·`--c5-imu-f32` 는 합성 키에서 종전 검사대로 거부된다(평가된 것은 현행 imu 종료 판정뿐). `--c5-overtime` 은 합성 키에서 허용.
+- 켜기 게이트 `runner_enable_gate`: 감독기(·감시)가 수락한 켜기라도 `runner.enable_block_reason()` 이 사유를 주면 거부하고 응답 `why` 에 남긴다
+  (`_on_cmd_w3`, 감독기 없는 종전 `_on_cmd_base` step 경로 둘 다). 감독기는 그 seq 를 이미 소비한다(재시도는 새 seq — 종전 규칙).
+- 기록(합성 키 세션에서만 필드 추가): 블랙박스 `c5` = `runner.blackbox()`(KE 필드 + `kew3`), 디버그·응답 최상위 `kew3` =
+  {mode, event, n_to_w3, n_to_ke, ticks, want, block(켜기 차단 사유), since_latch_s·settle_s(정착 대기 진행)}.
+  `--c5-overtime` 입력은 합성 러너 `last_mode`(W3 모드에서는 0)라 KE 모드에서만 회복 체류를 센다.
+- 꺼져 있으면 `KEW3_CKPTS` 가 비어 레지스트리·명령 처리·블랙박스 스키마가 종전과 같고 `kew3_runner` 모듈은 import 되지 않는다.
+  파일이 없는 배포에서 기본 selftest 는 그 항목만 SKIP, `--experimental-kew3` 기동은 노드 생성 전 거부한다.
+
+### 8.2 오프라인 검증 (1007, 이 PC CPU — 산출물 = 각 스크립트 출력)
+기준 커밋: 구현·검증은 b79370ca 위에서 했고, 17aea47d(c5_switch `requiet` 옵션 추가 등)·68d90219(보고서·로그만 추가)로 올린 뒤 같은 묶음을 다시 돌려 같은 결과를 얻었다.
+| 검사 | 결과 |
+|---|---|
+| `python3 rl_walking/deploy/kew3_runner.py --selftest` | ALL PASS (변경 없음) |
+| `python3 jetson/scripts/rl_bridge_node.py --selftest` | 29/29 PASS — 종전 28 항목 출력은 시간(ms)만 다르고 새 항목 'KE↔W3 합성 러너 실험 플래그' 1 줄 추가 |
+| 같은 selftest, `--experimental-w3 --experimental-kew3 --checkpoint <합성 키>` | 29/29 PASS — '학습 계약'·'정책 500틱'이 합성 키와 하위 키 둘을 필수로 검사 |
+| `python3 jetson/scripts/selftest_w3_bridge_node.py`(가짜 ROS, 실제 노드 코드) | 13/13 PASS — 합성 세션 시나리오 2 개 + 기동 거부 7 경로 포함 |
+| 합성 플래그 꺼짐/다른 키 세션 = 연결 전 커밋 b79370ca 발행 비트 동일 | W3S3d 631 건·C5 kr 1226 건(회복 모드 118 틱)·C5 kr + 체류 상한 1170 건·플래그 켬 + W3S3d 631 건·플래그 켬 + C5 kr 1226 건 |
+| 기존 기준 비교(68493c11·95946e41·35b69b4a 등)·`tests/test_startup_simplify_bridge.py` | 전부 종전대로 PASS |
+| 변이 시험(게이트·기록·명세·종속·ema 거부·체류 상한·슬루 기준 등 결함 16 종을 심은 사본) | 16/16 을 새 시험이 검출(대조군 = 변이 없음 PASS) |
+| 일회성(커밋 안 함): 실제 노드 + 실모델 + 합성 키, 착지 자동 인수 → KE → 걷기 → KE (tests 의 모의 플랜트) | 응답 3 건 수락·전환 1/1·STOP_ALL 0·발행 목표 최대 틱 변화 4.000005°(걷기 중 슬루 포화 — selftest 와 같은 ×1.001 허용 안, 전환 틱 ±3 은 1.8–4.0°) |
+- selftest 가 고정한 것: KE 모드 = 종전 C5 kr 코어와 목표각 비트 동일(스텁 80 틱·실모델 100 틱) · 켜기 다음 틱 W3(첫 틱 STAND·ψ* 래치, 둘째 틱 gait 0→1) ·
+  걷는 중 헤딩 고리 출력(K·오차)이 합성 러너의 W3 명령 관측에 들어감(합성 러너 + 헤딩 고리를 함께 돌린 첫 시험 — 스텁·대본 요, 폐루프 아님) ·
+  끄기 → 래치 → 정착 25 틱 → KE · 시끄러운 정착은 상한 3.00 s · 엔코더가 목표에서 17° 떨어진 전환 틱에도 |Δ목표| ≤ 4° · KE 회복 모드 켜기 거부 ·
+  stop/estop 정지 래치·rearm · 한발 지지 트립은 양발 지지(W3 STAND, KE 로 넘기기 전)에서 동결 · 감시(act)·헤딩 고리 고장 판별 켬 = 끔 목표각 비트 동일·KE 모드 ψ* 미래치.
+- **이것은 계약·순서 검증이다.** 스텁 정책·가정 접촉 모형·모의 플랜트로는 폐루프 균형·전환 성공률을 말할 수 없다(근거는 §1 과 TRANSITION §5 의 시뮬 평가).
+  변경 전 사본(b79370ca)에서도 같은 메시지로 실패하는 항목(이번 변경과 무관, 대조 실행으로 확인): 비기본 인자 `--w3-monitor on`·
+  `--w3-heading-loop off`·`--w3-hl-fault on`·`--w3-cmd-limits`·`--runner-ema-fresh 2` 로 돌린 브리지 selftest 의 기존 항목 1–2 개
+  (그 인자들이 기존 항목의 기대값을 바꾼다 — 새 합성 항목은 이 인자들에서도 PASS), `selftest_c5_imu_f32.py` 기본 `--ref HEAD`(`--ref 6260e281~1` 이면 ALL PASS).
+
+### 8.3 설계 판단과 남은 결정
+- **hang_arm 시작**: 합성 키는 W3 키 규칙대로 거부한다(평가된 시작은 지면 KE 서기뿐). 허용 여부는 사용자 결정.
+- **KE 모드 가드 트립**: W3 세션 감독기를 그대로 쓰므로 KE 서기·회복 중 리프트/발진 가드 트립도 지연 동결(양발 지지 확인, 상한 1.5 s)이다 —
+  종전 C5 세션의 즉시 동결과 다르다. 서 있으면 같은 틱에 동결된다(selftest). 유지 여부는 사용자 결정.
+- **회복 모드 갇힘 → 걷기 켜기 계속 거부**(TRANSITION §5.10b·§5.10c: X6 무외란 316 env 중 4 env 가 10 s 넘게 갇힘, 1 env 는 끝내 못 걸음)는 이 배선에서도 그대로다 —
+  게이트는 설계대로 거부만 하고, 자세가 기준으로 돌아오기 전에 운영자가 풀 수단은 재시작뿐이다(`--c5-overtime` 으로 기록·동결은 가능).
+  해소 후보 `SwitchDetector(requiet=…)`(c5_switch, 기본 꺼짐)는 합성 키에 넣지 않았다: 합성 키의 KE 는 현행 `stand_c5kr_g21a_g24ra` 그대로다.
+  X6b 는 통과했다(TRANSITION §5.10d: 갇힘 3 → 0, 못 걸은 env 1 → 0, 낙상 동일). 채택이 정해지면 `C5_EXTRA` 의 감지기 설정에 `requiet` 가 든 C5 키를 등록하고
+  `KEW3_SPECS` 의 `ke` 를 그 키로 바꾸면 된다(한 곳, 미구현·미검증 — 감지기 변형 채택은 KE 단독 배터리가 따로 필요하다는 §5.6h 의 조건 그대로).
+- **KE 변형 선택**: 합성 키의 서기 쪽은 `stand_c5kr_g21a_g24ra`(조기 복귀 유지 0.2 s)다. 1007 에 젯슨 콘솔 선택지로 올린 krh(유지 0.7 s)는 본 브리지
+  레지스트리에 없다(`deploy/cand/c5krh_1007/` 사본에만). 합성에 krh·requiet 변형을 쓰려면 본 브리지에 그 C5 키를 등록한 뒤 `KEW3_SPECS` 의 `ke` 를 바꾼다(§4 의 imu/imuH 결정).
+- **헤딩 고리**: 합성 키도 W3 세션 그대로 켜기 명령의 `heading_loop` 기본값이 True 다. 시뮬 X6·X7 은 고리를 끄고 돌렸다(HEADING_SESSION_1007.md §0·§6) —
+  합성 러너 + 고리의 폐루프 평가는 없다. 첫 시험은 `--w3-heading-loop off` 또는 명령마다 `heading_loop: false`.
+- **기록 공백**: W3 → KE 인계 틱의 디버그 `obs` 는 null 이다(러너가 그 틱 관측을 두 하위 러너에서 모두 지운다. `raw_action` 은 남는다).
+  `kew3_runner._carry` 에 `dst.last_obs = src.last_obs` 한 줄이면 메워진다 — 파일은 건드리지 않고 원숭이 패치로만 확인했다(인계 틱 관측 320 이 남고
+  행동 동일, 러너 selftest·브리지 합성 항목 PASS). 반영 여부는 러너 소유자 결정.
+- W3 모드 동안 `c5` 의 KE 필드(raw_stand·raw_rec·ref_deg)는 마지막 KE 틱 값 그대로다. 어느 러너가 도는지는 `kew3.mode` 로 본다.
+- **미검증**: 젯슨 배포·실물·ROS 실행, Isaac 폐루프(`run_regress.sh`·X6)에서 이 브리지 사본 사용, 콘솔 통합(기동 인자뿐 — `w3_cmd.py status` 는
+  `kew3` 를 아직 안 보여 준다), 합성 세션 + `--w3-monitor`·`--w3-hl-fault` 의 노드 수준 시나리오(코어 수준만 확인). 시뮬 수치는 실물 성공 확률이 아니다.

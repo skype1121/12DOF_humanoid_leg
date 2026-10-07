@@ -375,7 +375,17 @@ def knee_tau_joint(tau_est_motor, status_age_s, dir_by_joint, max_age_s=KNEE_TAU
 
 
 def _make_runner(checkpoint):
-    """체크포인트 이름 → 러너. C5 이름이면 C5Runner(서기 정책 계약 공유), 아니면 PolicyRunnerStage4(종전)."""
+    """체크포인트 이름 → 러너. C5 이름이면 C5Runner(서기 정책 계약 공유), 아니면 PolicyRunnerStage4(종전).
+    1007: KE↔W3 합성 키(--experimental-kew3 로 등록된 경우에만 KEW3_CKPTS 에 있다)면 두 하위 키를 **이 함수로** 만들어 KeW3Runner 로 묶는다 —
+    하위 러너의 계약(기본자세·관측 필터·env.yaml 요구·클록·감지기 설정)은 각 하위 키의 종전 경로 한 곳에서만 정해진다."""
+    if checkpoint in KEW3_CKPTS:                                                        # 1007 합성(실험 플래그 켜짐 + 합성 키에만)
+        _sp = KEW3_CKPTS[checkpoint]
+        if _sp.handoff == "carry" and RUNNER_EMA_FRESH != 1:                             # 모델을 읽기 전에 거부(파일이 없어도 같은 오류)
+            raise ValueError(
+                f"{checkpoint}: 합성 러너 전환(handoff 'carry' = 상태 이어받기)은 러너 ema_fresh_ticks 1 에서만 — "
+                f"--runner-ema-fresh {RUNNER_EMA_FRESH} 는 전환 틱에 저역 필터(gyro_ema·joint_vel_ema)를 순간값으로 재시작시킨다"
+                "(걷기 직후 KE 행동 폭주 경로, TRANSITION_W3KE.md §5.6). 기동 거부")
+        return _kew3_compose(checkpoint, _make_runner(_sp.w3), _make_runner(_sp.ke))
     if checkpoint in C5_PAIRS:
         stand, rec_path = C5_PAIRS[checkpoint]
         _ex = C5_EXTRA.get(checkpoint, {})
@@ -554,16 +564,103 @@ def enable_experimental_w3():
         if lim is not None:
             W3_CMD_LIMITS[k] = W3_CMD_LIMITS_OVERRIDE if W3_CMD_LIMITS_OVERRIDE is not None else lim
     EXPERIMENTAL_W3 = True
+    if EXPERIMENTAL_KEW3:      # 1007: 합성 키는 W3 키에 딸려 있다 — (selftest 가) W3 등록을 되돌렸다 다시 켜면 합성 키도 함께 복원. 기본(꺼짐)은 무동작
+        _kew3_register()
 
 
 def disable_experimental_w3():
     """등록 되돌림(selftest 격리용) — 꺼진 상태 = 레지스트리에 W3 키가 하나도 없다."""
     global EXPERIMENTAL_W3
+    _kew3_unregister()         # 1007: 합성 키는 하위 W3 키 없이는 성립하지 않는다 — 함께 내린다(요청 플래그 EXPERIMENTAL_KEW3 는 유지). 꺼짐이면 무동작
     for k in _W3.W3_KEYS:
         for reg in (CHECKPOINTS, CKPT_GAIT_FREQ, CKPT_DEFAULT_POSE, W3_CKPTS, W3_CMD_LIMITS):
             reg.pop(k, None)
         CKPT_REQUIRE_ENV_YAML.discard(k)
     EXPERIMENTAL_W3 = False
+
+
+# ---------------------------------------------------------------------------
+# 1007 KE ↔ W3 합성 러너 실험 플래그 (**기본 꺼짐 · 실물 미검증 · 젯슨 미배포**) — reports/gen_w3/KEW3_DESIGN.md · TRANSITION_W3KE.md §1c·§5.6·§5.10
+# "서 있는 동안은 KE(G21a 서기 + G24Ra 회복 + 감지기 = C5Runner), 걷는 동안만 W3S3d-15800". 러너 = rl_walking/deploy/kew3_runner.KeW3Runner.
+# 켜는 길은 기동 인자 --experimental-kew3 하나뿐이고 **--experimental-w3 와 함께만** 받는다: 합성 키는 W3 키 집합(W3_CKPTS·W3_CMD_LIMITS)에
+# 속해 W3 세션의 명령 채널(step·seq·ack)·감독기·헤딩 고리·감시를 runner._w3_clock 으로 그대로 쓰고, 하위 W3 키가 등록돼 있어야 만들어진다.
+# 꺼져 있으면 KEW3_CKPTS 가 비어 레지스트리·명령 처리·블랙박스 스키마 전부 종전과 같고 kew3_runner 모듈은 import 되지 않는다
+# (selftest 'KE↔W3 합성 러너' + selftest_w3_bridge_node.py 의 기준 커밋 발행 비트 비교가 고정). 켜도 --checkpoint 로 합성 키를 고른 세션에서만 러너가 바뀐다.
+# 전환 규칙(시뮬 평가로 확정 — 이 파일에서 바꾸지 않는다, 값은 KEW3_SPECS 한 곳):
+#   KE → W3 : 켜기 명령이 수락된 뒤 첫 정책 틱에 W3 로(그 틱은 W3 STAND, 다음 틱에 gait 0→1). KE 회복 모드가 켜져 있으면 켜기 거부(runner_enable_gate).
+#   W3 → KE : 끄기 → W3 반주기 래치 꺼짐 → W3 STAND 로 조용한 양발 서기 0.5 s(|ω_xy| < 0.15, 상한 3 s) → 상태 이어받기(handoff "carry").
+#   움직이는 중 러너 새 시작 금지: carry 는 러너 ema_fresh_ticks 1 에서만 → --runner-ema-fresh 2 와 함께면 기동 거부(kew3_startup_reject·_make_runner).
+# 시작 = stand 명령(KE 모드, 종전 인계 워밍업·온셋 블렌딩 그대로). hang_arm 은 W3 키 규칙대로 거부(지면 시작만 평가됨 — 허용 여부는 사용자 결정).
+# 가드 트립은 W3 세션 규칙(지연 동결: 양발 지지 확인 뒤 STOP_ALL)이 KE 모드에도 그대로 적용된다(종전 C5 세션의 즉시 동결과 다름).
+# ---------------------------------------------------------------------------
+EXPERIMENTAL_KEW3 = False  # 요청 플래그. 합성 키의 실제 등록(KEW3_CKPTS)은 W3 키가 등록돼 있는 동안만
+KeW3Spec = collections.namedtuple("KeW3Spec", "w3 ke handoff settle_quiet_s")
+KEW3_CKPT_KEY = "stand_kew3_g21a_g24ra_w3s3d15800"     # stand 가족 접두사(시작 = stand·LPF β0.27·heading_hold 강제 OFF)
+#: 합성 키 → (걷기 W3 키, 서기 KE 키[C5 키], 전환 방식, W3 → KE 정착 시간[s]). 정착 판정의 |ω_xy| 문턱 0.15·상한 3 s 는 KeW3Runner 기본값.
+KEW3_SPECS = {KEW3_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5)}
+KEW3_KEYS = tuple(KEW3_SPECS)
+KEW3_CKPTS = {}            # 켜졌을 때만 {합성 키: KeW3Spec}
+
+
+def _kew3_register():
+    """합성 키를 레지스트리에 올린다 — 값은 새로 정의하지 않고 하위 키의 것을 가리킨다(계약 단일 원본). 하위 키가 없거나 계약이 어긋나면 ValueError."""
+    for k, sp in KEW3_SPECS.items():
+        if sp.w3 not in W3_CKPTS or sp.w3 not in W3_CMD_LIMITS:
+            raise ValueError(f"{k}: 걷기 키 {sp.w3} 가 W3 명령 채널 키로 등록돼 있지 않음(--experimental-w3 필요)")
+        if sp.ke not in C5_PAIRS:
+            raise ValueError(f"{k}: 서기 키 {sp.ke} 가 C5 키가 아님")
+        if CKPT_DEFAULT_POSE.get(sp.w3) != CKPT_DEFAULT_POSE.get(sp.ke) or CKPT_GAIT_FREQ.get(sp.w3) != CKPT_GAIT_FREQ.get(sp.ke):
+            raise ValueError(f"{k}: 하위 키 {sp.w3}·{sp.ke} 의 기본자세 또는 클록 주파수가 다름 — 합성 불가")
+        CHECKPOINTS[k] = CHECKPOINTS[C5_PAIRS[sp.ke][0]]         # 경로 = KE 서기 정책(시작 모드) — C5 키와 같은 규약(이름 기반 계약이 G21a 로 해석)
+        CKPT_GAIT_FREQ[k] = CKPT_GAIT_FREQ[sp.ke]                # stand 가족 레지스트리 요건(합성 러너는 쓰지 않는다 — 하위 러너가 각자 계약)
+        CKPT_DEFAULT_POSE[k] = list(CKPT_DEFAULT_POSE[sp.ke])    # 착지 대기 홀드 자세 검사(ckpt_default_pose)가 읽는다
+        CKPT_REQUIRE_ENV_YAML.add(k)
+        W3_CKPTS[k] = W3_CKPTS[sp.w3]                            # BridgeCore.w3 — 명령 채널·감독기·gait_enable 입력
+        W3_CMD_LIMITS[k] = W3_CMD_LIMITS[sp.w3]                  # BridgeCore.w3cmd — 명령 범위(기동 --w3-cmd-limits 포함)·헤딩 고리·감시
+        KEW3_CKPTS[k] = sp
+
+
+def _kew3_unregister():
+    for k in KEW3_KEYS:
+        for reg in (CHECKPOINTS, CKPT_GAIT_FREQ, CKPT_DEFAULT_POSE, W3_CKPTS, W3_CMD_LIMITS, KEW3_CKPTS):
+            reg.pop(k, None)
+        CKPT_REQUIRE_ENV_YAML.discard(k)
+
+
+def enable_experimental_kew3():
+    """합성 키 등록. W3 키가 등록돼 있어야 한다(enable_experimental_w3 먼저) — 아니면 ValueError(레지스트리 불변)."""
+    global EXPERIMENTAL_KEW3
+    if not EXPERIMENTAL_W3:
+        raise ValueError("--experimental-kew3 는 --experimental-w3 와 함께만(합성 키는 W3 키 등록·W3 세션 감독기를 그대로 쓴다)")
+    _kew3_register()
+    EXPERIMENTAL_KEW3 = True
+
+
+def disable_experimental_kew3():
+    """등록 되돌림(selftest 격리용) — 꺼진 상태 = 레지스트리에 합성 키가 하나도 없다(W3 키는 그대로)."""
+    global EXPERIMENTAL_KEW3
+    _kew3_unregister()
+    EXPERIMENTAL_KEW3 = False
+
+
+def _kew3_compose(key, w3_runner, ke_runner):
+    """합성 키 명세(KEW3_CKPTS[key])대로 두 하위 러너를 KeW3Runner 로 묶는다 — _make_runner(실모델)와 selftest(스텁 주입)가 같은 함수를 쓴다.
+    계약 불일치(관측 레이아웃·기본자세·관측 필터 β·carry + ema_fresh 2)는 KeW3Runner 생성자가 ValueError 로 거부한다."""
+    from rl_walking.deploy.kew3_runner import KeW3Runner   # 지연 import — 합성 러너를 실제로 만들 때만(젯슨에 파일이 없어도 기본 기동 불변)
+    sp = KEW3_CKPTS[key]
+    return KeW3Runner(w3_runner, ke_runner, handoff=sp.handoff, settle_quiet_s=sp.settle_quiet_s)
+
+
+def kew3_startup_reject(*, checkpoint, experimental_w3, experimental_kew3, runner_ema_fresh):
+    """기동 인자 조합 검사 → 거부 사유(문자열) 또는 None(통과). main 과 selftest 가 같은 함수를 쓴다. 합성 키·플래그가 없으면 항상 None."""
+    if checkpoint in KEW3_KEYS and not experimental_kew3:
+        return f"--checkpoint {checkpoint} 는 --experimental-kew3 를 명시해야 선택 가능"
+    if experimental_kew3 and not experimental_w3:
+        return "--experimental-kew3 는 --experimental-w3 와 함께만(합성 키는 W3 키 등록·W3 세션 감독기를 그대로 쓴다)"
+    if experimental_kew3 and int(runner_ema_fresh) != 1:
+        return (f"--experimental-kew3 는 --runner-ema-fresh 1 에서만 — {runner_ema_fresh} 는 합성 러너 전환(상태 이어받기) 틱에 저역 필터를 "
+                "순간값으로 재시작시킨다(걷기 직후 KE 행동 폭주 경로, TRANSITION_W3KE.md §5.6)")
+    return None
 
 
 def _w3_env_contract(path):
@@ -617,6 +714,28 @@ def w3_monitor_gate(dec, mon):
     if ok:
         return dec
     return {"accepted": False, "why": why, "action": "none", "want": None, "cmd": None, "hl": None}
+
+
+def runner_enable_block(runner):
+    """1007 합성 러너: 러너가 내는 '켜기' 추가 선행조건 위반 사유(문자열) 또는 None.
+    enable_block_reason 이 없는 러너(PolicyRunnerStage4·C5Runner — 종전 전부)는 항상 None."""
+    fn = getattr(runner, "enable_block_reason", None)
+    if not callable(fn):
+        return None
+    why = fn()
+    return str(why) if why else None
+
+
+def runner_enable_gate(dec, runner):
+    """1007 합성 러너: 감독기(·감시기)가 수락한 '켜기'(set_want True)를 러너 사유(KE 회복 모드 켜짐)로 거부한다 — 사유는 응답 why 에 그대로.
+    사유가 없으면(종전 러너는 항상) dec 를 그대로 돌려준다. 끄기·정지·명령 변경은 건드리지 않는다(안전 방향만 더함).
+    감독기는 이미 이 seq 를 소비했다(거부된 켜기의 재시도는 새 seq — 종전 규칙과 같다)."""
+    if dec.get("action") != "set_want" or not dec.get("want"):
+        return dec
+    why = runner_enable_block(runner)
+    if why is None:
+        return dec
+    return {"accepted": False, "why": f"러너 선행조건: {why}", "action": "none", "want": None, "cmd": None, "hl": None}
 
 
 def w3_monitor_latch(sup, why):
@@ -1142,6 +1261,35 @@ class BridgeCore:
         """1007: 이 코어가 W3 명령 채널 키인지(vx·vy·wz 검증 범위 등록)."""
         return self.ckpt_name in W3_CMD_LIMITS
 
+    @property
+    def kew3(self):
+        """1007: 이 코어가 KE↔W3 합성 키로 도는지(실험 플래그 켜짐 + 합성 키). 합성 키는 W3 키 집합에도 속한다(w3·w3cmd 도 True)."""
+        return self.ckpt_name in KEW3_CKPTS
+
+    def c5_view(self):
+        """C5 블랙박스(blackbox())·회복 모드(last_mode)를 내는 러너 또는 None — C5Runner(종전) 또는 1007 합성 러너.
+        합성 러너의 last_mode 는 KE 모드일 때만 회복 모드(W3 모드에서는 0)이고 blackbox() 는 KE 필드 + "kew3"(W3 모드 동안 KE 필드는
+        마지막 KE 틱 값 그대로 — 어느 러너가 도는지는 kew3.mode 로 본다). 합성 키가 아니면 종전 isinstance(runner, C5Runner) 와 같다."""
+        if isinstance(self.runner, C5Runner) or (self.kew3 and callable(getattr(self.runner, "blackbox", None))):
+            return self.runner
+        return None
+
+    def kew3_snapshot(self, bb=None):
+        """1007 합성 러너 상태(디버그·응답·selftest 공용, 기록 전용) — 합성 키가 아니면 None.
+        mode 지금 도는 러너("ke"|"w3") · n_to_w3/n_to_ke 전환 횟수(프로세스 수명 누계 — stand 재시작으로 지워지지 않는다) · event 이번 틱 전환 사건 ·
+        ticks 현 모드 체류 틱 · want 러너가 받은 gait_enable 요청 · block 켜기 차단 사유(KE 회복 모드) 또는 None ·
+        since_latch_s/settle_s W3 → KE 정착 대기 진행(래치가 꺼진 뒤 경과·조용한 양발 서기 연속 시간, 대기 중이 아니면 None).
+        bb: 이미 구한 runner.blackbox() 결과(같은 틱에 두 번 만들지 않게)."""
+        if not self.kew3:
+            return None
+        r = self.runner
+        s = dict(((r.blackbox() if bb is None else bb) or {}).get("kew3") or {})
+        s["block"] = runner_enable_block(r)
+        sl = getattr(r, "_since_latch", None)       # 러너 내부 정착 대기 상태(기록 전용 — 없으면 None)
+        s["since_latch_s"] = None if sl is None else round(float(sl), 2)
+        s["settle_s"] = None if sl is None else round(float(getattr(r, "_settle_run", 0.0)), 2)
+        return s
+
     def _apply_w3_cfg(self):
         self.w3hl = _W3.W3HeadingLoop(W3_HL_CFG) if (self.ckpt_name in W3_CMD_LIMITS and W3_HL_CFG is not None) else None
         self.w3hl_on = True
@@ -1431,8 +1579,8 @@ def _selftest_policy(required=()):
     res, skipped = [], []
     backend = "-"
     for n in names:
-        d = CHECKPOINTS[n]
-        if not (os.path.exists(os.path.join(d, "policy.pt")) or os.path.exists(os.path.join(d, "policy.onnx"))):
+        if not all(os.path.exists(os.path.join(d, "policy.pt")) or os.path.exists(os.path.join(d, "policy.onnx"))
+                   for d in _ckpt_policy_dirs(n)):       # 1007: 합성 키는 하위 정책 전부, 그 밖은 종전대로 CHECKPOINTS[n] 하나
             skipped.append(n)
             continue
         dt, backend, note = _selftest_policy_one(n)
@@ -3551,9 +3699,525 @@ def _selftest_parity_flags():
     return " · ".join(out)
 
 
+def _ckpt_policy_dirs(name):
+    """정책 파일(policy.pt|onnx)이 있어야 하는 exported 디렉터리들 — 종전 키는 CHECKPOINTS[name] 하나(종전 검사 그대로),
+    1007 합성 키는 하위 러너가 읽는 전부(걷기 W3 · KE 서기 · KE 회복)."""
+    sp = KEW3_CKPTS.get(name)
+    if sp is None:
+        return [CHECKPOINTS[name]]
+    return [CHECKPOINTS[sp.w3], CHECKPOINTS[C5_PAIRS[sp.ke][0]], C5_PAIRS[sp.ke][1]]
+
+
+def _kew3_expand_required(required):
+    """필수 체크포인트에 합성 키가 있으면 하위 키(걷기 W3·서기 KE)도 필수로 — 학습 계약·정책 파일 검사가 하위 정책까지 본다. 없으면 그대로."""
+    out = list(required)
+    for n in required:
+        sp = KEW3_CKPTS.get(n)
+        if sp is not None:
+            out += [k for k in (sp.w3, sp.ke) if k not in out]
+    return tuple(out)
+
+
+def _selftest_kew3():
+    """1007 KE↔W3 합성 러너 실험 플래그(--experimental-kew3): (a) 꺼짐 = 레지스트리에 합성 키 없음·W3 플래그 없이 등록 거부·켰다 끄면 레지스트리 원상
+    (값·순서)·켜도 다른 키(W3S3d·C5 kr) 코어 출력 불변·W3 를 내리면 합성 키도 내려가고 다시 켜면 복원 (b) 켬: 키 계약(stand 가족·하위 키 계약 공유),
+    stand = KE 모드(종전 C5 kr 코어와 목표각 비트 동일), 감독기 수락 켜기 → 다음 틱 W3(첫 틱 STAND·ψ* 래치, 둘째 틱 gait 0→1·리드 발·고리 출력), 끄기 → 반주기 래치 →
+    조용한 양발 서기 0.5 s → KE, 시끄러우면 상한 3 s, 전 틱 유한·전환 틱 포함 |Δ목표| ≤ 4°(엔코더가 목표에서 17° 떨어져도) (c) KE 회복 모드에서는
+    감독기가 수락해도 켜기 거부(사유) → 서기 복귀 뒤 수락 (d) stop·estop 정지 래치·rearm·재시작 뒤 래치 유지·가드 트립 지연 동결(양발 지지에서, KE 로
+    넘기기 전)·KE 서기 중 트립은 즉시 (e) RUNNER_EMA_FRESH 2 + 합성 키 거부(모델 읽기 전)·인자 조합 거부 (f) 블랙박스 c5 = KE 필드 + kew3, 스냅샷.
+    + W3 감시(act)·헤딩 고리 고장 판별·헤딩 고리가 KE 모드(클록 want 0)에서 명령·목표각을 바꾸지 않음(켬 = 끔 비트 동일, ψ* 미래치) · 실모델(exported 있으면) 왕복.
+    노드(_on_cmd_w3·_tick) 연결과 플래그 꺼짐 세션의 기준 커밋 발행 비트 비교는 jetson/scripts/selftest_w3_bridge_node.py."""
+    import numpy as np
+    global RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32
+    was_w3, was_kw = EXPERIMENTAL_W3, EXPERIMENTAL_KEW3
+    saved = (RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32, list(IMU_MOUNT_BIAS_DEG))
+    key = KEW3_CKPT_KEY
+    spec = KEW3_SPECS[key]
+    notes = []
+    REG_NAMES = ("CHECKPOINTS", "CKPT_GAIT_FREQ", "CKPT_DEFAULT_POSE", "CKPT_REQUIRE_ENV_YAML", "CKPT_JVEL_EMA_MODE", "C5_PAIRS", "C5_EXTRA",
+                 "HTURN2_CKPTS", "W3_CKPTS", "W3_CMD_LIMITS", "KEW3_CKPTS")
+
+    def regs_snapshot():
+        g = globals()
+        return {n: (sorted(g[n]) if isinstance(g[n], set) else [(k, (list(v) if isinstance(v, list) else v)) for k, v in g[n].items()]) for n in REG_NAMES}
+
+    def has_key(snap):
+        return any(key in (r if n == "CKPT_REQUIRE_ENV_YAML" else [k for k, _ in r]) for n, r in snap.items())
+
+    try:
+        RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32 = 1, None, _W3.W3_HL_DEFAULT, None, None, False
+        IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = 0.0, 0.0            # 기울기 수치를 대본 그대로(장착 편향 보정은 이 시험 대상이 아님)
+        pose = np.asarray(CKPT_DEFAULT_POSE[spec.ke], dtype=np.float32)
+        rng = np.random.default_rng(1007)
+        Ww, Ws, Wr = (rng.normal(0.0, 0.05, (12, 320)).astype(np.float32) for _ in range(3))
+        rkw = dict(obs_dim=320, gait_freq=1.1, default_pose_rad=CKPT_DEFAULT_POSE[spec.ke], act_obs_ema_beta=0.27, jvel_obs_ema_beta=0.25)
+
+        def net(W):
+            return lambda o: np.tanh(W @ np.asarray(o, np.float32)).astype(np.float32)
+
+        def mk_w3(**extra):                 # 걷기 러너(스텁 정책) — 실제 _make_runner(W3 키)와 같은 계약 인자
+            return PolicyRunnerStage4(model_path=net(Ww), w3=W3_CKPTS[spec.w3], **rkw, **extra)
+
+        def mk_ke(**extra):                 # 서기 러너(스텁 정책 2 개) — 실제 _make_runner(C5 kr 키)와 같은 감지기·cue 설정
+            ex = C5_EXTRA.get(spec.ke, {})
+            return C5Runner(net(Ws), net(Wr), detector=SwitchDetector(**C5_DETECTOR_KW, **ex.get("det", {})), **ex.get("runner", {}), **rkw, **extra)
+
+        def quat(pitch_deg=0.0, yaw=0.4):   # 요 뒤 피치(투영중력 기울기 = 피치)
+            p = math.radians(pitch_deg)
+            return (math.cos(p / 2) * math.cos(yaw / 2), -math.sin(p / 2) * math.sin(yaw / 2),
+                    math.sin(p / 2) * math.cos(yaw / 2), math.cos(p / 2) * math.sin(yaw / 2))
+
+        class Loop:
+            """노드 _tick 순서(감독기 관측 → 지연 동결 확인 → core.tick)를 흉내 내는 목 루프. 엔코더 = 직전 목표(+ q_off). 매 틱 유한·슬루 단정."""
+
+            def __init__(self, core, sup=None):
+                self.c, self.s, self.n = core, sup, 0
+                self.q = pose.copy(); self.prev = None; self.outs = []; self.smax = 0.0
+                self.check_freeze = False; self.frozen = None
+
+            def now(self):
+                return 100.0 + self.n * TICK_SEC
+
+            def contact(self):                # 가정 접촉 모형: 걷는 중(ge 1) 위상으로 한발 지지, 그 밖(서기·W3 아닌 러너) 양발
+                clk = getattr(self.c.runner, "_w3_clock", None)
+                if clk is None or not clk.ge:
+                    return [1.0, 1.0]
+                u = float(clk.u)
+                return [0.0 if 0.05 < u < 0.45 else 1.0, 0.0 if 0.55 < u < 0.95 else 1.0]
+
+            def tick(self, pitch=1.0, gyro=(0.0, 0.0, 0.0), q_off=0.0, yaw=0.4):
+                now, ct, qt = self.now(), self.contact(), quat(pitch, yaw)
+                r = self.c.runner
+                if self.s is not None:
+                    self.s.observe(now, ct, gyro, correct_gravity(projected_gravity(qt)))
+                    if self.check_freeze:
+                        due = self.s.freeze_due(now, bool(r._w3_clock.ge))
+                        if due is not None:
+                            self.frozen = (due[0], list(ct), getattr(r, "mode", None))
+                            return None
+                out = self.c.tick(gyro, qt, self.q + np.float32(q_off), np.zeros(12, np.float32), ct)
+                assert np.isfinite(out).all(), f"틱 {self.n}: 비유한 목표"
+                if self.prev is not None:
+                    d = float(np.abs(out - self.prev).max())
+                    self.smax = max(self.smax, d)
+                    assert d <= SLEW_RAD * 1.001 + 1e-6, (f"틱 {self.n}: 목표 점프 {math.degrees(d):.2f}° > 슬루 4°/틱 "
+                                                          f"(모드 {getattr(r, 'mode', '-')}, 사건 {getattr(r, 'last_event', '')!r})")
+                self.prev = out; self.q = np.asarray(out, dtype=np.float32); self.outs.append(out); self.n += 1
+                return out
+
+        seq = [0]
+
+        def nxt():
+            seq[0] += 1
+            return seq[0]
+
+        def send(L, d):
+            """노드 _on_cmd_w3 의 판정·실행 순서를 순수 객체로(감독기 → 감시 게이트 → 러너 게이트 → 실행). 반환 (최종 결정, 감독기 결정)."""
+            c = L.c
+            clk = c.runner._w3_clock
+            sup_dec = L.s.handle(d, L.now(), active=True, warmed=True, blend_done=True, ge_now=bool(clk.ge), want_now=bool(clk.want),
+                                 cmd_now=tuple(c.cmd))
+            dec = runner_enable_gate(w3_monitor_gate(sup_dec, c.w3mon), c.runner)
+            a = dec["action"]
+            if a == "stop":                    # 종전 stop 경로: 명령 0 + ge 0
+                c.cmd = (0.0, 0.0, 0.0); c.set_gait_enable(False)
+            elif a == "estop":                 # 종전 estop 경로: STOP_ALL(→ 감독기 on_frozen) + 비활성
+                L.s.on_frozen("estop")
+            elif a == "set_want":
+                c.cmd = tuple(dec["cmd"]) if dec["want"] else (0.0, 0.0, 0.0)
+                if dec["want"]:
+                    c.w3hl_on = bool(dec["hl"])
+                c.set_gait_enable(dec["want"])
+            elif a == "set_cmd":
+                c.cmd = tuple(dec["cmd"]); c.w3hl_on = bool(dec["hl"])
+            return dec, sup_dec
+
+        def on_cmd(vx=0.06):
+            return {"cmd": "step", "enable": True, "req_id": "st", "seq": nxt(), "vx": vx}
+
+        def walk_gyro(n):
+            return (0.3 * math.sin(n * 0.2), 0.2, 0.0)
+
+        def plain_w3_walk():                  # W3S3d 키 코어(스텁) 서기 → 걷기 → 정지 목표각 열 — 합성 플래그 켬/끔 비교용
+            c = BridgeCore(spec.w3, runner=mk_w3()); c.reset(); c.heading_hold = False; c.cmd = (0.0, 0.0, 0.0)
+            L = Loop(c)
+            for n in range(40):
+                L.tick()
+            c.cmd = (0.06, 0.0, 0.0); c.set_gait_enable(True)
+            for n in range(120):
+                L.tick(pitch=1.0 + 1.5 * math.sin(n * 0.14), gyro=walk_gyro(n))
+            c.cmd = (0.0, 0.0, 0.0); c.set_gait_enable(False)
+            for n in range(60):
+                L.tick()
+            return np.asarray(L.outs), c
+
+        def plain_c5_run():                   # C5 kr 키 코어(스텁) 서기 + 기울기 펄스(회복 모드 왕복) 목표각 열
+            c = BridgeCore(spec.ke, runner=mk_ke()); c.reset(); c.heading_hold = False; c.cmd = (0.0, 0.0, 0.0)
+            L = Loop(c)
+            for n in range(260):
+                L.tick(pitch=1.0 + (6.0 if 100 <= n < 110 else 0.0), gyro=(0.0, 0.6 if n == 100 else 0.0, 0.0))
+            return np.asarray(L.outs), c
+
+        # ── (a) 꺼짐: 레지스트리·코어 판정이 종전 그대로 ──
+        disable_experimental_kew3()
+        if EXPERIMENTAL_W3:
+            disable_experimental_w3()
+        snap0 = regs_snapshot()
+        assert not EXPERIMENTAL_KEW3 and not KEW3_CKPTS and not has_key(snap0), "꺼짐인데 합성 키가 등록돼 있음"
+        try:
+            enable_experimental_kew3()
+            raise AssertionError("W3 플래그 없이 합성 키 등록이 받아들여짐")
+        except ValueError:
+            pass
+        assert regs_snapshot() == snap0 and not EXPERIMENTAL_KEW3, "거부된 등록이 레지스트리를 바꿈"
+        enable_experimental_w3()
+        snap_w3 = regs_snapshot()
+        assert not has_key(snap_w3) and not KEW3_CKPTS, "W3 만 켰는데 합성 키가 등록됨"
+        dec0 = {"accepted": True, "why": "ok", "action": "set_want", "want": True, "cmd": (0.06, 0.0, 0.0), "hl": True}
+        w3_off, cw = plain_w3_walk()
+        c5_off, cc = plain_c5_run()
+        assert not cw.kew3 and cw.c5_view() is None and cw.kew3_snapshot() is None, "꺼짐: W3 키 코어 판정"
+        assert not cc.kew3 and cc.c5_view() is cc.runner and cc.kew3_snapshot() is None and cc.runner.det.n_on >= 1, "꺼짐: C5 키 코어 판정(회복 모드 왕복 포함)"
+        for r_ in (cw.runner, cc.runner):
+            assert runner_enable_block(r_) is None and runner_enable_gate(dec0, r_) is dec0, "종전 러너에서 켜기 게이트가 결정을 바꿈"
+        for ok_args in (dict(checkpoint="stand_v18b", experimental_w3=False, experimental_kew3=False, runner_ema_fresh=1),
+                        dict(checkpoint=spec.ke, experimental_w3=False, experimental_kew3=False, runner_ema_fresh=2),
+                        dict(checkpoint=spec.w3, experimental_w3=True, experimental_kew3=False, runner_ema_fresh=2)):
+            assert kew3_startup_reject(**ok_args) is None, f"종전 인자 조합이 거부됨: {ok_args}"
+        # 켬: 키 계약
+        enable_experimental_kew3()
+        assert EXPERIMENTAL_KEW3 and KEW3_CKPTS == KEW3_SPECS and key.startswith("stand_") and key in CKPT_REQUIRE_ENV_YAML
+        assert CHECKPOINTS[key] == CHECKPOINTS[C5_PAIRS[spec.ke][0]] and CKPT_GAIT_FREQ[key] == CKPT_GAIT_FREQ[spec.ke] == CKPT_GAIT_FREQ[spec.w3] == 1.1
+        assert CKPT_DEFAULT_POSE[key] == CKPT_DEFAULT_POSE[spec.ke] == CKPT_DEFAULT_POSE[spec.w3] == [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
+        assert W3_CKPTS[key] is W3_CKPTS[spec.w3] and W3_CMD_LIMITS[key] is W3_CMD_LIMITS[spec.w3] and key not in C5_PAIRS
+        assert spec.handoff == "carry" and spec.settle_quiet_s == 0.5 and spec.w3 == _W3.W3S3D_CKPT_KEY and C5_EXTRA[spec.ke]["det"]["early"] is not None
+        env_note = []
+        for sub in (spec.w3, spec.ke):        # 하위 키 학습 계약(env.yaml 있으면): 두 정책이 같은 관측 필터
+            if os.path.isfile(_ckpt_env_yaml(sub)):
+                assert ckpt_obs_filter(sub) == (0.27, 0.25), f"{sub} 관측 필터 {ckpt_obs_filter(sub)} ≠ (0.27, 0.25)"
+                env_note.append(sub)
+        # 켜도 다른 키는 불변(코어 출력 비트 동일)
+        w3_on, _ = plain_w3_walk()
+        c5_on, _ = plain_c5_run()
+        assert np.array_equal(w3_on, w3_off) and np.array_equal(c5_on, c5_off), "합성 플래그를 켜니 다른 키(W3S3d·C5 kr) 코어 출력이 달라짐"
+        notes.append(f"꺼짐: 키 0·W3 없이 등록 거부·종전 러너 게이트 무변화 / 켬: stand 가족 키 {key}(경로 = KE 서기·CROUCH_V5·W3 명령 범위 공유·"
+                     f"carry·정착 0.5 s·env.yaml 필터 일치 {len(env_note)}/2)·다른 키 코어 출력 비트 동일({len(w3_off)}+{len(c5_off)} 틱)")
+        if not os.path.isfile(os.path.join(REPO, "rl_walking", "deploy", "kew3_runner.py")):
+            disable_experimental_kew3()
+            assert regs_snapshot() == snap_w3
+            return " / ".join(notes) + " / 러너 경로 SKIP (rl_walking/deploy/kew3_runner.py 미배포)"
+
+        def mk_core(moncfg=None, hfcfg=None):
+            global W3_MON_CFG, W3_HF_CFG
+            W3_MON_CFG, W3_HF_CFG = moncfg, hfcfg       # 코어가 생성 때 읽는다(--w3-monitor·--w3-hl-fault 와 같은 경로)
+            c = BridgeCore(key, runner=_kew3_compose(key, mk_w3(), mk_ke()))
+            c.reset(); c.heading_hold = False; c.cmd = (0.0, 0.0, 0.0)      # stand 가족 경로와 같은 설정
+            return c
+
+        # ── (b) 켬: stand = KE → 켜기 → W3 → 끄기 → 래치 → 정착 → KE ──
+        S = _W3.W3Supervisor(_W3.W3_SAFETY_DEFAULT, cmd_limits=W3_CMD_LIMITS[key])
+        core = mk_core()
+        R = core.runner
+        clk = R._w3_clock
+        assert core.w3 and core.w3cmd and core.kew3 and type(R).__name__ == "KeW3Runner" and R.mode == "ke" and R.handoff == "carry" \
+            and R.settle_quiet_s == 0.5 and R.settle_w == 0.15 and R.settle_max_s == 3.0 and core.c5_view() is R and core.w3hl is not None
+        ref = BridgeCore(spec.ke, runner=mk_ke()); ref.reset(); ref.heading_hold = False; ref.cmd = (0.0, 0.0, 0.0)
+        L, Lr = Loop(core, S), Loop(ref)
+        for n in range(80):                    # stand = KE 모드: 종전 C5 kr 코어와 목표각 비트 동일(헤딩 고리·감독기가 있어도)
+            g = (0.02 * math.sin(0.3 * n), 0.015 * math.cos(0.2 * n), 0.0)
+            a, b = L.tick(gyro=g), Lr.tick(gyro=g)
+            assert R.mode == "ke" and np.array_equal(a, b), f"KE 모드 틱 {n}: 합성 ≠ 종전 C5 kr 코어"
+            assert not core.w3hl.latched and not clk.want and not clk.ge and core.cmd == (0.0, 0.0, 0.0)
+        bb = core.c5_view().blackbox()         # (f) KE 모드 블랙박스
+        assert set(bb) >= {"mode", "switch", "n_on", "cue", "n_cue", "n_early", "ref_deg", "raw_stand", "raw_rec", "kew3"}, sorted(bb)
+        assert bb["kew3"]["mode"] == "ke" and bb["kew3"]["n_to_w3"] == 0 and core.kew3_snapshot()["block"] is None
+        json.dumps(bb); json.dumps(core.kew3_snapshot())
+        dec, _ = send(L, on_cmd())
+        assert dec["accepted"] and dec["action"] == "set_want" and R.mode == "ke" and clk.want and core.cmd == (0.06, 0.0, 0.0), dec
+        L.tick(q_off=0.3)                      # 엔코더가 직전 목표에서 0.3 rad(17°) 떨어진 전환 틱 — 슬루 기준을 이어받으므로 목표는 4° 안
+        assert R.mode == "w3" and R.last_event == "to_w3" and R.n_to_w3 == 1 and not clk.ge and clk.want, "켜기 다음 틱 = W3(첫 틱 STAND)"
+        assert abs(float(R.last_obs[30 + 12]) - 0.06) < 1e-7 and float(np.abs(R.last_obs[225:235]).max()) == 0.0, "첫 W3 틱: 명령 관측 = 걷기 명령·클록 (0,0)"
+        assert core.w3hl.latched and abs(core.w3hl.tgt - yaw_from_quat_wxyz(*quat(1.0))) < 1e-12, "헤딩 고리 ψ* 가 걷기 시작 틱에 새로 래치되지 않음"
+        L.tick()
+        assert clk.ge and float(clk.u) == 0.0 and clk.last_lead == "left" and abs(float(R.last_obs[30 + 12]) - 0.06) < 1e-7, "둘째 W3 틱 gait 0→1·왼발 리드·명령 관측"
+        L.tick(yaw=0.35)                       # 걷는 중 요가 ψ* 에서 −0.05 rad 벗어남 → 헤딩 고리 wz = K·0.05 가 합성 러너를 거쳐 W3 명령 관측에
+        assert abs(float(R.last_obs[32 + 12]) - core.w3hl.cfg.kp * 0.05) < 1e-6 and abs(core.w3hl.tgt - 0.4) < 1e-9, "합성 러너 걷기 중 헤딩 고리 출력이 명령 관측에 없음"
+        for n in range(70):
+            L.tick(pitch=1.0 + 1.5 * math.sin(n * 0.14), gyro=walk_gyro(n))
+            assert R.mode == "w3" and core.c5_view().last_mode == 0
+        bbw = core.c5_view().blackbox()        # (f) W3 모드 블랙박스
+        assert bbw["kew3"]["mode"] == "w3" and bbw["kew3"]["n_to_w3"] == 1 and bbw["kew3"]["want"] is True and core.kew3_snapshot()["mode"] == "w3"
+        json.dumps(bbw)
+        dec, _ = send(L, {"cmd": "step", "enable": False, "req_id": "st", "seq": nxt()})
+        assert dec["accepted"] and dec["want"] is False and core.cmd == (0.0, 0.0, 0.0) and not clk.want and clk.ge, dec
+        n_latch = 0
+        while clk.ge:                          # 반주기 경계까지는 W3 걷기 그대로
+            L.tick(gyro=(0.3, 0.2, 0.0)); n_latch += 1
+            assert n_latch <= 25 and R.mode == "w3", f"반주기 안에 래치가 안 내려감({n_latch} 틱) 또는 래치 전 KE 인계"
+        n_q = 0
+        while R.mode == "w3":                  # 래치 뒤: W3 STAND 로 조용한 양발 서기 0.5 s
+            sn = core.kew3_snapshot()
+            assert sn["since_latch_s"] is not None and sn["settle_s"] is not None and not core.w3hl.latched, sn
+            L.tick(gyro=(0.02, 0.01, 0.0)); n_q += 1
+            assert n_q <= 30, "조용한 양발 서기 0.5 s 뒤에도 KE 인계 없음"
+        assert 24 <= n_q <= 26 and R.last_event == "to_ke" and R.n_to_ke == 1 and core.kew3_snapshot()["since_latch_s"] is None, (n_q, R.last_event)
+        L.tick(q_off=0.3)                      # KE 첫 틱(엔코더 17° 어긋남) — 목표 연속, 감지기 새로
+        assert R.mode == "ke" and R.det.n_on == 0 and R.last_mode == 0 and R.last_event == ""
+        notes.append(f"stand = KE(종전 C5 kr 코어와 80 틱 비트 동일) → 켜기 다음 틱 W3(첫 틱 STAND·ψ* 래치, 둘째 틱 gait·왼발 리드, 헤딩 고리 wz = K·오차) → "
+                     f"끄기 → 래치 {n_latch} 틱 → 정착 {n_q} 틱 → KE")
+        # 상한 3 s: 래치 뒤 |ω_xy| 0.2(≥ 0.15) 가 이어지면 W3 STAND 로 3 s 버틴 뒤 인계
+        for n in range(70):
+            L.tick(gyro=(0.02, 0.01, 0.0))
+        dec, _ = send(L, on_cmd())
+        assert dec["accepted"], dec
+        for n in range(40):
+            L.tick(gyro=walk_gyro(n))
+        assert R.mode == "w3" and clk.ge and R.n_to_w3 == 2
+        send(L, {"cmd": "step", "enable": False, "req_id": "st", "seq": nxt()})
+        while clk.ge:
+            L.tick(gyro=(0.2, 0.0, 0.0))
+        n_to = 0
+        while R.mode == "w3":
+            L.tick(gyro=(0.2, 0.0, 0.0)); n_to += 1
+            assert n_to <= 155, "정착 상한 3 s 를 넘겨도 KE 인계 없음"
+        assert 149 <= n_to <= 151 and R.n_to_ke == 2, n_to
+        notes.append(f"시끄러운 정착(|ω_xy| 0.2) = 상한 {n_to * TICK_SEC:.2f}s 뒤 인계")
+
+        # ── (c) KE 회복 모드: 감독기가 수락해도 켜기 거부 ──
+        for n in range(100):                   # 감지기 기준 자세 = 피치 1°
+            L.tick()
+        for n in range(15):                    # 기준 대비 +4.5°(켜기 3° 초과, 조기 복귀 허용 5° 미만, 끄기 1.5° 초과) → 회복 모드에 머묾
+            L.tick(pitch=5.5)
+        assert R.mode == "ke" and R.last_mode == 1 and core.c5_view().last_mode == 1, "시나리오 점검: KE 회복 모드가 켜지지 않음"
+        why = runner_enable_block(R)
+        assert why and "회복" in why and core.kew3_snapshot()["block"] == why
+        dec, sup_dec = send(L, on_cmd())
+        assert sup_dec["accepted"] and sup_dec["action"] == "set_want", f"시나리오 점검: 감독기는 수락해야 함 {sup_dec}"
+        assert not dec["accepted"] and dec["action"] == "none" and "회복 모드" in dec["why"] and not clk.want and core.cmd == (0.0, 0.0, 0.0), dec
+        n_rec = 0
+        for n in range(20):
+            L.tick(pitch=5.5)
+            assert R.mode == "ke" and not clk.want and R.n_to_w3 == 2, "거부된 켜기가 전환을 일으킴"
+        while R.last_mode == 1:                # 자세 복귀 → calm 1.0 s 뒤 서기 모드
+            L.tick(); n_rec += 1
+            assert n_rec <= 100, "서기 모드로 안 돌아옴"
+        assert runner_enable_block(R) is None
+        dec, _ = send(L, on_cmd())
+        assert dec["accepted"] and dec["action"] == "set_want", dec
+        L.tick()
+        assert R.mode == "w3" and R.n_to_w3 == 3
+        notes.append(f"KE 회복 모드(감독기는 수락) → 켜기 거부 '{why}' → 서기 복귀({n_rec} 틱) 뒤 수락")
+
+        # ── (d) stop·estop 정지 래치 / 가드 트립 지연 동결 ──
+        for n in range(40):
+            L.tick(gyro=walk_gyro(n))
+        dec, _ = send(L, {"cmd": "stop"})
+        assert dec["accepted"] and dec["action"] == "stop" and S.stop_latched and not clk.want and clk.ge and core.cmd == (0.0, 0.0, 0.0), dec
+        dec, _ = send(L, {"cmd": "rearm", "req_id": "r", "seq": nxt()})
+        assert not dec["accepted"] and S.stop_latched, f"걷는 중(ge 1) rearm 수락: {dec}"
+        k = 0
+        while R.mode == "w3":
+            L.tick(gyro=(0.02, 0.01, 0.0)); k += 1
+            assert k <= 80, "stop 뒤 KE 인계 없음"
+        assert R.n_to_ke == 3
+        dec, _ = send(L, on_cmd())
+        assert not dec["accepted"] and "정지 래치" in dec["why"] and R.mode == "ke" and not clk.want, dec
+        dec, _ = send(L, {"cmd": "rearm", "req_id": "r", "seq": nxt()})
+        assert dec["accepted"] and not S.stop_latched, dec
+        for n in range(60):
+            L.tick(gyro=(0.02, 0.01, 0.0))
+        dec, _ = send(L, on_cmd())
+        assert dec["accepted"], dec
+        for n in range(12):
+            L.tick(gyro=walk_gyro(n))
+        assert R.mode == "w3" and R.n_to_w3 == 4 and sum(L.contact()) == 1.0, "시나리오 점검: 한발 지지 걷기"
+        dec, _ = send(L, {"cmd": "estop"})     # estop = STOP_ALL + 비활성(노드) → 재시작(stand)해도 래치 유지
+        assert dec["accepted"] and dec["action"] == "estop" and S.stop_latched
+        assert S.handle({"cmd": "stand"}, L.now(), active=False, warmed=True, blend_done=True, ge_now=False, want_now=False)["action"] == "launch"
+        core.reset(); core.heading_hold = False; core.cmd = (0.0, 0.0, 0.0)
+        assert R.mode == "ke" and not clk.want and not clk.ge and R.ke.core._tick == 0 and R.n_to_w3 == 4, "재시작(reset) = KE 새 시작이 아님"
+        L2 = Loop(core, S); L2.n = L.n
+        for n in range(80):
+            L2.tick(gyro=(0.02, 0.01, 0.0))
+        dec, _ = send(L2, on_cmd())
+        assert not dec["accepted"] and "정지 래치" in dec["why"], dec
+        assert send(L2, {"cmd": "rearm", "req_id": "r", "seq": nxt()})[0]["accepted"]
+        assert send(L2, on_cmd())[0]["accepted"]
+        for n in range(12):
+            L2.tick(gyro=walk_gyro(n))
+        assert R.mode == "w3" and clk.ge and sum(L2.contact()) == 1.0, "시나리오 점검: 한발 지지 걷기"
+        # 가드 트립(비하드) = W3 세션 지연 동결: ge 0 요청 → 반주기 래치 → 양발 지지 확인 → 동결(KE 로 넘기기 전, W3 STAND 에서)
+        assert S.begin_freeze(L2.now(), "lift_guard: 시험")
+        core.cmd = (0.0, 0.0, 0.0); core.set_gait_enable(False)
+        L2.check_freeze = True
+        n0 = L2.n
+        while L2.frozen is None:
+            L2.tick(gyro=(0.3, 0.2, 0.0) if clk.ge else (0.05, 0.02, 0.0))
+            assert L2.n - n0 <= 80, "지연 동결이 끝내 나가지 않음"
+        assert L2.frozen == ("support", [1.0, 1.0], "w3") and S.stop_latched, L2.frozen
+        t_frz = (L2.n - n0) * TICK_SEC
+        S.on_frozen("lift_guard: 시험")
+        core.reset(); core.heading_hold = False; core.cmd = (0.0, 0.0, 0.0)
+        L3 = Loop(core, S); L3.n = L2.n
+        for n in range(30):
+            L3.tick(gyro=(0.02, 0.01, 0.0))
+        assert R.mode == "ke" and S.begin_freeze(L3.now() - TICK_SEC, "osc_guard: 시험")     # KE 서기 중 트립(직전 틱 시각)
+        core.set_gait_enable(False)            # 노드 _w3_guard_trip 과 같은 호출 — KE 모드에서는 무해
+        due = S.freeze_due(L3.now() - TICK_SEC, bool(clk.ge))
+        assert due is not None and due[0] == "support" and R.mode == "ke" and not clk.want, f"KE 서기 중 트립이 즉시 동결이 아님: {due}"
+        S.on_frozen("osc_guard: 시험")
+        notes.append(f"stop: 정지 래치·걷는 중 rearm 거부·KE 뒤 켜기 거부 → rearm → 재개 / estop: 재시작(KE 새 시작) 뒤에도 래치 / 한발 지지 트립 → "
+                     f"{t_frz:.2f}s 뒤 양발 지지(W3 STAND)에서 동결 / KE 서기 중 트립 = 즉시")
+
+        # ── W3 감시(act)·헤딩 고리: KE 모드(클록 want 0)에서 명령·목표각 불변 ──
+        def ke_then_walk(c):
+            Lm = Loop(c)
+            rr = c.runner
+            for n in range(260):               # KE: 조용한 서기 → 기울기 펄스(회복 모드 왕복) → 서기. 요는 천천히 돈다
+                Lm.tick(pitch=1.0 + (6.0 if 100 <= n < 110 else 0.0), gyro=(0.0, 0.6 if n == 100 else 0.0, 0.025), yaw=0.4 + 0.0005 * n)
+                assert rr.mode == "ke" and not c.w3hl.latched and c.w3hl.n == 0 and c.cmd == (0.0, 0.0, 0.0) and not rr._w3_clock.want
+                assert (c.w3mon is None or c.w3mon.walking is False) and c.w3hl_on is True
+            n_on = rr.det.n_on
+            assert rr.last_mode == 0 and runner_enable_block(rr) is None, "시나리오 점검: 걷기 전 KE 서기 모드"
+            c.cmd = (0.06, 0.0, 0.0); c.w3hl_on = True; c.set_gait_enable(True)
+            for n in range(100):
+                Lm.tick(pitch=1.0 + 1.5 * math.sin(n * 0.14), gyro=walk_gyro(n), yaw=0.53)
+            c.cmd = (0.0, 0.0, 0.0); c.set_gait_enable(False)
+            k_ = 0
+            while rr.mode == "w3":
+                Lm.tick(gyro=(0.02, 0.01, 0.0), yaw=0.53); k_ += 1
+                assert k_ <= 60
+            for n in range(40):
+                Lm.tick(gyro=(0.02, 0.01, 0.0), yaw=0.53)
+            return np.asarray(Lm.outs), n_on
+        c_off = mk_core(None)
+        o_off, n_on_off = ke_then_walk(c_off)
+        c_mon = mk_core(moncfg=_w3c().W3MonitorConfig())
+        o_mon, n_on_mon = ke_then_walk(c_mon)
+        c_hf = mk_core(hfcfg=_w3c().HeadingFaultConfig())
+        o_hf, n_on_hf = ke_then_walk(c_hf)
+        W3_MON_CFG, W3_HF_CFG = None, None
+        assert c_off.w3mon is None and c_off.w3hf is None and c_mon.w3mon is not None and c_hf.w3hf is not None \
+            and n_on_off == n_on_mon == n_on_hf >= 1, "시나리오 점검: 감시·고장 판별 켬/끔·KE 회복 모드 왕복"
+        assert o_off.shape == o_mon.shape and np.array_equal(o_off, o_mon), "감시 켬(정상 입력)이 합성 러너 목표각을 바꿈"
+        assert np.array_equal(o_off, o_hf) and getattr(c_hf, "w3hf_ban", None) is None, "헤딩 고리 고장 판별 켬(정상 입력)이 합성 러너 목표각을 바꿈"
+        bad_ev = [e for c_ in (c_off, c_mon, c_hf) for e in c_.w3hl_events if e.get("event") in ("w3_mon_stop", "w3_hl_fault", "w3_hl_banned")]
+        assert not bad_ev and w3_monitor_gate(dict(dec0), c_mon.w3mon)["accepted"], bad_ev
+        ov = _w3c().RecoveryOvertime(max_s=1.0, action="freeze")       # --c5-overtime 입력 = c5_view().last_mode: W3 모드에서는 0 → 체류 0
+        c_ov = mk_core(None)
+        Lo = Loop(c_ov)
+        fired = []
+        for n in range(100):                   # 감지기 기준 자세 고정(인계 뒤 1.5 s 추종 창) 뒤에 기울인다
+            Lo.tick()
+        for n in range(80):                    # 기준 대비 +4.5° 유지 → 회복 모드 체류 1 s 넘김
+            Lo.tick(pitch=5.5)
+            if ov.update(int(c_ov.c5_view().last_mode)) is not None:
+                fired.append(n)
+        assert len(fired) == 1 and c_ov.runner.last_mode == 1, f"KE 모드 회복 체류 상한 미발동 {fired}"
+        c_ov.cmd = (0.06, 0.0, 0.0); c_ov.runner.set_gait_enable(True)     # (게이트를 거치지 않은 직접 켜기 — W3 모드 last_mode 0 확인용)
+        for n in range(10):
+            Lo.tick(pitch=5.5)
+            assert c_ov.runner.mode == "w3" and c_ov.c5_view().last_mode == 0 and ov.update(int(c_ov.c5_view().last_mode)) is None
+        assert ov.t_in == 0.0
+        notes.append(f"감시 act·헤딩 고리 고장 판별 켬 = 끔 목표각 비트 동일({len(o_off)} 틱, KE 회복 왕복 {n_on_off} 회 포함)·KE 모드 헤딩 고리 ψ* 미래치·"
+                     "감시 걷기 판정 없음·회복 체류 상한 입력은 KE 모드만(W3 모드 0)")
+
+        # ── (e) carry + ema_fresh 2 거부 ──
+        RUNNER_EMA_FRESH = 2
+        _saved_dirs = {k: CHECKPOINTS[k] for k in (spec.w3, C5_PAIRS[spec.ke][0])}
+        try:
+            for k in _saved_dirs:              # 하위 정책 경로를 없는 곳으로 — 모델·env.yaml 을 읽기 전에 거부하는지(파일 오류가 아니라 이 사유)
+                CHECKPOINTS[k] = "/nonexistent/kew3_selftest/exported"
+            _make_runner(key)
+            raise AssertionError("RUNNER_EMA_FRESH 2 + 합성 키 러너 생성이 받아들여짐")
+        except ValueError as e:
+            assert "--runner-ema-fresh 2" in str(e), e
+        finally:
+            CHECKPOINTS.update(_saved_dirs)
+            RUNNER_EMA_FRESH = 1
+        try:
+            _kew3_compose(key, mk_w3(ema_fresh_ticks=2), mk_ke(ema_fresh_ticks=2))
+            raise AssertionError("ema_fresh 2 하위 러너 합성이 받아들여짐")
+        except ValueError:
+            pass
+        rej = [kew3_startup_reject(checkpoint=key, experimental_w3=True, experimental_kew3=True, runner_ema_fresh=2),
+               kew3_startup_reject(checkpoint=spec.w3, experimental_w3=True, experimental_kew3=True, runner_ema_fresh=2),
+               kew3_startup_reject(checkpoint=key, experimental_w3=True, experimental_kew3=False, runner_ema_fresh=1),
+               kew3_startup_reject(checkpoint=key, experimental_w3=False, experimental_kew3=True, runner_ema_fresh=1)]
+        assert all(rej) and kew3_startup_reject(checkpoint=key, experimental_w3=True, experimental_kew3=True, runner_ema_fresh=1) is None, rej
+        for bad_w3 in (PolicyRunnerStage4(model_path=net(Ww), **rkw),                                    # W3 러너 아님
+                       PolicyRunnerStage4(model_path=net(Ww), w3=W3_CKPTS[spec.w3], obs_dim=320, gait_freq=1.1,
+                                          default_pose_rad=CKPT_DEFAULT_POSE[spec.ke])):               # 관측 필터 β 없음(KE 와 다른 계약)
+            try:
+                _kew3_compose(key, bad_w3, mk_ke())
+                raise AssertionError("계약이 다른 하위 러너 합성이 받아들여짐")
+            except ValueError:
+                pass
+        notes.append("RUNNER_EMA_FRESH 2 + 합성 키 거부(모델 읽기 전)·ema_fresh 2 하위 러너 거부·인자 조합 거부 4 종·계약 다른 하위 러너 거부 2 종")
+
+        # ── 실모델(exported 3 곳이 다 있으면): _make_runner 경로·KE 모드 = 종전 C5 kr 세션·왕복 유한/슬루/시간 ──
+        if all(os.path.exists(os.path.join(d, "policy.pt")) or os.path.exists(os.path.join(d, "policy.onnx")) for d in _ckpt_policy_dirs(key)):
+            cr = BridgeCore(key); cr.reset(); cr.heading_hold = False; cr.cmd = (0.0, 0.0, 0.0)
+            rr = cr.runner
+            assert type(rr).__name__ == "KeW3Runner" and isinstance(rr.ke, C5Runner) and isinstance(rr.w3r, PolicyRunnerStage4)
+            assert rr.w3r.w3 == W3_CKPTS[spec.w3] and rr.handoff == "carry" and rr.settle_quiet_s == 0.5 and rr.obs_dim == 320
+            assert rr.ke.det.early == C5_EXTRA[spec.ke]["det"]["early"] and rr.ke.cue_vx == C5_EXTRA[spec.ke]["runner"]["cue_vx"] and rr.ke.det.settle is None
+            assert rr.ke.core.ema_fresh_ticks == 1 and rr.w3r.ema_fresh_ticks == 1 and (rr.act_obs_ema_beta, rr.jvel_obs_ema_beta) == (0.27, 0.25)
+            cf = BridgeCore(spec.ke); cf.reset(); cf.heading_hold = False; cf.cmd = (0.0, 0.0, 0.0)
+            La, Lb = Loop(cr), Loop(cf)
+            t0 = time.perf_counter()
+            for n in range(100):
+                g = (0.02 * math.sin(0.3 * n), 0.015 * math.cos(0.2 * n), 0.0)
+                a, b = La.tick(gyro=g), Lb.tick(gyro=g)
+                assert rr.mode == "ke" and np.array_equal(a, b), f"실모델 KE 모드 틱 {n}: 합성 ≠ 종전 {spec.ke} 코어"
+            cr.cmd = (0.06, 0.0, 0.0); cr.w3hl_on = True; cr.set_gait_enable(True)
+            La.tick(q_off=0.3)
+            assert rr.mode == "w3"
+            for n in range(150):
+                La.tick(gyro=(0.0, 0.0, 0.0))
+            cr.cmd = (0.0, 0.0, 0.0); cr.set_gait_enable(False)
+            k_ = 0
+            while rr.mode == "w3":
+                La.tick(); k_ += 1
+                assert k_ <= 60, "실모델: 끄기 뒤 KE 인계 없음"
+            La.tick(q_off=0.3)
+            for n in range(80):
+                La.tick()
+            dt = (time.perf_counter() - t0) / (La.n + Lb.n)
+            assert rr.mode == "ke" and rr.n_to_w3 == 1 and rr.n_to_ke == 1 and dt < TICK_SEC, (rr.mode, dt)
+            notes.append(f"실모델 {La.n} 틱(KE 100 틱 = 종전 {spec.ke} 코어 비트 동일 → 걷기 150 틱 → 래치·정착 {k_} 틱 → KE) 유한·슬루 최대 "
+                         f"{math.degrees(La.smax):.2f}°/틱·{dt * 1000:.2f}ms [{rr.backend}]")
+        else:
+            notes.append("실모델 exported 없음(왕복 SKIP)")
+
+        # ── 되돌림: 켰다 끄면 원상, W3 를 내리면 함께 내려가고 다시 켜면 복원 ──
+        assert has_key(regs_snapshot())
+        disable_experimental_w3()
+        assert regs_snapshot() == snap0 and EXPERIMENTAL_KEW3 and not KEW3_CKPTS, "W3 를 내렸는데 합성 키가 남음"
+        enable_experimental_w3()
+        assert has_key(regs_snapshot()) and key in W3_CKPTS and key in KEW3_CKPTS, "W3 를 다시 켰는데 합성 키가 복원되지 않음"
+        disable_experimental_kew3()
+        assert regs_snapshot() == snap_w3 and not EXPERIMENTAL_KEW3, "되돌림 뒤 레지스트리가 합성 플래그 꺼짐(W3 켜짐) 상태와 다름"
+        disable_experimental_w3()
+        assert regs_snapshot() == snap0, "되돌림 뒤 레지스트리가 꺼짐 상태와 다름"
+        notes.append("되돌림 복원(값·순서)·W3 내리면 함께 내려가고 다시 켜면 복원")
+    finally:
+        RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32 = saved[:6]
+        IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = saved[6]
+        disable_experimental_kew3()
+        if EXPERIMENTAL_W3 and not was_w3:
+            disable_experimental_w3()
+        elif was_w3 and not EXPERIMENTAL_W3:
+            enable_experimental_w3()
+        if was_kw:
+            enable_experimental_kew3()
+    return " / ".join(notes) + (" (기동 플래그 켜짐 상태 복원)" if was_kw else "")
+
+
 def run_selftest(required=()):
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 게이트 + 정책 500틱.
     required: 파일이 반드시 있어야 하는 체크포인트(기동 --checkpoint, STAND_DEFAULT) — 없으면 FAIL."""
+    required = _kew3_expand_required(required)     # 1007: 합성 키를 고른 기동이면 하위 키(걷기 W3·서기 KE)도 필수(그 밖은 그대로)
     tests = [("하드웨어맵", _selftest_hwmap),
              ("온셋 블렌딩", _selftest_blend),
              ("stand LPF", _selftest_stand_lpf),
@@ -3581,6 +4245,7 @@ def run_selftest(required=()):
              ("W3 감시 2 차 대비책(1007)", _selftest_w3_monitor),
              ("parity 옵션(1007, 기본 꺼짐)", _selftest_parity_flags),
              ("헤딩 고리 고장 판별 분리(1007, 기본 꺼짐)", _selftest_w3_hl_fault),
+             ("KE↔W3 합성 러너 실험 플래그(1007, 기본 꺼짐)", _selftest_kew3),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:
@@ -3619,6 +4284,12 @@ def main():
                          "켜도 --checkpoint " + _W3.W3_CKPT_KEY + " 일 때만 계약이 바뀐다. 시작 = stand(서기), "
                          "스텝 = {\"cmd\":\"step\",\"enable\":true,\"req_id\":\"..\",\"seq\":N}(seq 단조 증가), "
                          "stop/estop/가드 = 정지 래치 → {\"cmd\":\"rearm\",\"req_id\":\"..\",\"seq\":N}. 응답 " + BRIDGE_ACK_TOPIC)
+    ap.add_argument("--experimental-kew3", action="store_true",
+                    help="1007 실험(기본 꺼짐·실물 미검증·젯슨 미배포): KE↔W3 합성 러너 키 " + KEW3_CKPT_KEY + " 등록 — 서 있는 동안 KE"
+                         "(G21a 서기 + G24Ra 회복 + 감지기), 걷는 동안만 W3S3d-15800. **--experimental-w3 와 함께만**(합성 키는 W3 세션의 "
+                         "step·seq·ack·감독기·헤딩 고리·감시를 그대로 쓴다), --runner-ema-fresh 2 와는 함께 쓸 수 없다. 켜도 --checkpoint 로 "
+                         "합성 키를 고른 세션에서만 러너가 바뀐다. 시작 = stand(KE 모드), 걷기 = step 켜기(KE 회복 모드 중에는 거부), "
+                         "끄기 = 반주기 래치 → 조용한 양발 서기 0.5 s(상한 3 s) → KE. 문서 reports/gen_w3/KEW3_DESIGN.md")
     ap.add_argument("--w3-safety", default=None,
                     help="W3 세션 감독기 문턱 JSON(예: '{\"enable_tilt_deg\": 6}'). 키·범위는 w3_deploy.W3_SAFETY_RANGES — "
                          "범위 밖·모르는 키는 기동 거부. 생략 = 보수적 기본값")
@@ -3647,7 +4318,8 @@ def main():
     ap.add_argument("--c5-imu-f32", action="store_true",
                     help="1007 parity(기본 꺼짐): KE 현행 IMU 조기 복귀 감지기를 시뮬 float32 경로로(종전 float64 타이머는 꺼짐 1 틱 이름 — "
                          "selftest_c5_imu_f32). 조기 복귀가 있는 C5 키에서만, --c5-settle odic 계열과 함께 쓰지 않음(이미 float32)")
-    ap.add_argument("--checkpoint", default=STAND_DEFAULT, choices=list(CHECKPOINTS) + [_H2.HTURN2_CKPT_KEY] + list(_W3.W3_KEYS),
+    ap.add_argument("--checkpoint", default=STAND_DEFAULT,
+                    choices=list(CHECKPOINTS) + [_H2.HTURN2_CKPT_KEY] + list(_W3.W3_KEYS) + list(KEW3_KEYS),
                     help="기본값은 배포 데뷔 정책(STAND_DEFAULT). 0907: 구 walk 는 젯슨에서 삭제돼 "
                          "기본값으로 두면 selftest 가 필수 파일 없음으로 실패한다")
     args = ap.parse_args()
@@ -3660,6 +4332,13 @@ def main():
     if args.experimental_hturn2 and args.experimental_w3:
         print("[거부] --experimental-hturn2 와 --experimental-w3 는 함께 켤 수 없음", file=sys.stderr)
         return 2
+    _kw_rej = kew3_startup_reject(checkpoint=args.checkpoint, experimental_w3=args.experimental_w3,       # 1007 합성 키(플래그·키 없으면 항상 통과)
+                                  experimental_kew3=args.experimental_kew3, runner_ema_fresh=args.runner_ema_fresh)
+    if _kw_rej is not None:
+        print(f"[거부] {_kw_rej}", file=sys.stderr)
+        return 2
+    if EXPERIMENTAL_KEW3 and not args.experimental_kew3:    # 같은 프로세스에서 main 을 다시 부르는 셀프테스트 하네스: 이전 기동의 합성 키 등록을 되돌린다(단일 기동은 무동작)
+        disable_experimental_kew3()
     if args.w3_safety is not None and not args.experimental_w3:
         print("[거부] --w3-safety 는 --experimental-w3 와 함께만", file=sys.stderr)
         return 2
@@ -3689,7 +4368,7 @@ def main():
         if W3_MON_CFG is not None:
             print(f"[경고] --w3-monitor: 2 차 대비책 감시 켜짐(실물 미검증) — {_w3c().config_dict(W3_MON_CFG)}", file=sys.stderr)
     if args.c5_overtime is not None:
-        if args.checkpoint not in C5_PAIRS:
+        if args.checkpoint not in C5_PAIRS and not (args.experimental_kew3 and args.checkpoint in KEW3_KEYS):   # 1007: 합성 키(KE 쪽이 C5)도 허용
             print(f"[거부] --c5-overtime 는 C5 키에서만(현재 --checkpoint {args.checkpoint})", file=sys.stderr)
             return 2
         try:
@@ -3711,6 +4390,17 @@ def main():
         enable_experimental_w3()
         print(f"[경고] --experimental-w3: 실험 기능 켜짐(실물 미검증) — 키 {', '.join(_W3.W3_KEYS)}"
               f" · 헤딩 고리 {W3_HL_CFG} · 명령 범위 {W3_CMD_LIMITS_OVERRIDE or 'W3S3d 학습 범위'}", file=sys.stderr)
+    if args.experimental_kew3:      # 1007: W3 키 등록 뒤에(위 검사가 --experimental-w3 동반을 보장)
+        try:
+            enable_experimental_kew3()
+            from rl_walking.deploy import kew3_runner as _kw_mod   # noqa: F401 — 기동 단계에서 모듈 존재 확인(없으면 노드 생성 중 예외 대신 분명한 거부)
+        except (ValueError, ImportError) as e:
+            print(f"[거부] --experimental-kew3: {e}"
+                  + (" — rl_walking/deploy/kew3_runner.py 를 읽을 수 없음(배포 누락?)" if isinstance(e, ImportError) else ""), file=sys.stderr)
+            return 2
+        print("[경고] --experimental-kew3: KE↔W3 합성 러너 키 등록(실물 미검증·젯슨 미배포) — "
+              + ", ".join(f"{k} = 걷기 {sp.w3} + 서기 {sp.ke}(전환 {sp.handoff}·정착 {sp.settle_quiet_s:g}s)" for k, sp in KEW3_CKPTS.items()),
+              file=sys.stderr)
     if args.experimental_hturn2:
         enable_experimental_hturn2()
         print(f"[경고] --experimental-hturn2: 실험 기능 켜짐(실물 미검증) — 키 {_H2.HTURN2_CKPT_KEY}", file=sys.stderr)
@@ -3872,6 +4562,12 @@ def main():
             self.get_logger().info(
                 f"RL 브리지 기동 — {'LIVE' if self.live else 'DRY-RUN'}, "
                 f"checkpoint={self.core.ckpt_name} jvel_ema={getattr(self.core.runner, 'jvel_ema_mode', 'v2')}")
+            if self.core.kew3:              # 1007 합성 키 세션에서만(종전 세션 로그 불변)
+                _sp = KEW3_CKPTS[self.core.ckpt_name]
+                self.get_logger().warn(
+                    f"KE↔W3 합성 러너 켜짐(실험·실물 미검증) — 서기 = KE {_sp.ke}, 걷기 = W3 {_sp.w3}, 전환 {_sp.handoff}·"
+                    f"W3 → KE 정착 {_sp.settle_quiet_s:g}s(상한 {getattr(self.core.runner, 'settle_max_s', float('nan')):g}s). "
+                    "시작 = stand(KE 모드), KE 회복 모드 중 걷기 켜기 거부, 가드 트립 = W3 세션 지연 동결")
 
         # ---- 입력 콜백 ----
         def _on_js(self, msg):
@@ -4040,6 +4736,8 @@ def main():
                    "accepted": bool(accepted), "why": str(why), "action": action,
                    "active": bool(self.core.active), "w3": self.core.runner._w3_clock.snapshot() if self.core.w3 else None,
                    "sup": self.w3sup.snapshot(), "guard_mode": self.guard_mode}
+            if self.core.kew3:              # 1007 합성 키에서만 필드 추가(종전 응답 스키마 불변): 모드(ke/w3)·전환 횟수·켜기 차단 사유
+                ack["kew3"] = self.core.kew3_snapshot()
             try:
                 self.pub_ack.publish(String(data=json.dumps(ack, default=str)))
             except Exception:  # noqa: BLE001 — 응답 실패가 명령 처리를 막으면 안 된다
@@ -4058,6 +4756,7 @@ def main():
                                     want_now=bool(w3c.want) if w3c is not None else False,
                                     **({"cmd_now": tuple(self.core.cmd)} if self.core.w3cmd else {}))
             dec = w3_monitor_gate(dec, self.core.w3mon)   # 1007 감시(--w3-monitor 일 때만): 켜기 거부만 더한다
+            dec = runner_enable_gate(dec, self.core.runner)   # 1007 합성 러너: KE 회복 모드 중 켜기 거부(사유는 응답 why). 종전 러너는 dec 그대로
             act = dec["action"]
             if act in ("estop", "stop"):
                 self._on_cmd_base({"cmd": act})        # 종전 경로(estop = STOP_ALL 즉시·비활성 / stop = ge 0)
@@ -4118,6 +4817,11 @@ def main():
                     if not ok:
                         self.get_logger().warn(f"step 켜기 거부: {why}")
                         self._bb_write({"timestamp": _now, "event": "w3_step_rejected", "why": why})
+                        return
+                    _blk = runner_enable_block(self.core.runner)   # 1007 합성 러너: KE 회복 모드 중 켜기 거부(종전 러너는 항상 None)
+                    if _blk is not None:
+                        self.get_logger().warn(f"step 켜기 거부: {_blk}")
+                        self._bb_write({"timestamp": _now, "event": "w3_step_rejected", "why": _blk})
                         return
                 self.core.set_gait_enable(want)
                 self._bb_write({"timestamp": time.time(), "event": "w3_step", "enable": bool(want), "by": "cmd"})
@@ -4508,7 +5212,7 @@ def main():
                 self.core.w3mon.health(foot_age_s=now - self.foot_ts,
                                        fb_age_s=(now - self.status_ts) if self.status_ts > 0.0 else None,
                                        s8_p50_ms=(float(_s8) if isinstance(_s8, (int, float)) else None))
-            if C5_OVERTIME is not None and isinstance(self.core.runner, C5Runner):   # 1007 회복 모드 체류 상한(기본 꺼짐)
+            if C5_OVERTIME is not None and self.core.c5_view() is not None:   # 1007 회복 모드 체류 상한(기본 꺼짐) — C5Runner·합성 러너(W3 모드는 last_mode 0 → 체류 0)
                 _m = int(self.core.runner.last_mode)
                 _ov = C5_OVERTIME.update(_m)
                 if _ov is not None:
@@ -4606,6 +5310,8 @@ def main():
                 for j in JOINT_ORDER:
                     targets_deg_motor[j] = (self.blend_from[j] * (1.0 - alpha)
                                             + targets_deg_motor[j] * alpha)
+            _c5v = self.core.c5_view()       # C5Runner(종전) 또는 1007 합성 러너, 그 밖 None
+            _c5bb = _c5v.blackbox() if _c5v is not None else None
             dbg = {"timestamp": now, "live": self.live, "armed": self.armed,
                    "checkpoint": self.core.ckpt_name, "cmd": list(self.core.cmd),
                    # 프레임 명시: joint=URDF 관절 프레임 / motor=모터 인코더 프레임
@@ -4642,7 +5348,8 @@ def main():
                            if getattr(self.core.runner, "last_obs", None) is not None else None),
                    "raw_action": [round(float(v), 4) for v in self.core.runner.last_action],
                    # 1004 C5: 모드(0 서기/1 회복)·이번 틱 전환(on/off)·켜짐 누계·감지기 기준 자세·두 정책 원시 출력(전환 매끄러움 판정용)
-                   "c5": (self.core.runner.blackbox() if isinstance(self.core.runner, C5Runner) else None),
+                   # 1007 합성 러너: 같은 자리에 runner.blackbox() = KE 필드 + "kew3"(W3 모드 동안 KE 필드는 마지막 KE 틱 값)
+                   "c5": _c5bb,
                    # 1001: 관측 joint_vel_ema 모드(v2 = 실제 속도 EMA / ema0 = 0, 학습 계약 복원)와 실제 속도 EMA RMS(두 모드 모두 계산)
                    "jvel_ema_mode": getattr(self.core.runner, "jvel_ema_mode", "v2"),
                    "obs_filter": [getattr(self.core.runner, "act_obs_ema_beta", None), getattr(self.core.runner, "jvel_obs_ema_beta", None)],   # 1003 관측 필터 계약(act β, jvel β)
@@ -4690,6 +5397,8 @@ def main():
                 dbg["w3_sup"] = self.w3sup.snapshot()
             if self.core.w3mon is not None:   # 1007 감시(--w3-monitor 일 때만 필드 추가 — 종전 스키마 불변)
                 dbg["w3_mon"] = self.core.w3mon.snapshot()
+            if self.core.kew3:             # 1007 합성 키에서만 필드 추가(종전 스키마 불변): 지금 도는 러너(ke/w3)·전환 횟수·켜기 차단 사유·정착 대기 진행
+                dbg["kew3"] = self.core.kew3_snapshot(_c5bb)
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             self._bb_write(dbg)
             if not (self.live and self.armed):

@@ -16,4 +16,7 @@ fi
 if [ $ST = c ] || [ $ST = all ]; then
   for D in 3 4; do for SD in 1 2; do for C in nd b18s sf15s; do for M in restart none; do W=""; [ $C != nd ] && W="--pre_both_s 2.5 --pre_w_s 2.5"; run k2w_${M}_${C}_d${D}_s${SD} --dir ke2w3 --ke_mode $M --delay_steps $D,$D --seed $SD $W $(dist $M $C); done; done; done; done
 fi
+if [ $ST = x1 ]; then   # X1: KE → W3 즉시 켜기(W3 STAND 구간 0)
+  for SD in 1 2 3; do for M in reset direct; do run k2w_${M}now_nd_d2_s${SD} --dir ke2w3 --ke_mode $M --pre_both_s 0 --pre_w_s 0 --delay_steps 2,2 --seed $SD; done; done
+fi
 echo "$(date +%H:%M) TR2Q_DONE $ST"

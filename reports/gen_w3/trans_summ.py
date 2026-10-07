@@ -8,7 +8,7 @@ import numpy as np
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 LP = os.path.join(REPO, "log_picture")
-MODES = ("restart", "reset", "direct", "nostop", "none", "walk")
+MODES = ("restart", "reset", "direct", "latch", "resetnow", "directnow", "nostop", "none", "walk")
 f = lambda x: None if x in ("", None) else float(x)
 
 
@@ -119,7 +119,7 @@ def main():
             base = {k: rows[k] for k in rows if k[0] == "restart" and k[1] == cond and k[2] == d}
             if base:
                 P("\n짝 비교(restart 기준, 같은 seed·env, KE 뒤 5 s 낙상 / 외란 뒤 낙상 / 인계 뒤 낙상 전체):")
-                for mode in ("reset", "direct", "nostop", "none", "walk"):
+                for mode in ("reset", "direct", "latch", "resetnow", "directnow", "nostop", "none", "walk"):
                     other = {k: rows[k] for k in rows if k[0] == mode and k[1] == cond and k[2] == d}
                     if not other:
                         continue

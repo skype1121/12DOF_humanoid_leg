@@ -62,4 +62,25 @@ if [ $ST = x2d ] || [ $ST = x2dd ]; then   # X2d: 래치 다음 틱 KE, 상태 �
   CS="nd"; [ $ST = x2dd ] && CS="b18 sf15"
   for SD in 1 2 3; do for C in $CS; do run tr_latchd_${C}_d2_s${SD} --ke_mode direct --settle fixed --settle_s 0.02 --delay_steps 2,2 --seed $SD ${X[$C]}; done; done
 fi
+if [ $ST = x2e ]; then   # X2e: X2d + 기준 추종 창 3.0 s(H1 대조) — 사본 평가기·추적. 대조 = 같은 사본으로 다시 돌린 X2d·restart 의 sf15
+  export TR_SCRIPT=rl_walking/scripts/eval_transition_dev.py
+  LD="--ke_mode direct --settle fixed --settle_s 0.02 --delay_steps 2,2"
+  for SD in 1 2 3; do
+    run tr_latchd3_sf15_d2_s${SD} $LD --seed $SD ${X[sf15]} --sw_ref_init_s 3.0 --trace_all 128
+    run tr_latchdT_sf15_d2_s${SD} $LD --seed $SD ${X[sf15]} --trace_all 128
+    run tr_restartT_sf15_d2_s${SD} --ke_mode restart --delay_steps 2,2 --seed $SD ${X[sf15]} --trace_all 128
+  done
+  for SD in 1 2 3; do for C in nd b18; do run tr_latchd3_${C}_d2_s${SD} $LD --seed $SD ${X[$C]} --sw_ref_init_s 3.0 --trace_all 128; done; done
+  unset TR_SCRIPT
+fi
+if [ $ST = x3 ]; then   # X3: 정착 창에 오는 외란(7.3 s) — A = direct(정착 뒤) / B = latchd / B' = latchd3 / none(W3 STAND)
+  declare -A XW=( [b18x]="--dist push:b:7.3:18:0.3" [sf15x]="--dist ramp:f:7.3:15:0.5:1.0" [f12x]="--dist push:f:7.3:12:0.3" )
+  LD="--ke_mode direct --settle fixed --settle_s 0.02 --delay_steps 2,2"
+  for SD in 1 2; do for C in b18x sf15x f12x; do
+    run tr_direct_${C}_d2_s${SD} --ke_mode direct --delay_steps 2,2 --seed $SD ${XW[$C]}
+    run tr_latchd_${C}_d2_s${SD} $LD --seed $SD ${XW[$C]}
+    run tr_latchd3_${C}_d2_s${SD} $LD --seed $SD ${XW[$C]} --sw_ref_init_s 3.0
+    run tr_none_${C}_d2_s${SD} --ke_mode none --delay_steps 2,2 --seed $SD ${XW[$C]}
+  done; done
+fi
 echo "$(date +%H:%M) TRQ_DONE $ST"

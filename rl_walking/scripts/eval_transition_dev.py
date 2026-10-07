@@ -1739,7 +1739,7 @@ for i in range(STEPS):
         if args_cli.trace_all > 0:
             _na = min(int(args_cli.trace_all), N)
             if "_TALL" not in dir():
-                _TALL = {k_: [] for k_ in ("t", "gyro", "grav", "cont", "pitch", "roll", "w", "vxy", "ge", "u", "alive", "ke", "mode", "hold", "F")}
+                _TALL = {k_: [] for k_ in ("t", "gyro", "grav", "cont", "pitch", "roll", "w", "vxy", "ge", "u", "alive", "ke", "mode", "hold", "F", "ffwd", "flat", "h", "ref", "rp2")}
                 _PG0, _PG1 = _LAYT["projected_gravity"]
             _pot = obs["policy"]
             _TALL["t"].append(t_rel); _TALL["F"].append(f_now)
@@ -1750,6 +1750,12 @@ for i in range(STEPS):
             _TALL["ge"].append(uenv._ge[:_na].cpu()); _TALL["u"].append(uenv._gu[:_na].half().cpu()); _TALL["alive"].append((a_ & ~term)[:_na].cpu())
             _TALL["ke"].append(ke_act[:_na].cpu()); _TALL["hold"].append(hold_mask[:_na].cpu())
             _TALL["mode"].append((sw_mode[:_na] if policy2 is not None else torch.zeros(_na, dtype=torch.bool, device=dev)).cpu())
+            # 1007 X2e: 자세·감지기 기준 기록(기록 전용) — 발-골반 앞축·좌우축 거리[m], 골반 높이, 감지기 기준(롤·피치°)·감지 자세(롤·피치°)
+            _fpT = robot.data.body_pos_w[:_na, _FT, :2] - robot.data.root_pos_w[:_na, None, :2]
+            _TALL["ffwd"].append((_fpT * _dir_vec("f")[:_na, None, :2]).sum(-1).half().cpu()); _TALL["flat"].append((_fpT * _dir_vec("l")[:_na, None, :2]).sum(-1).half().cpu())
+            _TALL["h"].append(robot.data.root_pos_w[:_na, 2].half().cpu())
+            _nan2 = torch.full((_na, 2), float("nan"))
+            _TALL["ref"].append(sw_ref[:_na].float().cpu() if "sw_ref" in dir() else _nan2); _TALL["rp2"].append(_rp2[:_na].float().cpu() if "_rp2" in dir() else _nan2)
         _cur = {"a": a, "cmd": cmd, "q": robot.data.joint_pos, "pitch": pitch, "roll": roll, "w": w_xy, "v": v_xy,
                 "both": both.float(), "ge": uenv._ge.float(), "mode": (sw_mode.float() if policy2 is not None else torch.zeros(N, device=dev)), "alive": (a_ & ~term).float()}
         if not _RING:

@@ -9,6 +9,7 @@ declare -A X=( [nd]="" [sf15]="--dist ramp:f:2:15:0.5:1.0" [fi40]="--dist push:f
 declare -A ARM=( [imu]="--sw_early_imu 0.6,6,0.4,0.2" [imuH]="--sw_early_imu 0.6,6,0.4,0.7" )
 acquire_lane() {   # 레인 1 = 기존 공용 잠금(다른 도구와 직렬), 2..N = 추가 레인 — 동시 평가 최대 ${EVAL_LANES:-3} 개
   local i n=${EVAL_LANES:-3}
+  [ -z "${EVAL_POLL:-}" ] && sleep $((3 + RANDOM % 4))   # 일반 실행은 양보 뒤 시도(방금 끝난 체인이 레인을 곧바로 되잡아 대기자가 굶는 것 방지)
   while true; do
     for i in $(seq 1 $n); do
       if [ $i = 1 ]; then exec 9>"$LOCK"; else exec 9>"$LOCK.lane$i"; fi

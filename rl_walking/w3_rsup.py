@@ -6,7 +6,7 @@
   편차 devs       = (피치, 롤) − 기준, 짧은 EMA(τ_dev).
   감지            = |devs| > th_on 이 n_on 틱 연속 & 불응 끝 → ACTIVE(오프셋 창 off_T 초) → RECOVER(정숙 확인까지).
   정숙(quiet)     = 주기 EMA(τ_cyc) 피치·롤이 기준 ± q_ang, |ω| 주기 EMA ≤ q_wk·기준 + q_wa, q_hold 초 유지 → QUIET.
-(a) 정지 래치 지연: 정지 요청이 와도 QUIET 이 아니면 ge 0 요청을 미룬다(최대 stop_tmax 초, 넘으면 그대로 정지).
+(a) 정지 래치 지연: 정지 요청이 와도 정숙(quiet 조건)이 q_hold 초 유지되지 않았으면 ge 0 요청을 미룬다(최대 stop_tmax 초, 넘으면 그대로 정지).
 (b) 포획점 명령 오프셋: ACTIVE 동안 명령 (vx, vy) += A·(devs 방향 단위벡터 — 피치 + = 앞 기울임 → +vx, 롤 − = 왼 기울임 → +vy),
     결과를 학습 범위 [vx_lo, vx_hi]·[−vy_max, vy_max] 로 클립. 방향은 감지 순간 값으로 고정.
 모든 연산은 torch 텐서(N,) — 배포는 N = 1.
@@ -50,13 +50,13 @@ class RSup:
         self.base = torch.zeros(N, 3, device=dev); self.binit = torch.zeros(N, dtype=torch.bool, device=dev)
         self.devs = torch.zeros(N, 2, device=dev); self.cyc = torch.zeros(N, 3, device=dev)
         self.state = torch.zeros(N, dtype=torch.long, device=dev)
-        self.cnt = z(); self.t_act = z(); self.t_q = z(); self.t_ref = torch.full((N,), 1e9, device=dev)
+        self.cnt = z(); self.t_act = z(); self.t_q = z(); self.t_calm = z(); self.t_ref = torch.full((N,), 1e9, device=dev)
         self.dirv = torch.zeros(N, 2, device=dev)
         self.stop_wait = z(); self.stop_req = torch.zeros(N, dtype=torch.bool, device=dev); self.stop_latched = torch.zeros(N, dtype=torch.bool, device=dev)
         self.n_trig = z()                        # 감지 횟수(오발동 집계용)
 
     def reset(self, mask):
-        for x in (self.cnt, self.t_act, self.t_q, self.stop_wait):
+        for x in (self.cnt, self.t_act, self.t_q, self.t_calm, self.stop_wait):
             x[mask] = 0.0
         self.t_ref[mask] = 1e9; self.state[mask] = QUIET; self.binit[mask] = False
         self.stop_req[mask] = False; self.stop_latched[mask] = False; self.n_trig[mask] = 0.0
@@ -85,6 +85,7 @@ class RSup:
         st = torch.where(trig, torch.full_like(self.state, ACTIVE), self.state)
         st = torch.where((st == ACTIVE) & (self.t_act >= P.off_T), torch.full_like(st, RECOVER), st)
         calm = ((self.cyc[:, :2] - self.base[:, :2]).abs() <= P.q_ang).all(-1) & (self.cyc[:, 2] <= P.q_wk * self.base[:, 2] + P.q_wa)
+        self.t_calm = torch.where(calm, self.t_calm + dt, torch.zeros_like(self.t_calm))   # (a) 정지 게이트 = §10 정의 그대로(감지 상태와 무관한 정숙 유지 시간)
         self.t_q = torch.where((st == RECOVER) & calm, self.t_q + dt, torch.zeros_like(self.t_q))
         st = torch.where((st == RECOVER) & (self.t_q >= P.q_hold), torch.full_like(st, QUIET), st)
         self.state = st
@@ -105,6 +106,6 @@ class RSup:
         if not P.use_stopgate:
             return req
         self.stop_wait = torch.where(req & ~self.stop_latched, self.stop_wait + self.dt, self.stop_wait)
-        ok = req & ((self.state == QUIET) | (self.stop_wait >= P.stop_tmax))
+        ok = req & ((self.t_calm >= P.q_hold) | (self.stop_wait >= P.stop_tmax))
         self.stop_latched = self.stop_latched | ok
         return self.stop_latched & req

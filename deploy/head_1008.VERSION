@@ -1,0 +1,8 @@
+package: head_1008
+source_commit: 42da0c21bf45daba6acb0a5839fa4bd4969aef03 2026-10-07T23:53:56+09:00
+source_uncommitted: none
+manifest: deploy/head_1008.md5 md5 3ad40a89fa208fec0fccb34cb131ed6a
+files: 122 (send 66 incl. this file and the manifest, verify 56)
+jetson_inventory: deploy/cand/head_1008/jetson_inventory_before_md5.txt md5 35a129c9f16a082e1cb6d3ba9cb13855
+note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드(콘솔·브리지·stage8·러너·도구·시험)를 마지막으로 바꾼 커밋,
+      source_uncommitted = 생성 시점에 그 커밋과 달랐던 실행 코드 파일(none 이어야 커밋과 일치).

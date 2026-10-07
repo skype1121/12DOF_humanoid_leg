@@ -6,7 +6,7 @@ NM=$1; RN=$2; CK=$3; STAGES=${4:-"e3 e4 e5 e6"}; R=logs/rsl_rl/biped12_stepb0/$R
 [ -f $EX/policy.pt ] || { echo "내보내기 없음 $EX"; exit 2; }
 ok() { grep -q '사전 검사(무개입 자립 [0-9.]*s) 통과: [1-9]' log_picture/ground_recovery_$1.txt 2>/dev/null && [ -f log_picture/ground_recovery_$1_envs.csv ]; }
 run() { local t=$1; shift; ok $t && { echo "skip $t"; return; }; $S/safe_tr.sh $t "$@"; }
-export EVAL_POLL=1
+export EVAL_POLL=${EVAL_POLL:-1} EVAL_YIELD=${EVAL_YIELD:-3}
 for st in $STAGES; do case $st in
 e3) export TR_SCRIPT=rl_walking/scripts/eval_transition_kwx.py EVAL_TIMEOUT=3000 EVAL_ENVS=256
     SO="walk@2:0.06,0,0;stop@6;walk@11:0,0,0.15;stop@15;walk@20:0,0.035,0;stop@24;walk@29:-0.04,0,0;stop@33;walk@38:0.06,0,0;stop@42"

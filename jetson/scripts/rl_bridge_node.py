@@ -531,6 +531,7 @@ W3_CMD_LIMITS_OVERRIDE = None       # 1007 기동 --w3-cmd-limits(상한·체류
 #: None 이면 BridgeCore.w3mon 이 None 이라 tick·감독기·블랙박스 스키마가 종전과 같다(selftest 'W3 감시' 가 비트 동일 고정).
 #: 모듈은 이 값이 있을 때만 import 한다(젯슨에 파일이 없어도 기본 기동 불변). 문서 reports/gen_w3/CONTINGENCY.md
 W3_MON_CFG = None
+W3_HF_CFG = None                    # 1007 --w3-hl-fault 'on'|JSON → w3_contingency.HeadingFaultConfig(헤딩 고리 고장 판별 분리, 기본 꺼짐)
 C5_OVERTIME = None                  # 1007 --c5-overtime 'note:6'|'freeze:6' → RecoveryOvertime(회복 세션 C5 키에서만)
 
 
@@ -1144,6 +1145,12 @@ class BridgeCore:
     def _apply_w3_cfg(self):
         self.w3hl = _W3.W3HeadingLoop(W3_HL_CFG) if (self.ckpt_name in W3_CMD_LIMITS and W3_HL_CFG is not None) else None
         self.w3hl_on = True
+        self.w3hf = None             # 1007 헤딩 고리 고장 판별 분리(--w3-hl-fault) — None 이면 종전(오차 15° 즉시 고장)
+        if self.w3hl is not None and W3_HF_CFG is not None:
+            import dataclasses as _dc
+            self.w3hl = _W3.W3HeadingLoop(_dc.replace(W3_HL_CFG, err_max_deg=W3_HF_CFG.loop_err_max_deg))
+            self.w3hf = _w3c().HeadingFaultJudge(W3_HF_CFG)
+            self.w3hf_ban = getattr(self, "w3hf_ban", None)
         if W3_MON_CFG is not None and self.ckpt_name in W3_CMD_LIMITS:
             if self.w3mon is None:       # 세션 상태(요 표류 추정·고리 금지)는 정책 재시작에도 유지, 걷기 상태만 초기화
                 self.w3mon = _w3c().W3WalkMonitor(W3_MON_CFG, JOINT_ORDER)
@@ -1158,6 +1165,9 @@ class BridgeCore:
         clk = self.runner._w3_clock
         mon = self.w3mon
         hl_ok = True
+        if getattr(self, "w3hf_ban", None) is not None and clk.want and self.w3hl_on and self.w3hl is not None:
+            self.w3hl_on = False             # 1007 판별기: IMU 이상·부호 오류가 한 번이라도 나면 이 세션 고리 금지
+            self.w3hl_events.append({"event": "w3_hl_banned", "why": self.w3hf_ban})
         if mon is not None and clk.want and self.w3hl_on and self.w3hl is not None:
             hl_ok, _hw = mon.hl_allowed()
             if not hl_ok:                # 1007 감시: IMU 요 이상 → 고리 끔(보정 없음, 운영자 wz₀ 그대로) — 사건 1 회
@@ -1202,6 +1212,33 @@ class BridgeCore:
         if self.w3hl is not None:
             self.w3hl.release()
         self.w3hl_events.append({"event": "w3_mon_stop", "kind": st[0], "why": st[1]})
+        return 0.0, 0.0, 0.0
+
+    def _w3_hf_step(self, gyro, quat_wxyz, vx, vy, wz):
+        """판별기 한 틱(서기 중에도 IMU 정합은 본다). 고장(stop) → 헤딩 고리 고장과 같은 경로로 걷기 정지. IMU 이상이면 세션 동안 고리 금지."""
+        clk = self.runner._w3_clock
+        hl = self.w3hl
+        looping = bool(clk.want and self.w3hl_on and hl.latched)
+        if hl.latched and getattr(self, "_hf_prev_latched", False) is False:
+            self.w3hf.reset_walk()
+        self._hf_prev_latched = hl.latched
+        r = self.w3hf.update(quat_wxyz, gyro, hl.err if looping else None, hl.wz if looping else None)
+        if r is None:
+            return vx, vy, wz
+        kind, why, action = r
+        if kind in ("imu", "rate"):
+            self.w3hf_ban = why
+        self.w3hl_events.append({"event": "w3_hl_fault" if action == "stop" else "w3_hl_note", "why": why, "judge": kind,
+                                 "hl": hl.snapshot()})
+        if kind == "imu":
+            self.w3hf.reset()                # 다음 사건을 다시 잡을 수 있게(금지는 유지)
+        if action != "stop" or not clk.want:
+            return vx, vy, wz
+        if kind == "imu" and not looping:    # 고리를 안 쓰는 걷기는 IMU 요 이상이 명령을 바꾸지 않는다 — 고리 금지만
+            return vx, vy, wz
+        self.runner.set_gait_enable(False)
+        self.cmd = (0.0, 0.0, 0.0)
+        hl.release()
         return 0.0, 0.0, 0.0
 
     @property
@@ -1250,6 +1287,8 @@ class BridgeCore:
             vx, vy, wz = self._w3_mon_step(gyro, grav, quat_wxyz, contact2, vx, vy, wz)
         if self.w3hl is not None:        # 1007 W3 명령 채널 + 헤딩 고리(그 밖 키는 이 줄을 지나지 않는다)
             vx, vy, wz = self._w3_cmd_step(quat_wxyz, vx, vy, wz)
+        if self.w3hf is not None:        # 1007 헤딩 고리 고장 판별 분리(--w3-hl-fault 일 때만)
+            vx, vy, wz = self._w3_hf_step(gyro, quat_wxyz, vx, vy, wz)
         if getattr(self.runner, "needs_knee_tau", False):
             return self.runner.step(gyro, grav, (vx, vy, wz),
                                     qpos_rad, qvel_rad_s, contact2, tau_knee_nm=tau_knee_nm)
@@ -3399,6 +3438,87 @@ def _selftest_w3_monitor():
             disable_experimental_w3()
 
 
+def _selftest_w3_hl_fault():
+    """1007 헤딩 고리 고장 판별 분리(--w3-hl-fault): ① 꺼짐 = 종전(오차 > 15° 즉시 정지) ② 켬·오차 < 15° = 꺼짐과 목표각 비트 동일
+    ③ 몸이 실제로 16° 돌아감(자이로 일치) 3 s → 정지 안 함(종전은 즉시 정지) ④ 16° 가 5 s 연속 → 추종 실패 정지 ⑤ IMU 요 10° 점프(자이로 0)
+    → IMU 고장 정지 + 이후 걷기 고리 금지 ⑥ 고리 반대 방향 회전 2 s → 부호 고장."""
+    import numpy as np
+    global W3_HF_CFG
+    was_on, was = EXPERIMENTAL_W3, W3_HF_CFG
+    M = _w3c()
+    try:
+        enable_experimental_w3()
+        k = _W3.W3S3D_CKPT_KEY
+        q = np.array(CKPT_DEFAULT_POSE[k], dtype=np.float32)
+        Wm = np.random.default_rng(3).normal(0, 0.05, (12, 320)).astype(np.float32)
+
+        def mk(hf):
+            global W3_HF_CFG
+            W3_HF_CFG = hf
+            rr = PolicyRunnerStage4(model_path=lambda o: np.tanh(Wm @ np.asarray(o, np.float32)).astype(np.float32), obs_dim=320,
+                                    gait_freq=1.1, default_pose_rad=CKPT_DEFAULT_POSE[k], act_obs_ema_beta=0.27, jvel_obs_ema_beta=0.25, w3=W3_CKPTS[k])
+            cc = BridgeCore(k, runner=rr)
+            cc.reset(); cc.heading_hold = False; cc.cmd = (0.0, 0.0, 0.0)
+            return cc
+
+        def yq(y):
+            return (math.cos(y / 2), 0.0, 0.0, math.sin(y / 2))
+
+        def walk(cc, yaw_fn, gz_fn, n):
+            for i in range(30):
+                cc.tick((0.0, 0.0, 0.0), yq(0.5), q, np.zeros(12), [1.0, 1.0])
+            cc.cmd = (0.06, 0.0, 0.0); cc.set_gait_enable(True)
+            outs, t_stop = [], None
+            for i in range(n):
+                outs.append(cc.tick((0.0, 0.0, gz_fn(i)), yq(yaw_fn(i)), q, np.zeros(12), [1.0, 1.0]))
+                if t_stop is None and not cc.runner._w3_clock.want:
+                    t_stop = i
+            return np.asarray(outs), t_stop
+        notes = []
+        small = (lambda i: 0.5 + math.radians(8.0) * math.sin(i * 0.01), lambda i: math.radians(8.0) * 0.01 / 0.02 * math.cos(i * 0.01))
+        a0, s0 = walk(mk(None), *small, 400)
+        a1, s1 = walk(mk(M.HeadingFaultConfig()), *small, 400)
+        assert s0 is None and s1 is None and np.array_equal(a0, a1), "오차 < 15° 에서 켬/끔 목표각 다름"
+        notes.append("오차 ±8° 400 틱 켬 = 끔 비트 동일")
+        # 실제 회전 16°(자이로 일치): 램프 1 s 로 16° → 유지
+        rate = math.radians(16.0) / 1.0
+
+        def yr(i):
+            return 0.5 - min(i * 0.02, 1.0) * math.radians(16.0)
+
+        def gr(i):
+            return -rate if i * 0.02 < 1.0 else 0.0
+        _, s_old = walk(mk(None), yr, gr, 200)
+        c3 = mk(M.HeadingFaultConfig())
+        _, s_new = walk(c3, yr, gr, 200)
+        assert s_old is not None and s_new is None, (s_old, s_new)
+        notes.append(f"실회전 16° 3 s: 종전 {s_old * 0.02:.2f}s 정지 / 판별 켬 정지 없음")
+        _, s_dev = walk(mk(M.HeadingFaultConfig()), yr, gr, 600)
+        assert s_dev is not None and 5.0 <= s_dev * 0.02 <= 6.6, s_dev
+        notes.append(f"16° 연속 → {s_dev * 0.02:.2f}s 추종 실패 정지")
+        # IMU 점프 10°(자이로 0) → IMU 고장 정지 + 고리 금지
+        c5 = mk(M.HeadingFaultConfig())
+        _, s_j = walk(c5, lambda i: 0.5 + (math.radians(10.0) if i >= 150 else 0.0), lambda i: 0.0, 200)
+        assert s_j is not None and 150 <= s_j <= 152 and any(e.get("judge") == "imu" for e in c5.w3hl_events), (s_j, c5.w3hl_events)
+        for i in range(60):
+            c5.tick((0.0, 0.0, 0.0), yq(0.6), q, np.zeros(12), [1.0, 1.0])
+        c5.cmd = (0.06, 0.0, 0.0); c5.w3hl_on = True; c5.set_gait_enable(True)
+        c5.tick((0.0, 0.0, 0.0), yq(0.6), q, np.zeros(12), [1.0, 1.0])
+        assert c5.w3hl_on is False and any(e.get("event") == "w3_hl_banned" for e in c5.w3hl_events)
+        notes.append("IMU 10° 점프 → 같은 틱 정지·다음 걷기 고리 금지")
+        # 고리와 반대 방향 회전: 오차 > 15° 상태에서 요가 계속 벌어짐(자이로 일치)
+        c6 = mk(M.HeadingFaultConfig())
+        _, s_r = walk(c6, lambda i: 0.5 - math.radians(0.4) * i, lambda i: -math.radians(0.4) / 0.02, 400)
+        ev = [e for e in c6.w3hl_events if e.get("event") == "w3_hl_fault"]
+        assert s_r is not None and ev and ev[0].get("judge") in ("rate", "hl") or "오차" in ev[0]["why"], ev
+        notes.append(f"반대 회전 → {s_r * 0.02:.2f}s 정지({ev[0].get('judge', 'hl')})")
+        return " · ".join(notes)
+    finally:
+        W3_HF_CFG = was
+        if not was_on and EXPERIMENTAL_W3:
+            disable_experimental_w3()
+
+
 def _selftest_parity_flags():
     """1007 parity 옵션(--runner-ema-fresh·--c5-imu-f32): 기본 = 러너·감지기 생성 인자 없음(종전 비트 동일 경로), 켜면 설정이 실제로 실린다.
     동치 자체는 rl_walking/deploy/selftest_w3_rollout_parity.py [P1]·selftest_c5_imu_f32.py [B] 가 시뮬 소스로 검증한다."""
@@ -3460,6 +3580,7 @@ def run_selftest(required=()):
              ("W3S3d 명령 채널·리드 발·헤딩 고리(1007)", _selftest_w3_cmd),
              ("W3 감시 2 차 대비책(1007)", _selftest_w3_monitor),
              ("parity 옵션(1007, 기본 꺼짐)", _selftest_parity_flags),
+             ("헤딩 고리 고장 판별 분리(1007, 기본 꺼짐)", _selftest_w3_hl_fault),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:
@@ -3515,6 +3636,9 @@ def main():
                     help="1007 2 차 대비책(기본 꺼짐·실물 미검증, reports/gen_w3/CONTINGENCY.md): W3 명령 채널 키 걷기 감시. "
                          "'on' = 조치(자세·접촉·요·지연 판정 → 걷기 정지·켜기 거부·고리 금지), 'note' = 같은 판정 기록만(오트립 계수), "
                          "JSON = 설정(키·범위 w3_contingency.W3_MON_RANGES). --experimental-w3 와 함께만")
+    ap.add_argument("--w3-hl-fault", default=None,
+                    help="1007 2 차 대비책(기본 꺼짐): 헤딩 고리 고장 판별 분리 'on'|JSON — IMU 요 vs 자이로 적분 불일치(2 s 6°)·"
+                         "오차 > 15° 5 s 연속·요 속도가 고리와 반대 2 s 로 고장 판정, 고리 자체 즉시 문턱은 30°(큰 점프만). --experimental-w3 와 함께만")
     ap.add_argument("--c5-overtime", default=None,
                     help="1007 2 차 대비책(기본 꺼짐): C5 회복 모드 연속 체류 상한 'note:초'(기록) | 'freeze:초'(양발 접촉일 때 STOP_ALL). C5 키에서만")
     ap.add_argument("--runner-ema-fresh", type=int, default=1, choices=(1, 2),
@@ -3542,8 +3666,17 @@ def main():
     if (args.w3_heading_loop is not None or args.w3_cmd_limits is not None) and not args.experimental_w3:
         print("[거부] --w3-heading-loop·--w3-cmd-limits 는 --experimental-w3 와 함께만", file=sys.stderr)
         return 2
-    global W3_MON_CFG, C5_OVERTIME
-    W3_MON_CFG, C5_OVERTIME = None, None          # 기동마다 명시(같은 프로세스에서 main 을 다시 부르는 셀프테스트 하네스 포함)
+    global W3_MON_CFG, C5_OVERTIME, W3_HF_CFG
+    W3_MON_CFG, C5_OVERTIME, W3_HF_CFG = None, None, None
+    if args.w3_hl_fault is not None:
+        if not args.experimental_w3:
+            print("[거부] --w3-hl-fault 는 --experimental-w3 와 함께만", file=sys.stderr)
+            return 2
+        try:
+            W3_HF_CFG = _w3c().parse_heading_fault(args.w3_hl_fault)
+        except ValueError as e:
+            print(f"[거부] --w3-hl-fault: {e}", file=sys.stderr)
+            return 2          # 기동마다 명시(같은 프로세스에서 main 을 다시 부르는 셀프테스트 하네스 포함)
     if args.w3_monitor is not None and not args.experimental_w3:
         print("[거부] --w3-monitor 는 --experimental-w3 와 함께만", file=sys.stderr)
         return 2

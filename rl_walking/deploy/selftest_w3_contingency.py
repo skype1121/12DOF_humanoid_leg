@@ -289,8 +289,42 @@ def t_overtime():
     return "회복 모드 6 s → 사건 1 회(틱 300)·모드 0 초기화·형식 거부 4 종"
 
 
+def t_hfault():
+    assert C.parse_heading_fault(None) is None and C.parse_heading_fault("on") == C.HeadingFaultConfig()
+    for bad in ('{"foo":1}', '{"imu_mis_deg": 50}', '{"dev_action": "x"}', '[1]'):
+        try:
+            C.parse_heading_fault(bad)
+        except ValueError:
+            continue
+        raise AssertionError(bad)
+    J = C.HeadingFaultJudge(C.HeadingFaultConfig())
+
+    def qy(y):
+        return (math.cos(y / 2), 0.0, 0.0, math.sin(y / 2))
+    for k in range(500):          # 실제 회전(자이로 일치) 0.3 rad/s 10 s → 무고장
+        assert J.update(qy(C._wrap(0.3 * k * DT)), (0.2 * math.sin(k * 0.3), 0.0, 0.3)) is None
+    J = C.HeadingFaultJudge(C.HeadingFaultConfig())
+    r = math.radians(10.0)
+    for k in range(300):          # 롤 10° 기운 채 회전: 오일러 변환이 맞으면 무고장
+        y = 0.2 * k * DT
+        q = (math.cos(y / 2) * math.cos(r / 2), math.cos(y / 2) * math.sin(r / 2), math.sin(y / 2) * math.sin(r / 2), math.sin(y / 2) * math.cos(r / 2))
+        assert J.update(q, (0.0, 0.2 * math.sin(r), 0.2 * math.cos(r))) is None, k
+    J = C.HeadingFaultJudge(C.HeadingFaultConfig())
+    for k in range(200):          # 점프 10° → 즉시
+        out = J.update(qy(0.1 + (math.radians(10.0) if k >= 150 else 0.0)), (0.0, 0.0, 0.0))
+        if k < 150:
+            assert out is None
+        elif k == 150:
+            assert out is not None and out[0] == "imu", out
+    J = C.HeadingFaultJudge(C.HeadingFaultConfig(dev_action="note"))
+    outs = [J.update(qy(0.0), (0, 0, 0), hl_err=math.radians(16.0), hl_wz=0.1) for _ in range(300)]
+    fired = [i for i, o in enumerate(outs) if o is not None]
+    assert fired == [249] and outs[249][0] == "dev" and outs[249][2] == "note", fired
+    return "형식 거부 4·실회전 무고장·롤 10° 기운 회전 무고장·10° 점프 즉시·16° 5 s 지속 판정(note)"
+
+
 def main():
-    tests = [("설정 파싱", t_parse), ("정상 걷기 무해", t_benign), ("자세 경계", t_tilt_w), ("접촉 이상", t_contact),
+    tests = [("헤딩 고리 고장 판별", t_hfault), ("설정 파싱", t_parse), ("정상 걷기 무해", t_benign), ("자세 경계", t_tilt_w), ("접촉 이상", t_contact),
              ("요 표류·점프", t_yaw), ("고리 상한·걷기 상한·정착", t_cap_walkmax_settle), ("실효 지연", t_latency),
              ("회복 체류 상한", t_overtime)]
     bad = 0

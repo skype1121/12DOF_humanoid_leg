@@ -514,6 +514,142 @@ class W3WalkMonitor:
                 "trips": dict(self.n_trips)}
 
 
+# ------------------------------------------------------------------ 헤딩 고리 고장 판별 분리(1007 적대 검토·parity 감사 — 기본 꺼짐)
+# 배경: W3HeadingLoop 의 '오차 > 15° 즉시 걷기 정지' 는 IMU 요 이상을 잡으려던 장치인데, 시뮬 정상 걸음에서 고리 오차가 60 s 안에 15° 를 넘는
+# env 가 앞 걷기 30–41 %·옆·제자리 2–15 %(PARITY_AUDIT_1007 §4.5), 녹화 1 건 36.7 s 실제 정지. 오차 크기는 'IMU 고장' 과 '실제로 돌아간 몸'
+# 을 구분하지 못한다 → 고장 신호를 따로 둔다(문턱 상향이 아니라 판별 신호 분리):
+#   (A) IMU 정합: 창 W 동안 IMU 요 변화 − 자이로로 적분한 오일러 요 변화(ψ̇ = (ω_y sin φ + ω_z cos φ)/cos θ, 같은 IMU 의 자세로)
+#       |불일치| > imu_mis_deg → IMU 요 이상(점프·표류·프레임 깨짐) = 고장(걷기 정지). 몸이 실제로 돌면 두 값이 같이 움직여 0 근처.
+#   (B) 추종 실패: 고리 오차 > dev_deg 가 dev_hold_s **연속** → 고리가 몸을 못 돌려 세움(제어 실패) = 걷기 정지(설정상 note 가능).
+#   (C) 요 속도 대 명령: 고리 오차가 dev_deg 를 넘는 동안 실제 요 속도가 고리 명령과 반대 부호로 rate_hold_s 연속 → 고리가 거꾸로 감
+#       (부호·프레임 오류) = 고장.
+# 판정만 하고 실행은 호출자(BridgeCore)가 — 고리 고장과 같은 경로(명령 0 + ge 0 → 반주기 경계 서기).
+
+@dataclass(frozen=True)
+class HeadingFaultConfig:
+    imu_win_s: float = 2.0
+    imu_mis_deg: float = 6.0          # 10° 점프·3 °/s 이상 표류를 잡는다(느린 표류는 감시 D·타임아웃 몫). 실물 재생 1 s 창 최대 3.5°
+    imu_w_gate: float = 5.0           # 창 안 |ω_xy| 최대가 넘으면 판정 보류 — 걷기 롤 흔들림(최대 ~2.3 rad/s)에서도 판정하도록 사실상 낙하 때만
+    dev_deg: float = 15.0
+    dev_hold_s: float = 5.0
+    dev_action: str = "stop"          # "stop" | "note"
+    rate_hold_s: float = 2.0
+    loop_err_max_deg: float = 30.0    # 분리 판별을 켜면 W3HeadingLoop 자체의 즉시 고장 문턱(범위 상한) — 큰 점프 즉시 차단은 유지
+
+
+HF_RANGES = {"imu_win_s": (0.2, 5.0), "imu_mis_deg": (0.5, 15.0), "imu_w_gate": (0.2, 5.0), "dev_deg": (3.0, 30.0), "dev_hold_s": (0.5, 30.0),
+             "rate_hold_s": (0.5, 10.0), "loop_err_max_deg": (3.0, 30.0)}
+
+
+def parse_heading_fault(text):
+    """None/'' → None(끔 = 종전 15° 즉시) · 'on' → 기본 · JSON → 덮어쓰기."""
+    if text is None or str(text).strip() in ("", "off"):
+        return None
+    if str(text).strip() == "on":
+        return HeadingFaultConfig()
+    d = json.loads(text)
+    if not isinstance(d, dict):
+        raise ValueError("헤딩 고장 판별 설정은 'on' 또는 JSON 객체")
+    kw = {}
+    for k, v in d.items():
+        if k == "dev_action":
+            if v not in ("stop", "note"):
+                raise ValueError("dev_action stop|note")
+            kw[k] = v
+            continue
+        if k not in HF_RANGES:
+            raise ValueError(f"헤딩 고장 판별: 모르는 키 {k!r}")
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(float(v)):
+            raise ValueError(f"헤딩 고장 판별 {k}: 유한 수 필요")
+        lo, hi = HF_RANGES[k]
+        if not lo <= float(v) <= hi:
+            raise ValueError(f"헤딩 고장 판별 {k}={v} 범위 밖 [{lo}, {hi}]")
+        kw[k] = float(v)
+    return HeadingFaultConfig(**kw)
+
+
+def euler_from_quat(q):
+    """(w,x,y,z) → (롤 φ, 피치 θ, 요 ψ) ZYX."""
+    w, x, y, z = (float(v) for v in q)
+    r = math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
+    p = math.asin(max(-1.0, min(1.0, 2 * (w * y - z * x))))
+    yv = math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+    return r, p, yv
+
+
+def gyro_yaw_rate(q, gyro):
+    """몸통 자이로 → 오일러 요 속도 ψ̇ = (ω_y sin φ + ω_z cos φ) / cos θ (ZYX)."""
+    r, p, _ = euler_from_quat(q)
+    c = math.cos(p)
+    if abs(c) < 1e-3:
+        return float("nan")
+    return (float(gyro[1]) * math.sin(r) + float(gyro[2]) * math.cos(r)) / c
+
+
+class HeadingFaultJudge:
+    """매 틱 update(q, gyro, hl_err=None, hl_wz=None) → None | (kind, why, action). 상태는 걷기(고리 래치)마다 reset_walk()."""
+
+    def __init__(self, cfg: HeadingFaultConfig, dt=0.02):
+        self.cfg, self.dt = cfg, float(dt)
+        self.n_w = max(2, int(round(cfg.imu_win_s / self.dt)))
+        self.reset()
+
+    def reset(self):
+        self._yaw = deque(maxlen=self.n_w + 1)       # IMU 요(펼침)
+        self._gint = deque(maxlen=self.n_w + 1)      # 자이로 적분 요
+        self._wxy = deque(maxlen=self.n_w + 1)
+        self._yu = None; self._yp = None; self._gi = 0.0
+        self.mis = None
+        self.reset_walk()
+
+    def reset_walk(self):
+        self.dev_t = 0.0
+        self.rate_t = 0.0
+        self.fired = None
+
+    def update(self, q, gyro, hl_err=None, hl_wz=None):
+        c = self.cfg
+        _, _, yv = euler_from_quat(q)
+        rate = gyro_yaw_rate(q, gyro)
+        if not (math.isfinite(yv) and math.isfinite(rate)):
+            return self._fire("imu", "IMU 요/자이로 비유한", "stop")
+        if self._yp is None:
+            self._yu = yv
+        else:
+            self._yu += _wrap(yv - self._yp)
+        self._yp = yv
+        self._gi += rate * self.dt
+        self._yaw.append(self._yu); self._gint.append(self._gi)
+        self._wxy.append(math.hypot(float(gyro[0]), float(gyro[1])))
+        out = None
+        if len(self._yaw) > self.n_w and max(self._wxy) <= c.imu_w_gate:
+            self.mis = (self._yaw[-1] - self._yaw[0]) - (self._gint[-1] - self._gint[0])
+            if abs(self.mis) > math.radians(c.imu_mis_deg):
+                out = self._fire("imu", f"IMU 요 − 자이로 적분 불일치 {math.degrees(self.mis):+.1f}° / {c.imu_win_s:g} s "
+                                        f"> {c.imu_mis_deg:g}° (IMU 요 이상)", "stop")
+        if out is None and hl_err is not None:
+            big = abs(hl_err) > math.radians(c.dev_deg)
+            self.dev_t = self.dev_t + self.dt if big else 0.0
+            if big and hl_wz is not None and hl_wz * rate < 0.0:
+                self.rate_t += self.dt
+            else:
+                self.rate_t = 0.0
+            if self.rate_t >= c.rate_hold_s - 1e-9:
+                out = self._fire("rate", f"고리 오차 {math.degrees(hl_err):+.1f}° 동안 요 속도가 고리 명령과 반대 {self.rate_t:.1f} s "
+                                         "(부호·프레임 오류 의심)", "stop")
+            elif self.dev_t >= c.dev_hold_s - 1e-9:
+                out = self._fire("dev", f"고리 오차 > {c.dev_deg:g}° 가 {self.dev_t:.1f} s 연속(추종 실패 — IMU 정합 정상)", c.dev_action)
+        elif hl_err is None:
+            self.dev_t = self.rate_t = 0.0
+        return out
+
+    def _fire(self, kind, why, action):
+        if self.fired is not None:
+            return None
+        self.fired = kind
+        return (kind, why, action)
+
+
 def config_dict(cfg: W3MonitorConfig) -> dict:
     return {f.name: getattr(cfg, f.name) for f in fields(cfg)}
 

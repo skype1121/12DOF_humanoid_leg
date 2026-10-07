@@ -214,23 +214,39 @@ W3_BURST_RANGE = (0.3, 10.0)
 #: 1007 콘솔 걷기 버튼 표(단일 원본 — 콘솔·시뮬 평가가 같은 값을 읽는다). 전부 W3S3d 학습 범위 안의 단일 축 명령 + 지속 시간.
 #: 걸음 주기 = 1 / f_step = 0.909 s(왼발·오른발 한 번씩). 끄기는 다음 반주기 경계에서 걸리므로 dur_s 0.6 → 한 주기(0.91 s), 2.4 → 세 주기(2.73 s), 2.0 → 2.5 주기(2.27 s).
 #: 부호: +vx 앞 · +vy 왼 · +wz 왼쪽(반시계) 회전 — 실물 부호는 계획서 T6 에서 확인 전(현장 확인 필요).
+#: "enabled": False 인 버튼은 X14(TRANSITION_W3KE.md §5.18 사전 등록 기준 B4)에서 미달 — 콘솔은 비활성으로 보이고 서버도 거부한다(w3_move_cmd). 값을 바꿔 다시 켜려면 새 등록·평가가 먼저다.
 W3_MOVES = {
     "fwd1": {"label": "전진 한 걸음", "vx": 0.06, "vy": 0.0, "wz": 0.0, "dur_s": 0.6},
     "fwd3": {"label": "전진 세 걸음", "vx": 0.06, "vy": 0.0, "wz": 0.0, "dur_s": 2.4},
-    "back1": {"label": "후진 한 걸음", "vx": -0.04, "vy": 0.0, "wz": 0.0, "dur_s": 0.6},
+    "back1": {"label": "후진 한 걸음", "vx": -0.04, "vy": 0.0, "wz": 0.0, "dur_s": 0.6,
+              "enabled": False, "why_disabled": "X14(1007 시뮬): 방향 부호 일치 80 %(기준 95 %) — 한 주기 변위(중앙 −2.4 cm)가 과도 잡음(±3 cm)에 묻힘"},
     "left1": {"label": "왼쪽 옆걸음", "vx": 0.0, "vy": 0.035, "wz": 0.0, "dur_s": 0.6},
-    "right1": {"label": "오른쪽 옆걸음", "vx": 0.0, "vy": -0.035, "wz": 0.0, "dur_s": 0.6},
+    "right1": {"label": "오른쪽 옆걸음", "vx": 0.0, "vy": -0.035, "wz": 0.0, "dur_s": 0.6,
+               "enabled": False, "why_disabled": "X14(1007 시뮬): 방향 부호 일치 63 %(기준 95 %) — 한 주기 변위가 시작 과도의 왼쪽 쏠림(3–5 cm)에 묻힘"},
     "turn_l": {"label": "좌측 회전", "vx": 0.0, "vy": 0.0, "wz": 0.15, "dur_s": 2.0},
     "turn_r": {"label": "우측 회전", "vx": 0.0, "vy": 0.0, "wz": -0.15, "dur_s": 2.0},
     "inplace": {"label": "제자리 걸음", "vx": 0.0, "vy": 0.0, "wz": 0.0, "dur_s": 2.0},
 }
 
 
-def w3_move_cmd(name, limits: "W3CmdLimits" = W3S3D_CMD_LIMITS) -> dict:
-    """버튼 이름 → 검증된 step 켜기 필드 {vx, vy, wz, dur_s}(학습 범위·단일 축·기한 범위 검사, 위반 ValueError)."""
+def w3_move_enabled(name) -> bool:
+    return bool(W3_MOVES[name].get("enabled", True))
+
+
+def w3_moves_public() -> list:
+    """콘솔 표시용 버튼 목록(정의 순서) — [{name, label, vx, vy, wz, dur_s, enabled, why_disabled}]."""
+    return [{"name": k, "label": m["label"], "vx": m["vx"], "vy": m["vy"], "wz": m["wz"], "dur_s": m["dur_s"],
+             "enabled": bool(m.get("enabled", True)), "why_disabled": m.get("why_disabled")} for k, m in W3_MOVES.items()]
+
+
+def w3_move_cmd(name, limits: "W3CmdLimits" = W3S3D_CMD_LIMITS, allow_disabled: bool = False) -> dict:
+    """버튼 이름 → 검증된 step 켜기 필드 {vx, vy, wz, dur_s}(학습 범위·단일 축·기한 범위 검사, 위반 ValueError).
+    비활성 버튼(enabled False)은 거부한다 — allow_disabled 는 시뮬 평가 전용(콘솔·브리지 경로에서는 쓰지 않는다)."""
     if name not in W3_MOVES:
         raise ValueError(f"모르는 걷기 버튼 {name!r} (허용 {sorted(W3_MOVES)})")
     m = W3_MOVES[name]
+    if not allow_disabled and not m.get("enabled", True):
+        raise ValueError(f"비활성 걷기 버튼 {name!r}: {m.get('why_disabled', '사유 미기록')}")
     vx, vy, wz = validate_w3_cmd({"vx": m["vx"], "vy": m["vy"], "wz": m["wz"]}, limits)
     dur = float(m["dur_s"])
     if not (W3_BURST_RANGE[0] - 1e-9 <= dur <= W3_BURST_RANGE[1] + 1e-9):

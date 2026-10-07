@@ -5,7 +5,7 @@ normalizer=actor_obs_normalizer) 를 부른다. 여기서는 같은 exporter 파
 Kit 밖에서 import 불가), 같은 rsl_rl ActorCritic 을 run 의 params/agent.yaml 로 만들어 체크포인트를 strict 로 싣는다.
 GPU 가 학습으로 꽉 찼을 때(1007: play.py Warp OOM) 쓰는 대체 경로 — 산출 형식은 같다(검증: 기존 exported 와 jit 구조 비교).
 
-사용: python.sh rl_walking/scripts/export_ckpt_offline.py <run 디렉토리> <model_N.pt> [--ref <기존 exported/policy.pt>]
+사용: python.sh rl_walking/scripts/export_ckpt_offline.py <run 디렉토리> <model_N.pt> [--ref <기존 exported/policy.pt>] [--out_name exported_<N>]
 검증: 체크포인트 actor(float64 수동 MLP) vs jit vs onnx — 무작위 관측 256개 최대 차이 < 1e-4. 결과 파일 md5 출력.
 """
 from __future__ import annotations
@@ -34,6 +34,7 @@ def main():
     ap.add_argument("ckpt")
     ap.add_argument("--ref", default=None, help="형식 비교용 기존 exported/policy.pt")
     ap.add_argument("--exporter", default="/home/ryu/IsaacLab/source/isaaclab_rl/isaaclab_rl/rsl_rl/exporter.py")
+    ap.add_argument("--out_name", default="exported", help="출력 폴더 이름(run 아래). 배포 중인 exported/ 를 건드리지 않으려면 exported_<N> 처럼 따로 준다")
     a = ap.parse_args()
     d = os.path.abspath(a.run_dir)
     ck = os.path.join(d, a.ckpt)
@@ -56,7 +57,8 @@ def main():
     spec = importlib.util.spec_from_file_location("_il_exporter", a.exporter)
     E = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(E)
-    out = os.path.join(d, "exported")
+    assert os.sep not in a.out_name and a.out_name.startswith("exported"), a.out_name
+    out = os.path.join(d, a.out_name)
     normalizer = getattr(pol, "actor_obs_normalizer", None)
     E.export_policy_as_jit(pol, normalizer=normalizer, path=out, filename="policy.pt")
     E.export_policy_as_onnx(pol, normalizer=normalizer, path=out, filename="policy.onnx")

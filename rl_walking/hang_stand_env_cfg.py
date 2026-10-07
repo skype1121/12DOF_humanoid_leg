@@ -2462,6 +2462,20 @@ class Biped12HangStandG24RaEnvCfg(Biped12HangStandW2eEnvCfg):
 
 
 @configclass
+class Biped12HangStandG24RaFEnvCfg(Biped12HangStandG24RaEnvCfg):
+    """G24Ra-F (1007 claude2, reports/gen_w3/TORQUE_BUDGET_1007.md §13 — 범위 확인용): G24R-a 와 보상·관측·외란·커리큘럼 전부 같고 **토크 한계 무작위화만 추가** —
+    리셋마다 전 관절 토크 한계 0.7–1.0 배(mdp_stage4.resample_effort_scale). 관측·행동 계약 불변 → G24Ra-21793 에서 이어 학습.
+    근거(X15): KE 의 서기는 한계 0.6 배에서도 버티지만 회복은 한계에 비례해 무너진다(뒤 밀기 18 N 낙상 5.5 → 19.8 → 42.2 → 93.1 %). 걷기에서는 같은 무작위화(W3S3f)가
+    낮은 한계 내성을 만들었다(0.8 배 14 → 0–1 %). 이 이벤트는 0920 G6 에서 서기 정합을 위해 뺀 것이고 회복·걷기에서는 다시 따져 본 적이 없다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        from . import mdp_stage4 as _m4
+        assert getattr(self.events, "effort_scale", None) is None
+        self.events.effort_scale = EventTerm(func=_m4.resample_effort_scale, mode="reset", params={"scale_range": (0.7, 1.0)})
+
+
+@configclass
 class Biped12HangStandG24RaR4EnvCfg(Biped12HangStandG24RaEnvCfg):
     """G24R-a-R4 (1006, RH2): G24R-a + **외란 단계 R3 → R4 고정**(앞 램프 12–15 N, 충격 ×1.5 = 18–22.5 N × 0.2–0.4 s ≈ 3.6–9 N·s, 뒤 18 N) 단일 변경.
     근거(검토자): 평가 sf15(15 N)·fi40/fs80(8 N·s)이 R3 학습 분포(앞 10–12 N, 3–7.2 N·s) 밖 — 이어학습 표류가 '분포 밖 영역 미구속'(H2) 탓인지 가른다."""
@@ -3631,6 +3645,32 @@ class Biped12HangStandW3S3eEnvCfg(Biped12HangStandW3S3dEnvCfg):
 
 
 @configclass
+class Biped12HangStandW3S3fEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3 f (1007 claude2, reports/gen_w3/TORQUE_BUDGET_1007.md §7): W3S3d 와 보상·관측·커리큘럼·명령·학습 지연 동일, **토크 한계 무작위화만 추가** —
+    리셋마다 전 관절 토크 한계 0.7–1.0 배(mdp_stage4.resample_effort_scale: PhysX 한계 + 액추에이터 모델 한계). 관측·행동 계약 불변.
+    근거(X13): W3S3d-15800 은 한계 0.8 배에서 걷기 낙상 14.2 %, 0.7 배에서 98 % — 피크 토크에 기댄 걸음. 정책이 한계를 관측하지 못하므로
+    낮은 한계에서도 성립하는 걸음(지지발 쪽으로 더 옮기는 걸음)을 배우게 하려는 단일 변경. 시작 = W3S3d-15800 이어 학습. 기준은 문서(학습 전 고정)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        from . import mdp_stage4 as _m4
+        self.events.effort_scale = EventTerm(func=_m4.resample_effort_scale, mode="reset", params={"scale_range": (0.7, 1.0)})
+
+
+@configclass
+class Biped12HangStandW3S3gEnvCfg(Biped12HangStandW3S3eEnvCfg):
+    """W3S3 g (1007 claude2, reports/gen_w3/TRANSITION_W3KE.md §5.19·S3G 사전 등록): W3S3e(명령 리샘플 4–6 s = 재출발 포함)와 전부 같고 **보상 항 하나만 추가** —
+    `w3_lean`: 걷는 중 한 주기 평균 옆 기울기 |ḡ_y| 선형 벌점(가중 −8, 1° 쏠림 ≈ −0.14/틱 — 요 벌점 −4·|ω| 의 2°/s 와 같은 크기).
+    근거(배포 코드 폐루프 왕복 기록): 연속 걷기에서는 요 속도가 커지지 않고(4 s 구간 표준편차 4–6°), 멈췄다 다시 걸을 때마다 커진다(6 → 21°).
+    걷는 중 평균 롤과 요 속도는 매 걷기 r 0.67–0.93·기울기 ≈ 2 (°/s)/° — 한쪽으로 쏠린 걸음이 그대로 유지되는 무조절 모드. 관측·행동 계약 불변.
+    대조 = W3S3e 같은 반복 수(리샘플은 같고 이 항만 다름). 시작 = W3S3d-15800 이어 학습."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.w3_lean = RewTerm(func=_w3.w3_lean_net, weight=-8.0)
+
+
+@configclass
 class Biped12HangStandW3S3dC2EnvCfg(Biped12HangStandW3S3dEnvCfg):
     """W3S3d-c2 (1007, c2 GO 학습 설정 — 실행은 승인 뒤): W3S3d(회전·옆·앞뒤·지연 1–5) 끝에서 이어 학습 + c2 묶음(W3C2k2h 와 같은 내용):
     고정 2 보 정지(stop_td_k 2) · 상대 기울기 감지(τ 10 s) · 차분형 v2 포획 착지 · 회복 중 서기 보상 유지 5 항. 관측 actor 320·critic 335 불변 → --resume."""
@@ -3724,3 +3764,139 @@ class Biped12HangStandW3S4dD0EnvCfg(Biped12HangStandW3S4dDEnvCfg):
     """W3S4dD0: 외란 비율 0 — W3S4d 와 비트 동일 대조."""
 
     WD_P = 0.0
+
+
+# ================================================================ W3S3t* (1007) — 걷기 토크 예산: 계약(관측·행동·클록·기본자세) 불변 단일 변경 후보. 기본 꺼짐(이 클래스들을 고를 때만) ================================================================
+# 사전 등록 초안·근거 수치: reports/gen_w3/TORQUE_W3T_DESIGN.md · 분석 도구 reports/gen_w3/torque_phase.py · CPU 단위시험 rl_walking/scripts/unit_w3t.py.
+# 배경(측정, TORQUE_BUDGET_1007.md §1·§6 + 위 도구): W3S3d-15800 걷기는 지지 힙 외전을 반주기의 21 % 동안 25 N·m 에 붙이고(스윙발 이륙 구간 v .1–.4),
+# 지지 무릎을 65° 굽힌 채 평균 18.6 N·m 로 버틴다(그 자세의 한발 지지 정적 요구 23.5 N·m). 한계 0.8 배에서는 지지 무릎이 반주기의 61 % 동안 한계에 붙는다.
+# 학습 보상에서 토크 항(torque_saturation −2·dof_torques_l2)은 w3_stand_gated 로 감싸져 걷는 동안 0 이다(env.yaml 확인) → 걷는 동안 토크가 공짜.
+# 토크 한계 무작위화(W3S3f, TORQUE_BUDGET_1007.md §7)는 이 묶음이 아니다 — 같은 것을 다시 만들지 않는다.
+@configclass
+class Biped12HangStandW3S3tEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3 t (1007, TORQUE_W3T_DESIGN.md §T2): W3S3d 와 관측·행동·명령·DR·커리큘럼·학습 지연 1–5·기존 보상 전부 같고 **보상 항 하나만 추가** —
+    `w3_torque_sat` = 걷는 동안(ge 1)의 토크 포화 벌점: w3_step_gated(mdp_stage4.torque_saturation, thresh 0.6) × W_TSAT.
+    함수·문턱은 서기에 이미 걸려 있는 항(가중 −2, w3_stand_gated)과 같다: 관절 평균 clamp(|τ_적용|/τ_한계 − 0.6, 0)²(15 N·m 초과분만).
+    가중 근거(학습 전 계산): W3S3d-15800 걷기에서 이 값 평균 0.0076(명령별 0.0067–0.0088, 힙 외전 48 %·무릎 48 %) → 가중 −40 = 걷기 초당 −0.30
+    (걷기 순 보상 +1.28/s 의 24 %, 기존 걷기 벌점 w3_arate −0.46·w3_yaw −0.39 와 같은 급). 서기 가중 −2 를 그대로 쓰면 −0.015/s 로 사실상 0.
+    문턱 0.6 근거: 힙 외전 보폭 평균(≈ 8 N·m)은 한발 지지 비율이 같으면 롤 각운동량 균형에 묶여 있어(지지 힙 외전이 롤을 맡는 현 걸음 방식에서) 0.33(연속 정격) 문턱에는 벌점 0 인 해가 없다.
+    0.6(15 N·m)은 벌점 0 인 해가 물리적으로 있다(힙 외전을 접지 내내 고르게 ≈ 12.4 N·m, 지지 무릎 ≤ 43° 굽힘). X13 의 0.7 배(17.5 N·m)보다 낮은 목표.
+    시작 = W3S3d-15800 이어 학습(--resume). 기준은 문서(학습 전 고정)."""
+
+    W_TSAT = -40.0          # 비주석 클래스 상수(설정 필드 아님 — env.yaml 에는 기록됨): w3_torque_sat 가중
+    TSAT_THRESH = 0.6       # |τ|/τ_한계 문턱(서기 항과 같은 값)
+
+    def __post_init__(self):
+        super().__post_init__()
+        from . import mdp_stage4 as _m4
+        assert getattr(self.rewards, "w3_torque_sat", None) is None
+        self.rewards.w3_torque_sat = RewTerm(func=_w3.w3_step_gated, weight=float(self.W_TSAT),
+                                             params={"func": _m4.torque_saturation, "params": {"thresh": float(self.TSAT_THRESH)}})
+
+
+@configclass
+class Biped12HangStandW3S3tHEnvCfg(Biped12HangStandW3S3tEnvCfg):
+    """W3S3 tH: W3S3t 와 같은 항, **가중만 2 배(−80 = 걷기 초당 −0.61, 걷기 순 보상의 47 %)** — 용량–반응의 둘째 팔(사전 등록 문서 §T2 의 조건에서만 돌린다).
+    가만히 서는 STEP(순 −0.51/s)이 걷기보다 나아지는 가중은 약 −235 라 −80 도 그 아래다."""
+
+    W_TSAT = -80.0
+
+
+@configclass
+class Biped12HangStandW3S3tDEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3 tD (1007, TORQUE_W3T_DESIGN.md §T3): W3S3d 와 관측·행동·명령·DR·커리큘럼·학습 지연·보상 항·가중 전부 같고 **예정 스윙 창만** 좁힌다 —
+    반주기 위상 v 의 (0.12, 0.88) → SWING_WIN (0.25, 0.75): 예정 한발 지지 76 % → 50 %(0.345 → 0.227 s), 예정 양발 지지 24 → 50 %.
+    바뀌는 것은 두 보상 항의 `win` 인자뿐이다: w3_periodic(스윙 창 안 스윙발 하중 벌점)·w3_height(스윙 창 안 발 높이 5 cm 반사인 추종).
+    걸음 주파수 1.1 Hz·클록 관측·리드 발 규칙·유효 스텝 판정(공중 ≥ 0.12 s·정점 ≥ 3 cm)·모방 창 (0.25, 0.75)은 그대로 → 배포 러너·합성 러너 변경 없음.
+    물리 근거(reports/gen_w3/torque_phase.py bounds (C)): 한발 지지 0.76 → 0.50 이면 힙 외전 보폭 평균 8.7 → 5.7 N·m, 정적 요구의 절반 토크로 버틸 때 필요한
+    몸통 롤 흔들림 8.5 → 3.7°(시간의 제곱), 무릎이 몸무게를 받치는 데 필요한 최소 한계 18.9 → 15.7 N·m(25 의 0.76 → 0.63 배 — X13 의 0.7 배가 물리적으로 가능해짐).
+    알려진 위험(사전 명시, 추정): 스윙 0.227 s 안에 5 cm 를 들려면 무릎 명령 속도가 슬루 한계(4°/틱)에 닿을 수 있다 → 유효 스텝률·스윙 높이 회귀를 본다.
+    시작 = W3S3d-15800 이어 학습(--resume). 기준은 문서(학습 전 고정)."""
+
+    SWING_WIN = (0.25, 0.75)   # 비주석 클래스 상수: 반주기 위상 v 의 예정 스윙 창(w3_imit 창과 같은 값)
+
+    def __post_init__(self):
+        super().__post_init__()
+        rw = self.rewards
+        assert rw.w3_periodic.func is _w3.w3_periodic_contact and rw.w3_height.func is _w3.w3_swing_height
+        _win = (float(self.SWING_WIN[0]), float(self.SWING_WIN[1]))
+        rw.w3_periodic.params = dict(rw.w3_periodic.params or {}, win=_win)
+        rw.w3_height.params = dict(rw.w3_height.params or {}, win=_win)
+
+
+@configclass
+class Biped12HangStandW3S3tKEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3 tK (1007, TORQUE_W3T_DESIGN.md §T4): W3S3d 와 관측·행동·명령·DR·커리큘럼·학습 지연 1–5·기존 보상 전부 같고 **보상 항 하나만 추가** —
+    `w3_knee_over` = 걷는 동안(ge 1) 접지한 다리의 무릎 굽힘이 KNEE_MAX_RAD(45°)를 넘는 초과분[rad](접지 다리 평균, 선형) × W_KNEE.
+    기본자세(DEFAULT_POSE — KE 서기와 공유하는 배포 계약)는 그대로 두고, 걷는 중 지지 무릎만 행동 오프셋으로 펴게 하는 후보다(서기 ge 0 에서는 정확히 0).
+    근거(X12 추적·정역학 모델, torque_phase.py): 걷기 지지 무릎 굽힘 중앙 64°[p10 61, p90 69] — KE 서기 55° 보다 깊다(지지 쪽 몸통 롤 11.8° 로 지지 힙이 약 3 cm 낮아지는 기하와 같은 방향; 원인 단정 아님),
+    그 자세의 한발 지지 무릎 정적 요구 21–23.5 N·m(한계의 85–94 %). 45° 면 15.6 N·m, 골반 +4 cm. 한계 0.8 배에서 지지 무릎이 지지 반주기의 61 % 동안 한계에 붙는다.
+    가중 근거: 현 걸음에서 이 값 평균 0.338 rad(19.4°, 명령별 0.313–0.360) → 가중 −1 = 걷기 초당 −0.34(걷기 순 보상 +1.28/s 의 26 % — W3S3t 의 −0.30 과 같은 급).
+    걷기 보상에 지지 무릎을 묶는 항은 없다(knee_stance_flexion·base_height·leg_pose_deviation 은 서기 전용). w3_imit 는 스윙 다리만 채점해 현 걸음 시간표에서는 겹치지 않는다
+    (스윙발이 모방 창 v .25–.75 안에서 착지하는 걸음이 되면 착지 다리의 참조 55–57° 와 12° 어긋난다 — W3S3tD 와 묶을 때 주의).
+    알려진 부작용 후보(사전 명시): 힙 굴곡이 줄어 힙 외전 분담이 는다(준정적 환산 23.0 → 25.0 N·m), 자세가 높아져 균형 여유·착지 충격 흡수가 바뀐다.
+    시작 = W3S3d-15800 이어 학습(--resume). 기준은 문서(학습 전 고정)."""
+
+    W_KNEE = -1.0           # 비주석 클래스 상수: w3_knee_over 가중(초과 1 rad·초당)
+    KNEE_MAX_RAD = 0.785    # 45°
+
+    def __post_init__(self):
+        super().__post_init__()
+        assert getattr(self.rewards, "w3_knee_over", None) is None
+        self.rewards.w3_knee_over = RewTerm(func=_w3.w3_stance_knee_over, weight=float(self.W_KNEE), params={"max_flex_rad": float(self.KNEE_MAX_RAD)})
+
+
+@configclass
+class Biped12HangStandW3S3tFEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3 tF (1007, TORQUE_W3T_DESIGN.md §8): W3S3d 와 관측·행동·명령·DR·커리큘럼·학습 지연 1–5·기존 보상 전부 같고 **보상 항 하나만 추가** —
+    `w3_stride_lin` = 병진 명령에서 유효 착지마다 스윙발 변위의 목표 보폭 방향 진행 비율 clip(Δp·ΔP*/‖ΔP*‖², −1, 1) × W_PROG(사건당, 기존 w3_stride 와 같은 단위).
+    쓰임: 걸음을 다시 배우게 하는 압력(토크 한계 무작위화·토크 벌점·무릎 벌점)에서 전진이 먼저 무너질 때(W3S3f: 8 s 전진 0.62 → 0.25 m) 묶음에 넣을 전진 유인. 단독 팔로도 판정할 수 있다.
+    왜 새 항인가(측정, reports/gen_w3/fwd_incentive.py·학습 로그): 현 계열의 전진 보상은 명목 평가에서는 살아 있으나(앞 0.06 에서 w3_stride +0.27/s·w3_track +1.1/s)
+    학습 조건에서는 죽어 있다(걷기 초당 w3_stride +0.007·w3_track −0.16). 학습 조건의 한 주기 평균 속도 오차가 0.062 m/s(= w3_drift −0.185/s ÷ 3)로 명령(0.03–0.10 m/s)·보상 폭과 같은 크기라
+    '서기 대비 개선분'형 가우시안이 평균 0 또는 음수가 된다. w3_place 는 목표 반폭 0.10 대 실제 착지 0.184 m 로 죽어 있지만(값 0.011–0.020), 살려도 전진 유인이 아니다
+    (목표 x = vx/(4f) 는 0.7–2.3 cm; 1005 밤 W3S1e 수리 시험: 영점 못 고침·앞 과속 +0.082·낙상 4 / 8 대 0 / 1 → 미채택, reports/night_1005/LOG.md §W3S1e).
+    가중 +10(사건당): 온전한 보폭이면 병진 명령 동안 초당 +0.44, 전진을 절반으로 줄이면 −0.22/s(오프셋이 있어도 −0.08…−0.14/s). 명령 0·회전·서기에서는 0 이라 영점 표류는 다루지 않는다.
+    알려진 위험(사전 명시): 목표 보폭까지는 '더 가면 더 받는' 항이라 저속 명령에서 과속 쪽 치우침을 만들 수 있다(상한 1 과 w3_drift −3 이 막는다) · 옆걸음 보폭은 지금 목표의 23 % 라 옆 명령의 걸음 모양이 바뀔 수 있다.
+    시작 = W3S3d-15800 이어 학습(--resume). 기준은 문서(학습 전 고정)."""
+
+    W_PROG = 10.0           # 비주석 클래스 상수: w3_stride_lin 가중(사건당 — w3_stride·w3_place 와 같은 단위)
+
+    def __post_init__(self):
+        super().__post_init__()
+        assert getattr(self.rewards, "w3_stride_lin", None) is None and getattr(self.events, "w3_lat", None) is not None   # 변위는 w3_lat_tracker 가 채운다
+        self.rewards.w3_stride_lin = RewTerm(func=_w3.w3_stride_lin, weight=float(self.W_PROG))
+
+
+# ---------------------------------------------------------------- W3S3t* 묶음용 적용 함수(1007) ----------------------------------------------------------------
+# 위 단일 변경들을 다른 W3 설정(예: 메인의 W3S3f·W3S3g) 위에 얹어 묶음 팔을 만들 때 쓴다 — 각 함수는 보상 항 하나만 더하고 관측·행동·명령·이벤트는 건드리지 않는다.
+# 예) class Biped12HangStandW3S3fFEnvCfg(Biped12HangStandW3S3fEnvCfg):  def __post_init__(self): super().__post_init__(); _w3t_progress(self)
+# 위의 W3S3t·W3S3tK·W3S3tF 클래스는 같은 내용을 직접 적어 두었다(이 함수들을 쓰지 않는다 — 이미 돌린 학습 설정을 바꾸지 않으려고).
+def _w3t_torque_sat(cfg, weight: float = -40.0, thresh: float = 0.6):
+    """걷는 동안의 토크 포화 벌점(W3S3t 와 같은 항 `w3_torque_sat`)."""
+    from . import mdp_stage4 as _m4
+    assert getattr(cfg.rewards, "w3_torque_sat", None) is None
+    cfg.rewards.w3_torque_sat = RewTerm(func=_w3.w3_step_gated, weight=float(weight), params={"func": _m4.torque_saturation, "params": {"thresh": float(thresh)}})
+
+
+def _w3t_knee_over(cfg, weight: float = -1.0, max_flex_rad: float = 0.785):
+    """걷는 동안 접지 다리 무릎 굽힘의 문턱 초과분 벌점(W3S3tK 와 같은 항 `w3_knee_over`)."""
+    assert getattr(cfg.rewards, "w3_knee_over", None) is None
+    cfg.rewards.w3_knee_over = RewTerm(func=_w3.w3_stance_knee_over, weight=float(weight), params={"max_flex_rad": float(max_flex_rad)})
+
+
+def _w3t_progress(cfg, weight: float = 10.0):
+    """병진 명령에서 스윙발 변위의 목표 보폭 방향 진행 비율(W3S3tF 와 같은 항 `w3_stride_lin`) — w3_lat_tracker 이벤트가 있는 설정(W3S2 이후 계열)에서만."""
+    assert getattr(cfg.rewards, "w3_stride_lin", None) is None and getattr(cfg.events, "w3_lat", None) is not None
+    cfg.rewards.w3_stride_lin = RewTerm(func=_w3.w3_stride_lin, weight=float(weight))
+
+
+@configclass
+class Biped12HangStandW3S3fFEnvCfg(Biped12HangStandW3S3fEnvCfg):
+    """W3S3 fF (1007 claude2, reports/gen_w3/TORQUE_BUDGET_1007.md §14): W3S3f(토크 한계 무작위화 0.7–1.0)와 전부 같고 **보상 항 하나만 추가** —
+    `w3_stride_lin`(+10, 에이전트 설계 W3S3tF 와 같은 항): 병진 명령에서 유효 착지마다 스윙발 변위의 목표 보폭 방향 진행 비율(제자리 디딤 0·목표 이상 1·반대 음수).
+    겨냥: W3S3f 가 낮은 한계 내성을 얻는 대신 전진을 잃은 것(8 s 전진 0.62 → 0.25 m). 짝 대조 = W3S3f 같은 체크포인트(무작위화는 같고 이 항만 다름).
+    시작 = W3S3d-15800 이어 학습. 관측·행동 계약 불변."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _w3t_progress(self)

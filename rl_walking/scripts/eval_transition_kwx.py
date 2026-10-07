@@ -191,6 +191,7 @@ parser.add_argument("--kw_restore_at", type=str, default="", help="X7d: 자세 �
 parser.add_argument("--kw_restore_snap", type=float, default=1.5, help="X7d: 되돌릴 기준 상태를 찍는 시각 [s]")
 parser.add_argument("--kw_w3_export", type=str, default="", help="S3E: W3 하위 키의 exported 폴더 경로 덮어쓰기('' = 등록된 W3S3d-15800)")
 parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토크 한계 배율 목록 '1.0,0.8,0.7,0.6'(env i → i % len). '' = 끔")
+parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
 parser.add_argument("--kw_hl", type=str, default="", help="1007 HD: 헤딩 고리 — '' 끔 | 'on' 브리지 기본 | JSON")
 parser.add_argument("--kw_hl_e0", type=str, default="", help="HD2: 래치 직후 ψ* 초기 오차[°] 목록(env i → i % len)")
 parser.add_argument("--kw_yaw_drift", type=float, default=0.0, help="HD3: 고리에 주는 요 측정에 더할 표류[°/min](env 짝수 +, 홀수 −)")
@@ -1009,6 +1010,13 @@ if KWL:
             raise SystemExit(f"--kw_w3_export: {_kwx_} 에 policy.pt/onnx 없음")
         print(f"[runner_loop] W3 하위 키 {_KW_KEYS[0]} 의 정책 폴더 덮어쓰기: {_BR.CHECKPOINTS[_KW_KEYS[0]]} → {_kwx_} · SOURCE_CHECKPOINT {open(os.path.join(_kwx_, 'SOURCE_CHECKPOINT')).read().strip()[:120] if os.path.exists(os.path.join(_kwx_, 'SOURCE_CHECKPOINT')) else '(없음)'}", flush=True)
         _BR.CHECKPOINTS[_KW_KEYS[0]] = _kwx_
+    if args_cli.kw_rec_export:
+        _krx_ = os.path.abspath(args_cli.kw_rec_export)
+        if not (os.path.exists(os.path.join(_krx_, "policy.pt")) or os.path.exists(os.path.join(_krx_, "policy.onnx"))):
+            raise SystemExit(f"--kw_rec_export: {_krx_} 에 policy.pt/onnx 없음")
+        _st_, _old_ = _BR.C5_PAIRS[_KW_KEYS[1]]
+        print(f"[runner_loop] KE 키 {_KW_KEYS[1]} 의 회복 정책 폴더 덮어쓰기: {_old_} → {_krx_} · SOURCE_CHECKPOINT {open(os.path.join(_krx_, 'SOURCE_CHECKPOINT')).read().strip()[:120] if os.path.exists(os.path.join(_krx_, 'SOURCE_CHECKPOINT')) else '(없음)'}", flush=True)
+        _BR.C5_PAIRS[_KW_KEYS[1]] = (_st_, _krx_)
     KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max)) for _ in range(N)]
     KWS = [_W3D.W3Supervisor(_BR.W3_SAFETY, cmd_limits=_BR.W3_CMD_LIMITS[_KW_KEYS[0]]) for _ in range(N)]
     if args_cli.kw_requiet:                               # 배포 감지기(c5_switch.SwitchDetector)의 갇힘 해소 옵션 — 생성자 인자와 같은 검증을 거쳐 설정
@@ -1053,6 +1061,9 @@ if KWL:
     _kw_backend = str(getattr(_BR._make_runner(_KW_KEYS[0]), "backend", "?"))
     print(f"[runner_loop] 추론 백엔드 {_kw_backend} · 러너 모델은 브리지 키 {_KW_KEYS} 고정(--load_run/--checkpoint/--ke/--switch_to·--sw_*·--settle·--ke_mode 는 이 팔에서 쓰이지 않음)", flush=True)
 
+    _KW_DURS = {}                                     # 1007 X14: 사건 시각 → 기한 [s](move 사건만)
+    kw_dur = _npk.full(N, _npk.nan, _npk.float32)     # env 별 이번 걷기 요청의 기한(NaN = 기한 없음)
+
     def _kw_parse(s):
         ev = []
         for tok in s.split(";"):
@@ -1060,6 +1071,9 @@ if KWL:
             if not tok:
                 continue
             head, _, arg = tok.partition(":"); kind, _, tt = head.partition("@")
+            if kind == "move":
+                _mc = _W3D.w3_move_cmd(arg.strip(), allow_disabled=True); _KW_DURS[round(float(tt), 4)] = float(_mc["dur_s"])
+                ev.append((float(tt), True, [_mc["vx"], _mc["vy"], _mc["wz"]])); continue
             if kind not in ("walk", "stop"):
                 raise SystemExit(f"--kw_script: 모르는 사건 {kind!r}")
             ev.append((float(tt), kind == "walk", [float(x) for x in arg.split(",")] if arg else [0.0, 0.0, 0.0]))
@@ -1126,6 +1140,7 @@ if KWL:
             if bool(m.any()):
                 _KW_APPLIED[k] |= m
                 kw_des = torch.where(m, torch.full_like(kw_des, bool(w)), kw_des)
+                kw_dur[m.cpu().numpy()] = _KW_DURS.get(round(float(tt), 4), _npk.nan) if w else _npk.nan
                 kw_cmd = torch.where(m.unsqueeze(1), torch.tensor(c, device=dev, dtype=torch.float32).unsqueeze(0).expand(N, 3), kw_cmd)
                 if not w:
                     tr_req = torch.where(m & torch.isnan(tr_req), torch.full_like(tr_req, t_rel), tr_req)
@@ -1137,6 +1152,7 @@ if KWL:
         po_np = po.cpu().numpy(); kw_tick[0] += 1
         _qw_np = robot.data.root_quat_w.cpu().numpy().astype(_npk.float64) if KWH is not None else None
         _hlerr = _npk.full(N, _npk.nan, _npk.float32); _wzc = _npk.zeros(N, _npk.float32); _hl_fault_now = _npk.zeros(N, bool)
+        _burst_end_now = _npk.zeros(N, bool)
         bd = t_rel >= (float(args_cli.blend_s) if args_cli.blend_s is not None else 1.5) - 1e-9
         act = _npk.zeros((N, J), _npk.float32); kind = _npk.full(N, -1, _npk.int8)
         want_v = _npk.zeros(N, bool); ge_top = _npk.zeros(N, bool); u_top = _npk.zeros(N, _npk.float32); first_ke = _npk.zeros(N, bool); en_now = _npk.zeros(N, bool)
@@ -1147,23 +1163,28 @@ if KWL:
             ge_top[e] = bool(clk.ge); u_top[e] = float(clk.u)
             first_ke[e] = R.last_event in ("to_ke", "force_ke")          # 직전 틱 끝에 KE 로 넘어감 → 이번 틱이 KE 첫 틱
             S.observe(now, ct[e], gy[e], pg[e])
+            if S.burst_t_off is not None:                 # 1007 X14: 기한 도달 → 브리지 _w3_burst_end 와 같은 실행(명령 0·gait 0), 이 걷기 요청은 끝
+                if S.burst_due(now, bool(clk.want)) is not None:
+                    kw_cur[e] = (0.0, 0.0, 0.0); R.set_gait_enable(False); kw_events[e].append((round(now, 2), "burst_end")); _burst_end_now[e] = True
+                    des[e] = False                         # 이 걷기 요청은 끝 — 같은 틱에 다시 켜기 요청을 내지 않는다(콘솔은 기한 끝에 요청을 보내지 않음)
             if des[e] and not clk.want:                                   # 켜기 요청(거부되면 다음 틱 새 seq 로 재시도 = 운영자 재시도)
                 if kw_req_t[e] is None:
                     kw_req_t[e] = now; kw_events[e].append((round(now, 2), "enable_req"))
                 why = R.enable_block_reason()
                 if why is None:
-                    d = {"cmd": "step", "enable": True, "vx": float(cm[e, 0]), "vy": float(cm[e, 1]), "wz": float(cm[e, 2]), "heading_loop": bool(KWH is not None), "req_id": "kw", "seq": kw_seq[e]}
+                    d = {"cmd": "step", "enable": True, "vx": float(cm[e, 0]), "vy": float(cm[e, 1]), "wz": float(cm[e, 2]), "heading_loop": bool(KWH is not None), "req_id": "kw", "seq": kw_seq[e], **({"dur_s": float(kw_dur[e])} if kw_dur[e] == kw_dur[e] else {})}
                     kw_seq[e] += 1
                     dec = S.handle(d, now, active=True, warmed=True, blend_done=bool(bd), ge_now=bool(clk.ge), want_now=bool(clk.want), cmd_now=kw_cur[e])
                     if dec["accepted"] and dec["action"] == "set_want":
                         kw_cur[e] = tuple(dec["cmd"]); R.set_gait_enable(True); en_now[e] = True
+                        S.burst_arm(now, d["req_id"], dec.get("dur_s"))
                         kw_events[e].append((round(now, 2), "enable")); kw_req_t[e] = None
                     else:
                         why = dec["why"]
                 if why is not None and kw_rej[e] is None:
                     kw_rej[e] = (round(now, 2), str(why)[:80])
             elif des[e] and clk.want and tuple(float(x) for x in cm[e]) != tuple(kw_cur[e]):     # 걷는 중 명령 변경
-                d = {"cmd": "step", "enable": True, "vx": float(cm[e, 0]), "vy": float(cm[e, 1]), "wz": float(cm[e, 2]), "heading_loop": bool(KWH is not None), "req_id": "kw", "seq": kw_seq[e]}
+                d = {"cmd": "step", "enable": True, "vx": float(cm[e, 0]), "vy": float(cm[e, 1]), "wz": float(cm[e, 2]), "heading_loop": bool(KWH is not None), "req_id": "kw", "seq": kw_seq[e], **({"dur_s": float(kw_dur[e])} if kw_dur[e] == kw_dur[e] else {})}
                 kw_seq[e] += 1
                 dec = S.handle(d, now, active=True, warmed=True, blend_done=bool(bd), ge_now=bool(clk.ge), want_now=True, cmd_now=kw_cur[e])
                 if dec["accepted"] and dec["action"] == "set_cmd":
@@ -1207,6 +1228,8 @@ if KWL:
             if _nq > kw_lastq[e]:
                 kw_events[e].append((round(now, 2), "requiet"))
             kw_lastq[e] = _nq
+        if _burst_end_now.any():
+            kw_des = kw_des & ~torch.as_tensor(_burst_end_now, device=dev)
         if KWH is not None:
             kw_hlerr_tl.append(_hlerr.astype(_npk.float16)); kw_wzc_tl.append(_wzc.astype(_npk.float16))
             if _hl_fault_now.any():

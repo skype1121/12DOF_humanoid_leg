@@ -116,6 +116,110 @@ def pad_bools(value):
 
 
 # ---------------------------------------------------------------------------
+# 모터 오류 기록(1007) — stage8 상태의 오류 바이트·warnings 를 타임라인에 남긴다(기록 전용)
+# ---------------------------------------------------------------------------
+#: 배경(reports/real_1007): 발목 롤 드라이버(모터 6·12)가 회복 동작 중 재시작했는데, 원인(전원 강하·커넥터 순간 단절·
+#: 드라이버 보호)을 가를 모터 오류 바이트(stage8 상태 joints[j].feedback_error_raw)와 stage8 warnings 가 타임라인에 없었다.
+#: 화면·판정·가드·명령에는 쓰지 않는다. 오류가 없고 warnings 가 비어 있는 보통 행에는 아무것도 더하지 않는다(행 크기 불변).
+#: · 왜 메시지마다 보는가: stage8 상태는 100 Hz 이상, 타임라인 행은 20 Hz 다. stage8 은 명령을 받을 때마다(브리지 구동 중
+#:   50 Hz) warnings 를 비우고, 오류 바이트는 그 모터의 마지막 프레임 값이라 한 프레임(20 ms)짜리면 행 사이에 사라진다.
+#:   행 시점의 최신 메시지만 보면 이를 놓치므로 수신 콜백에서 메시지마다 받아 두고(feed) 행을 쓸 때 꺼낸다(drain).
+#: · 행에 적는 것은 **직전 행 이후 받은 상태 메시지에서 본 것뿐**이다. 상태 메시지를 하나도 못 받은 구간(stage8 종료·수신
+#:   공백)의 행에는 오류·warnings 를 적지 않는다 — 오류가 사라진 것도 warnings 가 비워진 것도 아니라 '모름'이다.
+#:   마지막으로 받은 메시지의 값을 그 뒤 행마다 되풀이해 적지 않는다(첫 판은 그렇게 했다가 같은 값이 두 행에 실리거나 순서가
+#:   뒤집히고, 끊긴 뒤에도 옛 값이 계속 실려서 뺐다).
+#: · stage8_nomsg: '모름' 구간의 경계. 상태 메시지를 받다가 **한 건도 못 받은 첫 행에 1**, **다시 받은 첫 행에 0** 을 한 번씩 적는다.
+#:   1 이 적힌 행부터 0 이 적힌 행 전까지의 '필드 없음'은 '오류 없음'이 아니다. 행의 fresh[2] 는 1.5 s 뒤에야 0 이 되므로
+#:   끊긴 직후를 가리지 못한다(실물 1004 타임라인: 끊긴 첫 행 25 개 중 24 개가 fresh[2] = 1). 세션 안에서만 센다.
+#: · 관절별 feedback_error_raw: 그 구간에 한 번이라도 0 이 아니었던 관절에만 넣는다(값 = 가장 최근의 0 아닌 값).
+#:   서로 다른 값이 둘 이상이면 feedback_error_seen 에 전부(오래된 것 → 최근 순).
+#: · stage8_warnings: 그 구간에 본 warnings 의 합집합(정렬). 내용이 바뀐 행에만 적고(비워진 것을 본 행에 [] 한 번),
+#:   비어 있지 않은 채 그대로면 S8_WARN_KEYFRAME_SEC 마다 한 번 다시 적는다 — 선기동 대기처럼 warnings 가 몇 분씩 남는
+#:   정상 구간에서 행마다 적으면 행이 커지고, 바뀐 행에만 적으면 정지 전후 일부 구간만 읽을 때 그 전에 켜진 것을 못 본다.
+#: · session_start 의 "errlog": 1 = 이 세션은 위 필드를 기록한다(필드 부재 = 관측 없음. 이 표식이 없는 옛 세션은 '기록 안 함').
+S8_WARN_KEYFRAME_SEC = 1.0   # warnings 가 그대로 남아 있을 때 다시 적는 주기 [s]
+S8_WARN_MAX = 48             # 한 행에 싣는 warnings 최대 개수(넘치면 버리고 "+more" 한 건으로 표시)
+S8_WARN_MAXLEN = 160         # warnings 한 건 최대 길이
+S8_ERR_JOINTS_MAX = 16       # 받아 두는 관절 수 상한(형식이 어긋난 메시지 방어)
+S8_ERR_NAME_MAXLEN = 64      # 받아 두는 관절 이름은 ASCII·이 길이 이내만 — 행의 키가 되므로 파일에 쓸 수 없는 이름(짝 없는 서러게이트 등)을 막는다
+S8_ERR_CODES_MAX = 8         # 관절 하나에 받아 두는 서로 다른 값 수 상한
+
+
+def s8_err_code(value):
+    """모터 오류 바이트 → 0 이 아닌 정수면 그 값, 아니면 None(0·없음·bool·비정수·비유한)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and (not math.isfinite(value) or value != int(value)):
+        return None
+    return int(value) or None
+
+
+class Stage8ErrLatch:
+    """타임라인 행 사이에 지나간 stage8 모터 오류 바이트·warnings 를 붙잡아 둔다. **어떤 입력에도 예외를 내지 않는다**
+    (ROS 수신 콜백 안에서 불린다 — 여기서 예외가 나가면 텔레메트리 수신 스레드가 죽는다. 내부 예외는 세어서 행에 남긴다)."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self._clear()
+
+    def _clear(self):
+        self.n = 0          # 받은 상태 메시지 수(형식이 어긋난 것 포함) — 0 이면 그 구간은 통째로 '모름'(stage8_nomsg)
+        self.nw = 0         # warnings 목록이 실린 상태 메시지 수 — 0 이면 warnings 는 '모름'(비워졌다고 적지 않는다)
+        self.err = {}       # {관절: [0 아닌 오류 바이트 …]} — 마지막으로 본 순서(끝이 최신)
+        self.warn = {}      # {warning: True} — 처음 본 순서
+        self.more = 0       # 상한을 넘어 버린 warnings 건수
+        self.fail = 0       # 처리 중 예외가 난 메시지 수
+
+    def feed(self, status):
+        """stage8 상태 메시지 1 건(dict)."""
+        try:
+            with self.lock:
+                self.n += 1
+                joints, warns = status.get("joints"), status.get("warnings")
+                if isinstance(joints, dict):
+                    for name, joint in joints.items():
+                        code = s8_err_code(joint.get("feedback_error_raw")) if isinstance(joint, dict) else None
+                        if code is None:
+                            continue
+                        seen = self.err.get(name)
+                        if seen is None:
+                            if (len(self.err) >= S8_ERR_JOINTS_MAX or not isinstance(name, str)
+                                    or len(name) > S8_ERR_NAME_MAXLEN or not name.isascii()):
+                                continue
+                            seen = self.err[name] = []
+                        if code in seen:
+                            seen.remove(code)
+                        elif len(seen) >= S8_ERR_CODES_MAX:
+                            del seen[0]
+                        seen.append(code)
+                if isinstance(warns, list):
+                    self.nw += 1
+                    for w in warns[:4 * S8_WARN_MAX]:
+                        if not isinstance(w, str):
+                            continue
+                        w = w[:S8_WARN_MAXLEN].encode("utf-8", "replace").decode("utf-8")   # 짝 없는 서러게이트 → '?'(파일 쓰기 보호)
+                        if w in self.warn:
+                            continue
+                        if len(self.warn) >= S8_WARN_MAX:
+                            self.more += 1
+                            continue
+                        self.warn[w] = True
+        except Exception:
+            with self.lock:
+                self.fail += 1
+
+    def drain(self):
+        """직전 호출 이후 받아 둔 것을 꺼내고 비운다 → (받은 메시지 수, warnings 가 실린 메시지 수, err, warns, more, fail)."""
+        with self.lock:
+            out = (self.n, self.nw, self.err, list(self.warn), self.more, self.fail)
+            self._clear()
+        return out
+
+
+ERRLATCH = Stage8ErrLatch()
+
+
+# ---------------------------------------------------------------------------
 # 세션 레코더 — 모터 전원 이후 전 구간을 하나의 타임라인으로 남긴다
 # ---------------------------------------------------------------------------
 #: 브리지 블랙박스는 정책이 돌 때만 기록한다. 그래서 게이트·기립·**착지**
@@ -143,6 +247,9 @@ class SessionLog:
         self.last_active = 0.0      # 마지막 '실제 활동' 시각
         self.n_sample = 0
         self.n_event = 0
+        self.s8_warn_sent = ()      # 1007 모터 오류 기록: 이 세션 타임라인에 마지막으로 적은 stage8 warnings(정렬 튜플)
+        self.s8_warn_ts = 0.0       #   그 시각 — 그대로 남아 있으면 S8_WARN_KEYFRAME_SEC 마다 다시 적는다
+        self.s8_msg = None          #   직전 행 구간에 stage8 상태 메시지를 받았는가(None = 이 세션에서 아직 받은 적 없음) — stage8_nomsg 표식용
 
     def ensure(self, reason="", manual=False):
         """세션이 없거나 오래 쉬었으면 새로 연다. 조작 시점 = 모터 전원 이후."""
@@ -162,8 +269,10 @@ class SessionLog:
             self.last = self.t0
             self.last_active = self.t0
             self.n_sample = self.n_event = 0
+            self.s8_warn_sent, self.s8_warn_ts, self.s8_msg = (), 0.0, None
             self._write({"kind": "session_start", "reason": reason,
-                         "wall": time.strftime("%Y-%m-%d %H:%M:%S")})
+                         "wall": time.strftime("%Y-%m-%d %H:%M:%S"),
+                         "errlog": 1})   # 1007: 이 세션은 모터 오류 바이트·stage8 warnings 를 기록한다(필드 부재 = 관측 없음)
             print(f"[세션] 시작 {self.name} ({reason})")
             return self.name
 
@@ -195,6 +304,7 @@ class SessionLog:
     def sample(self, view):
         """텔레메트리 1샘플 — 화면에 뜨는 판정 지표를 그대로 남긴다."""
         with self.lock:
+            drained = ERRLATCH.drain()   # 1007: 세션이 닫혀 있어도 비운다(세션 밖에서 지나간 값이 새 세션 첫 행에 실리지 않게)
             if self.f is None:
                 return
             imu = view.get("imu") or {}
@@ -202,7 +312,7 @@ class SessionLog:
             # 로봇이 하중을 받고 있을 때. 매달린 채 방치된 상태는 활동이 아니다.
             if (view["fresh"].get("status") or view["fresh"].get("bridge")):
                 self.last_active = now()
-            self._write({
+            row = {
                 "kind": "s",
 
                 "fwd": imu.get("fwd"), "lat": imu.get("lat"),
@@ -235,8 +345,36 @@ class SessionLog:
                 "unverified_force_fields": True,
                 "fresh": [int(view["fresh"]["imu"]), int(view["fresh"]["foot"]),
                           int(view["fresh"]["status"])],
-            })
+            }
+            try:   # 1007 모터 오류 기록(기록 전용) — 여기서 무슨 일이 나도 행은 그대로 쓴다
+                self._s8_errlog(row, drained, now())
+            except Exception:
+                row["stage8_errlog_fail"] = -1
+            self._write(row)
             self.n_sample += 1
+
+    def _s8_errlog(self, row, drained, now_ts):
+        """1007 모터 오류 기록: 행에 오류 바이트·stage8 warnings 를 덧붙인다(직전 행 이후 받은 상태 메시지에서 본 것만 — 보통 행은 그대로)."""
+        n, nw, err, warns, more, fail = drained
+        if n:        # '모름' 구간의 경계: 받다가 끊긴 첫 행에 1, 다시 받은 첫 행에 0 (세션 안에서 한 번씩 — 끊긴 채·받는 채 이어지는 행은 그대로)
+            if self.s8_msg is False:
+                row["stage8_nomsg"] = 0
+            self.s8_msg = True
+        elif self.s8_msg:
+            self.s8_msg = False
+            row["stage8_nomsg"] = 1
+        for name, seen in err.items():
+            entry = row["joints"].setdefault(name, {})
+            entry["feedback_error_raw"] = seen[-1]
+            if len(seen) > 1:
+                entry["feedback_error_seen"] = seen
+        if nw:   # warnings 가 실린 메시지를 하나도 못 받은 구간은 판단하지 않는다 — '비워짐'이 아니라 '모름'(다시 받으면 이어서 비교)
+            cur = tuple(sorted(warns)) + (("+more",) if more else ())
+            if cur != self.s8_warn_sent or (cur and abs(now_ts - self.s8_warn_ts) >= S8_WARN_KEYFRAME_SEC):
+                self.s8_warn_sent, self.s8_warn_ts = cur, now_ts
+                row["stage8_warnings"] = list(cur)
+        if fail:
+            row["stage8_errlog_fail"] = fail
 
     def open_proc_log(self, key):
         """프로세스 출력을 세션 폴더에 파일로도 남긴다 (링버퍼는 잘린다)."""
@@ -541,6 +679,8 @@ class Telemetry:
         """Event packets do not replace a full telemetry snapshot or its age."""
         if not isinstance(obj, dict):
             return
+        if key == "status":
+            ERRLATCH.feed(obj)   # 1007 모터 오류 기록(기록 전용·예외 없음): 행(20 Hz) 사이에 지나가는 값을 놓치지 않게 메시지마다 본다
         with self.lock:
             if key == "bridge" and "event" in obj:
                 reason = obj.get("reason") or obj.get("why") or obj["event"]
@@ -1697,6 +1837,184 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(code, json.dumps(result, ensure_ascii=False))
 
 
+def _selftest_errlog():
+    """(1007) 모터 오류 기록 — ROS·실물 불필요. ① 오류 0·warnings 없음 → 행에 새 필드 없음(행·관절 키 = 종전 그대로) ② 오류 ≠ 0·warnings 있음 → 필드 있음
+    ③ 행 사이에 지나간 값(한 메시지에만 있던 오류·명령으로 비워진 warnings)도 남고, 같은 값을 두 행에 싣지 않음 ④ warnings 는 바뀐 행과 1 s 주기에만,
+    상태 메시지를 못 받은 구간은 '모름'(비워졌다고 적지 않음) ⑤ 수신 경로(Telemetry.receive → 래치 → 행) 연결·상태 토픽만 받음
+    ⑥ 세션 경계·수신이 끊긴 뒤 옛 값을 싣지 않음 ⑦ 형식이 어긋난 입력에 예외 없음·행은 계속 쓰임
+    ⑧ 상태 메시지가 끊긴 첫 행에 stage8_nomsg 1·다시 받은 첫 행에 0 을 한 번씩('모름' 구간의 경계)."""
+    from unittest.mock import patch
+    row_keys = {"kind", "fwd", "lat", "tilt", "gyro", "quat", "armed", "base", "live", "ckpt", "blend", "contact", "hang_state",
+                "sensor_contact", "foot_raw_sum", "foot_pads_on", "foot_pads_counts", "foot_dead_mask", "stage8_running",
+                "stage8_command_seq", "stage8_last_command", "joints", "trial", "unverified_force_fields", "fresh", "t", "ts"}
+    joint_keys = {"latest_actual_deg", "baseline_deg", "commanded_relative_deg", "desired_relative_deg", "feedback_valid",
+                  "feedback_stale", "feedback_age_sec", "feedback_torque_est", "feedback_velocity_rad_s", "feedback_temperature_raw"}
+    new_keys = {"stage8_warnings", "stage8_errlog_fail", "stage8_nomsg"}
+    AL, AR = "left_ankle_r_joint", "right_ankle_r_joint"
+    clock = [1_000_000.0]
+
+    def status(err=None, warnings=()):
+        """stage8 상태 토픽 모양 — 관절 항목 키는 stage8 get_status 와 같은 이름."""
+        joints = {name: {"allowed": True, "motor_id": i + 1, "baseline_deg": 1.0, "latest_actual_deg": 2.0, "feedback_age_sec": 0.01,
+                         "feedback_stale": False, "feedback_valid": True, "desired_relative_deg": 0.0, "commanded_relative_deg": 0.0,
+                         "feedback_velocity_rad_s": 0.0, "feedback_torque_est": 0.1, "feedback_temperature_raw": 66,
+                         "feedback_error_raw": int((err or {}).get(name, 0)), "feedback_error_ok": not (err or {}).get(name, 0)}
+                  for i, name in enumerate(JOINT_NAMES)}
+        return {"timestamp": clock[0], "armed": True, "running": True, "accepted": True, "command_seq": 7,
+                "last_command": "SET_JOINT_TARGETS", "joints": joints, "warnings": list(warnings), "errors": []}
+
+    with tempfile.TemporaryDirectory(prefix="console-selftest-errlog-") as directory:
+        with patch.dict(globals(), SESSION_DIR=directory, now=lambda: clock[0]):
+            ERRLATCH.drain()
+            tel, rec = Telemetry(), SessionLog()
+            rec.ensure("errlog selftest", manual=True)
+            path = os.path.join(rec.dir, "timeline.jsonl")
+
+            def rows():
+                with open(path, encoding="utf-8") as f:
+                    return [json.loads(line) for line in f]
+
+            def step(*msgs, key="status", view=None):
+                """상태 메시지들을 수신 경로로 넣고 50 ms 뒤 행 1 개를 쓴다 → 그 행. view 를 주면 그 화면 상태로 행을 만든다(미리 떠 둔 것)."""
+                for m in msgs:
+                    tel.receive(key, m)
+                clock[0] += 0.05
+                rec.sample(tel.view() if view is None else view)
+                return rows()[-1]
+
+            def errs(row):
+                return {n: j["feedback_error_raw"] for n, j in row["joints"].items() if "feedback_error_raw" in j}
+
+            def size(row):
+                """행의 직렬화 길이(시각 필드 t·ts 는 자릿수가 달라지므로 뺀다)."""
+                return len(json.dumps({k: v for k, v in row.items() if k not in ("t", "ts")}, ensure_ascii=False))
+
+            # ① 보통 상태: 새 필드 없음(행·관절 키가 종전 그대로 = 행 크기 불변)
+            r = step(status(), status(), status())
+            assert rows()[0]["kind"] == "session_start" and rows()[0].get("errlog") == 1, rows()[0]
+            assert set(r) == row_keys and len(r["joints"]) == 12 and all(set(j) == joint_keys for j in r["joints"].values()), sorted(set(r) ^ row_keys)
+            n_plain = size(r)
+            # ② ③ 오류 바이트: 한 메시지에만 있었고 최신 메시지는 0 이어도 다음 행에 남는다 → 그다음 행에는 없다
+            r = step(status({AL: 4}), status())
+            assert errs(r) == {AL: 4} and "feedback_error_seen" not in r["joints"][AL] and set(r) == row_keys, (errs(r), sorted(set(r) ^ row_keys))
+            assert set(r["joints"][AL]) == joint_keys | {"feedback_error_raw"} and set(r["joints"][AR]) == joint_keys
+            r = step(status())
+            assert errs(r) == {} and set(r) == row_keys and size(r) == n_plain, "오류가 사라진 뒤 행은 보통 행 크기"
+            #    오류가 계속되면 메시지가 올 때마다 행에 남는다. 메시지가 끊기면 옛 값을 되풀이하지 않고('모름'),
+            # ⑧ 끊긴 첫 행에 stage8_nomsg 1 · 다시 받은 첫 행에 0 을 한 번씩 남긴다 — 그 사이 행의 '필드 없음'은 '오류 없음'이 아니다
+            r = step(status({AR: 5}))
+            assert errs(r) == {AR: 5} and "stage8_nomsg" not in r, "받는 채 이어지는 행에는 표식이 없다"
+            assert errs(step(status({AR: 5}))) == {AR: 5}
+            r = step()
+            assert errs(r) == {} and r.get("stage8_nomsg") == 1 and set(r) == row_keys | {"stage8_nomsg"}, (errs(r), r.get("stage8_nomsg"), "끊긴 첫 행: 옛 값 없이 표식 1")
+            r = step()
+            assert set(r) == row_keys and size(r) == n_plain, (sorted(set(r) ^ row_keys), "끊긴 채 이어지는 행에는 아무것도 적지 않는다")
+            r = step(status({AR: 5}))
+            assert errs(r) == {AR: 5} and r.get("stage8_nomsg") == 0, (errs(r), r.get("stage8_nomsg"), "다시 받은 첫 행: 표식 0 + 그 메시지의 값")
+            r = step(status({AR: 5}))
+            assert errs(r) == {AR: 5} and "stage8_nomsg" not in r, "표식 0 은 한 번만"
+            r = step(status())
+            assert errs(r) == {} and set(r) == row_keys and size(r) == n_plain, "메시지를 받는 중의 '필드 없음' = 오류 없음(보통 행)"
+            #    한 행 구간에 서로 다른 값이 둘: 최근 값 + 본 값 전부(오래된 것 → 최근)
+            r = step(status({AL: 4, AR: 5}), status({AL: 2, AR: 5}), status({AR: 5}))
+            assert errs(r) == {AL: 2, AR: 5} and r["joints"][AL].get("feedback_error_seen") == [4, 2] and "feedback_error_seen" not in r["joints"][AR], r["joints"][AL]
+            assert errs(step(status())) == {}
+            #    행을 만드는 화면 상태(view)를 뜬 뒤에 도착한 메시지가 있어도 순서가 뒤집히지 않고, 이미 적은 값이 다음 행에 다시 실리지 않는다
+            tel.receive("status", status({AL: 4}))
+            old_view = tel.view()
+            tel.receive("status", status({AL: 2}))
+            r = step(view=old_view)
+            assert errs(r) == {AL: 2} and r["joints"][AL].get("feedback_error_seen") == [4, 2], r["joints"][AL]
+            assert errs(step(status({AL: 4}))) == {AL: 4}
+            old_view = tel.view()                                   # 이 화면 상태의 최신 값은 4(방금 행에 적음)
+            assert errs(step(status(), view=old_view)) == {}, "앞 행에 적은 한 메시지짜리 값이 다음 행에 다시 실렸다"
+            # ② ③ ④ warnings: 명령으로 비워진 뒤에도(최신 메시지 []) 합집합이 남고, 그대로면 1 s 마다만, 비워진 것을 보면 [] 한 번
+            w1, w2 = "feedback_error:%s:4" % AL, "joint_feedback_stale:%s" % AR
+            r = step(status({}, [w1, w2]), status({}, []))
+            assert r.get("stage8_warnings") == sorted([w1, w2]), r.get("stage8_warnings")
+            t_emit, n_emit = [clock[0]], 0
+            for _k in range(45):                                   # 2.25 s 동안 같은 warnings 가 계속(명령마다 비워졌다 다시 켜짐)
+                r = step(status({}, [w1, w2]), status({}, []))
+                if "stage8_warnings" in r:
+                    assert r["stage8_warnings"] == sorted([w1, w2])
+                    assert S8_WARN_KEYFRAME_SEC - 1e-6 <= clock[0] - t_emit[-1] <= S8_WARN_KEYFRAME_SEC + 0.05 + 1e-6, clock[0] - t_emit[-1]
+                    t_emit.append(clock[0]); n_emit += 1
+                else:
+                    assert set(r) == row_keys, sorted(set(r) ^ row_keys)
+            assert n_emit == 2, f"같은 warnings 45 행 중 다시 적은 행 {n_emit} 개(기대 2 = 1 s 주기)"
+            r = step(status({}, [w1]))
+            assert r.get("stage8_warnings") == [w1], "내용이 바뀐 행"
+            #    상태 메시지를 못 받은 구간·warnings 가 실리지 않은 메시지는 '비워짐'이 아니다 → 아무것도 적지 않고, 다시 받으면 이어서 비교한다
+            r = step()
+            assert "stage8_warnings" not in r and r.get("stage8_nomsg") == 1, "메시지를 못 받은 구간에 [] 가 찍혔다(표식 1 만 있어야 한다)"
+            no_key = status()
+            del no_key["warnings"]
+            r = step(no_key)
+            assert "stage8_warnings" not in r and r.get("stage8_nomsg") == 0, "warnings 가 실리지 않은 메시지에 [] 가 찍혔다(받기는 했으므로 표식 0)"
+            assert "stage8_warnings" not in step(status({}, [w1])), "수신이 이어졌을 뿐인데 다시 적었다"
+            r = step(status())
+            assert r.get("stage8_warnings") == [], "비워진 것을 본 행에 [] 한 번"
+            r = step(status())
+            assert set(r) == row_keys and size(r) == n_plain, "warnings 가 비워진 뒤 행은 보통 행 크기"
+            # ⑤ 상태 토픽만 받는다(브리지 디버그 토픽에 같은 모양이 와도 무시)
+            r = step(status({AL: 9}, ["x"]), key="bridge")
+            assert errs(r) == {} and "stage8_warnings" not in r and r.get("stage8_nomsg") == 1, "다른 토픽은 상태 메시지로 세지 않는다"
+            # ⑥ 세션 경계: 닫힌 동안 지나간 값·수신이 끊긴 뒤의 옛 값은 새 세션에 싣지 않고, 이어지는 warnings 는 새 세션에서 다시 적는다
+            assert step(status({AL: 3}, ["keep"])).get("stage8_warnings") == ["keep"]
+            rec.close("first done")
+            tel.receive("status", status({AL: 3}, ["keep", "gone"]))
+            rec.sample(tel.view())                                  # 닫힌 세션: 행은 안 쓰지만 받아 둔 값은 비운다
+            rec.ensure("errlog selftest 2", manual=True)
+            path = os.path.join(rec.dir, "timeline.jsonl")
+            r = step()                                              # 새 세션 첫 행, 받은 메시지 없음(마지막 상태 메시지에는 오류 3 이 남아 있다)
+            assert rows()[0].get("errlog") == 1 and errs(r) == {} and "stage8_warnings" not in r, (errs(r), r.get("stage8_warnings"))
+            assert set(r) == row_keys, "끊김 표식은 세션 안에서만 센다(앞 세션에서 받고 있었어도 새 세션 첫 행에 1 을 적지 않는다)"
+            r = step(status({}, ["keep"]))                          # 앞 세션에서 0.1 s 전에 같은 내용을 적었어도(1 s 주기 전) 새 세션에서는 다시 적는다
+            assert errs(r) == {} and r.get("stage8_warnings") == ["keep"] and "stage8_nomsg" not in r, (errs(r), r.get("stage8_warnings"), r.get("stage8_nomsg"))
+            assert "stage8_warnings" not in step(status({}, ["keep"]))
+            assert step(status()).get("stage8_warnings") == []
+            # ⑦ 형식이 어긋난 입력: 수신·행 쓰기 모두 예외 없음, 양에 상한, 쓴 행은 JSON 으로 다시 읽힘
+            bad = [{}, {"joints": [1, 2], "warnings": "abc"}, {"joints": {AL: "x", AR: None}, "warnings": {"a": 1}},
+                   {"joints": {AL: {"feedback_error_raw": "4"}, AR: {"feedback_error_raw": True}}, "warnings": [1, None, ["x"], {"y": 2}]},
+                   {"joints": {AL: {"feedback_error_raw": float("nan")}, AR: {"feedback_error_raw": float("inf")}}},
+                   {"joints": {AL: {"feedback_error_raw": 2.5}, AR: {"feedback_error_raw": 0.0}}},
+                   {"joints": {"j%02d" % i: {"feedback_error_raw": 7} for i in range(40)}},
+                   {"joints": {AL: {"feedback_error_raw": 1}}, "warnings": ["ok\ud800tail", "z" * 1000] + ["w%03d" % i for i in range(500)]}]
+            n0 = len(rows())
+            for b in bad:
+                r = step(b)
+            assert len(rows()) == n0 + len(bad), "불량 입력에서도 행은 계속 쓰여야 한다"
+            assert not any("stage8_nomsg" in x for x in rows()[n0:]), "형식이 어긋난 메시지도 '받은 메시지'로 센다(끊김 표식 없음)"
+            assert "stage8_errlog_fail" not in r and errs(r) == {AL: 1}, (r.get("stage8_errlog_fail"), errs(r))
+            ws = r.get("stage8_warnings")
+            assert len(ws) == S8_WARN_MAX + 1 and "+more" in ws and "ok?tail" in ws and max(len(w) for w in ws) == S8_WARN_MAXLEN, (len(ws), ws[:3])
+            assert not any("stage8_errlog_fail" in x for x in rows()[n0:]), "불량 입력이 래치 안에서 예외를 냈다"
+            many = rows()[n0 + 6]
+            assert sum(1 for j in many["joints"].values() if j.get("feedback_error_raw") == 7) == S8_ERR_JOINTS_MAX, "받아 두는 관절 수 상한"
+            #    파일에 쓸 수 없는 관절 이름(짝 없는 서러게이트)·너무 긴 이름·비 ASCII 이름은 받아 두지 않는다 — 행의 키가 되어 행 쓰기를 깨면 안 된다
+            n1 = len(rows())
+            r = step({"joints": {"bad\ud800name": {"feedback_error_raw": 4}, "x" * (S8_ERR_NAME_MAXLEN + 1): {"feedback_error_raw": 4},
+                                 "한글관절": {"feedback_error_raw": 4}}}, status())
+            assert len(rows()) == n1 + 1 and errs(r) == {} and len(r["joints"]) == 12, (len(rows()) - n1, errs(r), len(r["joints"]))
+            for k in range(S8_ERR_CODES_MAX + 4):                  # 한 관절에 서로 다른 값이 상한보다 많이
+                tel.receive("status", status({AL: k + 1}))
+            r = step()
+            assert r["joints"][AL]["feedback_error_raw"] == S8_ERR_CODES_MAX + 4 and len(r["joints"][AL]["feedback_error_seen"]) == S8_ERR_CODES_MAX
+
+            class Boom(dict):
+                def get(self, *a):
+                    raise RuntimeError("boom")
+            ERRLATCH.feed(Boom()); ERRLATCH.feed(None)
+            r = step(status())
+            assert r.get("stage8_errlog_fail") == 2, "래치 내부 예외는 세어서 행에 남긴다"
+            with patch.object(rec, "_s8_errlog", side_effect=RuntimeError("boom")):
+                r = step(status({AL: 4}))
+            assert r.get("stage8_errlog_fail") == -1 and set(r) - new_keys == row_keys, "행 덧붙임이 실패해도 행은 쓴다"
+            rec.close("errlog selftest done")
+    return (f"오류 0 → 새 필드 없음(행·관절 키와 행 크기 그대로) · 오류 ≠ 0 → feedback_error_raw · warnings → stage8_warnings(바뀐 행·{S8_WARN_KEYFRAME_SEC:g} s 주기·비워진 것을 보면 [] 한 번) · "
+            f"행 사이 값 유지·같은 값 두 번 안 실림 · 수신 없는 구간은 '모름'(끊긴 첫 행 stage8_nomsg 1·다시 받은 첫 행 0) · 세션 경계 · 불량 입력 {len(bad)} 종·쓸 수 없는 관절 이름 무예외·내부 예외 표시")
+
+
 def selftest():
     """Small deployment smoke test. No ROS, subprocesses, markers or real logs."""
     from unittest.mock import patch
@@ -1791,6 +2109,7 @@ def selftest():
         body = src.split("CHECKPOINTS = {", 1)[1].split("\n}\n", 1)[0]
         known = set(re.findall(r'^\s+"([A-Za-z0-9_]+)": os\.path\.join', body, re.M))
         assert set(CKPT_CHOICES) <= known, "console checkpoint not in bridge"
+    print("[PASS] 모터 오류 기록(1007): " + _selftest_errlog())
     print("console selftest: ALL PASS (offline only; hardware not exercised)")
     return 0
 

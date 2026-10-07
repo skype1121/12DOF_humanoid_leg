@@ -1,5 +1,5 @@
 """X13 요약(TORQUE_BUDGET_1007.md §5) — 토크 한계 배율별(env i → i % 4) 구간 낙상·전진·토크.
-사용: python3 reports/gen_w3/x13_summ.py [--seeds 1,2]
+사용: python3 reports/gen_w3/x13_summ.py [--seeds 1,2] [--prefix tr_x13]
 구간(인계 기준): 제자리 걸음 2–8 s · 앞 0.06 8–16 s · 정지·서기 16–20 s · 밀기 뒤 20–24 s. 낙상 분모 = 구간 시작 때 생존(통과 env)."""
 import argparse, csv, os, sys
 import numpy as np
@@ -10,10 +10,10 @@ SEG = [("제자리 걸음", 2.0, 8.0), ("앞 0.06", 8.0, 16.0), ("정지·서기
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--seeds", default="1,2"); a = ap.parse_args()
+    ap = argparse.ArgumentParser(); ap.add_argument("--seeds", default="1,2"); ap.add_argument("--prefix", default="tr_x13", help="실행 이름 접두(예: tr_s3f16299_x13)"); a = ap.parse_args()
     acc = {}
     for s in [int(x) for x in a.seeds.split(",")]:
-        p = os.path.join(LP, f"kwloop_tr_x13_d2_s{s}.npz"); q = os.path.join(LP, f"ground_recovery_tr_x13_d2_s{s}_envs.csv")
+        p = os.path.join(LP, f"kwloop_{a.prefix}_d2_s{s}.npz"); q = os.path.join(LP, f"ground_recovery_{a.prefix}_d2_s{s}_envs.csv")
         if not (os.path.exists(p) and os.path.exists(q)):
             print("없음", p); continue
         z = np.load(p, allow_pickle=True); pre = z["pre_pass"].astype(bool); sc = z["effort_scale"].astype(float); t = z["t"].astype(float); xy = z["xy"].astype(float); yaw = z["yaw"].astype(float)
@@ -23,7 +23,7 @@ def main():
                 tf[int(r["env"])] = float(r["t_fall_rel"])
         K = lambda x: min(int(np.searchsorted(t, x - 1e-6)), len(t) - 1)   # noqa: E731
         zt = None
-        pt = os.path.join(LP, f"transall_tr_x13_d2_s{s}.npz")
+        pt = os.path.join(LP, f"transall_{a.prefix}_d2_s{s}.npz")
         if os.path.exists(pt):
             zt = np.load(pt, allow_pickle=True)
         for g in sorted(set(np.round(sc, 3))):

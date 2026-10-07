@@ -4267,6 +4267,195 @@ def _selftest_kew3():
     return " / ".join(notes) + (" (기동 플래그 켜짐 상태 복원)" if was_kw else "")
 
 
+# ---------------------------------------------------------------------------
+# 모터 오류 기록(1007) — stage8 상태의 오류 바이트·warnings·피드백 나이를 블랙박스 틱 기록에 남긴다
+# ---------------------------------------------------------------------------
+#: 배경(reports/real_1007): 발목 롤 드라이버(모터 6·12)가 회복 동작 중 재시작했는데, 원인(전원 강하·커넥터 순간 단절·
+#: 드라이버 보호)을 가를 모터 오류 바이트(stage8 상태 joints[j].feedback_error_raw)와 stage8 warnings 가 블랙박스에 없었다.
+#: **블랙박스 전용** — 제어·가드·sensor_stale 판정에 쓰지 않고, 디버그 토픽 발행 내용도 바꾸지 않는다(발행한 뒤에 덧붙인다).
+#: · 왜 상태 메시지마다 받아 두는가: stage8 상태는 100 Hz 이상, 틱은 50 Hz 다. stage8 은 명령을 받을 때마다(= 매 틱) warnings 를
+#:   비우고, 오류 바이트는 그 모터의 마지막 프레임 값이라 한 프레임(20 ms)짜리면 틱 시점의 최신 메시지에서는 이미 0 일 수 있다.
+#:   그래서 상태 콜백에서 메시지마다 받아 두고(feed) 틱 기록을 만들 때 꺼낸다(fields).
+#: · 틱 기록에 더하는 필드: err_raw {관절: 0 아닌 오류 바이트}(있을 때만) · s8_warn [warnings](있을 때만, 정렬) ·
+#:   fb_age_max_s / fb_age_max_joint(stage8 가 마지막 상태 메시지에서 보고한 관절별 feedback_age_sec 의 최대와 그 관절. 틱 시점
+#:   기준 나이는 여기에 status_age_s 를 더한 값) · fb_age_over {관절: 나이}(나이가 ERRLOG_AGE_NOTE_S 이상인 관절 **전부**, 있을 때만 —
+#:   1004·1007 처럼 두 관절이 함께 끊기면 최대값 하나로는 한 관절만 보인다) · errlog_fail(기록 코드 안의 예외 횟수, 있을 때만).
+ERRLOG_HOLD_S = 0.2         # 받아 둔 지 이보다 오래된 값은 버린다(정책 미구동 중 쌓인 값이 다음 실행 첫 틱에 실리지 않게)
+ERRLOG_AGE_NOTE_S = 0.05    # fb_age_over 에 적는 나이 하한 [s] — 기록 전용 값(가드 아님). 정상 나이(≤ 0.03 s)보다 크고 정지 기준(0.2 s)보다 작다
+ERRLOG_WARN_MAX = 48        # 받아 두는 warnings 최대 개수
+ERRLOG_WARN_MAXLEN = 160    # warnings 한 건 최대 길이
+
+
+def _err_code(value):
+    """모터 오류 바이트 → 0 이 아닌 정수면 그 값, 아니면 None(0·없음·bool·비정수·비유한)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and (not math.isfinite(value) or value != int(value)):
+        return None
+    return int(value) or None
+
+
+class Stage8ErrLog:
+    """stage8 상태 → 블랙박스 틱 기록에 덧붙일 필드. 상태 콜백·제어 틱 안에서 불리므로 **어떤 입력에도 예외를 내지 않는다**
+    (기록 코드의 결함이 제어를 멈추면 안 된다 — 내부 예외는 세어서 errlog_fail 로 남긴다)."""
+
+    def __init__(self):
+        self.err = {}      # {관절: (마지막으로 본 0 아닌 오류 바이트, 받은 시각)}
+        self.warn = {}     # {warning: 받은 시각}
+        self.fail = 0      # 기록 코드 안에서 난 예외 횟수(다음 틱 기록에 남기고 0 으로)
+
+    def feed(self, status, now):
+        """stage8 상태 메시지 1 건(dict)과 받은 시각."""
+        try:
+            js = status.get("joints")
+            if isinstance(js, dict):
+                for j in JOINT_ORDER:
+                    info = js.get(j)
+                    code = _err_code(info.get("feedback_error_raw")) if isinstance(info, dict) else None
+                    if code is not None:
+                        self.err[j] = (code, now)
+            ws = status.get("warnings")
+            if isinstance(ws, list) and ws:
+                if len(self.warn) >= ERRLOG_WARN_MAX:      # 틱 기록이 없는 동안(정책 미구동) 쌓인 옛 항목 정리
+                    self.warn = {w: t for w, t in self.warn.items() if now - t <= ERRLOG_HOLD_S}
+                for w in ws[:ERRLOG_WARN_MAX]:
+                    if isinstance(w, str):
+                        w = w[:ERRLOG_WARN_MAXLEN]
+                        if w in self.warn or len(self.warn) < ERRLOG_WARN_MAX:
+                            self.warn[w] = now
+        except Exception:  # noqa: BLE001 — 기록 실패가 상태 콜백(관절 피드백 경로)을 죽이면 안 된다
+            self.fail += 1
+
+    def fields(self, now, fb_age=None):
+        """이번 틱 기록에 덧붙일 필드(dict). 받아 둔 오류·warnings 는 꺼내면서 비운다."""
+        out = {}
+        try:
+            err = {j: self.err[j][0] for j in JOINT_ORDER if j in self.err and now - self.err[j][1] <= ERRLOG_HOLD_S}
+            warn = sorted(w for w, t in self.warn.items() if now - t <= ERRLOG_HOLD_S)
+            self.err, self.warn = {}, {}
+            if err:
+                out["err_raw"] = err
+            if warn:
+                out["s8_warn"] = warn
+            worst, over = None, {}
+            if isinstance(fb_age, dict):
+                for j in JOINT_ORDER:
+                    a = fb_age.get(j)
+                    if not isinstance(a, (int, float)) or isinstance(a, bool) or not math.isfinite(a):
+                        continue
+                    if worst is None or a > worst[0]:
+                        worst = (float(a), j)
+                    if a >= ERRLOG_AGE_NOTE_S:
+                        over[j] = round(float(a), 3)
+            if worst is not None:
+                out["fb_age_max_s"] = round(worst[0], 3)
+                out["fb_age_max_joint"] = worst[1]
+            if over:
+                out["fb_age_over"] = over
+        except Exception:  # noqa: BLE001 — 기록 실패가 제어 틱(명령 발행 직전)을 죽이면 안 된다
+            self.fail += 1
+        if self.fail:
+            out["errlog_fail"] = self.fail
+            self.fail = 0
+        return out
+
+
+def _selftest_errlog():
+    """(1007) 모터 오류 기록 — 로봇·ROS 불필요. ① 오류 0·warnings 없음 → 오류 필드 없음(피드백 나이 2 개만) ② 오류 ≠ 0·warnings 있음 → 필드 있음
+    ③ 틱 사이에 지나간 값(한 메시지에만 있던 오류·명령으로 비워진 warnings)도 남음 ④ 오래된 값은 버림 ⑤ 피드백 나이 최대·관절, 끊긴 관절 전부
+    ⑥ 형식이 어긋난 입력에 예외 없음·내부 예외는 errlog_fail 로 남음 ⑦ 노드 연결 3 곳(생성·상태 콜백·틱 기록의 발행 뒤)이 소스에 있음."""
+    import re
+    AL, AR = "left_ankle_r_joint", "right_ankle_r_joint"
+    assert AL in JOINT_ORDER and AR in JOINT_ORDER
+
+    def status(err=None, warnings=()):
+        """stage8 상태 토픽 모양 — 관절 항목 키는 stage8 get_status 와 같은 이름."""
+        js = {j: {"baseline_deg": 0.0, "latest_actual_deg": 1.0, "feedback_age_sec": 0.012, "commanded_relative_deg": 0.0,
+                  "feedback_torque_est": 0.1, "feedback_temperature_raw": 66,
+                  "feedback_error_raw": int((err or {}).get(j, 0)), "feedback_error_ok": not (err or {}).get(j, 0)} for j in JOINT_ORDER}
+        return {"armed": True, "joints": js, "warnings": list(warnings), "errors": []}
+
+    age = {j: 0.012 for j in JOINT_ORDER}
+    t = 1000.0
+    e = Stage8ErrLog()
+    # ① 보통 상태: 오류·warnings 필드 없음(틱 기록에 더해지는 것은 피드백 나이 2 개뿐)
+    for k in range(3):
+        e.feed(status(), t + 0.005 * k)
+    f0 = e.fields(t + 0.02, age)
+    assert f0 == {"fb_age_max_s": 0.012, "fb_age_max_joint": JOINT_ORDER[0]}, f0
+    assert e.fields(t + 0.04, None) == {} and e.fields(t + 0.04, {}) == {}, "피드백 나이가 없으면 필드도 없어야 한다"
+    # ② 오류 ≠ 0·warnings 있음 → 필드 있음
+    e.feed(status({AL: 4}, ["feedback_error:%s:4" % AL]), t + 0.05)
+    f1 = e.fields(t + 0.06, age)
+    assert f1.get("err_raw") == {AL: 4} and f1.get("s8_warn") == ["feedback_error:%s:4" % AL], f1
+    assert e.fields(t + 0.08, age) == f0, "꺼낸 뒤에는 비어야 한다"
+    # ③ 틱 사이에 지나간 값: 오류가 한 메시지에만 있었고(다음 메시지는 0) warnings 는 명령으로 비워졌어도 남는다
+    e.feed(status({AL: 4, AR: 2}, ["b", "a"]), t + 0.100)
+    e.feed(status(), t + 0.105)
+    e.feed(status({}, ["c", "a"]), t + 0.110)
+    f2 = e.fields(t + 0.12, age)
+    assert f2.get("err_raw") == {AL: 4, AR: 2} and f2.get("s8_warn") == ["a", "b", "c"], f2
+    assert list(f2["err_raw"]) == [j for j in JOINT_ORDER if j in (AL, AR)], "관절 순서 = JOINT_ORDER"
+    e.feed(status({AL: 4}), t + 0.13); e.feed(status({AL: 6}), t + 0.135)
+    assert e.fields(t + 0.14, age).get("err_raw") == {AL: 6}, "같은 관절은 마지막으로 본 0 아닌 값"
+    # ④ 오래된 값(정책 미구동 중 받은 것)은 다음 실행 첫 틱 기록에 싣지 않는다
+    e.feed(status({AR: 7}, ["old"]), t + 0.20)
+    f3 = e.fields(t + 0.20 + ERRLOG_HOLD_S + 0.5, age)
+    assert "err_raw" not in f3 and "s8_warn" not in f3, f3
+    e.feed(status({AR: 7}, ["old"]), t + 2.0)
+    f3b = e.fields(t + 2.0 + ERRLOG_HOLD_S - 0.01, age)
+    assert f3b.get("err_raw") == {AR: 7} and f3b.get("s8_warn") == ["old"], f3b
+    # ⑤ 피드백 나이: 최대값과 그 관절(동률이면 JOINT_ORDER 앞쪽), 하한 이상인 관절은 전부(두 관절이 함께 끊긴 경우), 비유한·불량은 제외
+    f4 = e.fields(t + 3.0, dict(age, **{AL: 0.1834, AR: 0.16}))
+    assert f4 == {"fb_age_max_s": 0.183, "fb_age_max_joint": AL, "fb_age_over": {AL: 0.183, AR: 0.16}}, f4
+    f4b = e.fields(t + 3.0, dict(age, **{AL: 0.19, AR: 0.19}))
+    assert f4b["fb_age_max_joint"] == AL and f4b["fb_age_over"] == {AL: 0.19, AR: 0.19}, f4b
+    f5 = e.fields(t + 3.0, dict(age, **{AL: float("nan"), AR: float("inf"), JOINT_ORDER[3]: ERRLOG_AGE_NOTE_S - 0.01, JOINT_ORDER[2]: "x", JOINT_ORDER[1]: True}))
+    assert f5 == {"fb_age_max_s": round(ERRLOG_AGE_NOTE_S - 0.01, 3), "fb_age_max_joint": JOINT_ORDER[3]}, f5
+    # ⑥ 형식이 어긋난 입력: 예외 없음, 받아 두는 양에 상한
+    bad = [{}, {"joints": [1, 2], "warnings": "abc"}, {"joints": {AL: "x", AR: None}, "warnings": {"a": 1}},
+           {"joints": {AL: {"feedback_error_raw": "4"}, AR: {"feedback_error_raw": True}}, "warnings": [1, None, ["x"], {"y": 2}]},
+           {"joints": {AL: {"feedback_error_raw": float("nan")}, AR: {"feedback_error_raw": float("inf")}}},
+           {"joints": {AL: {"feedback_error_raw": 2.5}, AR: {"feedback_error_raw": 0.0}}},
+           {"joints": {AL: {"feedback_error_raw": 5.0}}, "warnings": ["z" * 1000] + ["w%03d" % i for i in range(500)]}]
+    for i, b in enumerate(bad):
+        e.feed(b, t + 4.0 + 0.001 * i)
+    f6 = e.fields(t + 4.01, age)
+    assert f6.get("err_raw") == {AL: 5} and "errlog_fail" not in f6, f6
+    assert len(f6["s8_warn"]) == ERRLOG_WARN_MAX and max(len(w) for w in f6["s8_warn"]) == ERRLOG_WARN_MAXLEN, (len(f6["s8_warn"]),)
+    json.dumps(f6)
+
+    class Boom(dict):
+        def get(self, *a):
+            raise RuntimeError("boom")
+    e.feed(Boom(), t + 5.0)
+    e.feed(None, t + 5.0)
+    f7 = e.fields(t + 5.01, Boom())
+    assert f7 == {"errlog_fail": 3}, f7
+    assert e.fields(t + 5.03, age) == f0, "실패 횟수는 한 번 남기고 0 으로"
+    for i in range(200):                                       # 틱 기록 없이 오래 쌓여도(정책 미구동) warnings 는 상한에서 멈춘다
+        e.feed(status({}, ["x%d" % i]), t + 6.0)
+    assert len(e.warn) == ERRLOG_WARN_MAX, len(e.warn)
+    ghost = status({AL: 1})
+    ghost["joints"]["ghost_joint"] = {"feedback_error_raw": 9}  # JOINT_ORDER 에 없는 관절 이름은 받지 않는다
+    e.feed(ghost, t + 6.0)
+    assert set(e.err) == {AL}, set(e.err)
+    e.feed(status({}, ["fresh"]), t + 60.0)                    # 옛 항목은 정리되고 새 항목이 들어온다
+    f8 = e.fields(t + 60.01, age)
+    assert f8.get("s8_warn") == ["fresh"] and "err_raw" not in f8, f8
+    # ⑦ 노드 연결(이 파일 소스): 생성 1 곳 · 상태 콜백 1 곳 · 틱 기록마다 '발행 → 덧붙임 → 블랙박스' 순서
+    with open(os.path.abspath(__file__), encoding="utf-8") as fh:
+        src = fh.read()
+    assert len(re.findall(r"^ +self\.errlog = Stage8ErrLog\(\)", src, re.M)) == 1, "노드 생성자에 errlog 없음"
+    assert len(re.findall(r"^ +self\.errlog\.feed\(d, self\.status_ts\)", src, re.M)) == 1, "상태 콜백에 errlog.feed 없음"
+    n_bb = len(re.findall(r"^ +self\._bb_write\(dbg\)", src, re.M))
+    n_ok = len(re.findall(r"^ +self\.pub_dbg\.publish\(String\(data=json\.dumps\(dbg\)\)\)\n"
+                          r" +dbg\.update\(self\.errlog\.fields\(now, self\.fb_age\)\)[^\n]*\n +self\._bb_write\(dbg\)", src, re.M))
+    assert n_bb >= 1 and n_ok == n_bb, f"틱 기록 {n_bb} 곳 중 {n_ok} 곳만 '발행 → errlog 덧붙임 → 블랙박스' 순서"
+    return (f"오류 0 → 오류 필드 없음(피드백 나이 2 개만) · 오류 ≠ 0·warnings → err_raw·s8_warn · 틱 사이 값 유지 · {ERRLOG_HOLD_S} s 넘은 값 버림 · "
+            f"나이 최대·관절·{ERRLOG_AGE_NOTE_S} s 이상 관절 전부 · 불량 입력 {len(bad)} 종 무예외·내부 예외 errlog_fail · 노드 연결 생성 1·상태 콜백 1·틱 기록 {n_bb} 곳")
+
+
 def run_selftest(required=()):
     """드라이런 자가검증 — ROS·로봇 불필요. 프레임 변환 4종 + 게이트 + 정책 500틱.
     required: 파일이 반드시 있어야 하는 체크포인트(기동 --checkpoint, STAND_DEFAULT) — 없으면 FAIL."""
@@ -4300,6 +4489,7 @@ def run_selftest(required=()):
              ("parity 옵션(1007, 기본 꺼짐)", _selftest_parity_flags),
              ("헤딩 고리 고장 판별 분리(1007, 기본 꺼짐)", _selftest_w3_hl_fault),
              ("KE↔W3 합성 러너 실험 플래그(1007, 기본 꺼짐)", _selftest_kew3),
+             ("모터 오류 기록(1007)", _selftest_errlog),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:
@@ -4566,6 +4756,7 @@ def main():
             # 축으로 대조할 수 있어야 한다 (실물 전류 기록 요구, 승윤님).
             self.tau_est = {}
             self.temp_raw = {}
+            self.errlog = Stage8ErrLog()   # 1007 블랙박스 전용(제어 무관): 틱 사이에 지나가는 모터 오류 바이트·stage8 warnings 를 받아 둔다
             self._cmd_seq = 0        # 0930: 목표 명령 순번·발행 시각·출처 — stage8 cmd_timing 이 발행→처리 지연·누락을 잰다
             self._cmd_src = f"bridge:{os.getpid()}:{int(time.time())}"
             self.s8_cmd_timing = None
@@ -4670,6 +4861,7 @@ def main():
             cc = d.get("soft_clamp_counts")
             self.clamp_counts = cc if isinstance(cc, dict) else {}
             self.reject_reason = d.get("last_reject_reason")
+            self.errlog.feed(d, self.status_ts)   # 1007 블랙박스 전용(제어 무관·예외 없음): 모터 오류 바이트·warnings
             js = d.get("joints") or {}
             if not isinstance(js, dict):
                 return
@@ -5089,6 +5281,7 @@ def main():
             if self.guard_mode != "safe":
                 dbg["guard_mode"] = self.guard_mode
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
+            dbg.update(self.errlog.fields(now, self.fb_age))   # 1007 블랙박스 전용 — 발행한 뒤에 덧붙인다(디버그 토픽 내용 불변)
             self._bb_write(dbg)
             if self.live and self.armed and rel is not None:
                 self.pub_cmd.publish(String(data=self._targets_msg(dict(rel))))
@@ -5486,6 +5679,7 @@ def main():
             if self.core.kew3:             # 1007 합성 키에서만 필드 추가(종전 스키마 불변): 지금 도는 러너(ke/w3)·전환 횟수·켜기 차단 사유·정착 대기 진행
                 dbg["kew3"] = self.core.kew3_snapshot(_c5bb)
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
+            dbg.update(self.errlog.fields(now, self.fb_age))   # 1007 블랙박스 전용 — 발행한 뒤에 덧붙인다(디버그 토픽 내용 불변)
             self._bb_write(dbg)
             if not (self.live and self.armed):
                 if self.live:

@@ -477,12 +477,20 @@ def scenario_burst(b, clock, out):
         t = 100.0
         for i in range(120):
             S.observe(t + i * b.TICK_SEC, (1.0, 1.0), (0.0, 0.0, 0.0), (0.0, 0.0, -1.0))
+        n_dis = 0
         for i, name in enumerate(W.W3_MOVES):
-            c = W.w3_move_cmd(name)
+            if not W.w3_move_enabled(name):                # 비활성 버튼(X14 미달): 서버 경로는 거부, 평가 전용 경로만 통과
+                n_dis += 1
+                try:
+                    W.w3_move_cmd(name); raise AssertionError(f"비활성 버튼 {name} 이 거부되지 않음")
+                except ValueError as e:
+                    assert "비활성" in str(e), e
+            c = W.w3_move_cmd(name, allow_disabled=True)
             d = S.handle(dict({"cmd": "step", "enable": True, "req_id": f"m{i}", "seq": 1000 + i, "heading_loop": False}, **c), t + 2.38,
                          active=True, warmed=True, blend_done=True, ge_now=False, want_now=False, cmd_now=(0.0, 0.0, 0.0))
             assert d["accepted"] and d["dur_s"] == c["dur_s"] and tuple(d["cmd"]) == (c["vx"], c["vy"], c["wz"]), (name, d)
-        R.append(f"버튼 표 {len(W.W3_MOVES)} 항목 감독기 통과")
+        pub = W.w3_moves_public(); assert [m["name"] for m in pub] == list(W.W3_MOVES) and sum(not m["enabled"] for m in pub) == n_dis and all(m["why_disabled"] for m in pub if not m["enabled"])
+        R.append(f"버튼 표 {len(W.W3_MOVES)} 항목 감독기 통과(비활성 {n_dis} 개는 서버 경로 거부·사유 기록)")
         out["burst"] = R
     return driver
 

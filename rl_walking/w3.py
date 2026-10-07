@@ -524,6 +524,31 @@ def _yaw_box(env, period_s: float = 1.0 / 1.1):
     return st["w"]
 
 
+def _gy_box(env, period_s: float = 1.0 / 1.1):
+    """한 보행 주기 평균 옆 기울기 = 몸통 좌표 투영 중력 y 의 이동 평균(K 틱) — 걸음마다의 좌우 흔들림은 소거, 한쪽으로 쏠린 걸음(lean)만 남김.
+    1007 claude2(TRANSITION_W3KE.md §5.19): 왕복에서 걷는 중 평균 롤과 요 속도가 매 걷기 r 0.67–0.93·기울기 ≈ 2 (°/s)/° 로 묶여 있고, 멈췄다 다시 걸을 때마다 커진다."""
+    asset = env.scene[H._base_cfg().name]
+    gy = asset.data.projected_gravity_b[:, 1]
+    tick = int(env.common_step_counter)
+    K = max(2, int(round(period_s / env.step_dt)))
+    st = getattr(env, "_w3_gybox", None)
+    if st is None or st["buf"].shape[0] != env.num_envs or st["buf"].shape[1] != K:
+        st = {"buf": gy.unsqueeze(1).repeat(1, K).clone(), "i": 0, "tick": -1, "m": gy.clone()}; env._w3_gybox = st
+    if st["tick"] != tick:
+        fresh = env.episode_length_buf <= 1
+        if bool(fresh.any()):
+            st["buf"][fresh] = gy[fresh].unsqueeze(1)
+        i = st["i"]
+        st["buf"][:, i] = gy; st["i"] = (i + 1) % K
+        st["m"] = st["buf"].mean(dim=1); st["tick"] = tick
+    return st["m"]
+
+
+def w3_lean_net(env) -> torch.Tensor:
+    """W3S3g: 한 주기 평균 옆 기울기 |ḡ_y|(≈ 평균 롤 rad) — 벌점 크기(양수), STEP 에서만. 제곱형(w3_orient)은 1–2° 쏠림에 기울기가 거의 없어 선형으로 둔다."""
+    return _gy_box(env).abs() * _ge(env).float()
+
+
 def w3_yaw_net(env) -> torch.Tensor:
     """W3-A3: 한 주기 순 요 속도 오차 |ψ̇_T − wz_cmd| — 벌점 크기. 순간 |ω_z|(w3_yaw_drift)는 걸음 요 흔들림이 지배해 표류를 못 잡음(W3-A2 69 → 65°)."""
     c = env.command_manager.get_command("base_velocity")
@@ -1040,3 +1065,40 @@ def w3_mix_curriculum(env, env_ids, scales: tuple = (0.0, 0.5, 1.0), min_sign: f
             g["stage"] += 1; g["since"] = it; env._w3_mix_scale = float(scales[g["stage"]])
         g["b"] = cur
     return {"mix_scale": float(env._w3_mix_scale), "mix_sign_x": g["sx"], "mix_sign_y": g["sy"], "mix_sign_w": g["sw"], "mix_width_bad": g["bad"]}
+
+
+# ================================================================ W3S3t* (1007) — 걷기 토크 예산. 기본 꺼짐(W3S3tK 설정을 고를 때만) ================================================================
+# 설계·사전 기준: reports/gen_w3/TORQUE_W3T_DESIGN.md · CPU 단위시험: rl_walking/scripts/unit_w3t.py. 기존 함수·상태(env._w3·_w3lat·_w3turn·_w3mix)는 손대지 않는다.
+def w3_stance_knee_over(env, max_flex_rad: float = 0.785, threshold: float = 5.0, cap_rad: float = 0.6) -> torch.Tensor:
+    """W3S3tK: 걷는 동안(ge 1) **접지한 다리**의 무릎 굽힘이 max_flex_rad 를 넘는 초과분[rad] — 접지 다리 평균, 선형(상한 cap_rad). 벌점 크기(양수).
+    무릎 굽힘 = 물리 관절각(왼 무릎 −·오른 무릎 + 가 굽힘 — mdp_stage4.knee_stance_flexion 과 같은 부호 보정). 공중(스윙) 다리는 자유, 두 발 다 공중이면 0.
+    선형인 이유: 현 걸음의 지지 무릎은 64°(문턱 45° 에서 19° 밖)라, 밴드형(knee_stance_flexion: 밴드 밖 0.15 rad 에서 0 으로 포화)은 기울기가 없다.
+    근거(reports/gen_w3/torque_phase.py bounds (B)): 한발 지지 무릎 정적 토크는 굽힘에 거의 비례 — 65° 21.3 → 45° 15.6 → 30° 11.0 N·m."""
+    asset = env.scene[H._base_cfg().name]
+    sensor = env.scene.sensors["contact_forces"]; fid = H._feet_body_ids(env)
+    c = (sensor.data.net_forces_w[:, fid, :].norm(dim=-1) > threshold).float()                     # (N,2) [왼, 오]
+    if getattr(env, "_w3_kneeidx", None) is None:
+        jn = list(asset.joint_names)
+        env._w3_kneeidx = torch.tensor([jn.index("left_knee_joint"), jn.index("right_knee_joint")], device=env.device)
+    q = asset.data.joint_pos[:, env._w3_kneeidx]
+    flex = torch.stack([-q[:, 0], q[:, 1]], dim=1)                                                 # 굽힘 + 로 통일
+    over = (flex - max_flex_rad).clamp(min=0.0, max=cap_rad)
+    val = (over * c).sum(1) / c.sum(1).clamp(min=1.0)
+    return val * _ge(env).float()
+
+
+def w3_stride_lin(env, cmin: float = 0.02) -> torch.Tensor:
+    """W3S3tF: 유효 착지 사건(_st.ev_td)마다 스윙발 이륙→착지 변위 Δp 의 **목표 보폭 방향 진행 비율** clip(Δp·ΔP*/‖ΔP*‖², −1, 1), ΔP* = (vx/f, vy/f).
+    제자리 디딤 = 0, 목표 보폭 이상 = 1(더 가도 늘지 않음 — 과속 유인 없음), 반대 방향 = 음수. 병진 명령(|vx| 또는 |vy| ≥ cmin)·STEP 에서만, 그 밖(명령 0·제자리 회전·서기)은 정확히 0.
+    w3_stride2 의 반대 방향 벌점 항(k_opp·clip(·, −1, 0))을 양수 쪽까지 편 것과 같은 식이다. 변위는 w3_lat_tracker 의 _w3lat.td_dx·td_dy(스윙발 자체의 월드 변위 — 몸 기울임·지지발 미끄럼으로는 못 얻는다).
+    선형인 이유(reports/gen_w3/fwd_incentive.py): 가우시안형 w3_stride(σ 0.03 m)·w3_track(σ 0.05 m/s)은 env 마다 다른 속도 치우침(학습 조건 한 주기 평균 오차 0.062 m/s ≈ 보폭 0.056 m)이
+    폭보다 크면 평평해져, 전진을 절반으로 줄여도 잃는 보상이 0.004–0.038/s 뿐이다. 선형은 같은 조건에서 0.08–0.14/s 를 유지한다."""
+    s = _st(env); L = _lat(env)
+    cmd = env.command_manager.get_command("base_velocity")
+    f_ = env._gf if getattr(env, "_gf", None) is not None else torch.full((env.num_envs,), 1.1, device=env.device)
+    fc = f_.clamp(min=0.5)
+    tx = (cmd[:, 0] / fc).unsqueeze(1); ty = (cmd[:, 1] / fc).unsqueeze(1)
+    n2 = (tx ** 2 + ty ** 2).clamp(min=1e-8)
+    r = ((L["td_dx"] * tx + L["td_dy"] * ty) / n2).clamp(-1.0, 1.0) * s["ev_td"]
+    on = ((cmd[:, 0].abs() >= cmin) | (cmd[:, 1].abs() >= cmin)) & _ge(env)
+    return torch.where(on, r.sum(1), torch.zeros_like(cmd[:, 0]))

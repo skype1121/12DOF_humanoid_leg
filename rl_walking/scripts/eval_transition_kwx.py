@@ -1064,7 +1064,7 @@ if KWL:
                 continue
             head, _, arg = tok.partition(":"); kind, _, tt = head.partition("@")
             if kind == "move":
-                _mc = _W3D.w3_move_cmd(arg.strip()); _KW_DURS[round(float(tt), 4)] = float(_mc["dur_s"])
+                _mc = _W3D.w3_move_cmd(arg.strip(), allow_disabled=True); _KW_DURS[round(float(tt), 4)] = float(_mc["dur_s"])
                 ev.append((float(tt), True, [_mc["vx"], _mc["vy"], _mc["wz"]])); continue
             if kind not in ("walk", "stop"):
                 raise SystemExit(f"--kw_script: 모르는 사건 {kind!r}")

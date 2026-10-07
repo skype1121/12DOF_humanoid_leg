@@ -150,7 +150,7 @@ rep('''                          restore=json.dumps(kw_rst_log), hl=str(args_cli
 # 1007 X14: 콘솔 걷기 버튼(시간 제한 걷기)의 시뮬 평가 — 대본 사건 'move@t:이름'(w3_deploy.W3_MOVES) → step 켜기에 dur_s 를 실어 감독기에 보내고,
 #   기한 끄기는 브리지 노드와 같은 순서로 감독기의 burst_arm/burst_due 가 한다(콘솔 타이머 없음).
 rep('''            if kind not in ("walk", "stop"):''', '''            if kind == "move":
-                _mc = _W3D.w3_move_cmd(arg.strip()); _KW_DURS[round(float(tt), 4)] = float(_mc["dur_s"])
+                _mc = _W3D.w3_move_cmd(arg.strip(), allow_disabled=True); _KW_DURS[round(float(tt), 4)] = float(_mc["dur_s"])
                 ev.append((float(tt), True, [_mc["vx"], _mc["vy"], _mc["wz"]])); continue
             if kind not in ("walk", "stop"):''')
 rep('''    def _kw_parse(s):''', '''    _KW_DURS = {}                                     # 1007 X14: 사건 시각 → 기한 [s](move 사건만)

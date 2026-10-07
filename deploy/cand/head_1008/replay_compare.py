@@ -8,12 +8,13 @@
   python3 replay_compare.py --repo <트리 A> --dump a.json
   python3 replay_compare.py --repo <트리 B> --dump b.json
   python3 replay_compare.py --compare a.json b.json        # 종료 코드 0 = 전부 같음, 1 = 다름, 2 = 실행 불가
-  python3 replay_compare.py --compare a.json b.json --ignore-keys 키1,키2   # 새 판이 의도해서 더한 기록 필드만 빼고 나머지를 비트 비교
+  python3 replay_compare.py --compare a.json b.json --new-bb-keys 키1,키2   # 새 판이 블랙박스 줄에만 더한 기록 필드를 빼고 비교(발행은 전부, A 에도 있는 키면 거부)
 
 방법: rclpy·std_msgs 를 가짜 모듈로 바꾸고(ROS·CAN·로봇 불필요) 가짜 시계로 rl_bridge_node.main() 을 그대로 돌린다. 정책은 그 트리의
 **실제 정책 파일**(그 트리의 _make_runner — onnxruntime 또는 torch), 하드웨어맵도 그 트리의 것이다. 입력열(관절·IMU·접촉·명령)은 결정적 합성값.
 비교 대상: 모든 토픽 발행(명령 토픽의 목표각·STOP_ALL, 디버그 토픽의 관측 320·원시 행동·가드·C5 모드…)과 블랙박스 줄.
 경우: 키 × 대본(서기/회복 펄스/공중 시작) × live·dry × 가드 모드(맵 그대로 = 젯슨은 data / safe 강제 = 가드 정지 경로).
+      + 대본 err(g21a·krh): stage8 상태에 모터 오류 바이트·warnings·피드백 나이(정지 기준 아래·위)를 실어, 새 판의 오류 기록이 발행을 바꾸지 않는지 본다.
 **개루프 계약 비교다 — 폐루프 성능이나 실물 안전을 증명하지 않는다**(CLAUDE.md 측정과 주장 6)."""
 from __future__ import annotations
 
@@ -120,6 +121,10 @@ class Feed:
         self.roll = 0.0
         self.gy = 0.02
         self.amp = 0.3          # 관절 흔들림 [deg]
+        self.s8_full = False    # True 면 stage8 상태의 오류 필드(feedback_error_raw·feedback_error_ok·warnings·errors)까지 싣는다(err 대본)
+        self.err = {}           # {관절: 0 아닌 오류 바이트}
+        self.warn = []          # stage8 warnings
+        self.age = {}           # {관절: feedback_age_sec}
 
     def feed(self):
         b, now = self.b, self.clk.t
@@ -127,9 +132,16 @@ class Feed:
         js = {}
         for i, (j, v) in enumerate(zip(b.JOINT_ORDER, self.pose)):
             m = self.n.frames.joint_rad_to_motor_deg(j, v) + self.amp * math.sin(0.07 * self.k + i)
-            js[j] = {"baseline_deg": m - 0.3, "latest_actual_deg": m, "feedback_age_sec": 0.0,
+            js[j] = {"baseline_deg": m - 0.3, "latest_actual_deg": m, "feedback_age_sec": float(self.age.get(j, 0.0)),
                      "commanded_relative_deg": 0.1, "feedback_torque_est": 0.5 * i, "feedback_temperature_raw": 30 + i}
-        self.n._on_status(_Msg(json.dumps({"armed": True, "joints": js})))
+            if self.s8_full:
+                js[j]["feedback_error_raw"] = int(self.err.get(j, 0))
+                js[j]["feedback_error_ok"] = not self.err.get(j, 0)
+        st = {"armed": True, "joints": js}
+        if self.s8_full:
+            st["warnings"] = list(self.warn)
+            st["errors"] = []
+        self.n._on_status(_Msg(json.dumps(st)))
         p, r = self.pitch, self.roll
         quat = [math.cos(p / 2) * math.cos(r / 2), math.cos(p / 2) * math.sin(r / 2),
                 math.sin(p / 2) * math.cos(r / 2), -math.sin(p / 2) * math.sin(r / 2)]
@@ -221,7 +233,29 @@ def drv_hang(b, clk):
     return driver
 
 
-SCENARIOS = {"basic": drv_basic, "c5": drv_c5, "hang": drv_hang}
+def drv_err(b, clk):
+    """모터 오류 기록(1007) 경로: 서기 중 stage8 상태에 오류 바이트·warnings 가 실리고 피드백 나이가 커진다(정지 기준 아래 → 위).
+    기준 판(젯슨 판)은 이 필드를 읽지 않는다 — 새 판이 그것을 블랙박스에 적으면서 발행(명령·디버그)과 가드 동작을 바꾸지 않는지 본다."""
+    def driver(node):
+        F = Feed(node, b, clk)
+        F.s8_full = True
+        AL, AR = "left_ankle_r_joint", "right_ankle_r_joint"
+        assert AL in b.JOINT_ORDER and AR in b.JOINT_ORDER
+        F.tick(3)
+        F.cmd({"cmd": "stand"}); F.tick(100)
+        F.err = {AL: 4}; F.warn = [f"feedback_error:{AL}:4"]; F.tick(3)                       # 오류 바이트 3 틱
+        F.err = {}; F.warn = []; F.tick(20)
+        F.err = {AL: 4, AR: 2}; F.warn = ["b", "a"]; F.tick(1); F.err = {}; F.warn = []; F.tick(20)   # 두 관절 1 틱
+        F.age = {AL: 0.06, AR: 0.12}; F.tick(10); F.age = {}; F.tick(20)                      # 피드백 나이: 기록 하한(0.05 s) 이상·정지 기준 아래
+        F.err = {AR: 7}; F.age = {AR: 0.35, AL: 0.35}; F.warn = ["feedback_stale:" + AR]; F.tick(15)   # 정지 기준 초과(두 판이 같은 가드를 타야 한다)
+        F.err = {}; F.age = {}; F.warn = []; F.tick(10)
+        F.cmd({"cmd": "stand"}); F.tick(40)
+        F.cmd({"cmd": "estop"}); F.tick(5)
+    return driver
+
+
+SCENARIOS = {"basic": drv_basic, "c5": drv_c5, "hang": drv_hang, "err": drv_err}
+KEYS_ERR = ("stand_crouch_g21a", "stand_c5krh_g21a_g24ra")
 
 
 def load_bridge(repo):
@@ -254,6 +288,10 @@ def cases(b):
             continue
         for guard in ("map", "safe"):
             out.append((k, "c5", True, guard))
+    for k in KEYS_ERR:
+        if k in b.CHECKPOINTS:
+            for guard in ("map", "safe"):
+                out.append((k, "err", True, guard))
     return out
 
 
@@ -383,7 +421,19 @@ def _strip_keys(s, keys):
     return json.dumps({k: v for k, v in d.items() if k not in keys}, ensure_ascii=False)
 
 
-def do_compare(pa, pb, ignore_keys=()):
+def _canon_bb(s, new_keys):
+    """블랙박스 줄의 정규형 — 새 판이 더한 기록 필드(new_keys)를 뺀 나머지를 같은 방식으로 다시 직렬화한다(키 순서·숫자 형·값 보존).
+    돌려주는 것: (정규형 문자열, 그 줄에 있던 new_keys 목록). 객체가 아닌 줄은 원문 그대로."""
+    try:
+        d = json.loads(s)
+    except (ValueError, TypeError):
+        return s, []
+    if not isinstance(d, dict):
+        return s, []
+    return json.dumps({k: v for k, v in d.items() if k not in new_keys}, ensure_ascii=False), [k for k in d if k in new_keys]
+
+
+def do_compare(pa, pb, ignore_keys=(), new_bb_keys=()):
     A, B = json.load(open(pa, encoding="utf-8")), json.load(open(pb, encoding="utf-8"))
     print(f"A: {A['meta']['repo']} 브리지 {A['meta']['bridge_md5'][:8]} numpy {A['meta']['numpy']} 백엔드 {A['meta'].get('backend')}")
     print(f"B: {B['meta']['repo']} 브리지 {B['meta']['bridge_md5'][:8]} numpy {B['meta']['numpy']} 백엔드 {B['meta'].get('backend')}")
@@ -395,6 +445,25 @@ def do_compare(pa, pb, ignore_keys=()):
             for r in D["runs"]:
                 r["pubs"] = [[t, _strip_keys(d, ign)] for t, d in r["pubs"]]
                 r["bb"] = [_strip_keys(x, ign) for x in r["bb"]]
+    newk, new_note = set(k for k in new_bb_keys if k), ""
+    if newk:
+        # B(새 판)가 **블랙박스 줄에만** 더한 기록 필드. 발행(명령·디버그 토픽)은 건드리지 않고 전부 비교한다. A(기준 판)에 같은 키가 있으면
+        # 새 필드가 아니므로 비교를 거부한다. 뺀 뒤에는 양쪽 줄을 같은 방식으로 다시 직렬화해 나머지 키·값·순서를 비교한다.
+        cnt = {"A": {}, "B": {}}
+        for tag, D in (("A", A), ("B", B)):
+            for r in D["runs"]:
+                rows = []
+                for x in r["bb"]:
+                    c, had = _canon_bb(x, newk)
+                    for k in had:
+                        cnt[tag][k] = cnt[tag].get(k, 0) + 1
+                    rows.append(c)
+                r["bb"] = rows
+        if cnt["A"]:
+            print(f"[오류] --new-bb-keys 의 키가 A(기준 판) 블랙박스에도 있다: {cnt['A']} — 새 필드가 아니다. 목록에서 빼고 다시 볼 것")
+            return 1
+        new_note = " · 새 판 블랙박스에만 있는 기록 필드(뺀 줄 수): " + (", ".join(f"{k} {cnt['B'].get(k, 0)}" for k in sorted(newk)))
+        print(f"※ 새 판이 블랙박스 줄에 더한 기록 필드로 보고 뺀 키(--new-bb-keys, 블랙박스 줄에서만 — 발행은 전부 비교): {sorted(newk)}")
     ia = {(r["key"], r["scenario"], r["live"], r["guard"]): r for r in A["runs"]}
     ib = {(r["key"], r["scenario"], r["live"], r["guard"]): r for r in B["runs"]}
     n_same = n_diff = 0
@@ -430,8 +499,8 @@ def do_compare(pa, pb, ignore_keys=()):
             print(f"[다름] {name}: " + " | ".join(notes))
         else:
             n_same += 1
-            print(f"[같음] {name}: 발행 {len(ra['pubs'])} 건(STOP_ALL {n_stop})·블랙박스 {len(ra['bb'])} 줄 비트 동일")
-    print(f"결과: 같음 {n_same} · 다름 {n_diff}")
+            print(f"[같음] {name}: 발행 {len(ra['pubs'])} 건(STOP_ALL {n_stop}) 비트 동일·블랙박스 {len(ra['bb'])} 줄 " + ("새 필드 밖 키·값·순서 동일" if newk else "비트 동일"))
+    print(f"결과: 같음 {n_same} · 다름 {n_diff}" + new_note)
     return 0 if n_diff == 0 and n_same > 0 else 1
 
 
@@ -440,10 +509,11 @@ def main():
     ap.add_argument("--repo", default=os.getcwd(), help="저장소 트리(jetson/scripts/rl_bridge_node.py 가 있는 곳)")
     ap.add_argument("--dump", help="이 트리의 브리지를 돌려 결과를 JSON 으로 저장")
     ap.add_argument("--compare", nargs=2, metavar=("A.json", "B.json"))
-    ap.add_argument("--ignore-keys", default="", help="비교에서 뺄 최상위 JSON 키(쉼표) — 새 판이 의도해서 더한 기록 필드를 확인한 뒤에만")
+    ap.add_argument("--ignore-keys", default="", help="비교에서 뺄 최상위 JSON 키(쉼표, 발행·블랙박스 양쪽에서) — 되도록 --new-bb-keys 를 쓸 것")
+    ap.add_argument("--new-bb-keys", default="", help="새 판(B)이 블랙박스 줄에만 더한 기록 필드(쉼표). 블랙박스 줄에서만 빼고 발행은 전부 비교, A 에도 있으면 거부")
     a = ap.parse_args()
     if a.compare:
-        return do_compare(*a.compare, ignore_keys=a.ignore_keys.split(","))
+        return do_compare(*a.compare, ignore_keys=a.ignore_keys.split(","), new_bb_keys=a.new_bb_keys.split(","))
     if a.dump:
         return do_dump(a.repo, os.path.abspath(a.dump))
     ap.print_usage()

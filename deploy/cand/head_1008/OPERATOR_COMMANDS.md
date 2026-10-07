@@ -127,6 +127,9 @@ python3 jetson/scripts/w3_cmd.py status                  # 디버그 토픽 한 
 - 리드 발: 명령 0·앞뒤 = 왼발 먼저. 오른쪽 옆(vy < −0.02), 또는 옆 명령 없이 오른쪽 회전(wz < −0.08) = 오른발 먼저.
 - 시간 제한 걷기: step 켜기에 `dur_s`(0.3–10 s)를 주면 그 시간 뒤 **브리지가 스스로** 끈다(응답 `event: burst_end`). `w3_cmd.py` 에는 이 인자가 없다 —
   콘솔 걷기 버튼 [추가 예정]이 쓴다. 손으로 보내려면 `{"cmd":"step","enable":true,"req_id":"…","seq":N,"vx":0.06,"dur_s":0.6,"heading_loop":false}` 를 한 번 발행(seq 는 직전보다 커야 한다).
+- 버튼 표(`w3_deploy.W3_MOVES`)의 `back1`(후진 한 걸음)·`right1`(오른쪽 옆걸음)은 **비활성**이다 — X14 시뮬에서 방향 부호 일치 80 %·63 %(기준 95 %) 미달.
+  버튼 경로(`w3_move_cmd`)는 이 둘을 거부한다. 위의 연속 명령(`w3_cmd.py on --vx -0.03`·`--vy -0.03`)은 이 표를 거치지 않아 막히지 않는다 —
+  뒤·오른쪽 **한 걸음**은 방향이 시뮬에서도 불확실했다는 뜻으로 읽고, 실물에서 먼저 시도하지 않는다. [실물 미검증]
 - `stand`·`walk`·`march`·`turn` 은 W3 세션에서 정책 실행 중 거부된다. 비상정지는 이 도구에 없다 — 콘솔 버튼.
 
 명령의 뜻(ANOMALY_CARD): `step enable:false`(= `off`) 다음 반주기에 서기 · `stop` 서기 + 정지 래치 · `estop` 즉시 동결(토크 유지) + 래치 · `release_all` 토크 해제.
@@ -191,5 +194,9 @@ deploy/deploy_head_1008.sh --remove-policy=logs/rsl_rl/<실험>/<run>   # 그렇
 백업은 젯슨 `~/humanoid_repo_bak_1008/`(원본 `files/`, `BACKUP_MANIFEST.md5`, 새 파일 목록 `CREATED.txt`, 이력 `STATE`, `selftest_*.log`, 정책 추가 기록 `POLICY_ADDED.md5`).
 묶음에 `reports/night_1007/jetson_parity.py` 와 `reports/night_1007/jetson/parity_ref.npz` 가 있으면 젯슨 selftest 끝에
 `python3 reports/night_1007/jetson_parity.py --check reports/night_1007/jetson/parity_ref.npz`(로컬 torch 기준 ↔ 젯슨 onnxruntime 러너의 목표각·모드 대조)도 돈다.
+
+기록에 새로 생기는 것(1007 모터 오류 기록 — 기록 전용, 제어·가드·발행 불변): 브리지 블랙박스 틱 줄에 `fb_age_max_s`·`fb_age_max_joint`(항상),
+`err_raw`·`s8_warn`·`fb_age_over`·`errlog_fail`(있을 때만) · 세션 타임라인 줄의 `joints[관절]` 에 `feedback_error_raw`(여러 값이면 `feedback_error_seen` 도)·줄에 `stage8_warnings`·`stage8_errlog_fail`, 그리고 stage8 상태 수신이
+끊긴 첫 줄에 `stage8_nomsg: 1`·다시 받은 첫 줄에 `0`. **`stage8_nomsg: 1` 과 `0` 사이 줄에 오류 필드가 없는 것은 '오류 없음'이 아니라 '모름'이다.**
 
 배포 뒤 첫 세션 전 확인: 콘솔 준비 단계 '정책 계약 검사'가 제한(300 s) 안에 끝나는지 · 드롭다운 키·기본값 · 화면에 '정책 ON' 버튼이 생겼는지(쓰지 않아도 된다).

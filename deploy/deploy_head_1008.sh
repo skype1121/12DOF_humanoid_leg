@@ -64,6 +64,10 @@ for a in "$@"; do case $a in
   *) echo "알 수 없는 인자 $a"; exit 2;; esac; done
 [ $((APPLY + ROLLBACK + VERIFY)) -le 1 ] || { echo "--apply / --rollback / --verify 는 한 번에 하나만"; exit 2; }
 [ -z "$ADDPOL$RMPOL" ] || [ $((APPLY + ROLLBACK + VERIFY + RESTART)) -eq 0 ] || { echo "--add-policy / --remove-policy 는 단독으로만"; exit 2; }
+# 로컬 원본을 쓰는 동작 = dry-run(적용 예행)과 --apply 뿐이다. 롤백·확인·재기동·정책 폴더 모드는 젯슨 쪽 기록(백업 폴더·계획서의 md5)만 쓴다 →
+# 그 사이 로컬 트리가 바뀌었어도(다른 작업의 수정·병합) 막지 않고, 로컬 selftest 게이트도 돌리지 않는다. **롤백이 로컬 사정으로 막히면 안 된다.**
+NEED_LOCAL=1
+if [ $((ROLLBACK + VERIFY)) -gt 0 ] || [ -n "$ADDPOL$RMPOL" ] || { [ $RESTART -eq 1 ] && [ $APPLY -eq 0 ]; }; then NEED_LOCAL=0; fi
 
 # ------------------------------------------------------------------ 원격(또는 가짜) 실행
 rsh_in() {   # $1 = 명령 문자열, stdin 통과
@@ -138,8 +142,13 @@ for p in "${P_PATH[@]}"; do
   [ "$m" == "${P_MD5[$p]}" ] || { echo "   ★ md5 다름: $s (계획서 ${P_MD5[$p]:0:8} / 지금 ${m:0:8})"; nbad=$((nbad + 1)); }
   if [ "${P_ACT[$p]}" == send ]; then nsend=$((nsend + 1)); send_bytes=$((send_bytes + ${P_SIZE[$p]})); else nver=$((nver + 1)); fi
 done
-[ $nbad -eq 0 ] || { echo "로컬 파일이 계획서와 다름 — python3 deploy/make_head_manifest.py 로 다시 만든 뒤(그리고 로컬 왕복 시험 뒤) 실행. 정책 폴더가 다른 곳이면 HEAD1008_POLICY_ROOT"; exit 1; }
-echo "   일치 ${#P_PATH[@]}/${#P_PATH[@]} — 전송 대상 $nsend 개($((send_bytes / 1024)) KB) · 확인만 $nver 개 · 매니페스트 $(md5sum $MANIFEST | cut -c1-8)"
+if [ $nbad -ne 0 ] && [ $NEED_LOCAL -eq 1 ]; then
+  echo "로컬 파일이 계획서와 다름 — python3 deploy/make_head_manifest.py 로 다시 만든 뒤(그리고 로컬 왕복 시험 뒤) 실행. 정책 폴더가 다른 곳이면 HEAD1008_POLICY_ROOT"; exit 1
+elif [ $nbad -ne 0 ]; then
+  echo "   ※ 로컬 파일 $nbad 개가 계획서와 다르다 — 이 동작(롤백·확인·재기동·정책 폴더)은 로컬 원본을 쓰지 않으므로 계속한다(젯슨 대조는 계획서의 md5 로)"
+else
+  echo "   일치 ${#P_PATH[@]}/${#P_PATH[@]} — 전송 대상 $nsend 개($((send_bytes / 1024)) KB) · 확인만 $nver 개 · 매니페스트 $(md5sum $MANIFEST | cut -c1-8)"
+fi
 sed 's/^/   /' deploy/$NAME.VERSION | head -3
 
 echo "== [3] 로컬 selftest 게이트 (CPU 만 — GPU 를 쓰지 않는다)"
@@ -159,10 +168,11 @@ local_gate() {
   lg "W3 노드(git 기준 커밋 비교 포함)" "w3 node selftest: ALL PASS" python3 jetson/scripts/selftest_w3_bridge_node.py
   [ $ok -eq 1 ]
 }
-if [ $SKIP_GATE -eq 1 ]; then echo "   생략(--skip-local-gate) — 젯슨(또는 가짜 트리) selftest 로만 판정"
+if [ $NEED_LOCAL -eq 0 ]; then echo "   생략 — 이 동작(롤백·확인·재기동·정책 폴더)은 로컬 원본을 쓰지 않는다"
+elif [ $SKIP_GATE -eq 1 ]; then echo "   생략(--skip-local-gate) — 젯슨(또는 가짜 트리) selftest 로만 판정"
 elif [ ! -d logs/rsl_rl ]; then
   echo "   ★ 이 폴더에는 정책(logs/rsl_rl)이 없어 로컬 게이트를 돌릴 수 없다 — 메인 체크아웃에서 실행하거나 --skip-local-gate"
-  [ $((APPLY + ROLLBACK + VERIFY + RESTART)) -eq 0 ] || exit 1
+  [ $APPLY -eq 0 ] || exit 1
 else local_gate || { echo "로컬 selftest 실패 — 중단(젯슨에는 손대지 않았다)"; exit 1; }; fi
 
 # ------------------------------------------------------------------ 젯슨 읽기

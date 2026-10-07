@@ -5,9 +5,9 @@
 
 ```
 package: head_1008
-source_commit: 80184d8d93fbb591717bd124ce80b19d4fa55494 2026-10-07T22:09:36+09:00
+source_commit: 496bad49381b9c7edecd49e065e5ece65a152f8c 2026-10-07T23:40:35+09:00
 source_uncommitted: none
-manifest: deploy/head_1008.md5 md5 b2166211addffc58363e30a56d079313
+manifest: deploy/head_1008.md5 md5 06b10ae22a25afb072a1177dacb37d2e
 files: 118 (send 62 incl. this file and the manifest, verify 56)
 jetson_inventory: deploy/cand/head_1008/jetson_inventory_before_md5.txt md5 35a129c9f16a082e1cb6d3ba9cb13855
 note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드(콘솔·브리지·stage8·러너·도구·시험)를 마지막으로 바꾼 커밋,
@@ -18,8 +18,8 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 
 | 구분 | 파일 수 | 크기 합 |
 |---|---|---|
-| 전송 — 변경(젯슨에 구판이 있음) | 14 | 846 KB |
-| 전송 — 신규(젯슨에 없음) | 46 (+ 매니페스트·VERSION 2) | 4087 KB |
+| 전송 — 변경(젯슨에 구판이 있음) | 14 | 887 KB |
+| 전송 — 신규(젯슨에 없음) | 46 (+ 매니페스트·VERSION 2) | 4096 KB |
 | 확인만(젯슨과 같음 — 복사하지 않음) | 56 | 13343 KB |
 | 삭제 | 0 | — |
 
@@ -34,13 +34,13 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `jetson/scripts/console_state.py` | session | `446a7c2b` | `ab94d986` | 432d1176 2026-10-03 | operator_console.py, robotctl.py |
 | `jetson/scripts/console_ui.html` | session | `9f6a963d` | `8fecdf7c` | 432d1176 2026-10-03 | - |
 | `jetson/scripts/imu_mount_calib.py` | sync | `b8aa00e9` | `7c3bd93c` | 29b984d2 2026-07-27 | - |
-| `jetson/scripts/operator_console.py` | session | `90b7ef28` | `bd4112fc` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | operator_console.py |
+| `jetson/scripts/operator_console.py` | session | `90b7ef28` | `c6350af7` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | operator_console.py |
 | `jetson/scripts/pose_hold.py` | sync | `83e4f599` | `16f57ffd` | 9c4750d3 2026-07-27 | - |
-| `jetson/scripts/rl_bridge_node.py` | session | `15dcabf2` | `dd878b3b` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
+| `jetson/scripts/rl_bridge_node.py` | session | `15dcabf2` | `550f5390` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
 | `jetson/scripts/robotctl.py` | tool | `f761802c` | `2d47069b` | 83faa61b 2026-09-19 | robotctl.py |
 | `jetson/scripts/sensors_up.sh` | sync | `73fec1f3` | `3b372a2b` | 54425ab0 2026-09-13 | - |
 | `jetson/scripts/stage8_12axis_mit_control_node.py` | session | `2509bd99` | `18e1ec3e` | c93b45d1 2026-09-30 | stage8_12axis_mit_control_node.py |
-| `rl_walking/__init__.py` | session | `51ed3c5e` | `9861a992` | 6761a690 2026-09-29 | kew3_runner.py, posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, w3_cmd.py, zero_kinematic_check.py |
+| `rl_walking/__init__.py` | session | `51ed3c5e` | `840dd764` | 6761a690 2026-09-29 | kew3_runner.py, posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, w3_cmd.py, zero_kinematic_check.py |
 | `rl_walking/deploy/c5_switch.py` | session | `11cf9641` | `5149404c` | 332dcf38 2026-10-05 | c5_switch.py, kew3_runner.py, posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
 | `rl_walking/deploy/policy_runner_stage4.py` | session | `21b2416e` | `bdbe69eb` | b9cd2816 2026-10-03 | c5_switch.py, kew3_runner.py, policy_runner_stage4.py, posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py |
 
@@ -48,7 +48,7 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 
 | 경로 | 묶음 | 새 md5 | 크기 | 비고 |
 |---|---|---|---|---|
-| `deploy/cand/head_1008/OPERATOR_COMMANDS.md` | record | `d9245540` | 19095 | - |
+| `deploy/cand/head_1008/OPERATOR_COMMANDS.md` | record | `d1db6dee` | 20264 | - |
 | `deploy/cand/head_1008/ref_bridge/rl_bridge_node.68493c11.ref` | ref | `2ddfc1e7` | 234333 | 기준 커밋 68493c11 의 jetson/scripts/rl_bridge_node.py 원문 |
 | `deploy/cand/head_1008/ref_bridge/rl_bridge_node.95946e41.ref` | ref | `621cb77f` | 255072 | 기준 커밋 95946e41 의 jetson/scripts/rl_bridge_node.py 원문 |
 | `deploy/cand/head_1008/ref_bridge/rl_bridge_node.b79370ca.ref` | ref | `9d78084d` | 318778 | 기준 커밋 b79370ca 의 jetson/scripts/rl_bridge_node.py 원문 |
@@ -67,7 +67,7 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `jetson/scripts/ping_all.py` | sync | `18c4b94a` | 5594 | ping_all.py |
 | `jetson/scripts/play_probe.py` | sync | `6b06ae5e` | 46233 | - |
 | `jetson/scripts/plot_trial_recon.py` | sync | `78a9ca95` | 25298 | - |
-| `jetson/scripts/selftest_w3_bridge_node.py` | tool | `49f40948` | 63501 | selftest_w3_bridge_node.py |
+| `jetson/scripts/selftest_w3_bridge_node.py` | tool | `0ea71b7a` | 64198 | selftest_w3_bridge_node.py |
 | `jetson/scripts/stack_down.sh` | sync | `7f8f7925` | 1765 | - |
 | `jetson/scripts/stage8_cmd.py` | sync | `344aae83` | 4737 | stage8_cmd.py |
 | `jetson/scripts/takeover_capture.sh` | sync | `4653296c` | 1887 | - |
@@ -88,12 +88,12 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `rl_walking/deploy/selftest_w3_rollout_parity.py` | sync | `bae0c5ee` | 19395 | - |
 | `rl_walking/deploy/selftest_w3s3d_onnx.py` | sync | `85cc9498` | 2188 | - |
 | `rl_walking/deploy/w3_contingency.py` | session | `3105a219` | 36676 | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, w3_contingency.py |
-| `rl_walking/deploy/w3_deploy.py` | session | `9c85e892` | 45068 | c5_switch.py, kew3_runner.py, policy_runner_stage4.py, posture_probe.py |
+| `rl_walking/deploy/w3_deploy.py` | session | `aba079dd` | 46499 | c5_switch.py, kew3_runner.py, policy_runner_stage4.py, posture_probe.py |
 | `tests/test_latency_check.py` | test | `db1ba370` | 7263 | - |
 | `tests/test_operator_console.py` | test | `906bdcda` | 42355 | - |
 | `tests/test_stage8_can_send_timeout.py` | test | `955b8a97` | 7549 | - |
 | `tests/test_stage8_latency_options.py` | test | `70d08af6` | 12404 | - |
-| `tests/test_startup_simplify_bridge.py` | test | `92fd40e0` | 18195 | - |
+| `tests/test_startup_simplify_bridge.py` | test | `491c7085` | 24527 | - |
 
 ## 3. 확인만 (젯슨 md5 = HEAD md5 — 배포 때 다시 읽어 같지 않으면 중단)
 

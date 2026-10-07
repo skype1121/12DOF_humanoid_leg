@@ -11,7 +11,7 @@ python3 deploy/make_head_manifest.py [--inventory deploy/cand/head_1008/jetson_i
 ```
 
 - "젯슨 현재 md5 목록 파일" = `--inventory`(기본값이 위 경로 — `md5sum` 출력 형식, 경로는 `./` 기준). 젯슨 상태가 바뀌면 이 파일만 새로 받아 넣고 다시 돌린다.
-- 같은 규칙으로 `head_1008.md5`·`.plan`·`.VERSION`·`DIFF_LIST.md`·`ref_bridge/*.ref` 를 전부 다시 만든다. 이 문서 아래의 수치(파일 수·md5)는 80184d8d 기준이다.
+- 같은 규칙으로 `head_1008.md5`·`.plan`·`.VERSION`·`DIFF_LIST.md`·`ref_bridge/*.ref` 를 전부 다시 만든다. 이 문서의 수치는 메인 `496bad49`(모터 오류 기록·타임라인 표식까지)를 병합한 상태 기준이다 — 그 뒤 커밋이 생기면 다시 만든다.
 - **자동으로 들어가는 새 파일**: 콘솔·브리지·stage8·도구가 import 하는 모듈(사슬 추적), `jetson/scripts/*.py|*.sh|*.html`·`rl_walking/deploy/*.py`·`robot_runtime/*.py`·
   `protocols/*.py`, `tests/test_stage8_*.py`·`tests/test_console_*.py`·`tests/test_operator_console.py`·`tests/test_latency_check.py`·… 무늬에 맞는 **git 추적** 파일
   (커밋 전 파일은 안 잡힌다), `reports/night_1007/jetson_parity.py` + `reports/night_1007/jetson/parity_ref.npz`(둘 다 있을 때).
@@ -56,20 +56,21 @@ python3 deploy/make_head_manifest.py [--inventory deploy/cand/head_1008/jetson_i
 |---|---|---|---|
 | 브리지 기동 인자(콘솔이 넘기는 것) | `--live --checkpoint <키>` | 같음 | 같음 — 콘솔 diff 에 이 줄 변화 없음 |
 | 브리지 새 인자 | 없음 | `--experimental-hturn2`·`--experimental-w3`·`--experimental-kew3`·`--w3-safety`·`--w3-heading-loop`·`--w3-cmd-limits`·`--w3-monitor`·`--w3-hl-fault`·`--c5-settle`·`--c5-overtime`·`--c5-imu-f32`·`--runner-ema-fresh` | 전부 기본 꺼짐(None·False·1). 콘솔은 넘기지 않는다 |
-| 브리지가 내는 명령·기록(기존 키) | — | — | **같음 — 젯슨 판 ↔ HEAD 를 같은 입력열로 돌린 발행 22,862 건·블랙박스 10,436 줄이 비트 동일**(`replay_compare.py`: 서기 g21a·g12·g12_ema0·g11a·v18b, 공중 시작(hang_arm), 회복 c5·kr·krh × live/dry × 가드 data/safe 23 경우, 실제 정책 파일). 저장소 selftest 의 기준 커밋(68493c11·95946e41·b79370ca)은 젯슨 판보다 뒤라 이 구간을 덮지 못해 따로 쟀다 |
+| 브리지가 내는 명령·기록(기존 키) | — | 블랙박스 틱 줄에 기록 필드 6 종 추가(아래 '모터 오류 기록') | **발행은 같음 — 젯슨 판 ↔ HEAD 를 같은 입력열로 돌린 발행 24,590 건이 비트 동일, 블랙박스 11,304 줄은 새 필드 6 종을 뺀 나머지 키·값·순서가 같음**(`replay_compare.py`: 서기 g21a·g12·g12_ema0·g11a·v18b, 공중 시작(hang_arm), 회복 c5·kr·krh × live/dry × 가드 data/safe 23 경우 + 오류 대본 4 경우, 실제 정책 파일). 저장소 selftest 의 기준 커밋(68493c11·95946e41·b79370ca)은 젯슨 판보다 뒤라 이 구간을 덮지 못해 따로 쟀다 |
+| 모터 오류 기록(2522dc26·126a336d·496bad49 — 1007 밤 병합) | 없음 | 브리지 블랙박스 틱 줄에 `fb_age_max_s`·`fb_age_max_joint`(항상), `err_raw`·`s8_warn`·`fb_age_over`·`errlog_fail`(있을 때만). 콘솔 타임라인 줄의 `joints[관절].feedback_error_raw`(+`feedback_error_seen`)·`stage8_warnings`·`stage8_errlog_fail`·`stage8_nomsg` | 기록 추가만 — **오류 대본**(stage8 상태에 오류 바이트·warnings·피드백 나이 0.06/0.12 s·정지 기준 초과 0.35 s 를 실은 입력열, g21a·krh × 가드 data/safe)에서도 발행이 젯슨 판과 비트 동일(새 필드가 실제로 찍힌 줄: `err_raw` 16·`s8_warn` 16·`fb_age_over` 40). 콘솔 타임라인 쪽은 이 비교의 범위 밖 — 콘솔 selftest·`tests/test_operator_console.py` 43 OK 로만 확인 |
 | 브리지 새 명령 | — | `step`·`turn`·`rearm`(실험 세션 전용), `stand` 의 `touchdown_start` | 기존 세션에서 `step`·`turn`·`rearm` 은 무시(위 비교의 입력열에 포함). `touchdown_start` 는 콘솔 '정책 ON' 만 보낸다 |
 | 브리지 import | `policy_runner*`·`c5_switch`·`deploy_chain` | + `hturn2`·`w3_deploy`(항상), `w3_contingency`·`kew3_runner`(켤 때만) | 새 파일이 없으면 브리지가 뜨지 않는다 → 한 묶음으로 보내고 md5·selftest 로 확인 |
 | 콘솔 드롭다운 | g12(기본)·g21a·c5·c5kr·c5krh·g12_ema0·g11a | 같음 | 같음 — `CKPT_CHOICES` 변화 없음 |
 | 콘솔 단계별 절차·`stand` 발행 | `{"cmd":"stand"}`(+hang_arm) | 같음 | 같음 — 콘솔 selftest 의 `bridge_cmd_payload("stand", {"hang_arm": False, "touchdown_start": False}) == {"cmd": "stand"}`, `tests/test_operator_console.py` 는 기준 판의 시험이 삭제·수정 0 줄로 남아 있고 HEAD 에서 통과(43) |
 | ⚠ 콘솔 새 버튼 **'정책 ON(착지 자동 인수)'** + 확인 창 | 없음 | 공중 수평 자세에서 한 번 → 접지 마커·인계·기준점·ARM·정책 로드·`stand(touchdown_start)` 자동 진행, 정책은 양발 착지 확인 뒤 시작 | **새 기능 · 실물에서 한 번도 돌지 않았다**(1005 22:54 커밋, 젯슨에는 그 전 판이 있었다). 누르지 않으면 종전과 같다. 선행조건은 `OPERATOR_COMMANDS.md` §2 |
 | 콘솔 상태 표시 | — | 진행 중 "정책 ON 진행 중 · …", 착지 대기 "착지 대기 · 수평 자세 홀드(정책 미구동)"; 자동 진행 중 다른 조작 차단(정지 요청·이벤트·줄 지지 확인은 가능) | '정책 ON' 을 쓸 때만 |
-| ⚠ 콘솔 준비 단계 '정책 계약 검사' | 브리지 selftest 20 항목 | **30 항목, 로컬 측정으로 약 3.3 배 오래 걸린다**(1.4 → 4.7 s). 콘솔의 이 단계 제한은 300 s | 젯슨에서의 실제 시간은 미측정. 배포 스크립트가 젯슨에서 재서 240 s 를 넘으면 실패 처리·자동 롤백. 미리 보려면 `--probe-selftest-time` |
+| ⚠ 콘솔 준비 단계 '정책 계약 검사' | 브리지 selftest 20 항목 | **31 항목, 로컬 측정으로 약 3.3 배 오래 걸린다**(1.4 → 4.7 s). 콘솔의 이 단계 제한은 300 s | 젯슨에서의 실제 시간은 미측정. 배포 스크립트가 젯슨에서 재서 240 s 를 넘으면 실패 처리·자동 롤백. 미리 보려면 `--probe-selftest-time` |
 | stage8 기동 인자 | `--can-channel can1 --wait-takeover` | 같음 + 옵션 파일이 있으면 지연 옵션 | 같음 — 젯슨에 `config/stage8_latency_opts` 가 없거나 비어 있으면 추가 인자 0(`stage8_latency_raw()` 가 파일 없음 → `""`, `stage8_latency_args("")` → `[]`). **이 패키지는 그 파일을 만들지도 바꾸지도 않는다**(`config/` 전체가 전송 금지). dry-run 이 파일·서비스 환경변수를 읽어 켜져 있으면 ★ 로 알리고, 젯슨 selftest 가 콘솔의 판정 함수를 불러 인자 0 개인지 확인한다 |
 | stage8 가 버스로 내는 프레임 | — | — | **같음 — 젯슨 판 ↔ HEAD CAN 프레임 39,056 개 비트 동일**(`stage8_frame_compare.py`: 인수 대기 → 인수 홀드 → 기준점 → ARM → 목표(슬루 초과·한계 밖·모르는 관절) → STOP_ALL → 피드백 두절 62 s(램프 동결·60 s 자동 무장 해제) → DISARM, 가짜 can·가짜 ROS) |
 | stage8 status | — | 키 4 개 추가(`latency_options`·`send_counts`·`fb_after_send`·`tick_timing`), 공통 키는 7,393 건 전부 같음 | 추가만. status 1 건 직렬화 비용 +22 %(94 → 115 µs, 개발 PC 상대값 — 젯슨 절대값 미측정) |
 | stage8 새 인자 | 없음 | `--feedback-after-send`·`--feedback-wait-ms`·`--send-on-command`·`--control-hz` | 전부 기본 꺼짐. `tests/test_stage8_latency_options.py` 의 `test_defaults_are_legacy`·`test_default_slew_is_4deg_per_tick_regardless_of_timing`·`test_default_does_not_wait_for_replies` |
 | 러너·c5_switch | — | 새 선택 인자(hturn2·w3·ema_fresh_ticks·settle·imu_f32·requiet) | 기본 None/1/False — 위 브리지 발행 비교가 두 모듈의 차이까지 포함한다(트리마다 자기 모듈 사용) |
-| 세션 타임라인 | — | 브리지 보기 항목에 `start_gate` 한 칸 추가(평소 null) | 기록 추가만 |
+| 세션 타임라인 | — | 브리지 보기 항목에 `start_gate` 한 칸 추가(평소 null), 모터 오류 기록 필드(위) | 기록 추가만 — 오류 필드는 평소 줄에는 생기지 않는다. `stage8_nomsg` 1↔0 사이 줄의 '필드 없음'은 '모름'이다 |
 | `robotctl` | — | `policy-on` 명령, 상태 줄에 착지 대기·정책 ON 진행 표시 | 추가만 |
 | `rl_walking/__init__.py` | 0929 판 | 학습 태스크 등록 추가 | 젯슨에는 gymnasium 이 없어 등록은 무동작(파일 머리의 대체 객체) |
 | `~/rl_calib` 실행본 | — | 바꾸지 않음 | 저장소 사본 `jetson/scripts/sensors_up.sh` 만 HEAD(1001 실시간 우선순위·1006 패드 오프셋)로 간다. 콘솔이 실제로 띄우는 것은 `~/rl_calib/sensors_up.sh` 다 — 그 내용은 dry-run 이 읽어 보여 준다 |
@@ -83,10 +84,11 @@ python3 deploy/make_head_manifest.py [--inventory deploy/cand/head_1008/jetson_i
 
 | 검사 | 결과 |
 |---|---|
-| `deploy/test_head_1008_local.sh` — 가짜 젯슨(인벤토리대로 재구성한 152 파일 + 자리표시 `~/rl_calib`) 왕복 | 전 항목 PASS: dry-run 무변경 · 금지 경로 14 종 중단 · 제어 프로세스·활성 세션·예상 밖 md5·디스크 부족 거부 · selftest 실패 시 자동 롤백 · 적용(백업 14·신규 48·md5 118/118) · 재적용·`--verify`·재기동 게이트(제어 프로세스·selftest 통과 기록) · **롤백(복원 14·삭제 48) 뒤 파일 md5 152 개·폴더 목록이 처음과 동일** · 부분 적용 복구 · 정책 폴더 추가/제거 |
+| `deploy/test_head_1008_local.sh` — 가짜 젯슨(인벤토리대로 재구성한 152 파일 + 자리표시 `~/rl_calib`) 왕복 | 전체 모드 37/37 · 빠른 모드 27/27 PASS(병합 직후·수정 전에는 33/34 — 실패 1 건이 블랙박스 새 필드, §2): dry-run 무변경 · 금지 경로 14 종 중단 · 제어 프로세스·활성 세션·예상 밖 md5·디스크 부족 거부 · selftest 실패 시 자동 롤백 · 적용(백업 14·신규 48·md5 118/118) · 재적용·`--verify`·재기동 게이트(제어 프로세스·selftest 통과 기록) · **롤백(복원 14·삭제 48) 뒤 파일 md5 152 개·폴더 목록이 처음과 동일** · 부분 적용 복구 · 정책 폴더 추가/제거 · 로컬 트리가 계획서와 달라져도 롤백은 진행(적용은 거부) |
 | 같은 시험, 젯슨 모사 파이썬(python 3.10.12 · numpy 1.21.5 · onnxruntime 1.15.1 · torch 없음 · git 없는 트리) | 젯슨 selftest 19 항목 전부 PASS, 추론 백엔드 onnx 기록 |
-| `check_numpy_compat.py --plan` — numpy 1.21.5 에 없는 이름·인자(정적) | 84 파일 위반 0(심어 둔 위반 6 종은 검출) |
-| `replay_compare.py` — 브리지 젯슨 판 ↔ HEAD | 23/23 같음(§2). 대조군: 같은 판 두 번 = 같음, 변이 2 종(krh 유지 0.7 → 0.6 s, LPF β 0.27 → 0.2701) = 검출 |
+| parity 묶음까지 넣은 왕복 — 메인의 `reports/night_1007/jetson/parity_ref.npz`(`50b33308…`, 626,860 B)를 넣고 재생성(파일 118 + 2 · 전송 62) | 젯슨 게이트 20/20 — `jetson parity: ALL PASS`(5 키, 기준 torch ↔ 젯슨 모사 onnxruntime, 목표각 최대 차 ≤ 7.2e-07 rad · 원시 행동 ≤ 4.1e-06 · 모드 불일치 0 틱), 롤백 복원 14·삭제 50 → 처음과 동일. 커밋된 매니페스트에는 parity 가 없다(기준 npz 는 메인 소유 — 메인에서 재생성하면 자동으로 들어간다) |
+| `check_numpy_compat.py --plan` — numpy 1.21.5 에 없는 이름·인자(정적) | 86 파일 위반 0(심어 둔 위반 6 종은 검출) |
+| `replay_compare.py` — 브리지 젯슨 판 ↔ HEAD | 27/27 같음(§2 — 발행 비트 동일, 블랙박스는 새 기록 필드 6 종 밖 동일). 대조군: 같은 판 두 번 = 같음 27, 변이 2 종(krh 유지 0.7 → 0.6 s, LPF β 0.27 → 0.2701 — 병합 전 판에서) = 검출, 새 필드 옵션의 대조군 3 종(새 필드 밖 블랙박스 값 1 개 변이 = 검출 · 새 필드 이름의 키를 발행에 끼움 = 검출 · 기준 판에 그 키가 있으면 비교 거부) |
 | `stage8_frame_compare.py` — stage8 젯슨 판 ↔ HEAD | 프레임·공통 status 전부 같음(§2). 변이(슬루 4.0 → 4.01°/틱) = 검출 |
 | 콘솔 단위 시험(`tests/test_operator_console.py`), stage8 단위 시험(가짜 버스) | 43 OK · 28 OK(젯슨 모사 환경) |
 
@@ -125,6 +127,7 @@ deploy/deploy_head_1008.sh --remove-policy=logs/rsl_rl/<실험>/<run>  # 그 추
   하나라도 실패하면 자동 롤백한다. 러너 동치(parity)도 같은 게이트다 — 기준 npz 가 잘못 만들어졌다면 롤백 사유가 되므로 메인에서 `--gen` 한 직후의 파일을 실을 것.
 
 - 메인 체크아웃(정책 `logs/` 가 있는 곳)에서 돌린다. 워크트리에서는 `HEAD1008_POLICY_ROOT=<메인>` 과 `--skip-local-gate`(시험 전용)가 필요하다.
+- 로컬 원본을 쓰는 것은 dry-run 과 `--apply` 뿐이다. **`--rollback`·`--verify`·`--restart-console`·정책 폴더 모드는 로컬 트리가 계획서와 달라졌어도 진행한다**(젯슨 쪽 백업·계획서 md5 만 쓴다, 로컬 selftest 게이트도 생략) — 적용 뒤 다른 작업이 메인을 고쳤다고 롤백이 막히지 않게.
 - 백업은 젯슨 `~/humanoid_repo_bak_1008/`: `files/<경로 그대로>`, `BACKUP_MANIFEST.md5`(원본 md5), `CREATED.txt`·`CREATED_DIRS.txt`(롤백 때 지울 새 파일·폴더),
   `APPLIED.plan`, `STATE`(이력), `selftest_*.log`. 원본 백업은 한 번 만들어지면 덮어쓰지 않는다 — 여러 번 적용해도 롤백은 **첫 적용 전 상태**로 간다.
 - 젯슨 파일이 인벤토리와 다르면 멈춘다. 사람이 확인하고 덮어써도 된다고 판단한 구판은 `deploy/head_1008.accept` 에 `md5  경로` 로 적는다(없으면 쓰지 않는 파일).
@@ -132,7 +135,7 @@ deploy/deploy_head_1008.sh --remove-policy=logs/rsl_rl/<실험>/<run>  # 그 추
 - 적용에서 selftest 까지 수 분 동안 콘솔을 조작하지 않는다(파일이 섞여 있는 순간이 있고, selftest 프로세스를 콘솔이 '추적 밖 제어기'로 본다).
 
 **다른 작업을 병합한 뒤**(콘솔 걷기 버튼, 브리지 블랙박스·오류 기록 등): ① `python3 deploy/make_head_manifest.py` ② `deploy/test_head_1008_local.sh`
-③ T9b 가 '다름'이면 무엇이 달라졌는지 읽는다 — 의도한 기록 필드 추가면 그 키를 확인하고 `HEAD1008_REPLAY_IGNORE_KEYS=키1,키2` 로 다시 돌린 뒤 §2 표에 적는다.
+③ T9b 가 '다름'이면 무엇이 달라졌는지 읽는다 — 블랙박스 줄에 의도해서 더한 기록 필드면 소스에서 그 키를 확인하고 시험 스크립트의 `NEW_BB_KEYS`(또는 `HEAD1008_REPLAY_NEW_BB_KEYS=키1,키2`)에 넣어 다시 돌린 뒤 §2 표에 적는다(그 키는 새 판의 블랙박스 줄에서만 빠지고 발행은 전부 비교된다 — 지금 6 개가 들어 있다).
 의도하지 않은 차이면 배포하지 않는다. ④ 젯슨 상태가 바뀌었으면 인벤토리(`jetson_inventory_before_md5.txt`)를 새로 받아 ①부터.
 
 ## 5. 이 작업에서 찾은 것
@@ -156,6 +159,6 @@ deploy/deploy_head_1008.sh --remove-policy=logs/rsl_rl/<실험>/<run>  # 그 추
 | `jetson_inventory_before_md5.txt`·`…_sizes.txt` | 젯슨 현재 상태(주 작업자 제공, `reports/night_1007/jetson/` 의 사본) |
 | `selftest_w3_node_refs.py` · `ref_bridge/*.ref` | 젯슨용 W3 노드 selftest 실행기와 기준 브리지 원문(생성물) |
 | `make_fake_jetson.py` | 인벤토리대로 가짜 젯슨 홈 만들기(로컬 시험용) |
-| `replay_compare.py` · `stage8_frame_compare.py` | 젯슨 판 ↔ 새 판 동작 비교(브리지 발행·stage8 프레임) |
+| `replay_compare.py` · `stage8_frame_compare.py` · `replay_mutate.py` | 젯슨 판 ↔ 새 판 동작 비교(브리지 발행·stage8 프레임)과 그 변이 대조군 |
 | `check_numpy_compat.py` · `numpy_1.21.5_api.json` | numpy 1.21.5 정적 호환 점검과 그 기준 |
 | (상위) `deploy/make_head_manifest.py` · `deploy_head_1008.sh` · `test_head_1008_local.sh` · `head_1008.md5`·`.plan`·`.VERSION` | 생성기 · 배포 스크립트 · 왕복 시험 · 매니페스트 |

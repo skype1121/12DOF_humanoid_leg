@@ -9,7 +9,8 @@
 #   정상 적용(백업·전송·교체·md5·selftest) → 젯슨 판 ↔ 새 판 동작 비교(브리지 발행·stage8 CAN 프레임 — 가짜 ROS·가짜 CAN) →
 #   재적용(멱등) → --verify → 콘솔 재기동(가짜) → 롤백 → **처음 스냅샷과 비교** → 재적용·부분 적용 복구·롤백
 # 을 차례로 돌리고 PASS/FAIL 을 적는다. 매니페스트를 다시 만든 뒤에는 이 시험을 다시 돌린다.
-# 다른 작업이 기존 세션의 기록 필드를 의도해서 더했다면 T9b 가 '다름'을 낸다 — 더한 키를 확인한 뒤 HEAD1008_REPLAY_IGNORE_KEYS=키1,키2 로 다시 돌린다.
+# 다른 작업이 기존 세션의 블랙박스 줄에 기록 필드를 의도해서 더했다면 T9b 가 '다름'을 낸다 — 더한 키를 소스에서 확인한 뒤 NEW_BB_KEYS(아래)에 넣는다.
+# 지금 들어 있는 6 개 = 2522dc26(모터 오류 기록)이 틱 기록에 더한 필드. 이 키들은 **새 판의 블랙박스 줄에서만** 빼고, 나머지 키·값·순서와 모든 발행은 그대로 비교한다.
 #
 # 파이썬 환경: --jetenv(또는 HEAD1008_JETENV) 를 주면 가짜 젯슨의 selftest 가 그 폴더만 쓴다(사용자 site 차단 = torch 없음 → onnxruntime 백엔드,
 #   젯슨과 같은 numpy 1.21.5). 안 주면 호출자의 사용자 site(torch·numpy 2.x)를 쓴다 — 왕복 논리는 같지만 젯슨 환경 모사는 아니다.
@@ -163,7 +164,19 @@ if [ $QUICK -eq 0 ]; then
   fpy $RC --repo "$REFT" --dump "$WORK/replay_before2.json" >> "$LOGD/t9b_replay_dump.log" 2>&1; r2=$?
   fpy $RC --repo "$NEWT" --dump "$WORK/replay_after.json" >> "$LOGD/t9b_replay_dump.log" 2>&1; r3=$?
   python3 $RC --compare "$WORK/replay_before.json" "$WORK/replay_before2.json" > "$LOGD/t9b_replay_control.log" 2>&1; r4=$?
-  python3 $RC --compare "$WORK/replay_before.json" "$WORK/replay_after.json" --ignore-keys "${HEAD1008_REPLAY_IGNORE_KEYS:-}" > "$LOGD/t9b_replay_cmp.log" 2>&1; r5=$?
+  NEW_BB_KEYS=${HEAD1008_REPLAY_NEW_BB_KEYS-fb_age_max_s,fb_age_max_joint,fb_age_over,err_raw,s8_warn,errlog_fail}
+  python3 $RC --compare "$WORK/replay_before.json" "$WORK/replay_after.json" --new-bb-keys "$NEW_BB_KEYS" --ignore-keys "${HEAD1008_REPLAY_IGNORE_KEYS:-}" > "$LOGD/t9b_replay_cmp.log" 2>&1; r5=$?
+  # 변이 대조군: 새 필드가 아닌 블랙박스 값 하나 / 발행 하나를 바꾼 사본은 같은 옵션에서 '다름'이어야 한다(옵션이 차이를 가리지 않는지)
+  python3 deploy/cand/head_1008/replay_mutate.py "$WORK/replay_after.json" "$WORK/replay_mut_bb.json" "$WORK/replay_mut_pub.json" "$NEW_BB_KEYS" > "$LOGD/t9b_replay_mut.log" 2>&1; rmu=$?
+  python3 $RC --compare "$WORK/replay_before.json" "$WORK/replay_mut_bb.json" --new-bb-keys "$NEW_BB_KEYS" > "$LOGD/t9b_replay_mut_bb.log" 2>&1; m1=$?
+  python3 $RC --compare "$WORK/replay_before.json" "$WORK/replay_mut_pub.json" --new-bb-keys "$NEW_BB_KEYS" > "$LOGD/t9b_replay_mut_pub.log" 2>&1; m2=$?
+  python3 $RC --compare "$WORK/replay_after.json" "$WORK/replay_before.json" --new-bb-keys "$NEW_BB_KEYS" > "$LOGD/t9b_replay_mut_rev.log" 2>&1; m3=$?
+  rm -f "$WORK"/replay_mut_bb.json "$WORK"/replay_mut_pub.json
+  if [ -n "$NEW_BB_KEYS" ] && [ $r5 -eq 0 ]; then
+    [ $rmu -eq 0 ] && [ $m1 -ne 0 ] && grep -q '다름 1' "$LOGD/t9b_replay_mut_bb.log" && [ $m2 -ne 0 ] && grep -q '다름 1' "$LOGD/t9b_replay_mut_pub.log" \
+      && [ $m3 -ne 0 ] && grep -q 'A(기준 판) 블랙박스에도 있다' "$LOGD/t9b_replay_mut_rev.log"
+    chk $? "T9b 대조군(새 블랙박스 필드 옵션이 차이를 가리지 않는가): 새 필드 밖 블랙박스 값 1 개 변이 = 검출 · 새 필드 이름의 키를 발행에 끼운 변이 = 검출 · 기준 판에 그 키가 있으면 비교 거부"
+  fi
   [ $((r1 + r2 + r3 + r4)) -eq 0 ]; chk $? "T9b 대조군: 젯슨 판 브리지를 두 번 돌리면 발행이 같다 — $(tail -1 "$LOGD/t9b_replay_control.log")"
   chk $r5 "T9b 브리지 발행·블랙박스 젯슨 판 ↔ 새 판(서기 g21a·g12·g12_ema0·g11a·v18b, 공중 시작, 회복 c5·kr·krh × live/dry × 가드 data/safe) — $(tail -1 "$LOGD/t9b_replay_cmp.log") · $(grep -o '경우 [0-9]* · 발행 [0-9]* 건 · 블랙박스 [0-9]* 줄' "$LOGD/t9b_replay_dump.log" | tail -1) · $(grep -o '백엔드 [a-z]*' "$LOGD/t9b_replay_dump.log" | tail -1)"
   [ $r5 -eq 0 ] || grep '^\[다름\]' "$LOGD/t9b_replay_cmp.log" | head -5 | cut -c1-400
@@ -218,6 +231,14 @@ if [ -n "$PRUN" ]; then
   [ $r4 -eq 0 ] && same_as_start; chk $? "T15 --remove-policy: $(grep -o 'PRM done.*' "$LOGD/t15_rmpol.log") → 처음 스냅샷과 동일"
 fi
 
+# --- T16 로컬 트리가 계획서와 달라진 경우(다른 작업의 수정·병합 흉내: 전송 대상 한 줄의 md5 를 바꾼 계획서) — 적용은 거부, 롤백은 막히지 않아야 한다
+awk -F'\t' 'BEGIN{OFS="\t"} !/^#/ && $2 == "send" && $1 ~ /operator_console\.py$/ {$5 = "00000000000000000000000000000000"} {print}' deploy/head_1008.plan > "$WORK/plan_drift.plan"
+HEAD1008_PLAN="$WORK/plan_drift.plan" dep t16_apply_drift --apply; r1=$?
+[ $r1 -ne 0 ] && has t16_apply_drift '로컬 파일이 계획서와 다름' && same_as_start; chk $? "T16 로컬 원본이 계획서와 다르면 --apply 거부·무변경"
+HEAD1008_PLAN="$WORK/plan_drift.plan" dep t16_rollback_drift --rollback; r2=$?
+[ $r2 -eq 0 ] && has t16_rollback_drift '로컬 원본을 쓰지 않으므로 계속한다' && has t16_rollback_drift 'RESTORED 14' && same_as_start
+chk $? "T16 같은 상황에서 --rollback 은 막히지 않는다(로컬 게이트도 생략) — $(grep -o 'RESTORED.*' "$LOGD/t16_rollback_drift.log" | head -1)"
+
 if [ $QUICK -eq 0 ]; then
   # --- T14 롤백 뒤 재적용(백업 재사용) → 부분 적용 상태 복구 → 롤백
   dep t14_apply2 --apply; rc=$?
@@ -228,13 +249,14 @@ if [ $QUICK -eq 0 ]; then
   dep t14_partial_apply --apply; rc=$?
   [ $r1 -eq 0 ] && [ $rc -eq 0 ] && has t14_partial_apply 'new=0 kept=1 create=2' && cmp -s "$WORK/bm1.md5" "$FH/humanoid_repo_bak_1008/BACKUP_MANIFEST.md5"
   chk $? "T14 부분 적용 상태에서 재실행: 남은 3 파일만 처리·원본 백업을 새 판으로 덮어쓰지 않음"
-  dep t14_rollback2 --rollback; rc=$?
-  [ $rc -eq 0 ] && same_as_start; chk $? "T14 다시 롤백 → 처음 스냅샷과 동일"
+  HEAD1008_PLAN="$WORK/plan_drift.plan" dep t14_rollback2 --rollback; rc=$?
+  [ $rc -eq 0 ] && has t14_rollback2 '로컬 원본을 쓰지 않으므로 계속한다' && same_as_start
+  chk $? "T14 다시 롤백(로컬 트리가 계획서와 달라진 상태에서) → $(grep -o 'RESTORED.*' "$LOGD/t14_rollback2.log" | head -1) → 처음 스냅샷과 동일"
 fi
 
 echo "== 결과: PASS $NPASS · FAIL $NFAIL — 로그 $LOGD"
 if [ $KEEP -eq 0 ] && [ $NFAIL -eq 0 ]; then
-  rm -rf "$FH" "$WORK/fake_ref" "$WORK/empty_site" "$WORK/pyhome" "$WORK"/*.orig "$WORK"/plan_bad.plan "$WORK"/replay_*.json
+  rm -rf "$FH" "$WORK/fake_ref" "$WORK/empty_site" "$WORK/pyhome" "$WORK"/*.orig "$WORK"/plan_bad.plan "$WORK"/plan_drift.plan "$WORK"/replay_*.json
   echo "   가짜 젯슨 홈 삭제(로그·스냅샷은 $WORK 에 남김). --keep 으로 보존"
 fi
 [ $NFAIL -eq 0 ]

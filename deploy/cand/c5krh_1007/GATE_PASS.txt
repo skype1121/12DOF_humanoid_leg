@@ -1,0 +1,8 @@
+# 로컬 게이트(젯슨 배포본 8af2f6e5 스냅샷 + 후보 2 파일, 1007 19:55) — 통과한 후보의 md5
+15dcabf224f9bbfdc01f1017c93d101a  rl_bridge_node.py
+90b7ef283a9da1450de34d3f3da09cc2  operator_console.py
+runner: selftest: ALL PASS
+bridge: selftest: ALL PASS · PASS 항목 20
+[PASS] C5 krh 키(1007): krh 키 OK: kr 과 조기 복귀 유지 시간만 다름(0.2 → 0.7 s) · 회복 체류 kr 40 틱(조기 복귀 1) / krh 61 틱(조기 복귀 0 — 0 이면 평온 경로로 꺼짐)
+[PASS] C5 kr 경로(1005): kr 경로 OK: 켜짐 1 · cue 40 틱 · 조기 복귀 1 · 회복 체류 40 틱
+console: console selftest: ALL PASS (offline only; hardware not exercised)

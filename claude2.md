@@ -178,3 +178,24 @@
 - 평가기: `rl_walking/scripts/eval_w3.py`(걷기), `rl_walking/scripts/eval_ground_recovery.py`(서기 회복), `rl_walking/scripts/eval_w3_envelope.py`, `rl_walking/scripts/eval_w3_parity.py`
 - 회귀: `reports/regress/run_regress.sh --mode quick|full`
 - 메모리: claude1의 메모리는 `~/.claude/projects/-home-ryu-humanoid-leg-test1/memory/`에 있다(claude2에는 자동으로 보이지 않는다). 필요하면 `MEMORY.md` 인덱스를 직접 읽어도 되지만, **수정은 claude1만 한다.**
+
+## 10. 2026-10-08 10:00 상태 — 12 시간 자율 작업(1007 22:00 – 1008 10:00) 뒤
+
+다음 세션은 여기부터 읽는다. 자세한 것은 아래 문서가 정본이다.
+
+- **최종 보고**: `reports/night_1007/FINAL_REPORT.md`(7 항목) · 시간순 기록 `reports/night_1007/LOG.md`
+- **최종 후보는 그대로다**: 서기 G21a-11300 · 회복 G24Ra-21793 + IMU 감지기 · 걷기 W3S3d-15800(`models/` 에 역할 이름으로 등록). 밤사이 이어 학습 팔 10 개 중 승격 0.
+- **젯슨 = 저장소 판**(묶음 `head_1008`, 원본 커밋 `f1ad8221`, 매니페스트 `8f4373d3…`). 기록 `reports/night_1007/JETSON_DEPLOY_1008.md`.
+  새 것: 콘솔 걷기 패널(버튼 6 활성·2 비활성)·모터 오류 바이트 기록·합성 키 2 개(`stand_kew3_…` 갇힘 해소 끔 / `stand_kew3q_…` 켬 = 시뮬 평가 구성).
+  재배포는 `deploy/deploy_head_1008.sh`(드라이런 기본, `--apply --restart-console`, 되돌리기 `--rollback --restart-console`). 재적용 전에 `deploy/head_1008.accept` 를 직전 배포 md5 로 맞춘다.
+- **하드웨어 P0**(드라이버 재시작): `reports/night_1007/HARDWARE_P0.md` — H0(드라이버 전압 한계 읽기)·H1(허브·발목 전압 파형)이 먼저다. 걷기·충격형 밀기 실물 시험은 그 뒤.
+- **실물 계획서**: `reports/gen_w3/REAL_TEST1_PLAN.md` 끝의 `v1.2` 추가분. 운영 명령 `deploy/cand/head_1008/OPERATOR_COMMANDS.md`, 이상 시 카드 `reports/gen_w3/ANOMALY_CARD.md`.
+- **다음 세대 재료**: `reports/night_1007/NEXT_GEN_1008.md`. 확실한 효과는 둘 — 토크 한계 무작위화 + 전진 유인(상한 내성, 전환 약화)·무릎 벌점 −4(지지 무릎 64 → 44°). 묶음은 명령 0 에서 뒤로 흐른다.
+- **밟은 함정(새로)**:
+  1. 평가기 옵션이 배포 러너 객체를 생성 뒤에 바꾸는 경우(`--kw_requiet`)가 있다 — 그 수치는 같은 설정의 배포 키가 있을 때만 배포 구성 수치다(`TRANSITION_W3KE.md` §5.21).
+  2. 이어 학습 한 번·체크포인트 하나의 왕복 수치로 처치 효과를 말하지 않는다. 변경 없는 대조 셋이 요 누적 2.0–3.8 배·왕복 낙상 0.29–2.13 % 로 갈렸다(`W3_FINAL_SELECT.md` §15).
+  3. 칸당 100 env 로 +3 %p 는 못 가른다(X17 → X17c).
+  4. +1000 학습의 중간 저장은 100 단위다(+500 후보 = 16300, 16299 가 아니다).
+  5. 학습 전용 태스크는 `rl_walking/tasks_extra_1008.py` + `RL_WALKING_EXTRA_TASKS` 로 등록한다 — `rl_walking/__init__.py` 는 젯슨 묶음에 들어간다.
+  6. 젯슨 `--verify` 는 selftest 를 다시 돌려 5 분쯤 걸린다. 짧은 timeout 으로 끊지 않는다.
+- 이 세션(claude2)의 메모리: `~/.claude-acc2/projects/-home-ryu-humanoid-leg-test1/memory/`.

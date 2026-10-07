@@ -122,4 +122,16 @@ if [ $ST = x6b ]; then   # X6b: 배포 코드 합성 러너 폐루프 + 배포 �
   for SD in 1 2 3; do for C in nd sf15 b18; do run tr_kew3q_${C}_d2_s${SD} --ke_mode direct --runner_loop --kw_requiet 2.0,0.3 --delay_steps 2,2 --seed $SD ${X[$C]} --trace_all 128; done; done
   unset TR_SCRIPT
 fi
+if [ $ST = x7 ]; then   # X7: 배포 코드 합성 러너 왕복 대본(48 s) — nd/push × 현행/갇힘 해소 옵션, seed 1–2
+  export TR_SCRIPT=rl_walking/scripts/eval_transition_kw.py EVAL_TIMEOUT=2400
+  SC="walk@2:0.06,0,0;stop@6;walk@11:0,0,0.15;stop@15;walk@20:0,0.035,0;stop@24;walk@29:-0.04,0,0;stop@33;walk@38:0.06,0,0;stop@42"
+  PD="push:b:9.5:12:0.3;push:f:27.5:12:0.3;push:b:45.5:18:0.3"
+  for SD in 1 2; do
+    run tr_kwscq_nd_d2_s${SD} --ke_mode direct --runner_loop --kw_requiet 2.0,0.3 --kw_script "$SC" --after_s 48 --delay_steps 2,2 --seed $SD --trace_all 128
+    run tr_kwsc_nd_d2_s${SD} --ke_mode direct --runner_loop --kw_script "$SC" --after_s 48 --delay_steps 2,2 --seed $SD --trace_all 128
+    run tr_kwscq_push_d2_s${SD} --ke_mode direct --runner_loop --kw_requiet 2.0,0.3 --kw_script "$SC" --after_s 48 --delay_steps 2,2 --seed $SD --dist "$PD" --trace_all 128
+    run tr_kwsc_push_d2_s${SD} --ke_mode direct --runner_loop --kw_script "$SC" --after_s 48 --delay_steps 2,2 --seed $SD --dist "$PD" --trace_all 128
+  done
+  unset TR_SCRIPT EVAL_TIMEOUT
+fi
 echo "$(date +%H:%M) TRQ_DONE $ST"

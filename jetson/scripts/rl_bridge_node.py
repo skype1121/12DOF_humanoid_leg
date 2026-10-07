@@ -294,6 +294,13 @@ CHECKPOINTS = {
     #   + 조기 복귀(0.6 s·6°·0.4 rad/s·양발 0.2 s) + 불응기(1.5 s, 6°/1.0). 근거: reports/gen_c5/imu/*, reports/gen_c5/kr/KD_PLAN.md.
     "stand_c5kr_g21a_g24ra": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported"),
+    # stand_c5krh_g21a_g24ra (1007, 사용자 지시로 콘솔 선택지 추가·젯슨 배포됨 — **승격 아님**): stand_c5kr 와 같은 두 정책·같은 감지기에서
+    #   조기 복귀 유지 시간만 0.2 → 0.7 s("imuH" — 회복 스텝 뒤 서기 복귀를 0.5 s 더 확인하고 넘긴다). 다른 값·경로·계약은 stand_c5kr 와 전부 같다.
+    #   시뮬(reports/gen_w3/STOPEST.md §16, seed 7–12): 해제 뒤 재흔들림 11.5 → 1.1 %(지연 2)·14.7 → 2.4 %(지연 3), 낙상 짝 39/19·64/37.
+    #   등록 규칙 v1 은 보조 기준 2 건으로 미통과, v2 확증(seed 13–18)은 진행 중. 긴 회복 체류가 6.3 → 8.6 % 로 는다.
+    #   실물 첫 실행(1007 20:04): 첫 회복은 2.8 s 뒤 서기 복귀, 두 번째 회복 도중 발목 롤 드라이버 재시작으로 정지(reports/real_1007/README.md).
+    "stand_c5krh_g21a_g24ra": os.path.join(
+        REPO, "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported"),
     # stand_crouch_v2 (0918 저녁, S9d, models/stand_crouch_v2) — **등록 보류**: 기본자세 = 실물 v4 명령 + 무릎 직렬 처짐 편향 DR.
     # 시뮬 명목 94.5 % 이나 목 센서 500틱(IMU 무반응) 시험에서 기본자세 출발도 슬루 최대로 발산(틱 34 비유한) → 공중·줄 고정
     # 몸통에서 관절 폭주 위험. 정책 500틱 selftest 는 등록된 stand_* 전부를 순회하므로 등록 자체가 prep 게이트를 막는다.
@@ -307,12 +314,17 @@ CHECKPOINTS = {
 C5_PAIRS = {"stand_c5_g21a_g24ra": ("stand_crouch_g21a", os.path.join(
     REPO, "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported")),
             "stand_c5kr_g21a_g24ra": ("stand_crouch_g21a", os.path.join(
+    REPO, "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported")),
+            "stand_c5krh_g21a_g24ra": ("stand_crouch_g21a", os.path.join(
     REPO, "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported"))}
 #: 1005 kr: C5 키별 추가 설정(감지기 조기 복귀·불응기, 러너 cue) — 시뮬 --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.0,6,1.0 --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu 와 같은 정의.
 #: 1005 최종(krF): 감지 입력 EMA α0.33(관측 신호 잡음 대응) + 불응기 1.5 s — reports/gen_c5/kr/KD_PLAN.md (공정 비교·KDF3).
 #: 1005 최종 KE: + 조기 복귀는 최대 기울기 편차 ≥ 5° 또는 최대 |ω| ≥ 1.0 이었던 활성화에만(무외란 오탐은 calm 경로) — reports/gen_c5/kr/KE_PLAN.md.
 C5_EXTRA = {"stand_c5kr_g21a_g24ra": dict(det=dict(early=(0.6, 6.0, 0.4, 0.2), refrac=(1.5, 6.0, 1.0), in_filt=0.33, early_gate=(5.0, 1.0)),
-                                           runner=dict(cue_vx=0.03, cue_s=1.0, cue_dir_imu=True))}
+                                           runner=dict(cue_vx=0.03, cue_s=1.0, cue_dir_imu=True)),
+            # 1007 krh("imuH"): 조기 복귀 유지 시간만 0.7 s — 시뮬 --sw_early_imu 0.6,6,0.4,0.7. 그 밖은 위 kr 와 같은 값.
+            "stand_c5krh_g21a_g24ra": dict(det=dict(early=(0.6, 6.0, 0.4, 0.7), refrac=(1.5, 6.0, 1.0), in_filt=0.33, early_gate=(5.0, 1.0)),
+                                            runner=dict(cue_vx=0.03, cue_s=1.0, cue_dir_imu=True))}
 C5_DETECTOR_KW = dict(on_tilt_deg=3.0, on_w=0.5, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, ref_tau_s=10.0, ref_init_s=1.5, off_contact="any")   # RV4(1004 밤): RV3 + 끄기 접촉 한 발 이상 — 실물 시험 4 패드 0 고착 19 s 재생 해소·시뮬 RV3 와 동일(짝 불일치 0) — 젯슨 미반영(다음 배포 승인)
 
 
@@ -440,6 +452,7 @@ CKPT_DEFAULT_POSE = {
     "stand_crouch_g21a": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
     "stand_c5_g21a_g24ra": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
     "stand_c5kr_g21a_g24ra": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
+    "stand_c5krh_g21a_g24ra": [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER],
 }
 
 
@@ -451,7 +464,7 @@ def ckpt_default_pose(checkpoint):
 #: 위상 어긋난 관측 → 보행 파괴). 미등록 = 1.4 (기존 가족 전체의 계약).
 #: v5 가족(0803 측정 기반 재정합)부터 1.1Hz — 등록 시 평가 게이트+하네스
 #: (--gait-freq 1.1) 통과 필수.
-CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "stand_crouch_v6": 1.1, "stand_crouch_g11a": 1.1, "stand_crouch_g12": 1.1, "stand_crouch_g12_ema0": 1.1, "stand_crouch_g21a": 1.1, "stand_c5_g21a_g24ra": 1.1, "stand_c5kr_g21a_g24ra": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
+CKPT_GAIT_FREQ = {"stand_crouch_v1": 1.1, "stand_crouch_v1b": 1.1, "stand_crouch_v1c": 1.1, "stand_crouch_v5": 1.1, "stand_crouch_v6": 1.1, "stand_crouch_g11a": 1.1, "stand_crouch_g12": 1.1, "stand_crouch_g12_ema0": 1.1, "stand_crouch_g21a": 1.1, "stand_c5_g21a_g24ra": 1.1, "stand_c5kr_g21a_g24ra": 1.1, "stand_c5krh_g21a_g24ra": 1.1, "march_v5b": 1.1, "stand_v3": 1.1, "stand_v5": 1.1, "stand_v6": 1.1, "stand_v7": 1.1,
                    "stand_v8": 1.1, "stand_v9": 1.1, "stand_v14": 1.1, "stand_v15": 1.1, "stand_v16": 1.1, "stand_v17": 1.1, "stand_v18": 1.1, "stand_v18b": 1.1, "stand_hang_v1": 1.1, "stand_hang_v2": 1.1, "stand_hang_v3": 1.1, "stand_hang_v4": 1.1, "stand_hang_v5": 1.1, "stand_hang_v5p": 1.1, "stand_hang_v6": 1.1}
 CKPT_GAIT_FREQ_DEFAULT = 1.4
 
@@ -460,7 +473,7 @@ CKPT_GAIT_FREQ_DEFAULT = 1.4
 #: v2 로 학습한 정책(G16~)에 0 을 넣는 반대 방향 결함은 _jvel_ema_contract 검사가 기동을 거부한다.
 CKPT_JVEL_EMA_MODE = {"stand_crouch_g12_ema0": "ema0"}
 #: 1003: 관측 필터 계약(학습 env.yaml 로 결정)이 필요한 정책 — env.yaml 이 없으면 원시 관측으로 조용히 도는 대신 기동 거부.
-CKPT_REQUIRE_ENV_YAML = {"stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr_g21a_g24ra"}
+CKPT_REQUIRE_ENV_YAML = {"stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra"}
 #: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).
 #: 대체는 경고 로그로 드러낸다 (0905 감사 A1: 무언 대체 'stand_v7' = 10.49kg 자산 정책 탑승 경로).
 STAND_DEFAULT = "stand_v18b"
@@ -2053,6 +2066,46 @@ def _selftest_c5_odic():
         set_c5_settle(saved)
         for k in ("_selftest_odic", "_selftest_odic_noearly"):
             C5_PAIRS.pop(k, None); C5_EXTRA.pop(k, None)
+
+
+def _selftest_c5krh():
+    """(1007) krh 키: stand_c5kr 와 레지스트리·감지기·러너 설정이 조기 복귀 유지 시간(0.2 → 0.7 s) 하나만 다른지, 실제 키로 만든 러너에 그 값이 들어가는지,
+    같은 입력에서 회복 체류가 kr 보다 길고 그 차가 유지 시간 차(0.5 s = 25 틱) 이내인지(회복 자리에 G21a 내보내기 — 경로 검증, 정책 성능 아님).
+    주의: 유지 0.7 s 의 조기 복귀는 켜진 뒤 1.3 s 부터 가능하므로, 자세가 기준 1.5° 안으로 일찍 돌아오면 평온 경로(1.0 s)가 먼저 끈다 — 이 시험 입력이 그 경우다."""
+    import numpy as np
+    K, H = "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra"
+    assert CHECKPOINTS[H] == CHECKPOINTS[K] and C5_PAIRS[H] == C5_PAIRS[K] and CKPT_DEFAULT_POSE[H] == CKPT_DEFAULT_POSE[K], "krh 경로·기본자세 ≠ kr"
+    assert CKPT_GAIT_FREQ[H] == CKPT_GAIT_FREQ[K] and H in CKPT_REQUIRE_ENV_YAML and ckpt_obs_filter(H) == ckpt_obs_filter(K), "krh 클록·관측 계약 ≠ kr"
+    dk, dh = C5_EXTRA[K]["det"], C5_EXTRA[H]["det"]
+    assert C5_EXTRA[H]["runner"] == C5_EXTRA[K]["runner"] and {k: v for k, v in dh.items() if k != "early"} == {k: v for k, v in dk.items() if k != "early"}, "krh 설정이 early 밖에서 kr 과 다름"
+    assert tuple(dh["early"][:3]) == tuple(dk["early"][:3]) and dk["early"][3] == 0.2 and dh["early"][3] == 0.7, f"조기 복귀 값 {dk['early']} / {dh['early']}"
+    if not os.path.isdir(CHECKPOINTS["stand_crouch_g21a"]):
+        return "레지스트리 OK · 실행 SKIP (G21a 미배포)"
+    dwell = {}; nearly = {}
+    for tag, src in (("_selftest_krh_k", K), ("_selftest_krh_h", H)):
+        C5_PAIRS[tag] = ("stand_crouch_g21a", CHECKPOINTS["stand_crouch_g21a"]); C5_EXTRA[tag] = C5_EXTRA[src]
+        try:
+            core = BridgeCore(tag); r = core.runner
+            assert isinstance(r, C5Runner) and tuple(r.det.early) == tuple(C5_EXTRA[src]["det"]["early"]), "early 전달"
+            q = np.asarray(CKPT_DEFAULT_POSE["stand_crouch_g21a"], dtype=np.float32); prev = None; modes = []
+            for k in range(300):
+                ang = math.radians(3.5 + (6.0 if 100 <= k < 110 else 0.0))
+                quat = (math.cos(ang / 2), 0.0, math.sin(ang / 2), 0.0)
+                out = core.tick((0.0, 0.6 if k == 100 else 0.0, 0.0), quat, q, np.zeros(12, np.float32), (1.0, 1.0))
+                assert np.all(np.isfinite(out))
+                if prev is not None:
+                    assert float(np.max(np.abs(out - prev))) <= math.radians(4.0) + 1e-6, "슬루 초과"
+                prev = out; q = out.astype(np.float32); modes.append(r.last_mode)
+            assert max(modes[:100]) == 0 and max(modes[100:112]) == 1 and modes[-1] == 0, f"{src}: 켜짐·서기 복귀"
+            dwell[src] = sum(modes); nearly[src] = int(r.blackbox()["n_early"])
+        finally:
+            C5_PAIRS.pop(tag, None); C5_EXTRA.pop(tag, None)
+    assert nearly[K] >= 1, "kr 조기 복귀 미발동"
+    assert 5 <= dwell[H] - dwell[K] <= 27, f"회복 체류 차 {dwell[H] - dwell[K]} 틱(기대: 0 초과, 유지 시간 차 25 틱 + 2 이내)"
+    core = BridgeCore(H)
+    assert isinstance(core.runner, C5Runner) and tuple(core.runner.det.early) == (0.6, 6.0, 0.4, 0.7) and core.runner.cue_vx == 0.03, "실제 krh 키 러너 설정"
+    return (f"krh 키 OK: kr 과 조기 복귀 유지 시간만 다름(0.2 → 0.7 s) · 회복 체류 kr {dwell[K]} 틱(조기 복귀 {nearly[K]}) / "
+            f"krh {dwell[H]} 틱(조기 복귀 {nearly[H]} — 0 이면 평온 경로로 꺼짐)")
 
 
 def _selftest_obs_filter():
@@ -4236,6 +4289,7 @@ def run_selftest(required=()):
              ("학습 계약", lambda: _selftest_contract(required)),
              ("관측 필터 계약(1003)", _selftest_obs_filter),
              ("C5 전환 경로(1004)", _selftest_c5),
+             ("C5 krh 키(1007)", _selftest_c5krh),
              ("C5 kr 경로(1005)", _selftest_c5kr),
              ("C5 odic 조기 복귀 플래그(1007)", _selftest_c5_odic),
              ("HTURN2 실험 플래그(1006)", _selftest_hturn2),

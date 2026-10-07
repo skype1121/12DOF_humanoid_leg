@@ -317,7 +317,11 @@ def check_bridge_off(ref):
         os.unlink(tmp)
     spec = importlib.util.spec_from_file_location("_new_bridge_odic", os.path.join(REPO, "jetson", "scripts", "rl_bridge_node.py"))
     new = importlib.util.module_from_spec(spec); spec.loader.exec_module(new)
-    assert new.C5_SETTLE is None and set(new.CHECKPOINTS) == set(old.CHECKPOINTS) and new.C5_EXTRA == old.C5_EXTRA
+    # 1007: 기준 커밋 뒤에 추가된 키(사용자 지시로 올린 콘솔 선택지 krh)는 허용하되, **기존 키의 등록·설정은 그대로**여야 한다.
+    added = {"stand_c5krh_g21a_g24ra"}
+    assert new.C5_SETTLE is None and added <= set(new.CHECKPOINTS) and set(new.CHECKPOINTS) - added == set(old.CHECKPOINTS), "체크포인트 등록이 기준 + 허용 추가와 다름"
+    assert {k: v for k, v in new.C5_EXTRA.items() if k not in added} == old.C5_EXTRA and added <= set(new.C5_EXTRA), "기존 C5 키 설정이 기준과 다름"
+    assert all(new.CHECKPOINTS[k] == old.CHECKPOINTS[k] for k in old.CHECKPOINTS), "기존 키의 경로가 기준과 다름"
     done = []
     pulses = [(80, 7.0, 25), (260, 9.0, 30)]
     for name in ("stand_c5kr_g21a_g24ra", "stand_c5_g21a_g24ra", "stand_crouch_g21a"):

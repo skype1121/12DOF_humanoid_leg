@@ -236,7 +236,10 @@ def check_bridge_off(ref):
         os.unlink(tmp)
     spec = importlib.util.spec_from_file_location("_new_bridge_w3", os.path.join(REPO, "jetson", "scripts", "rl_bridge_node.py"))
     new = importlib.util.module_from_spec(spec); spec.loader.exec_module(new)
-    assert not new.EXPERIMENTAL_W3 and not new.W3_CKPTS and set(new.CHECKPOINTS) == set(old.CHECKPOINTS)
+    # 1007: 기준 커밋 뒤에 추가된 키(사용자 지시로 올린 콘솔 선택지 krh)는 허용하되, 기존 키의 등록·경로는 그대로여야 한다.
+    added = {"stand_c5krh_g21a_g24ra"}
+    assert not new.EXPERIMENTAL_W3 and not new.W3_CKPTS and added <= set(new.CHECKPOINTS) and set(new.CHECKPOINTS) - added == set(old.CHECKPOINTS), "체크포인트 등록이 기준 + 허용 추가와 다름"
+    assert all(new.CHECKPOINTS[k] == old.CHECKPOINTS[k] for k in old.CHECKPOINTS), "기존 키의 경로가 기준과 다름"
     done = []
     for name in ("stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "walk", "stand_v18b"):
         d = old.CHECKPOINTS.get(name)

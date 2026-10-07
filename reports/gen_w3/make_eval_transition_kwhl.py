@@ -163,7 +163,8 @@ rep('''"heading_loop": bool(KWH is not None), "req_id": "kw", "seq": kw_seq[e]}'
 rep('''            S.observe(now, ct[e], gy[e], pg[e])''', '''            S.observe(now, ct[e], gy[e], pg[e])
             if S.burst_t_off is not None:                 # 1007 X14: 기한 도달 → 브리지 _w3_burst_end 와 같은 실행(명령 0·gait 0), 이 걷기 요청은 끝
                 if S.burst_due(now, bool(clk.want)) is not None:
-                    kw_cur[e] = (0.0, 0.0, 0.0); R.set_gait_enable(False); kw_events[e].append((round(now, 2), "burst_end")); _burst_end_now[e] = True''')
+                    kw_cur[e] = (0.0, 0.0, 0.0); R.set_gait_enable(False); kw_events[e].append((round(now, 2), "burst_end")); _burst_end_now[e] = True
+                    des[e] = False                         # 이 걷기 요청은 끝 — 같은 틱에 다시 켜기 요청을 내지 않는다(콘솔은 기한 끝에 요청을 보내지 않음)''')
 rep('''                        kw_cur[e] = tuple(dec["cmd"]); R.set_gait_enable(True); en_now[e] = True''', '''                        kw_cur[e] = tuple(dec["cmd"]); R.set_gait_enable(True); en_now[e] = True
                         S.burst_arm(now, d["req_id"], dec.get("dur_s"))''')
 rep('''        _hlerr = _npk.full(N, _npk.nan, _npk.float32); _wzc = _npk.zeros(N, _npk.float32); _hl_fault_now = _npk.zeros(N, bool)''', '''        _hlerr = _npk.full(N, _npk.nan, _npk.float32); _wzc = _npk.zeros(N, _npk.float32); _hl_fault_now = _npk.zeros(N, bool)

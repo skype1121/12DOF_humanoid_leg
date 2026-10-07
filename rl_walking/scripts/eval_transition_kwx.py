@@ -1158,6 +1158,7 @@ if KWL:
             if S.burst_t_off is not None:                 # 1007 X14: 기한 도달 → 브리지 _w3_burst_end 와 같은 실행(명령 0·gait 0), 이 걷기 요청은 끝
                 if S.burst_due(now, bool(clk.want)) is not None:
                     kw_cur[e] = (0.0, 0.0, 0.0); R.set_gait_enable(False); kw_events[e].append((round(now, 2), "burst_end")); _burst_end_now[e] = True
+                    des[e] = False                         # 이 걷기 요청은 끝 — 같은 틱에 다시 켜기 요청을 내지 않는다(콘솔은 기한 끝에 요청을 보내지 않음)
             if des[e] and not clk.want:                                   # 켜기 요청(거부되면 다음 틱 새 seq 로 재시도 = 운영자 재시도)
                 if kw_req_t[e] is None:
                     kw_req_t[e] = now; kw_events[e].append((round(now, 2), "enable_req"))

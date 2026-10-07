@@ -156,7 +156,7 @@ parser.add_argument("--trace_npz", action="store_true", help="1007 §13b: 틱별
 parser.add_argument("--out_tag", type=str, default="rec")
 parser.add_argument("--c2", action="store_true", help="1006 c2 평가 어댑터: 단일 W3 정책 + 환경 안 supervisor(w3_c2.c2_gait_update, 배포 의미) + W3 위상·ge 래치·스텝 추적기. "
                     "회복 모드 = 실제 ge 1, 'cue 종료' = 첫 정지 요청(상태 조건/시간 초과), '서기 인계' = ge 0 래치 — CSV 열은 전환 평가와 같은 이름(stages_cmp·closure_s5 그대로)")
-parser.add_argument("--c2_arm", type=str, default="deploy", choices=("deploy", "march"), help="deploy = 감지기 켜짐(무장 항상 참) / march = 인계 뒤 ge 1 고정(C2CAL 제자리 걸음 흔들림)")
+parser.add_argument("--c2_arm", type=str, default="deploy", choices=("deploy", "march", "ge0"), help="deploy = 감지기 켜짐(무장 항상 참) / march = 인계 뒤 ge 1 고정(C2CAL 제자리 걸음 흔들림) / ge0 = 전 env W3 STAND 모드 고정(회복 켜짐 금지, 1007 STAND_MODE_CMP)")
 parser.add_argument("--c2_from_task", type=str, default="", help="c2 supervisor 파라미터를 이 학습 태스크 설정(events.w3_gait.params['c2'])에서 그대로 가져옴(레드팀 b: 학습·평가 파라미터 불일치 방지). --c2_params 는 그 위에 덮어씀")
 parser.add_argument("--c2_params", type=str, default="", help="C2Params 덮어쓰기 'k=v,...'(C2_PARAMS env var 로 전달)")
 parser.add_argument("--c2_trace", action="store_true", help="C2CAL: 틱별 기울기·|ω_xy|·|v|·모드·ge·양발 접촉·생존을 log_picture/c2trace_<tag>.npz 로")

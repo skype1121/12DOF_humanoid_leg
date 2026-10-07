@@ -18,6 +18,7 @@ def load(arm, cond, d, seed):
     R = dict(t=t, mode=z["mode"].astype(bool), alive=z["alive"].astype(bool), pre=z["pre_pass"].astype(bool), fell=z["fell"].astype(bool), tf=z["t_fall_post"].astype(float))
     q = os.path.join(LP, f"rqlog_keq_{arm}_{cond}_d{d}_s{seed}.json")
     R["fires"] = json.load(open(q)).get("fires", []) if os.path.exists(q) else []
+    R["rqlog_missing"] = (not os.path.exists(q)) and arm.endswith("q")       # 후보 팔인데 발동 기록 파일이 없으면 K7 을 믿을 수 없다(독립 검토 지적)
     return R
 
 
@@ -70,17 +71,27 @@ def nd_stats(arm, d, seeds):
     return dict(n=n, fell=fell, rate=ons / env_min if env_min > 0 else float("nan"), frac=mode_t / alive_t if alive_t else float("nan"), miss=miss)
 
 
-def fires_stats(arm, conds_d, seeds):
-    nf = big = f2 = 0
+def fires_stats(arm, conds_d, seeds, base=None):
+    """반환: 합산 (발동 수, 6° 초과, 2 s 안 낙상), 조건별 표 행, 발동 기록 누락 실행 목록. base = 기준 팔 이름이면 '2 s 안 낙상' 중 기준 팔에서도 같은 env 가 ±0.5 s 안에 넘어진 건수를 함께 센다."""
+    nf = big = f2 = 0; rows = []; missing = []
     for cond, d in conds_d:
+        c_nf = c_big = c_f2 = c_same = c_pre = 0
         for s in seeds:
             A = load(arm, cond, d, s)
             if A is None:
                 continue
+            if A["rqlog_missing"]:
+                missing.append(f"{cond}/d{d}/s{s}")
+            B = load(base, cond, d, s) if base else None
             for f in A["fires"]:
-                tt, e, tilt = float(f[0]), int(f[1]), float(f[2]); nf += 1; big += tilt > 6.0
-                f2 += bool(A["fell"][e] and tt <= A["tf"][e] <= tt + 2.0)
-    return nf, big, f2
+                tt, e, tilt = float(f[0]), int(f[1]), float(f[2]); c_nf += 1; c_big += tilt > 6.0; c_pre += bool(A["pre"][e])
+                hit = bool(A["fell"][e] and tt - 1e-6 <= float(A["tf"][e]) <= tt + 2.0 + 1e-6); c_f2 += hit
+                if hit and B is not None and bool(B["fell"][e]) and abs(float(B["tf"][e]) - float(A["tf"][e])) <= 0.5:
+                    c_same += 1
+        nf += c_nf; big += c_big; f2 += c_f2
+        if c_nf:
+            rows.append(f"{cond}(지연 {d}) 발동 {c_nf}(통과 env {c_pre}) · 6° 초과 {c_big} · 2 s 안 낙상 {c_f2}(그중 기준 팔도 같은 시각 낙상 {c_same})")
+    return nf, big, f2, rows, missing
 
 
 def pct(a, n):
@@ -132,11 +143,15 @@ def judge(a, b, seeds, label):
     res["K6"] = (d61 <= 3.0 + 1e-9) and (st6 <= 2.0) and (n3b["fell"] <= n3a["fell"] + 1)
     print(f"- K6 지연 3: sf15 낙상 {pct(r1['fa'], r1['n'])} → {pct(r1['fb'], r1['n'])} ({d61:+.1f} %p) · bb 갇힘 기준 {pct(r2['stuckA'], r2['nA'])} / 후보 {pct(r2['stuckB'], r2['nB'])} · nd60 낙상 {n3a['fell']}/{n3a['n']} → {n3b['fell']}/{n3b['n']} → {'충족' if res['K6'] else '미달'}")
     # K7
-    nf, big, f2 = fires_stats(b, [(c, 2) for c in ("bb", "fb", "b18", "fi40", "sf15", "padL", "nd60")] + [(c, 3) for c in ("bb", "sf15", "nd60")], seeds)
-    res["K7"] = nf > 0 and (100.0 * big / nf <= 5.0) and (100.0 * f2 / nf <= 2.0)
-    print(f"- K7 돌려주는 자세: 재기준 발동 {nf} 회 · 묵은 기준 대비 6° 초과 {pct(big, nf)} · 발동 뒤 2 s 안 낙상 {pct(f2, nf)} → {'충족' if res['K7'] else '미달'}")
+    nf, big, f2, k7rows, k7miss = fires_stats(b, [(c, 2) for c in ("bb", "fb", "b18", "fi40", "sf15", "padL", "nd60")] + [(c, 3) for c in ("bb", "sf15", "nd60")], seeds, base=a)
+    res["K7"] = nf > 0 and (100.0 * big / nf <= 5.0) and (100.0 * f2 / nf <= 2.0) and not k7miss
+    print(f"- K7 돌려주는 자세(전 조건 합산 — §4 해석 고정 주석): 재기준 발동 {nf} 회 · 묵은 기준 대비 6° 초과 {pct(big, nf)} · 발동 뒤 2 s 안 낙상 {pct(f2, nf)} → {'충족' if res['K7'] else '미달'}")
+    for r_ in k7rows:
+        print(f"    조건별: {r_}")
+    if k7miss:
+        print(f"    ⚠ 발동 기록(rqlog) 없는 후보 실행: {', '.join(k7miss)} — K7 미달로 처리")
     if inc:
-        print(f"- **미완 실행**: {', '.join(inc)} → 판정 보류")
+        print(f"- **미완 실행**: {', '.join(inc)} → 판정 보류(위의 '충족/미달'은 지금 있는 실행만의 중간값이다)")
     else:
         print(f"- **판정**: {'K1–K7 전부 충족 → 채택 제안(결정은 사용자)' if all(res.values()) else '미달 기준 ' + ', '.join(k for k, v in res.items() if not v) + ' → 기록하고 값 조정 없음'}")
     return res, inc

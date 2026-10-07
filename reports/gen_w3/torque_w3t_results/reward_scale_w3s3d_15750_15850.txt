@@ -1,0 +1,29 @@
+# 2026-10-07_00-11-12_w3S3d_from_s2d · 반복 15750–15850 · 평균 에피소드 길이 822 틱 · 평균 보상 52.6 · 걷기(ge 1) 시간 비율 0.571
+종료 비율: time_out 0.712 · bad_orientation 0.117 · base_too_low 0.172
+
+| 걷기 항 | 에피소드 초당 | 걷기 초당 |
+|---|---|---|
+| w3_height | +0.7966 | +1.396 |
+| w3_valid | +0.2934 | +0.514 |
+| w3_alive | +0.2854 | +0.500 |
+| w3_arate | -0.2606 | -0.457 |
+| w3_yaw | -0.2245 | -0.393 |
+| w3_imit | +0.1630 | +0.286 |
+| w3_drift | -0.1056 | -0.185 |
+| w3_track | -0.0938 | -0.164 |
+| w3_periodic | -0.0811 | -0.142 |
+| w3_miss | -0.0541 | -0.095 |
+| w3_ytrack | +0.0382 | +0.067 |
+| w3_orient | -0.0250 | -0.044 |
+| w3_angvel | -0.0232 | -0.041 |
+| w3_turn | +0.0128 | +0.022 |
+| w3_place | +0.0083 | +0.015 |
+| w3_stride | +0.0041 | +0.007 |
+| w3_wrong | -0.0007 | -0.001 |
+| w3_width | -0.0003 | -0.001 |
+| 합 | +0.7329 | +1.284 (양수 +2.806 · 음수 -1.522) |
+
+서기 전용 항 합(에피소드 초당) +1.9114 · 종료 벌점 -0.0229 · 전체 +2.6214 → ×20 s = 52.4 (로그 평균 보상 52.6 와 대조)
+서기 전용 항 상위: knee_stance_flexion +0.9856 · feet_contact_gated +0.4861 · track_lin_vel_xy_exp +0.4685 · action_rate_l2 -0.4496 · track_ang_vel_z_exp +0.3873 · survive_after_release +0.2482 · settle_quiet_bonus +0.1018 · leg_pose_deviation -0.1012 · foot_yaw_slip -0.0520 · hip_r_deviation -0.0462
+토크·에너지 계열(전부 서기 전용 = w3_stand_gated): torque_saturation -0.00015 · dof_torques_l2 -0.00837 · dof_acc_l2 -0.00050 · joint_vel_l2 -0.00019 · action_rate_l2 -0.44958
+커리큘럼: w3_assist/alpha 0.000 · w3_assist/block_valid 0.803 · w3_vy/lat_sign_ok 0.718 · w3_vy/vy_max 0.040 · w3_vy/width_bad 0.002 · w3_wz/pivot_frac 0.264 · w3_wz/turn_sign_ok 0.730 · w3_wz/wz_max 0.200 · w3_wz/yaw_gain 0.539

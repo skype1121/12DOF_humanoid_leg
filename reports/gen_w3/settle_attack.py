@@ -156,6 +156,9 @@ def make_detector(arm):
     if arm == "imuT":      # §13e 대조: 현행 imu 조기 복귀를 늦게만(켜진 뒤 최소 0.6 → 1.1 s)
         kw["early"] = (1.1, 6.0, 0.4, 0.2)
         return C5.SwitchDetector(**kw)
+    if arm == "imuH":      # §13f 시간 정합 대조: 현행 imu 조기 복귀 유지 0.2 → 0.7 s
+        kw["early"] = (0.6, 6.0, 0.4, 0.7)
+        return C5.SwitchDetector(**kw)
     st = dict(C5.ODICW_DEFAULT)
     cls = C5.OdicSettle; post = {}
     if arm == "odic":
@@ -218,7 +221,7 @@ def metrics(sc, mode, wf, ev):
                 paths="".join("e" if w == "early" else "c" for _, w in ev), rec_s=float(mode.sum() * DT))
 
 
-ARMS = ["imu", "imuT", "odic", "odicw", "odicwN", "odicwH", "xV", "xDS", "xMIN", "xK", "xTAU"]
+ARMS = ["imu", "imuT", "imuH", "odic", "odicw", "odicwN", "odicwH", "xV", "xDS", "xMIN", "xK", "xTAU"]
 
 
 def scenarios():

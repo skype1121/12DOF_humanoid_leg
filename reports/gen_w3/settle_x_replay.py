@@ -28,7 +28,7 @@ def run(d, arm):
     mode = np.zeros(n, int); spd = np.full(n, np.nan); tilt = np.full(n, np.nan); wf = np.zeros(n); ev = []
     on_k = None; ne = 0
     for k in range(n):
-        if arm in ("imu", "imuT"):
+        if arm in ("imu", "imuT", "imuH"):
             m = det.update(d["g"][k], d["gy"][k], d["c"][k])
         else:
             tk = O.B.knee_tau_joint({"left_knee_joint": d["tau"][k, O.IL], "right_knee_joint": d["tau"][k, O.IR]},
@@ -69,7 +69,7 @@ def main(arms):
             r = R[a]; g = agg[a]
             g["r1"] += [(name, float(d["t"][k]), int(r["mode"][k])) for k in r1k]
             sq = r["spd"][qm]
-            if a not in ("imu", "imuT"):
+            if a not in ("imu", "imuT", "imuH"):
                 g["qx"][0] += int(np.nansum(sq >= 0.07)); g["qx"][1] += int(qm.sum())
             g["qon"] += sum(1 for (k0, k1, w) in r["ev"] if qm[k0])
             g["ticks"] += int(r["mode"].sum())
@@ -101,11 +101,11 @@ def main(arms):
     for a in arms:
         g = agg[a]
         r1 = f"{sum(m for _, _, m in g['r1'])}/{len(g['r1'])}"
-        qx = "—" if a in ("imu", "imuT") else f"{g['qx'][0]}/{g['qx'][1]} ({100 * g['qx'][0] / max(1, g['qx'][1]):.2f}%)"
+        qx = "—" if a in ("imu", "imuT", "imuH") else f"{g['qx'][0]}/{g['qx'][1]} ({100 * g['qx'][0] / max(1, g['qx'][1]):.2f}%)"
         P(f"  {a:>7} · R1 {r1} · R2 {qx}·켜짐 {g['qon']} · R3 {g['r3']} · 회복 틱 {g['ticks']} · 끄기 {g['offs']} · 조기 해제 {g['prem']} · 노출 {g['expo']:.2f} s")
     P("\n## 판정(§11 R 정의, odicw 기준)")
     for a in arms:
-        if a in ("imu", "odic", "imuT"):
+        if a in ("imu", "odic", "imuT", "imuH"):
             continue
         g = agg[a]
         r1 = all(m == 1 for _, _, m in g["r1"])

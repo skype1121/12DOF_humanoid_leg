@@ -28,6 +28,7 @@ def quat_zyx(yaw, pitch, roll):
 def ana(tag, t_skip=2.0):
     z = np.load(os.path.join(REPO, "log_picture", f"w3trace_{tag}.npz"), allow_pickle=True)
     dt = float(z["dt"]); T, N = z["yaw"].shape
+    N = min(N, int(os.environ.get("HF_MAX_ENV", "32")))          # 파이썬 틱 재생이 느려(64 env × 6100 틱 > 20 분) 앞 N env 만
     tf = z["t_fall"]
     rows = []
     for e in range(N):

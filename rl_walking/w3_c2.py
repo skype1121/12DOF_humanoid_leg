@@ -298,7 +298,8 @@ def _get_P(env, c2: dict | None = None) -> C2Params:
     for kv in filter(None, os.environ.get("C2_PARAMS", "").split(",")):   # 평가·반사실 진단 전용 덮어쓰기 'k=v,...'
         k, v = kv.split("="); prm[k.strip()] = float(v)
     P = _P(prm); env._c2_P = P
-    env._c2_arm_off = os.environ.get("C2_ARM", "") == "stand"          # 진단 팔 B1: 회복 켜짐 금지(발목 전략만)
+    env._c2_arm_off = os.environ.get("C2_ARM", "") in ("stand", "ge0")   # 진단 팔 B1: 회복 켜짐 금지(발목 전략만)
+    env._c2_all = os.environ.get("C2_ARM", "") == "ge0"              # 1007 평가 팔: 전 env W3 STAND 모드(ge 0·명령 0) 고정 — 실물 T1 서기와 같은 의미
     env._c2_deploy = os.environ.get("C2_ARM", "") in ("deploy", "march")   # 평가: 배포 의미(전 env supervisor·무장 항상 참 — nd 오탐 포함)
     env._c2_march = os.environ.get("C2_ARM", "") == "march"           # C2CAL: 전 env ge 1 고정
     print(f"[c2] supervisor 파라미터 {P} · 켜짐 금지 {env._c2_arm_off} · 배포 의미 {env._c2_deploy}", flush=True)
@@ -362,7 +363,7 @@ def c2_gait_update(env, env_ids, f_step: float = 1.1, ramp_s: float = 0.2, c2: d
     fresh = env.episode_length_buf <= 1
     reset_envs(st, fresh)
     deploy = getattr(env, "_c2_deploy", False)
-    m2 = torch.ones(env.num_envs, dtype=torch.bool, device=env.device) if deploy else _c2_mask(env)
+    m2 = torch.ones(env.num_envs, dtype=torch.bool, device=env.device) if (deploy or getattr(env, "_c2_all", False)) else _c2_mask(env)
     asset, tilt, w = _imu_signals(env)
     if P.tilt_ref_tau > 0.0:                                  # 상대 기울기 감지기(배포 가능: IMU 중력 방향만)
         g = asset.data.projected_gravity_b

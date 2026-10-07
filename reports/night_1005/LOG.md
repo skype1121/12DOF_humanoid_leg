@@ -1572,3 +1572,18 @@ vx .053/.073/.078/.090(기울기 0.25), 뒤 명령 낙상 54 %·걸음 없음, �
 - 준비(기본 꺼짐, 오프라인 검증): --w3-monitor · --w3-hl-fault · --c5-overtime · w3_cmd.py · --runner-ema-fresh 2 · --c5-imu-f32 · parity 롤아웃 동치 시험 · 회귀 스위트 reports/regress(v2 문턱) · ANOMALY_CARD.
 - 최대 실물 위험: ① IMU 피치 편향 ±3°·CoM +3 cm 경계(겹치면 28 % 낙상) ② 지연 ≥ 5 틱 ③ 헤딩 15° 오정지(D7).
 - 미검증: --w3-monitor 켬 폐루프(E2 무효), W3 정지 → KE 인계 과도, 접촉 교란 회귀, imuH 독립 seed.
+
+# 1007 14:40 — claude2 인계 (claude1 토큰 소진, 이후 전 작업 claude2)
+- 환경 점검: GPU 유휴(RTX 5080 **16 GB** — claude2.md 의 24 GB 는 오기), 디스크 84 %, worktree 6 개 전부 병합. worktree 3 개에만 있던 산출물 341 개(cE1/E2/E3 추적·parity·WD 평가)를 본 트리 log_picture 로 복사.
+- 14:50 구성 평가(승윤님 요청 "솔직한 평가"): 블록 4 개(KE·W3S3d·imuH·heading)는 시뮬 근거 있음, 화살표 2 개(W3 STOP → KE, KE → W3 START)는 근거·구현 없음, 그림 밖 구멍 = 걷는 중 외란. 상세는 대화 기록.
+
+## 1007 15:00 — 승윤님 지시: 블록보다 화살표(전환 증명 최우선), 미검증 STOP→KE 기본 가정 금지, imuH 독립 seed 뒤 승격, 안전 개입은 검증된 fallback 만, 중단까지 자율 연구
+- **사전 등록** `reports/gen_w3/TRANSITION_W3KE.md` v1(15:40, 실행 전): W3 걷기 → stop 요청(8 위상 분산) → 반주기 경계 ge 0 → 정착(관측 양발 ∧ |ω| < 0.15 0.5 s, 상한 3 s) → KE 시작.
+  팔 = restart(배포 경로: 동결 3 s → 새 러너 이력 백필·last_action 0·EMA 재시작 → 체인 리셋 블렌딩) / reset(러너 리셋만) / direct(상태 이어받기) / nostop(정지 없이 걷는 중 전환) / none(W3 STAND 유지).
+  조건 nd·b18(16 s)·sf15(16 s), 지연 2 seed 1–3·지연 3·4 seed 1–2, Q4(걷는 중 앞 12 N 뒤 stop → KE vs W3 STAND vs 계속 걷기). 판정 R1–R6 고정. §1b KE → W3 START(restart/reset/direct/none, 선행조건 → 켜기 → 5 s 걷기, 창 외란 b18w/sf15w) K1–K4 고정(16:05).
+- **평가기** `rl_walking/scripts/eval_transition.py` = eval_ground_recovery.py 사본(원본 불변) + 전환 로직(생성 스크립트 make_eval_transition*.py). KE 감지기는 KE 시작 뒤에만 무장·기준 자세/필터 KE 시작 시각 초기화, KE 클록 관측 = KE 시작 틱부터 1.1 Hz.
+  연기 시험(16 env): 결함 2 건 수정(ge 0 감지 한 틱 어긋남 · 추론 텐서 제자리 갱신은 inference_mode 안에서만). nostop·restart 팔 끝까지 동작.
+  restart 연기(16 env, nd+b18 16 s): 요청→ge0 중앙 0.27 s · 정착 1.15 s · KE 시작 ≈ 11 s · 전환 불연속 |Δ목표| 0.03°/틱(블렌딩) · KE 뒤 2 s 피크 |피치| 1.8° · 감지기 오탐 0 · b18 낙상 0/16 — **표본 16, 판정 아님**.
+  nostop 연기: 걷는 중 전환 → 감지기 즉시 켜짐 100 %, 피크 |롤| 11°·|ω| 1.9, 낙상 0/16, 정상 자세 1.5 s.
+- **imuH 독립 seed 7–12**(STOPEST §16 사전 등록 15:20): imu(기준)+imuH × 지연 2·3 × nd/sf15/fi40/b18, 96 실행 큐(scratchpad imuh_q.sh). 판정 `settle_promote_x.py`(P1–P5 + P6 해제 뒤 1 s 재흔들림/재켜짐).
+- 15:50 격자 체인 기동(공용 잠금, 순차): ke2w3 연기 → w3ke 지연 2(restart/none → nostop/reset/direct, 45) → ke2w3 지연 2(36) → w3ke 지연 3·4(24) → Q4(6) → ke2w3 지연 3·4(24). 요약 `trans_summ.py`.

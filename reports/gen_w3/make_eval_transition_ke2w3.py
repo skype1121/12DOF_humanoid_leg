@@ -117,4 +117,6 @@ rep('''KEMODE = args_cli.ke_mode != "none"
 if args_cli.dir == "ke2w3" and (policy_ke is None or policy2 is None):
     raise SystemExit("--dir ke2w3 는 모든 팔에서 --ke(G21a) 와 --switch_to(G24Ra) 필요")
 ''')
+rep('''                _follow = (~ke_act) | ((t_rel - tr_sw) < float(args_cli.sw_ref_init_s))   # 1007 전환: KE 시작 뒤 init_s 동안 기준 추종''',
+    '''                _follow = (~ke_act) | ((t_rel - ke_t0) < float(args_cli.sw_ref_init_s))   # 1007 전환: KE 시작(ke_t0) 뒤 init_s 동안 기준 추종(ke2w3 = 인계 0 s)''')
 open(P, "w", encoding="utf-8").write(src); print("ke2w3 patch applied", len(src.splitlines()))

@@ -171,6 +171,7 @@ parser.add_argument("--w3_stop", type=float, default=6.0, help="stop 요청 기�
 parser.add_argument("--stop_phases", type=int, default=8, help="env mod K 로 요청 시각을 한 주기 안 K 위상에 분산")
 parser.add_argument("--stop_period", type=float, default=0.909, help="분산 폭 [s] (1.1 Hz 한 주기)")
 parser.add_argument("--w3_walk_only", action="store_true", help="stop 요청 없이 계속 걷기(Q4 대조)")
+parser.add_argument("--on_phases", type=int, default=1, help="ge 켬 시각을 env mod K 로 한 주기 안 K 위상에 분산(외란 위상 분산용, 1 = 종전)")
 parser.add_argument("--w3_lead", type=str, default="0.02,0.08", help="w3_gait_update lead_vy_cmin,lead_wz_cmin (W3S3d 학습 설정)")
 parser.add_argument("--settle", type=str, default="quiet", choices=("quiet", "fixed"), help="정착 판정: quiet = 양발(관측)∧감지|ω|<--sq_w 가 --sq_hold s 유지(상한 --settle_max) / fixed = ge 0 뒤 --settle_s")
 parser.add_argument("--sq_w", type=float, default=0.15); parser.add_argument("--sq_hold", type=float, default=0.5)
@@ -1016,7 +1017,7 @@ for i in range(STEPS):
         elif i >= STEPS_PRE:      # ── 1007 전환 상태기(관측·접촉 비트·IMU 만 사용) ──
             _po0 = obs["policy"]; _ge_now = uenv._ge.clone(); _u_now = uenv._gu.clone()
             _w_obs = _po0[:, _GY1 - 3:_GY1][:, :2].norm(dim=-1); _both_obs = (_po0[:, _FC1 - 2:_FC1] > 0.5).all(dim=-1)
-            _walk_on = t_rel >= float(args_cli.w3_on)
+            _walk_on = t_rel >= (float(args_cli.w3_on) + (_eidx % max(1, args_cli.on_phases)).float() / max(1, args_cli.on_phases) * float(args_cli.stop_period))
             if args_cli.ke_mode == "nostop" or args_cli.w3_walk_only:
                 _stop_req = torch.zeros(N, dtype=torch.bool, device=dev)
             else:
@@ -1165,7 +1166,7 @@ for i in range(STEPS):
                     _rp2 = torch.rad2deg(torch.stack([torch.atan2(_pg_det[:, 1], -_pg_det[:, 2]), torch.atan2(_pg_det[:, 0], -_pg_det[:, 2])], -1))
                 if i == STEPS_PRE or "sw_ref" not in dir():
                     sw_ref = _rp2.clone()
-                _follow = (~ke_act) | ((t_rel - tr_sw) < float(args_cli.sw_ref_init_s))   # 1007 전환: KE 시작 뒤 init_s 동안 기준 추종
+                _follow = (~ke_act) | ((t_rel - ke_t0) < float(args_cli.sw_ref_init_s))   # 1007 전환: KE 시작(ke_t0) 뒤 init_s 동안 기준 추종(ke2w3 = 인계 0 s)
                 sw_ref = torch.where(_follow.unsqueeze(1), _rp2, sw_ref)
                 _upd = (~sw_mode) & (_w < 0.1) & _cf[:, 0] & _cf[:, 1]
                 sw_ref = torch.where(_upd.unsqueeze(1), sw_ref + (_rp2 - sw_ref) * (0.02 / float(args_cli.sw_ref_tau)), sw_ref).clamp(-8.0, 8.0)

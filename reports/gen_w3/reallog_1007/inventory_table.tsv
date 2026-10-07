@@ -1,0 +1,59 @@
+파일	위치	체크포인트	첫 틱 시각	길이 s	틱	c5 틱	mode1 틱	사건	중복
+rl_bridge_20260802_031815.jsonl	~/archive/jetson_logs_0929	(틱 없음)	—	0.0	0	0	0	stop_all:1	사본 0
+rl_bridge_20260802_035245.jsonl	~/archive/jetson_logs_0929	(틱 없음)	—	0.0	0	0	0		사본 0
+rl_bridge_20260802_164153.jsonl	~/archive/jetson_logs_0929	drv2	08-02 16:43:09	0.4	20	0	0	osc_guard:1,stop_all:1	사본 0
+rl_bridge_20260802_170736.jsonl	~/archive/jetson_logs_0929	(틱 없음)	—	0.0	0	0	0		사본 0
+rl_bridge_20260802_172112.jsonl	~/archive/jetson_logs_0929	drv2	08-02 17:23:49	0.2	12	0	0	osc_guard:1,stop_all:1	사본 0
+rl_bridge_20260802_225003.jsonl	~/archive/jetson_logs_0929	march_v3	08-02 22:52:15	1.2	61	0	0	osc_guard:1,stop_all:1	사본 0
+rl_bridge_20260802_230223.jsonl	~/archive/jetson_logs_0929	(틱 없음)	—	0.0	0	0	0		사본 0
+rl_bridge_20260802_231043.jsonl	~/archive/jetson_logs_0929	(틱 없음)	—	0.0	0	0	0		사본 0
+rl_bridge_20260803_155549.jsonl	~/archive/jetson_logs_0929	stand_v3	08-03 16:00:29	15.4	773	0	0	osc_guard:1,stop_all:1	사본 1
+rl_bridge_20260803_160705.jsonl	~/archive/jetson_logs_0929	stand_v3	08-03 16:07:14	0.8	40	0	0	osc_guard:1,stop_all:1	사본 1
+rl_bridge_20260803_183041.jsonl	~/archive/jetson_logs_0929	stand_v3	08-03 18:30:50	104.3	5215	0	0	stop_all:1	사본 0
+rl_bridge_20260803_212201.jsonl	~/archive/jetson_logs_0929	stand_v5	08-03 21:22:10	37.8	1892	0	0	lift_guard:1,stop_all:2	사본 0
+rl_bridge_20260803_212804.jsonl	~/archive/jetson_logs_0929	stand_v5	08-03 21:28:13	67.2	3359	0	0	lift_guard:1,stop_all:1	사본 0
+rl_bridge_20260804_122805.jsonl	~/archive/jetson_logs_0929	stand_v6	08-04 12:34:32	313.8	13021	0	0	stop_all:2,lift_guard:1	사본 1
+rl_bridge_20260804_124941.jsonl	~/archive/jetson_logs_0929	stand_v6	08-04 12:50:24	73.7	3684	0	0	osc_guard_tgt:1,stop_all:2	사본 1
+rl_bridge_20260804_130927.jsonl	~/archive/jetson_logs_0929	stand_v6	08-04 13:09:47	8.5	426	0	0	lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260910_153510.jsonl	~/archive/jetson_logs_0929	(틱 없음)	—	0.0	0	0	0		사본 0
+rl_bridge_20260910_154017.jsonl	~/archive/jetson_logs_0929	(틱 없음)	—	0.0	0	0	0		사본 0
+rl_bridge_20260910_154841.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-10 16:15:24	316.6	15830	0	0	lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260910_163011.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-10 16:31:45	213.7	7989	0	0	lift_guard:2,stop_all:2,hang_guard:1	사본 1
+rl_bridge_20260910_164841.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-10 16:48:48	152.8	7643	0	0	hang_guard:1,lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260911_202144.jsonl	~/archive/jetson_logs_0929	(틱 없음)	—	0.0	0	0	0	stop_all:9	사본 0
+rl_bridge_20260912_202026.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-12 20:21:06	14.4	720	0	0	lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260912_202603.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-12 20:26:14	77.2	3860	0	0	stop_all:1	사본 1
+rl_bridge_20260912_203349.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-12 20:33:51	57.9	2894	0	0	stop_all:1	사본 1
+rl_bridge_20260912_204039.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-12 20:40:49	69.8	3489	0	0	stop_all:1	사본 1
+rl_bridge_20260912_204554.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-12 20:46:46	72.3	3616	0	0	hang_guard:1,stop_all:1	사본 1
+rl_bridge_20260913_191800.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-13 19:18:05	19.3	964	0	0	lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260913_192823.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-13 19:28:29	52.4	2623	0	0	lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260913_193433.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-13 19:34:45	137.1	6853	0	0	hang_guard:1,lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260913_194450.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-13 19:46:27	78.0	3903	0	0	hang_guard:1,lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260913_200231.jsonl	~/archive/jetson_logs_0929	stand_hang_v6	09-13 20:02:48	44.8	2241	0	0	hang_guard:1,lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260914_010624.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-14 01:07:35	90.9	4544	0	0	stop_all:1	사본 1
+rl_bridge_20260914_011059.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-14 01:11:59	120.0	6000	0	0	lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260914_011852.jsonl	~/archive/jetson_logs_0929	stand_hang_v6	09-14 01:19:18	120.0	6000	0	0	lift_guard:1,stop_all:1	사본 0
+rl_bridge_20260914_011852.jsonl	~/logs/real0914	stand_hang_v6	09-14 01:19:18	103.0	5149	0	0		사본 0
+rl_bridge_20260914_174634.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-14 17:46:44	349.6	17481	0	0	hang_guard:10,stop_all:1	사본 0
+rl_bridge_20260914_180155.jsonl	~/archive/jetson_logs_0929	stand_hang_v5	09-14 18:02:04	181.2	9057	0	0	hang_guard:2,lift_guard:1,stop_all:1	사본 0
+rl_bridge_20260914_195020.jsonl	~/archive/jetson_logs_0929	stand_hang_v6	09-14 19:50:32	160.6	8033	0	0	hang_guard:6,lift_guard:1,stop_all:1	사본 0
+rl_bridge_20260918_182911.jsonl	~/archive/jetson_logs_0929	stand_crouch_v1c	09-18 18:29:44	5.0	250	0	0	lift_guard:1,stop_all:1	사본 0
+rl_bridge_20260918_221702.jsonl	~/archive/jetson_logs_0929	stand_crouch_v1c	09-18 22:17:48	2.9	148	0	0	lift_guard:1,stop_all:2	사본 1
+rl_bridge_20260922_120548.jsonl	~/archive/jetson_logs_0929	stand_crouch_v5	09-22 12:06:31	4.0	201	0	0	lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260922_125228.jsonl	~/archive/jetson_logs_0929	stand_crouch_v5	09-22 12:52:50	2.9	146	0	0	stop_all:1	사본 1
+rl_bridge_20260922_135912.jsonl	~/archive/jetson_logs_0929	stand_crouch_v6	09-22 13:59:25	23.0	1151	0	0	lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260922_142258.jsonl	~/archive/jetson_logs_0929	stand_crouch_v6	09-22 14:27:44	10.7	538	0	0	lift_guard:1,stop_all:1	사본 1
+rl_bridge_20260928_164644.jsonl	reports/real_0928	stand_crouch_v6	09-28 16:46:55	26.0	1298	0	0	lift_guard_noted:3,stop_all:1	사본 0
+rl_bridge_20260929_140230.jsonl	reports/real_0929	stand_crouch_g11a	09-29 14:02:47	59.0	2953	0	0	osc_guard_noted:9,lift_guard_noted:14,stop_all:1	사본 0
+rl_bridge_20260929_210129.jsonl	reports/real_0929/g12	stand_crouch_g12	09-29 21:01:47	157.3	7863	0	0	hang_guard:1,osc_guard_noted:1,lift_guard_noted:105	사본 1
+rl_bridge_20261001_182754.jsonl	reports/real_1001	(틱 없음)	—	0.0	0	0	0		사본 0
+rl_bridge_20261001_184814.jsonl	reports/real_1001	stand_crouch_g12	10-01 18:48:48	68.3	3414	0	0	hang_guard:1,stop_all:1	사본 0
+rl_bridge_20261001_185555.jsonl	reports/real_1001	stand_crouch_g12	10-01 18:56:11	25.7	1286	0	0	hang_guard:1,lift_guard_noted:15	사본 0
+rl_bridge_20261001_193901.jsonl	reports/real_1001	stand_crouch_g12	10-01 19:39:23	39.9	1996	0	0	hang_guard:1,stop_all:1	사본 0
+rl_bridge_20261002_143511.jsonl	reports/real_1002	stand_crouch_g12	10-02 14:36:06	65.0	3253	0	0	hang_guard:1,lift_guard_noted:18	사본 0
+rl_bridge_20261003_174906.jsonl	reports/real_1003	stand_crouch_g21a	10-03 17:49:22	306.0	15299	0	0	hang_guard:1,osc_guard_tgt_noted:12,lift_guard_noted:15,stop_all:1	사본 0
+rl_bridge_20261004_220509.jsonl	reports/real_1004	stand_crouch_g12	10-04 22:05:24	118.7	5935	0	0	hang_guard:1,lift_guard_noted:17,stop_all:1	사본 0
+rl_bridge_20261004_221209.jsonl	reports/real_1004	stand_c5_g21a_g24ra	10-04 22:12:15	83.4	4171	4171	64	hang_guard:1,stop_all:1	사본 0
+rl_bridge_20261004_221920.jsonl	reports/real_1004	stand_c5_g21a_g24ra	10-04 22:19:24	38.2	1909	1909	265	hang_guard:1,stop_all:1	사본 0
+rl_bridge_20261004_223349.jsonl	reports/real_1004	stand_c5_g21a_g24ra	10-04 22:33:53	92.8	4643	4643	1254	hang_guard:1,osc_guard_tgt_noted:11,stop_all:1	사본 0

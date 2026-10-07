@@ -15,6 +15,10 @@ rep('''parser.add_argument("--kw_requiet", type=str, default="",''', '''parser.a
 parser.add_argument("--kw_hl_e0", type=str, default="", help="HD2: 래치 직후 ψ* 초기 오차[°] 목록(env i → i % len)")
 parser.add_argument("--kw_yaw_drift", type=float, default=0.0, help="HD3: 고리에 주는 요 측정에 더할 표류[°/min](env 짝수 +, 홀수 −)")
 parser.add_argument("--kw_requiet", type=str, default="",''')
+# 1007 X7c: 정착 상한(초) 인자 — 아주 크게 주면(정착 시간도 함께) KE 로 넘기지 않고 W3 STAND 로 머문다(걷기 사이를 W3 서기로 잇는 대조 팔)
+rep('''parser.add_argument("--kw_hl", type=str, default="",''', '''parser.add_argument("--kw_settle_max", type=float, default=3.0, help="W3 → KE 정착 상한 [s](기본 3.0 = 종전). 1e9 = 넘기지 않음")
+parser.add_argument("--kw_hl", type=str, default="",''')
+rep('''handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle))''', '''handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max))''')
 rep('''    kw_cur = [(0.0, 0.0, 0.0)] * N; kw_seq = [1] * N;''', '''    _KW_HLCFG = (_W3D.parse_w3_heading_loop(None if args_cli.kw_hl.strip().lower() == "on" else args_cli.kw_hl) if args_cli.kw_hl else None)
 
     class _KwHLShim:      # BridgeCore._w3_cmd_step 이 읽고 쓰는 속성만 가진 대역(같은 이름) — 고리·고장 처리 코드는 브리지 것을 그대로 실행

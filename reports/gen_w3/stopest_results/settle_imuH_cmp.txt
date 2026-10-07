@@ -1,0 +1,31 @@
+# §13e/f '늦게 끄기만' 대조 imuH vs odicw — 오도메트리 고유 효과 분리 (imuT = 최소 시간 0.6→1.1 s · imuH = 유지 0.2→0.7 s)
+
+## 지연 2
+  회복 모드 시간 차(imuH − imu) 평균 +0.473 s
+  회복 모드 시간 차(odicw − imu) 평균 +0.493 s
+  sf15: 낙상 imu 18.3 · imuH 17.3 · odicw 17.6% · 짝 imuH만 2 / odicw만 4 (p 0.688) · 짝 imu만 13 / imuH만 7 (p 0.263)
+  fi40: 낙상 imu 27.0 · imuH 25.1 · odicw 25.2% · 짝 imuH만 4 / odicw만 5 (p 1) · 짝 imu만 23 / imuH만 11 (p 0.0576)
+  b18: 낙상 imu 5.9 · imuH 4.1 · odicw 3.8% · 짝 imuH만 2 / odicw만 0 (p 0.5) · 짝 imu만 13 / imuH만 2 (p 0.00739)
+  외란 3 조건 합: imuH만 8 / odicw만 9 · p 1 → 늦게 끈 효과와 구분 안 됨
+### imuH P1–P5 (vs imu)
+  P1 낙상 짝(외란 3 조건): imu만 49 / imuH만 20 · p 0.000636 → PASS
+  P2 엄격 성공: sf15 50.2→53.3 · fi40 36.5→38.7 · b18 80.2→81.1 · 짝 imu만 131 / imuH만 171 (p 0.0247) → PASS
+  P3 끝 자세: abs_pitch 차 +0.034 상한 +0.064(≤0.5) · dq_nom_deg 차 +0.011 상한 +0.028(≤0.5) · abn_frac 차 +0.000 상한 +0.005(≤0.02) → PASS
+  P4 장기 체류(>4 s): imu 3.8% · imuH 3.4% · 회복 시간 차 +0.47 s → PASS
+  P5 무외란: 낙상 0.0% · 켜짐 0.037→0.033 · 엄격 96.3→96.7 → PASS
+  ⇒ imuH: 통과
+
+## 지연 3
+  회복 모드 시간 차(imuH − imu) 평균 +0.498 s
+  회복 모드 시간 차(odicw − imu) 평균 +0.449 s
+  sf15: 낙상 imu 25.3 · imuH 24.4 · odicw 23.6% · 짝 imuH만 19 / odicw만 14 (p 0.487) · 짝 imu만 19 / imuH만 13 (p 0.377)
+  fi40: 낙상 imu 37.5 · imuH 37.0 · odicw 36.7% · 짝 imuH만 6 / odicw만 4 (p 0.754) · 짝 imu만 11 / imuH만 8 (p 0.648)
+  b18: 낙상 imu 11.1 · imuH 9.7 · odicw 9.2% · 짝 imuH만 5 / odicw만 2 (p 0.453) · 짝 imu만 13 / imuH만 4 (p 0.049)
+  외란 3 조건 합: imuH만 30 / odicw만 20 · p 0.203 → 늦게 끈 효과와 구분 안 됨
+### imuH P1–P5 (vs imu)
+  P1 낙상 짝(외란 3 조건): imu만 43 / imuH만 25 · p 0.0385 → PASS
+  P2 엄격 성공: sf15 28.3→29.9 · fi40 24.5→24.4 · b18 72.3→73.4 · 짝 imu만 113 / imuH만 129 (p 0.335) → PASS
+  P3 끝 자세: abs_pitch 차 -0.002 상한 +0.035(≤0.5) · dq_nom_deg 차 +0.017 상한 +0.039(≤0.5) · abn_frac 차 -0.002 상한 +0.003(≤0.02) → PASS
+  P4 장기 체류(>4 s): imu 5.6% · imuH 8.4% · 회복 시간 차 +0.50 s → PASS
+  P5 무외란: 낙상 0.0% · 켜짐 0.051→0.049 · 엄격 93.5→93.7 → PASS
+  ⇒ imuH: 통과

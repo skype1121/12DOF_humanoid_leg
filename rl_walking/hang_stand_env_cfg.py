@@ -3564,6 +3564,23 @@ class Biped12HangStandW3S3dEnvCfg(Biped12HangStandW3S3s2EnvCfg):
 
 
 @configclass
+class Biped12HangStandW3S3dREnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3d R (1007 claude2, reports/gen_w3/ROBUST_DESIGN.md): W3S3d 와 보상·관측·커리큘럼·학습 지연 1–5 동일, **DR 대역만 확장**(ENVELOPE §3.5 민감 축).
+    IMU 피치 편향 ±1.5 → ±4°, 롤 ±1.5 → ±3°, 관절 영점 ±1 → ±3°(관절별 독립), CoM x ±2 → ±4 cm, 발목 유격 배수 0.75–1.25 → 0.3–2.0, kp 배수 0.85–1.1 → 0.7–1.3.
+    시작 = W3S3d-15800 이어 학습. 평가·승격 기준은 설계 문서 §3(학습 전 고정)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        cb = self.events.calib_bias.params
+        cb["imu_tilt_rad"] = (-0.070, 0.070); cb["imu_roll_rad"] = (-0.052, 0.052); cb["joint_bias_rad"] = (-0.052, 0.052)
+        cr = dict(self.events.base_com.params["com_range"]); cr["x"] = (-0.04, 0.04); self.events.base_com.params["com_range"] = cr
+        for _a in self.scene.robot.actuators.values():
+            if getattr(_a, "play_rad_range", None) is not None:
+                _a.play_rad_range = (0.3, 2.0)
+        self.events.actuator_gains.params["stiffness_distribution_params"] = (0.7, 1.3)
+
+
+@configclass
 class Biped12HangStandW3S4dEnvCfg(Biped12HangStandW3S4EnvCfg):
     """W3S4 d (1007 새벽): Stage 4 혼합(vx·vy·wz) + 학습 지연 1–5 틱, 시작 = W3S3d-15800(헤딩 고리 120 s 2.2°, 회전 이득 0.84–0.91).
     S3d 학습 중 vy·wz 커리큘럼은 상한 0.04·0.2 에서 진급하지 않았음(로그 지표 nan — 별도 점검 과제) — 평가상 vy 0.05–0.08·wz 0.3 추종하므로 시작 단계 1(vy 0.06·wz 0.3)."""

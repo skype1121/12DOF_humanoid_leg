@@ -141,3 +141,4 @@
 - 1007 14:45 claude2 인계 수락·환경 점검 완료: GPU 작업 0(RTX 5080 16 GB — 인계 문서의 24 GB 는 오기)·디스크 84 %·worktree 6 개 전부 병합(미병합 커밋 0)·claude1 세션(PID 10170)의 대기 셸 8 개 잔존(무해, 미처리)·worktree 3 개 전용 산출물 341 개(cE1/E2/E3 추적·parity·WD 평가) 본 트리 log_picture 로 복사(덮어쓰기 없음)·메모리 링크·safe_eval.sh 사본(공용 잠금 포함, claude2 scratchpad). 다음 = §7-1 E2 재실행(사용자 지시 대기)
 - 1007 15:2x claude2: imuH 독립 seed 7–12 큐(imuh_q.sh, scratchpad f0e5…/imuh_q.pid) 기동 — STOPEST §16 사전 등록 뒤. 동시에 W3→KE 전환 평가기(새 파일 eval_transition.py) 설계·구현 중(사전 등록 TRANSITION_W3KE.md)
 - 1007 15:50 claude2: 전환 격자 체인 기동(scratchpad tr/grid.pid): ke2w3 연기 → w3ke 지연2(restart/none → nostop/reset/direct) → ke2w3 지연2 → w3ke 지연3·4 → Q4 → ke2w3 지연3·4. 산출 log_picture/ground_recovery_tr_*·k2w_*, 요약 reports/gen_w3/trans_summ.py
+- 1007 16:10 claude2: hang_stand_env_cfg.py·__init__.py 수정 중(W3S3dR 클래스·등록 추가만, 기존 클래스 불변) — ROBUST_DESIGN.md 사전 등록

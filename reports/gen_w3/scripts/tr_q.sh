@@ -8,8 +8,11 @@ ST=${1:-all}
 if [ $ST = a ] || [ $ST = all ]; then
   for SD in 1 2 3; do for C in nd b18 sf15; do for M in restart none; do run tr_${M}_${C}_d2_s${SD} --ke_mode $M --delay_steps 2,2 --seed $SD ${X[$C]}; done; done; done
 fi
-if [ $ST = b ] || [ $ST = all ]; then
-  for SD in 1 2 3; do for C in nd b18 sf15; do for M in nostop reset direct; do run tr_${M}_${C}_d2_s${SD} --ke_mode $M --delay_steps 2,2 --seed $SD ${X[$C]}; done; done; done
+if [ $ST = b ] || [ $ST = h ] || [ $ST = all ]; then   # h = hot-swap 팔만(reset/direct)
+  for SD in 1 2 3; do for C in nd b18 sf15; do for M in reset direct; do run tr_${M}_${C}_d2_s${SD} --ke_mode $M --delay_steps 2,2 --seed $SD ${X[$C]}; done; done; done
+fi
+if [ $ST = b ] || [ $ST = n ] || [ $ST = all ]; then   # n = nostop(R5)
+  for SD in 1 2 3; do for C in nd b18 sf15; do run tr_nostop_${C}_d2_s${SD} --ke_mode nostop --delay_steps 2,2 --seed $SD ${X[$C]}; done; done
 fi
 if [ $ST = c ] || [ $ST = all ]; then
   for D in 3 4; do for SD in 1 2; do for C in nd b18 sf15; do for M in restart none; do run tr_${M}_${C}_d${D}_s${SD} --ke_mode $M --delay_steps $D,$D --seed $SD ${X[$C]}; done; done; done; done

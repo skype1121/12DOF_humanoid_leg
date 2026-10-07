@@ -4433,11 +4433,16 @@ def _selftest_errlog():
     f7 = e.fields(t + 5.01, Boom())
     assert f7 == {"errlog_fail": 3}, f7
     assert e.fields(t + 5.03, age) == f0, "실패 횟수는 한 번 남기고 0 으로"
-    for i in range(200):                                       # 틱 기록 없이 오래 쌓여도(정책 미구동) 크기는 상한 안
+    for i in range(200):                                       # 틱 기록 없이 오래 쌓여도(정책 미구동) warnings 는 상한에서 멈춘다
         e.feed(status({}, ["x%d" % i]), t + 6.0)
-    assert len(e.warn) <= ERRLOG_WARN_MAX and len(e.err) <= len(JOINT_ORDER)
+    assert len(e.warn) == ERRLOG_WARN_MAX, len(e.warn)
+    ghost = status({AL: 1})
+    ghost["joints"]["ghost_joint"] = {"feedback_error_raw": 9}  # JOINT_ORDER 에 없는 관절 이름은 받지 않는다
+    e.feed(ghost, t + 6.0)
+    assert set(e.err) == {AL}, set(e.err)
     e.feed(status({}, ["fresh"]), t + 60.0)                    # 옛 항목은 정리되고 새 항목이 들어온다
-    assert e.fields(t + 60.01, age).get("s8_warn") == ["fresh"]
+    f8 = e.fields(t + 60.01, age)
+    assert f8.get("s8_warn") == ["fresh"] and "err_raw" not in f8, f8
     # ⑦ 노드 연결(이 파일 소스): 생성 1 곳 · 상태 콜백 1 곳 · 틱 기록마다 '발행 → 덧붙임 → 블랙박스' 순서
     with open(os.path.abspath(__file__), encoding="utf-8") as fh:
         src = fh.read()

@@ -3908,3 +3908,15 @@ class Biped12HangStandW3S3tK4EnvCfg(Biped12HangStandW3S3tKEnvCfg):
     물음: 계약(기본자세)을 안 바꾸고 보상만으로 걷는 자세(지지 무릎 64°)가 움직이는가. −1.0 은 +500 반복에 2° 만 폈다."""
 
     W_KNEE = -4.0
+
+
+@configclass
+class Biped12HangStandW3S3xEnvCfg(Biped12HangStandW3S3fFEnvCfg):
+    """W3S3 x — 묶음(1008 claude2, reports/gen_w3/W3_FINAL_SELECT.md §2 규칙·§16 등록): 자기 팔에서 기전 기준을 채운 변경 둘을 그대로 합친다.
+    = W3S3fF(토크 한계 무작위화 0.7–1.0 + 전진 유인 `w3_stride_lin` +10) + W3S3tK4 의 무릎 벌점(`w3_knee_over` −4.0, 문턱 45°).
+    가중·범위는 각 팔의 값 그대로(묶음에서 다시 조정하지 않는다). 시작 = W3S3d-15800 이어 학습. 관측·행동 계약 불변.
+    태스크 등록은 rl_walking/tasks_extra_1008.py(학습 스크립트가 RL_WALKING_EXTRA_TASKS 로 읽는다 — 젯슨에 가는 rl_walking/__init__.py 를 건드리지 않으려는 것)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _w3t_knee_over(self, weight=-4.0, max_flex_rad=0.785)

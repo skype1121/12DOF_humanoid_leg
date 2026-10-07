@@ -172,7 +172,7 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `rl_walking/mdp_rewards.py` | `cee5b7d5` | `3a268ab1` | 학습용 코드(젯슨에서 실행하지 않음 — isaaclab 필요) |
 | `rl_walking/mdp_stage4.py` | `83225f61` | `46de8d50` | 학습용 코드(젯슨에서 실행하지 않음 — isaaclab 필요) |
 | `rl_walking/scripts/make_base_urdf.py` | `b6ee93f7` | `2ad80043` | 학습용 코드(젯슨에서 실행하지 않음 — isaaclab 필요) |
-| `rl_walking/scripts/train.py` | `47c73fdb` | `819e9426` | 학습용 코드(젯슨에서 실행하지 않음 — isaaclab 필요) |
+| `rl_walking/scripts/train.py` | `47c73fdb` | `bf28723e` | 학습용 코드(젯슨에서 실행하지 않음 — isaaclab 필요) |
 | `rl_walking/stage4_env_cfg.py` | `aa7f0225` | `c74fd26b` | 학습용 코드(젯슨에서 실행하지 않음 — isaaclab 필요) |
 | `rl_walking/stage4_v2_env_cfg.py` | `0604daa5` | `0af183fa` | 학습용 코드(젯슨에서 실행하지 않음 — isaaclab 필요) |
 | `rl_walking/symmetry.py` | `8a27b8d5` | `f21ef06c` | 학습용 코드(젯슨에서 실행하지 않음 — isaaclab 필요) |

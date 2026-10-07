@@ -125,6 +125,10 @@ if not os.path.isfile(os.path.join(_REPO_ROOT, "rl_walking", "__init__.py")):
     _REPO_ROOT = "/home/ryu/humanoid_leg_test1"
 sys.path.insert(0, _REPO_ROOT)
 import rl_walking  # noqa: F401
+if os.environ.get("RL_WALKING_EXTRA_TASKS"):      # 1008: 학습 전용 추가 태스크 등록 모듈(쉼표 구분). 비우면 종전 그대로
+    import importlib as _il_extra
+    for _m_extra in os.environ["RL_WALKING_EXTRA_TASKS"].split(","):
+        _il_extra.import_module(_m_extra.strip()); print(f"[train] 추가 태스크 모듈 {_m_extra.strip()}", flush=True)
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 

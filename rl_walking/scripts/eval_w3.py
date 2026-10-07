@@ -254,7 +254,7 @@ if DG:
     CMDV = CMD3[:, :2].clone()
     on_alive = torch.zeros(N, dtype=torch.bool, device=dev); on_done = torch.zeros(N, dtype=torch.bool, device=dev)
     pre_ok = torch.zeros(N, dtype=torch.bool, device=dev); v_on = torch.zeros(N, 2, device=dev); dir_on = torch.zeros(N, 2, device=dev); dv_dir = _nan(); gf_on = _nan()
-    t_step1 = _nan(); n_val_rec = torch.zeros(N, device=dev); n_lift_stop = torch.zeros(N, device=dev); n_val_stop = torch.zeros(N, device=dev)
+    s1_disp = _nan(); t_step1 = _nan(); n_val_rec = torch.zeros(N, device=dev); n_lift_stop = torch.zeros(N, device=dev); n_val_stop = torch.zeros(N, device=dev)
     t_damp, t_cont, t_level, t_norm = _nan(), _nan(), _nan(), _nan(); t_walk_win, t_walk_conf = _nan(), _nan()
     r_damp, r_cont, r_level, r_norm, r_walk = (torch.zeros(N, device=dev) for _ in range(5)); alt_after = torch.zeros(N, device=dev)
     wk_after_ok, wk_after_n = torch.zeros(N, device=dev), torch.zeros(N, device=dev)          # 확정 뒤 유지율
@@ -317,7 +317,7 @@ st_xy0 = None; st_lifts = fz(N); st_last_lift = torch.full((N,), float("nan"), d
 st_xy_end = fz(N, 2); st_fm0 = None; st_fm_end = fz(N, 2); st_lat_lifts = fz(N); st_alive0 = None; st_com_off = fz(N, 2); st_tilt = fz(N); st_dq = fz(N); st_ge = torch.ones(N, device=dev); st_ge_off = torch.full((N,), float("nan"), device=dev)
 in_air = torch.zeros(N, 2, dtype=torch.bool, device=dev); air_t = fz(N, 2); z0 = fz(N, 2); zmax = fz(N, 2); p0 = fz(N, 2, 2)
 pend = torch.zeros(N, 2, dtype=torch.bool, device=dev); pend_t = fz(N, 2); pend_load = fz(N, 2); pend_swing = torch.zeros(N, 2, dtype=torch.bool, device=dev)
-pend_rise = fz(N, 2); pend_len = fz(N, 2); pend_fwd = fz(N, 2); pend_lat = fz(N, 2); pend_w = fz(N, 2)
+pend_dpw = fz(N, 2, 2); pend_rise = fz(N, 2); pend_len = fz(N, 2); pend_fwd = fz(N, 2); pend_lat = fz(N, 2); pend_w = fz(N, 2)
 n_lift, n_swing, n_td, n_load, n_valid = fz(N, 2), fz(N, 2), fz(N, 2), fz(N, 2), fz(N, 2)
 last_valid = torch.full((N,), -1, dtype=torch.long, device=dev); alt_pairs, alt_ok = fz(N), fz(N)
 # 예정 스윙 반주기
@@ -481,6 +481,7 @@ for i in range(steps):
         pend_swing = torch.where(landed, sw, pend_swing)
         pend_rise = torch.where(landed, rise, pend_rise); pend_len = torch.where(landed, dp.norm(dim=-1), pend_len)
         pend_fwd = torch.where(landed, (dp * hx).sum(-1), pend_fwd)
+        pend_dpw = torch.where(landed.unsqueeze(-1), dp, pend_dpw)
         hy = torch.stack([-torch.sin(yaw), torch.cos(yaw)], -1).unsqueeze(1)
         pend_lat = torch.where(landed, (dp * hy).sum(-1), pend_lat)
         _wd = ((fpos[:, 0, :2] - fpos[:, 1, :2]) * hy[:, 0]).sum(-1)          # 왼 − 오 (요 프레임 y, 양수 = 정상)
@@ -600,7 +601,11 @@ for i in range(steps):
         dv_dir = torch.where(endt & alive, ((vw_ - v_on) * dir_on).sum(-1), dv_dir)
         pm_ = PS / PC.clamp(min=1).unsqueeze(1)
         inrec = aft & (rel <= a.rec_T)
-        t_step1 = torch.where(aft & nv_.gt(0) & torch.isnan(t_step1), rel, t_step1)
+        _s1 = aft & nv_.gt(0) & torch.isnan(t_step1)
+        if bool(_s1.any()):                                                   # 1007 W3D G3: 첫 유효 회복 착지의 스윙발 이륙→착지 변위의 힘 방향 성분[m]
+            _pd = (pend_dpw * dir_on.unsqueeze(1)).sum(-1)
+            s1_disp = torch.where(_s1, torch.where(val, _pd, torch.full_like(_pd, -1e9)).max(1).values, s1_disp)
+        t_step1 = torch.where(_s1, rel, t_step1)
         n_val_rec += nv_ * inrec.float()
         pk_pit = torch.where(inrec, torch.maximum(pk_pit, (pit_ - pm_[:, 2]).abs()), pk_pit)
         pk_rol = torch.where(inrec, torch.maximum(pk_rol, (rol_ - pm_[:, 3]).abs()), pk_rol)
@@ -865,7 +870,7 @@ if DG:
                  f" | {pk[0]:.1f}/{pk[1]:.1f}·{pk[2]:.2f}·{pk[3]:+.1f} |")
         J_dist["groups"].append({
             "label": lab, "scenario": "STAND" if isS else "WALK", "stop_delay": stp, "n": n0, "fell_before": nb,
-            "pre_ok": int((pre_ok & m0).sum()), "dv_dir_med": _q(dv_dir, m0)[1], "falls": int(fell.sum()),
+            "pre_ok": int((pre_ok & m0).sum()), "dv_dir_med": _q(dv_dir, m0)[1], "step1_disp_dir_cm_p10_50_90": [100 * x for x in _q(s1_disp, m0 & ~torch.isnan(s1_disp))], "falls": int(fell.sum()),
             "fall_t_rel": [round(float(x), 2) for x in (_tf[fell] - dg_t0[fell]).tolist()],
             "reach": {k_: _reach(x) for k_, x in (("step", t_step1), ("damp", t_damp), ("contact", t_cont), ("level", t_level))},
             "t_med": {k_: _q(x, m0)[1] for k_, x in (("step", t_step1), ("damp", t_damp), ("contact", t_cont), ("level", t_level))},

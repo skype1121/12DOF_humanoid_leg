@@ -147,4 +147,30 @@ rep('''            try:
 rep('''    _KW_RST = [float(x) for x in args_cli.kw_restore_at.split(",")] if args_cli.kw_restore_at else []''', '''    kw_effort_scale = _npk.ones(N, _npk.float32)
     _KW_RST = [float(x) for x in args_cli.kw_restore_at.split(",")] if args_cli.kw_restore_at else []''')
 rep('''                          restore=json.dumps(kw_rst_log), hl=str(args_cli.kw_hl),''', '''                          effort_scale=kw_effort_scale, restore=json.dumps(kw_rst_log), hl=str(args_cli.kw_hl),''')
+# 1007 X14: 콘솔 걷기 버튼(시간 제한 걷기)의 시뮬 평가 — 대본 사건 'move@t:이름'(w3_deploy.W3_MOVES) → step 켜기에 dur_s 를 실어 감독기에 보내고,
+#   기한 끄기는 브리지 노드와 같은 순서로 감독기의 burst_arm/burst_due 가 한다(콘솔 타이머 없음).
+rep('''            if kind not in ("walk", "stop"):''', '''            if kind == "move":
+                _mc = _W3D.w3_move_cmd(arg.strip()); _KW_DURS[round(float(tt), 4)] = float(_mc["dur_s"])
+                ev.append((float(tt), True, [_mc["vx"], _mc["vy"], _mc["wz"]])); continue
+            if kind not in ("walk", "stop"):''')
+rep('''    def _kw_parse(s):''', '''    _KW_DURS = {}                                     # 1007 X14: 사건 시각 → 기한 [s](move 사건만)
+    kw_dur = _npk.full(N, _npk.nan, _npk.float32)     # env 별 이번 걷기 요청의 기한(NaN = 기한 없음)
+
+    def _kw_parse(s):''')
+rep('''                kw_des = torch.where(m, torch.full_like(kw_des, bool(w)), kw_des)''', '''                kw_des = torch.where(m, torch.full_like(kw_des, bool(w)), kw_des)
+                kw_dur[m.cpu().numpy()] = _KW_DURS.get(round(float(tt), 4), _npk.nan) if w else _npk.nan''')
+rep('''"heading_loop": bool(KWH is not None), "req_id": "kw", "seq": kw_seq[e]}''', '''"heading_loop": bool(KWH is not None), "req_id": "kw", "seq": kw_seq[e], **({"dur_s": float(kw_dur[e])} if kw_dur[e] == kw_dur[e] else {})}''', count=2)
+rep('''            S.observe(now, ct[e], gy[e], pg[e])''', '''            S.observe(now, ct[e], gy[e], pg[e])
+            if S.burst_t_off is not None:                 # 1007 X14: 기한 도달 → 브리지 _w3_burst_end 와 같은 실행(명령 0·gait 0), 이 걷기 요청은 끝
+                if S.burst_due(now, bool(clk.want)) is not None:
+                    kw_cur[e] = (0.0, 0.0, 0.0); R.set_gait_enable(False); kw_events[e].append((round(now, 2), "burst_end")); _burst_end_now[e] = True''')
+rep('''                        kw_cur[e] = tuple(dec["cmd"]); R.set_gait_enable(True); en_now[e] = True''', '''                        kw_cur[e] = tuple(dec["cmd"]); R.set_gait_enable(True); en_now[e] = True
+                        S.burst_arm(now, d["req_id"], dec.get("dur_s"))''')
+rep('''        _hlerr = _npk.full(N, _npk.nan, _npk.float32); _wzc = _npk.zeros(N, _npk.float32); _hl_fault_now = _npk.zeros(N, bool)''', '''        _hlerr = _npk.full(N, _npk.nan, _npk.float32); _wzc = _npk.zeros(N, _npk.float32); _hl_fault_now = _npk.zeros(N, bool)
+        _burst_end_now = _npk.zeros(N, bool)''')
+rep('''        if KWH is not None:
+            kw_hlerr_tl.append(_hlerr.astype(_npk.float16)); kw_wzc_tl.append(_wzc.astype(_npk.float16))''', '''        if _burst_end_now.any():
+            kw_des = kw_des & ~torch.as_tensor(_burst_end_now, device=dev)
+        if KWH is not None:
+            kw_hlerr_tl.append(_hlerr.astype(_npk.float16)); kw_wzc_tl.append(_wzc.astype(_npk.float16))''')
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

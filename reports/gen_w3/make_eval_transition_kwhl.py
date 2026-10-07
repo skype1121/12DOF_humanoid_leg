@@ -91,4 +91,31 @@ rep('''    kw_cur = [(0.0, 0.0, 0.0)] * N; kw_seq = [1] * N;''', '''    _KW_RST 
     _KW_RST_DONE = [False] * len(_KW_RST); _KW_SNAP = [None]; kw_rst_log = []
     kw_cur = [(0.0, 0.0, 0.0)] * N; kw_seq = [1] * N;''')
 rep('''                          hl=str(args_cli.kw_hl),''', '''                          restore=json.dumps(kw_rst_log), hl=str(args_cli.kw_hl),''')
+# 1007 X7e 준비: 개체별 무작위화 값 덤프(기록 전용) — 인계 시점에 env 별 영점 편향(관절·IMU)·관절 게인/마찰/관성·질량을 log_picture/drdump_<tag>.npz 로 저장.
+rep('''        po = obs["policy"]
+        if i == STEPS_PRE:
+            for R in KWR:
+                R.reset()
+''', '''        po = obs["policy"]
+        if i == STEPS_PRE:
+            for R in KWR:
+                R.reset()
+            try:
+                _dd = dict(joint_names=_npk.array(list(robot.data.joint_names)))
+                for _k, _v in (("calib_joint_bias", getattr(uenv, "_calib_joint_bias", None)), ("calib_imu_tilt", getattr(uenv, "_calib_imu_tilt", None)), ("calib_imu_roll", getattr(uenv, "_calib_imu_roll", None)),
+                               ("imu_lag", getattr(uenv, "_imu_lag", None)), ("stiffness", getattr(robot.data, "joint_stiffness", None)), ("damping", getattr(robot.data, "joint_damping", None)),
+                               ("friction", getattr(robot.data, "joint_friction_coeff", None)), ("armature", getattr(robot.data, "joint_armature", None)),
+                               ("default_joint_pos", robot.data.default_joint_pos), ("nominal_default_joint_pos", getattr(uenv, "_nominal_default_joint_pos", None)),
+                               ("joint_pos0", robot.data.joint_pos), ("root_quat0", robot.data.root_quat_w)):
+                    if _v is not None:
+                        _dd[_k] = _v.detach().cpu().numpy()
+                try:
+                    _dd["masses"] = robot.root_physx_view.get_masses().cpu().numpy(); _dd["coms"] = robot.root_physx_view.get_coms().cpu().numpy()
+                except Exception as _e_:
+                    print(f"[runner_loop] drdump: 질량 조회 실패({_e_})", flush=True)
+                _npk.savez_compressed(os.path.join(DATA, "log_picture", f"drdump_{args_cli.out_tag}.npz"), **_dd)
+                print(f"[runner_loop] 개체별 무작위화 값 덤프: drdump_{args_cli.out_tag}.npz · 키 {sorted(_dd)}", flush=True)
+            except Exception as _e_:
+                print(f"[runner_loop] drdump 실패(기록 전용 — 평가는 계속): {_e_}", flush=True)
+''')
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

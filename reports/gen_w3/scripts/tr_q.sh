@@ -53,6 +53,6 @@ if [ $ST = q6b ]; then   # Q6b: 걷기 추적 수집(개입 없음, trace_all) �
   unset TR_SCRIPT
 fi
 if [ $ST = x2 ]; then   # X2: stop → ge 0 래치 즉시 KE(정착 대기 0)
-  for SD in 1 2 3; do for C in nd b18 sf15; do run tr_latch_${C}_d2_s${SD} --ke_mode reset --settle fixed --settle_s 0 --delay_steps 2,2 --seed $SD ${X[$C]}; done; done
+  for SD in 1 2 3; do for C in nd b18 sf15; do run tr_latch_${C}_d2_s${SD} --ke_mode reset --settle fixed --settle_s 0.02 --delay_steps 2,2 --seed $SD ${X[$C]}; done; done
 fi
 echo "$(date +%H:%M) TRQ_DONE $ST"

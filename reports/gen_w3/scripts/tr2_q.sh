@@ -19,4 +19,9 @@ fi
 if [ $ST = x1 ]; then   # X1: KE → W3 즉시 켜기(W3 STAND 구간 0)
   for SD in 1 2 3; do for M in reset direct; do run k2w_${M}now_nd_d2_s${SD} --dir ke2w3 --ke_mode $M --pre_both_s 0 --pre_w_s 0 --delay_steps 2,2 --seed $SD; done; done
 fi
+if [ $ST = x1f ]; then   # X1f: KE → W3 즉시 켜기, 배포 fresh 시작 모사(개발판 평가기)
+  export TR_SCRIPT=rl_walking/scripts/eval_transition_dev.py
+  for SD in 1 2 3; do run k2w_resetf_nd_d2_s${SD} --dir ke2w3 --ke_mode reset --pre_both_s 0 --pre_w_s 0 --w3_fresh --delay_steps 2,2 --seed $SD; done
+  unset TR_SCRIPT
+fi
 echo "$(date +%H:%M) TR2Q_DONE $ST"

@@ -1,0 +1,314 @@
+{
+ "rid": "f1007_0852",
+ "mode": "full",
+ "profile": "s3d",
+ "started": "2026-10-07 08:52:08",
+ "overall": "PASS",
+ "counts": {
+  "PASS": 19,
+  "미실행": 78
+ },
+ "verdicts": {
+  "S-nd.pre": "PASS",
+  "S-nd.fall": "PASS",
+  "S-nd.quiet": "PASS",
+  "S-nd.pose": "PASS",
+  "S-b18.fall": "PASS",
+  "S-b18.pose": "PASS",
+  "W-st.warm": "PASS",
+  "W-st.fall": "PASS",
+  "W-st.steps": "PASS",
+  "W-st.prms": "PASS",
+  "W-st.vx": "PASS",
+  "W-z.fall": "미실행",
+  "W-z.warm": "미실행",
+  "W-z.vx": "미실행",
+  "W-z.vy": "미실행",
+  "W-z.alt": "미실행",
+  "W-z.cad": "미실행",
+  "W-f.vx": "미실행",
+  "W-f.fall": "미실행",
+  "W-b.vx": "미실행",
+  "W-b.fall": "미실행",
+  "W-l.vy": "미실행",
+  "W-l.fall": "미실행",
+  "W-r.vy": "미실행",
+  "W-r.fall": "미실행",
+  "W-tl.yg": "미실행",
+  "W-tl.fall": "미실행",
+  "W-tr.yg": "미실행",
+  "W-tr.fall": "미실행",
+  "W-mix.gx": "미실행",
+  "W-mix.gy": "미실행",
+  "W-mix.yg": "미실행",
+  "W-mix.fall": "미실행",
+  "W-hl.yaw": "미실행",
+  "W-hl.fall": "미실행",
+  "W-hl.vx": "미실행",
+  "W-hl.vy": "미실행",
+  "W-d4.fall": "미실행",
+  "W-d4.vx": "미실행",
+  "W-d4hl.yaw": "미실행",
+  "W-d4hl.fall": "미실행",
+  "W-stop.settle": "미실행",
+  "W-stop.foot": "미실행",
+  "W-stop.sfall": "미실행",
+  "W-dist.f0.fall": "PASS",
+  "W-dist.l0.fall": "PASS",
+  "W-dist.f12.fall": "PASS",
+  "W-dist.f12.rec": "PASS",
+  "W-dist.b18.fall": "PASS",
+  "W-dist.b18.rec": "PASS",
+  "W-dist.l30.fall": "PASS",
+  "W-dist.l30.rec": "PASS",
+  "K-pair.fall": "미실행",
+  "K-ref-odicw.fall": "미실행",
+  "K-ref-imu.fall": "미실행",
+  "K-odicw-nd.fall": "미실행",
+  "K-odicw-nd.chain": "미실행",
+  "K-odicw-nd.pose": "미실행",
+  "K-odicw-nd.quiet": "미실행",
+  "K-odicw-nd.false": "미실행",
+  "K-odicw-nd.long": "미실행",
+  "K-odicw-sf15.fall": "미실행",
+  "K-odicw-sf15.chain": "미실행",
+  "K-odicw-sf15.pose": "미실행",
+  "K-odicw-sf15.quiet": "미실행",
+  "K-odicw-sf15.long": "미실행",
+  "K-odicw-fi40.fall": "미실행",
+  "K-odicw-fi40.chain": "미실행",
+  "K-odicw-fi40.pose": "미실행",
+  "K-odicw-fi40.quiet": "미실행",
+  "K-odicw-fi40.long": "미실행",
+  "K-odicw-b18.fall": "미실행",
+  "K-odicw-b18.chain": "미실행",
+  "K-odicw-b18.pose": "미실행",
+  "K-odicw-b18.quiet": "미실행",
+  "K-odicw-b18.long": "미실행",
+  "K-imu-nd.fall": "미실행",
+  "K-imu-nd.chain": "미실행",
+  "K-imu-nd.pose": "미실행",
+  "K-imu-nd.quiet": "미실행",
+  "K-imu-nd.false": "미실행",
+  "K-imu-nd.long": "미실행",
+  "K-imu-sf15.fall": "미실행",
+  "K-imu-sf15.chain": "미실행",
+  "K-imu-sf15.pose": "미실행",
+  "K-imu-sf15.quiet": "미실행",
+  "K-imu-sf15.long": "미실행",
+  "K-imu-fi40.fall": "미실행",
+  "K-imu-fi40.chain": "미실행",
+  "K-imu-fi40.pose": "미실행",
+  "K-imu-fi40.quiet": "미실행",
+  "K-imu-fi40.long": "미실행",
+  "K-imu-b18.fall": "미실행",
+  "K-imu-b18.chain": "미실행",
+  "K-imu-b18.pose": "미실행",
+  "K-imu-b18.quiet": "미실행",
+  "K-imu-b18.long": "미실행"
+ },
+ "values": {
+  "W-st.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 471
+  },
+  "W-st.warm": {
+   "kind": "rate",
+   "k": 41,
+   "n": 512
+  },
+  "W-st.vx": {
+   "kind": "cont",
+   "v": 6.864806709927507e-05,
+   "per": [
+    7.284218008862808e-05,
+    6.445395410992205e-05
+   ]
+  },
+  "W-st.vy": {
+   "kind": "cont",
+   "v": -7.295038358279271e-06,
+   "per": [
+    1.053533469530521e-05,
+    -2.5125411411863752e-05
+   ]
+  },
+  "W-st.alt": {
+   "kind": "cont",
+   "v": 0.0,
+   "per": [
+    0.0,
+    0.0
+   ]
+  },
+  "W-st.cad": {
+   "kind": "cont",
+   "v": 0.0,
+   "per": [
+    0.0,
+    0.0
+   ]
+  },
+  "W-st.yaw": {
+   "kind": "cont",
+   "v": 0.490465372800827,
+   "per": [
+    0.47265905141830444,
+    0.5082716941833496
+   ]
+  },
+  "W-st.prms": {
+   "kind": "cont",
+   "v": 0.28512173891067505,
+   "per": [
+    0.2864346206188202,
+    0.2838088572025299
+   ]
+  },
+  "W-st.steps": {
+   "kind": "cont",
+   "v": 0.0,
+   "per": [
+    0.0,
+    0.0
+   ]
+  },
+  "W-st.yg": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-st.gx": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-st.gy": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-dist.f0.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 120
+  },
+  "W-dist.f0.rec": {
+   "kind": "rate",
+   "k": 120,
+   "n": 120
+  },
+  "W-dist.f12.fall": {
+   "kind": "rate",
+   "k": 18,
+   "n": 124
+  },
+  "W-dist.f12.rec": {
+   "kind": "rate",
+   "k": 106,
+   "n": 124
+  },
+  "W-dist.b18.fall": {
+   "kind": "rate",
+   "k": 24,
+   "n": 117
+  },
+  "W-dist.b18.rec": {
+   "kind": "rate",
+   "k": 93,
+   "n": 117
+  },
+  "W-dist.l0.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 118
+  },
+  "W-dist.l0.rec": {
+   "kind": "rate",
+   "k": 118,
+   "n": 118
+  },
+  "W-dist.l30.fall": {
+   "kind": "rate",
+   "k": 26,
+   "n": 119
+  },
+  "W-dist.l30.rec": {
+   "kind": "rate",
+   "k": 93,
+   "n": 119
+  },
+  "S-nd.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 306
+  },
+  "S-nd.quiet": {
+   "kind": "rate",
+   "k": 295,
+   "n": 306
+  },
+  "S-nd.pose": {
+   "kind": "rate",
+   "k": 295,
+   "n": 306
+  },
+  "S-nd.chain": {
+   "kind": "rate",
+   "k": 295,
+   "n": 306
+  },
+  "S-nd.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 306
+  },
+  "S-nd.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 306
+  },
+  "S-nd.pre": {
+   "kind": "rate",
+   "k": 306,
+   "n": 384
+  },
+  "S-b18.fall": {
+   "kind": "rate",
+   "k": 70,
+   "n": 307
+  },
+  "S-b18.quiet": {
+   "kind": "rate",
+   "k": 206,
+   "n": 307
+  },
+  "S-b18.pose": {
+   "kind": "rate",
+   "k": 216,
+   "n": 307
+  },
+  "S-b18.chain": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "S-b18.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "S-b18.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "S-b18.pre": {
+   "kind": "rate",
+   "k": 307,
+   "n": 384
+  }
+ },
+ "prev": null
+}

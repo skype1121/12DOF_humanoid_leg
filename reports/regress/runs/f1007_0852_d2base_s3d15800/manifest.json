@@ -1,0 +1,257 @@
+{
+ "rid": "f1007_0852",
+ "cfg": {
+  "mode": "full",
+  "rid": "f1007_0852",
+  "w3": "2026-10-07_00-11-12_w3S3d_from_s2d:model_15800.pt",
+  "w3_task": "Biped12-HangStand-W3S3d-v0",
+  "profile": "s3d",
+  "stand": "2026-10-02_21-23-08_g21a:model_11300.pt",
+  "rec": "2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt",
+  "ke_arms": null,
+  "w3_extra": "",
+  "stand_extra": "",
+  "ke_extra": "",
+  "only": "st,dist,stand",
+  "tag": "d2base_s3d15800"
+ },
+ "mode_params": {
+  "w3_envs": 256,
+  "w3_sec": 30,
+  "hl_envs": 256,
+  "stop": [
+   12,
+   20
+  ],
+  "dist_envs": 320,
+  "dist_sec": 16,
+  "w3_seeds": [
+   1,
+   2
+  ],
+  "dist_seeds": [
+   1,
+   2
+  ],
+  "stand_seeds": [
+   1,
+   2,
+   3
+  ],
+  "ke_seeds": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ],
+  "ke_arms": [
+   "imu",
+   "odicw"
+  ],
+  "d4hl": true
+ },
+ "started": "2026-10-07 08:52:08",
+ "code": {
+  "worktree": "/home/ryu/humanoid_leg_test1/.claude/worktrees/agent-aadaeed1e0a42a88a",
+  "head": "9422040dcf339f2a1660fde164f0b251e3690ef0",
+  "branch": "worktree-agent-aadaeed1e0a42a88a",
+  "dirty": [
+   "M reports/regress/regress_lib.py",
+   " M reports/regress/run_regress.sh",
+   " M reports/regress/summarize.py",
+   "?? reports/regress/runs/"
+  ],
+  "diff_md5": "d41d8cd98f00b204e9800998ecf8427e"
+ },
+ "scripts": {
+  "rl_walking/scripts/eval_w3.py": "2e4ccc275b96c63ed5db5962069fa078",
+  "rl_walking/scripts/eval_ground_recovery.py": "70e31e05f2f359a95f6b0abf7f74896c",
+  "reports/regress/THRESHOLDS.md": "35d6643338dab980d91dd993526b2ddb",
+  "reports/regress/summarize.py": "86510e4ec4f6a65a12117bdbd31b3bee",
+  "reports/regress/regress_lib.py": "76a58330d69c5d2cac80c2a94c5a8d8f",
+  "reports/regress/run_regress.sh": "11bda7b1ecb6bd29bd99148ad114c2df"
+ },
+ "checkpoints": {
+  "w3": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-10-07_00-11-12_w3S3d_from_s2d/model_15800.pt",
+   "md5": "3da9f2e5b6c435d6b6df220e3a7969b2"
+  },
+  "stand": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_g22r/2026-10-02_21-23-08_g21a/model_11300.pt",
+   "md5": "599c47d3c3f190ad91a80a1ab7ff9fa7"
+  },
+  "rec": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/model_21793.pt",
+   "md5": "05e6b8ee4109ef40fd24bd8437bdfcba"
+  }
+ },
+ "gpu": "NVIDIA GeForce RTX 5080, 580.159.04, 16303 MiB",
+ "data_repo": "/home/ryu/humanoid_leg_test1",
+ "jobs": {
+  "W-st-s1": {
+   "kind": "w3",
+   "tag": "rg_f1007_0852_w_st_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 256 --seconds 30 --delay 2 --seed 1 --cmd=0,0,0 --gait_enable 0",
+   "item": "W-st",
+   "seed": 1,
+   "cmd": "0,0,0",
+   "delay": 2,
+   "num_envs": 256,
+   "seconds": 30,
+   "gait": 0
+  },
+  "W-st-s2": {
+   "kind": "w3",
+   "tag": "rg_f1007_0852_w_st_s2",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 256 --seconds 30 --delay 2 --seed 2 --cmd=0,0,0 --gait_enable 0",
+   "item": "W-st",
+   "seed": 2,
+   "cmd": "0,0,0",
+   "delay": 2,
+   "num_envs": 256,
+   "seconds": 30,
+   "gait": 0
+  },
+  "W-dist-s1": {
+   "kind": "w3",
+   "tag": "rg_f1007_0852_w_dist_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 320 --seconds 16 --delay 2 --seed 1 --cmd=0.06,0,0 --ramp_off --dist_jitter 0.91 --dist \"push:f:6:0:0.3|push:f:6:12:0.3|push:b:6:18:0.3|cmd=0,0.05,0;push:l:6:0:0.2|cmd=0,0.05,0;push:l:6:30:0.2\"",
+   "item": "W-dist",
+   "seed": 1,
+   "cmd": "0.06,0,0",
+   "delay": 2,
+   "num_envs": 320,
+   "seconds": 16
+  },
+  "W-dist-s2": {
+   "kind": "w3",
+   "tag": "rg_f1007_0852_w_dist_s2",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 320 --seconds 16 --delay 2 --seed 2 --cmd=0.06,0,0 --ramp_off --dist_jitter 0.91 --dist \"push:f:6:0:0.3|push:f:6:12:0.3|push:b:6:18:0.3|cmd=0,0.05,0;push:l:6:0:0.2|cmd=0,0.05,0;push:l:6:30:0.2\"",
+   "item": "W-dist",
+   "seed": 2,
+   "cmd": "0.06,0,0",
+   "delay": 2,
+   "num_envs": 320,
+   "seconds": 16
+  },
+  "S-nd-s1": {
+   "kind": "gr",
+   "tag": "rg_f1007_0852_s_nd_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1",
+   "item": "S-nd",
+   "seed": 1,
+   "cond": "nd",
+   "num_envs": 128
+  },
+  "S-b18-s1": {
+   "kind": "gr",
+   "tag": "rg_f1007_0852_s_b18_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1 --dist push:b:2:18:0.3",
+   "item": "S-b18",
+   "seed": 1,
+   "cond": "b18",
+   "num_envs": 128
+  },
+  "S-nd-s2": {
+   "kind": "gr",
+   "tag": "rg_f1007_0852_s_nd_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 2",
+   "item": "S-nd",
+   "seed": 2,
+   "cond": "nd",
+   "num_envs": 128
+  },
+  "S-b18-s2": {
+   "kind": "gr",
+   "tag": "rg_f1007_0852_s_b18_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 2 --dist push:b:2:18:0.3",
+   "item": "S-b18",
+   "seed": 2,
+   "cond": "b18",
+   "num_envs": 128
+  },
+  "S-nd-s3": {
+   "kind": "gr",
+   "tag": "rg_f1007_0852_s_nd_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 3",
+   "item": "S-nd",
+   "seed": 3,
+   "cond": "nd",
+   "num_envs": 128
+  },
+  "S-b18-s3": {
+   "kind": "gr",
+   "tag": "rg_f1007_0852_s_b18_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 3 --dist push:b:2:18:0.3",
+   "item": "S-b18",
+   "seed": 3,
+   "cond": "b18",
+   "num_envs": 128
+  }
+ },
+ "finished": "2026-10-07 09:14:22",
+ "status": {
+  "W-st-s1": {
+   "status": "유효",
+   "tries": "3",
+   "note": "유효",
+   "t_s": "168"
+  },
+  "W-st-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "138"
+  },
+  "W-dist-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "96"
+  },
+  "W-dist-s2": {
+   "status": "유효",
+   "tries": "2",
+   "note": "유효",
+   "t_s": "75"
+  },
+  "S-nd-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "42"
+  },
+  "S-b18-s1": {
+   "status": "유효",
+   "tries": "3",
+   "note": "유효",
+   "t_s": "73"
+  },
+  "S-nd-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "66"
+  },
+  "S-b18-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "48"
+  },
+  "S-nd-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "54"
+  },
+  "S-b18-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "48"
+  }
+ }
+}

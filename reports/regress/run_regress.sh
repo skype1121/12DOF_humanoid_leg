@@ -10,12 +10,12 @@
 #     --stand RUN:CKPT         서기 정책(기본 G21a-11300)                 --rec RUN:CKPT  회복 정책(기본 G24Ra-21793)
 #     --ke_arms "imu odicw"    KE 종료 판정기 팔(기본: 모드 값)
 #     --w3_extra / --stand_extra / --ke_extra "인자"   후보 개선의 추가 인자(해당 평가기에 그대로 전달 — 매니페스트에 기록)
-#     --only w3,dist,stand,ke  일부 묶음만(기본 전부)       --tag 이름  실행 이름 꼬리표       --prev DIR  비교할 이전 실행(기본 자동)
+#     --only w3,st,dist,stand,ke  일부 묶음만(기본 전부)       --tag 이름  실행 이름 꼬리표       --prev DIR  비교할 이전 실행(기본 자동)
 #     --resume DIR             중단된 실행 이어 하기(유효 완료 작업은 건너뜀)   --dry  계획만
 # 출력: reports/regress/runs/<RID>_<tag>/{manifest.json, jobs.tsv, status.tsv, summary.md, results.json, logs/}
 #       평가 산출물은 본 트리 log_picture/ 의 rg_<RID>_* 태그.
 # GPU 규칙: 사용 메모리 ≤ 10500 MiB 될 때까지 대기 · 다른 평가와 같은 잠금(eval17.gpu.lock)으로 동시 1 개 ·
-#           메모리/PhysX 실패·산출물 누락·물리 정지 = 무효 → 재실행(최대 3) · 종료는 명시 PID(프로세스 그룹)로만(pkill 금지).
+#           메모리/PhysX 실패·산출물 누락·물리 정지 = 무효 → 재실행(최대 5) · 종료는 명시 PID(프로세스 그룹)로만(pkill 금지).
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd); WT=$(cd "$HERE/../.." && pwd); DATA=${REGRESS_DATA_REPO:-/home/ryu/humanoid_leg_test1}
 SP=/tmp/claude-1000/-home-ryu-humanoid-leg-test1/e53dc80b-9c62-45a7-a400-3cd12071b2f1/scratchpad
@@ -24,7 +24,7 @@ export OMNI_KIT_ACCEPT_EULA=YES PYTHONPATH=$WT EVAL_DATA_REPO=$DATA W3EVAL_REPO=
 
 MODE=quick; W3=2026-10-07_00-11-12_w3S3d_from_s2d:model_15800.pt; W3T=Biped12-HangStand-W3S3d-v0; PROFILE=""
 STAND=2026-10-02_21-23-08_g21a:model_11300.pt; REC=2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt
-KEARMS=""; W3X=""; STX=""; KEX=""; ONLY=w3,dist,stand,ke; TAG=cand; PREV=""; RESUME=""; DRY=0
+KEARMS=""; W3X=""; STX=""; KEX=""; ONLY=w3,st,dist,stand,ke; TAG=cand; PREV=""; RESUME=""; DRY=0
 while [ $# -gt 0 ]; do case $1 in
   --mode) MODE=$2; shift 2;; --w3) W3=$2; shift 2;; --w3_task) W3T=$2; shift 2;; --profile) PROFILE=$2; shift 2;;
   --stand) STAND=$2; shift 2;; --rec) REC=$2; shift 2;; --ke_arms) KEARMS=$2; shift 2;;
@@ -60,7 +60,7 @@ while IFS=$'\t' read -r JID KIND TAGJ TMO ARGS; do
   SCRIPT=$WT/rl_walking/scripts/$([ $KIND = w3 ] && echo eval_w3.py || echo eval_ground_recovery.py)
   LG=$RD/logs/$JID.l; ok=0; note=""
   exec 9>$LOCK; flock 9
-  for TRY in 1 2 3; do
+  for TRY in 1 2 3 4 5; do   # 1007: 공유 GPU(잠금 안 쓰는 다른 작업) OOM 이 잦아 5 회·90 s 대기
     wait_mem
     if [ $KIND = w3 ]; then rm -f $DATA/log_picture/w3eval_${TAGJ}.json $DATA/log_picture/w3eval_${TAGJ}.txt
     else rm -f $DATA/log_picture/ground_recovery_${TAGJ}.txt $DATA/log_picture/ground_recovery_${TAGJ}_envs.csv $DATA/log_picture/ground_recovery_${TAGJ}_handoff.npz; fi
@@ -75,7 +75,7 @@ while IFS=$'\t' read -r JID KIND TAGJ TMO ARGS; do
     dt=$(( $(date +%s) - t0 ))
     note=$(python3 $HERE/regress_lib.py check $RD $JID $LG $t0); rc=$?
     if [ $rc = 0 ]; then ok=1; echo "$(date +%H:%M:%S)   유효 ($dt s)"; break; fi
-    echo "$(date +%H:%M:%S)   무효: $note → 재시도"; cp $LG $LG.dead$TRY; sleep 45
+    echo "$(date +%H:%M:%S)   무효: $note → 재시도"; cp $LG $LG.dead$TRY; sleep 90
   done
   flock -u 9
   sed -i "/^$JID	/d" $ST

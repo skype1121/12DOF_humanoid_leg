@@ -96,6 +96,11 @@ def plan(run_dir, cfg):
         jobs.append(("W-stop-s1", "w3", tg("w_stop_s1"), 900,
                      f"{W3B} --num_envs {M['w3_envs']} --seconds {ss} --delay 2 --seed 1 --cmd=0.06,0,0 --stop_at {sa}",
                      dict(item="W-stop", seed=1, cmd="0.06,0,0", delay=2, num_envs=M["w3_envs"], seconds=ss)))
+    if "st" in only:   # W3 STAND 모드(ge 0, gait_enable 0) — 서기·시작(착지) 과도 낙상·정지 떨림
+        for sd in M["w3_seeds"]:
+            jobs.append((f"W-st-s{sd}", "w3", tg(f"w_st_s{sd}"), 900,
+                         f"{W3B} --num_envs {M['w3_envs']} --seconds {M['w3_sec']} --delay 2 --seed {sd} --cmd=0,0,0 --gait_enable 0",
+                         dict(item="W-st", seed=sd, cmd="0,0,0", delay=2, num_envs=M["w3_envs"], seconds=M["w3_sec"], gait=0)))
     if "dist" in only:
         for sd in M["dist_seeds"]:
             jobs.append((f"W-dist-s{sd}", "w3", tg(f"w_dist_s{sd}"), 1200,
@@ -179,7 +184,7 @@ def check(run_dir, job_id, log, t0):
                 core = [d.get(k) for k in ("alternation_rate", "fwd_mps", "lat_mps", "pitch_rms_deg", "action_rms")]
                 if any(x is None or (isinstance(x, float) and math.isnan(x)) for x in core):
                     why.append("핵심 지표 NaN(물리 발산 의심)")
-                elif (d.get("valid_steps") or 0) == 0 or (d.get("pitch_rms_deg") or 0) < 1e-6 or (d.get("action_rms") or 0) < 1e-6:
+                elif ((d.get("valid_steps") or 0) == 0 and d.get("gait_enable", 1) == 1) or (d.get("pitch_rms_deg") or 0) < 1e-6 or (d.get("action_rms") or 0) < 1e-6:
                     why.append("물리 정지 의심(유효 스텝 0 또는 피치·행동 RMS 0)")
                 if d.get("fall_rate", 0) >= 0.999:
                     why.append("전 env 낙상(물리 폭발·자산 오류 의심 — 판정 대신 무효 처리)")

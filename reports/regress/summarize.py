@@ -200,6 +200,7 @@ def w3_metrics(item, D, V):
     cont(f"{item}.vx", [d.get("fwd_mps") for d in D]); cont(f"{item}.vy", [d.get("lat_mps") for d in D])
     cont(f"{item}.alt", [d.get("alternation_rate") for d in D]); cont(f"{item}.cad", [d.get("valid_cadence_hz") for d in D])
     cont(f"{item}.yaw", [d.get("yaw_drift_deg") for d in D])
+    cont(f"{item}.prms", [d.get("pitch_rms_deg") for d in D]); cont(f"{item}.steps", [d.get("valid_per_env_s") for d in D])
     cont(f"{item}.yg", [(d.get("turn") or {}).get("yaw_gain") for d in D])
     cont(f"{item}.gx", [(d.get("mix") or {}).get("gain_x") for d in D]); cont(f"{item}.gy", [(d.get("mix") or {}).get("gain_y") for d in D])
     st = [d.get("stop") for d in D if d.get("stop")]
@@ -340,7 +341,7 @@ def main():
        + f" · 이전 실행 비교: {os.path.basename(prev) if prev else '없음(첫 실행)'}")
     P_("- 시뮬 판정이다. 실물 성공 확률이 아니다. '경계' = 점추정은 문턱 밖이나 95 % 구간이 문턱을 걸침(표본 부족 → 전체 모드로 재확인).")
     P_("")
-    sec = {"S": "STAND (G21a 단독, 지연 2·접촉 v2)", "W": "WALK·TURN·HEADING·DELAY·STOP·걷기 중 외란 (eval_w3)", "K": "RECOVERY·SETTLE·POSTURE RESTORE (KE 체인, eval_ground_recovery)"}
+    sec = {"S": "STAND (G21a 단독, 지연 2·접촉 v2)", "W": "W3 STAND 모드·WALK·TURN·HEADING·DELAY·STOP·걷기 중 외란 (eval_w3)", "K": "RECOVERY·SETTLE·POSTURE RESTORE (KE 체인, eval_ground_recovery)"}
     for s_, title in sec.items():
         P_(f"## {title}")
         P_("| ID | 항목 | 판정 | 문턱 | 값 | 기준선(출처) | 이전 실행 대비 |")

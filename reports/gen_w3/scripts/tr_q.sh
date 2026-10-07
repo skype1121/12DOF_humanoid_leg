@@ -93,4 +93,15 @@ if [ $ST = x4 ]; then   # X4: 깨끗한 KE 서기에서 가벼운 밀기로 회�
   done
   unset TR_SCRIPT
 fi
+if [ $ST = x5 ]; then   # X5: 회복 모드 갇힘 해소 변형(--sw_requiet 2.0,0.3) — 시험 1 = X4 조건, 시험 2 = direct 표준 조건
+  export TR_SCRIPT=rl_walking/scripts/eval_transition_dev.py
+  RS="--ke_mode reset --w3_stop 4 --delay_steps 2,2 --sw_requiet 2.0,0.3"
+  for SD in 1 2 3; do
+    run tr_x5Pb_sf15_d2_s${SD} $RS --seed $SD --dist "push:b:9:12:0.3;ramp:f:16:15:0.5:1.0" --trace_all 128
+    run tr_x5Pf_sf15_d2_s${SD} $RS --seed $SD --dist "push:f:9:12:0.3;ramp:f:16:15:0.5:1.0" --trace_all 128
+    run tr_x5C_sf15_d2_s${SD} $RS --seed $SD --dist "ramp:f:16:15:0.5:1.0" --trace_all 128
+  done
+  for SD in 1 2 3; do for C in sf15 b18 nd; do run tr_directq_${C}_d2_s${SD} --ke_mode direct --delay_steps 2,2 --seed $SD ${X[$C]} --sw_requiet 2.0,0.3; done; done
+  unset TR_SCRIPT
+fi
 echo "$(date +%H:%M) TRQ_DONE $ST"

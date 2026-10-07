@@ -393,6 +393,100 @@ def scenario_s3d(b, clock, out):
     return driver
 
 
+def scenario_burst(b, clock, out):
+    """1007 시간 제한 걷기(콘솔 걷기 버튼의 브리지 쪽 안전장치): step 켜기에 dur_s → 기한 뒤 브리지가 스스로 끄기(명령 0·gait 0)·같은 req_id 의
+    burst_end 응답. 기한 형식 검사, 기한 전 끄기·estop 이 기한을 지움, 걷는 중 명령 변경이 기한을 새로 검, dur_s 없는 켜기는 종전처럼 계속 걷기,
+    버튼 표(W3_MOVES)의 모든 항목이 실제 감독기를 통과."""
+    def driver(node):
+        H = Harness(node, b, clock)
+        R = []
+        W = b._W3
+        assert node.w3sup is not None and node.core.w3cmd
+        H.tick(5)
+        assert H.cmd({"cmd": "stand"})["accepted"]
+        H.tick(int(2.6 / b.TICK_SEC))
+        clk = node.core.runner._w3_clock
+        sq = [0]
+
+        def on(**kw):
+            sq[0] += 1
+            return H.cmd(dict({"cmd": "step", "enable": True, "req_id": f"btn-{sq[0]}", "seq": sq[0], "heading_loop": False}, **kw))
+
+        def wait_stand():
+            H.tick(int(1.5 / b.TICK_SEC))
+            assert not clk.ge and not clk.want, (clk.ge, clk.want)
+            H.tick(int(1.2 / b.TICK_SEC))            # 켜기 선행조건(양발 1 s·정착 1 s) 재충족
+
+        for bad in (0.1, 11.0, "x", True):
+            a = on(vx=0.06, dur_s=bad)
+            assert not a["accepted"] and "dur_s" in a["why"] and not clk.want, (bad, a)
+        R.append("기한 형식·범위 거부 4 종(켜지지 않음)")
+        assert "burst" not in node.w3sup.snapshot(), "기한을 쓰기 전인데 snapshot 에 burst 필드"
+        a = on(vx=0.06, dur_s=0.6)
+        t0 = clock.t
+        assert a["accepted"] and clk.want and node.core.cmd == (0.06, 0.0, 0.0) and a["sup"]["burst"]["dur_s"] == 0.6, a
+        n_ack = len(H.acks)
+        k = 0
+        while clk.want and k < 200:
+            H.tick(1); k += 1
+        ran = clock.t - t0
+        ends = [x for x in H.acks[n_ack:] if x.get("event") == "burst_end"]
+        assert 0.6 - 1e-6 <= ran <= 0.6 + 2 * b.TICK_SEC and len(ends) == 1 and ends[0]["req_id"] == a["req_id"], (ran, ends)
+        assert node.core.cmd == (0.0, 0.0, 0.0) and not clk.want and node.w3sup.burst_t_off is None
+        t_off = clock.t
+        while clk.ge:
+            H.tick(1)
+        R.append(f"전진 0.06·기한 0.6 s → {ran:.2f} s 뒤 브리지가 끄기(응답 burst_end 1 건, 명령 0) → 반주기 경계 {clock.t - t0:.2f} s 에 서기")
+        assert not H.stop_alls, "기한 끄기가 STOP_ALL 을 냈다"
+        wait_stand()
+        a = on(wz=0.15, dur_s=2.0)                     # 기한 전 운영자 끄기 → 기한 해제(뒤에 burst_end 가 또 나오면 안 됨)
+        assert a["accepted"] and clk.want
+        H.tick(20)
+        sq[0] += 1
+        n_ack = len(H.acks)
+        assert H.cmd({"cmd": "step", "enable": False, "req_id": "btn-off", "seq": sq[0]})["accepted"] and node.w3sup.burst_t_off is None
+        H.tick(int(2.5 / b.TICK_SEC))
+        assert not any(x.get("event") == "burst_end" for x in H.acks[n_ack:]) and not clk.want
+        R.append("기한 전 끄기 → 기한 해제(뒤늦은 burst_end 없음)")
+        H.tick(int(1.2 / b.TICK_SEC))
+        a = on(vx=0.06, dur_s=5.0)                     # 걷는 중 명령 변경(+ 새 기한) → 새 기한만 유효
+        assert a["accepted"]
+        H.tick(int(1.1 / b.TICK_SEC))
+        a2 = on(vx=0.04, dur_s=0.5)
+        t1 = clock.t
+        assert a2["accepted"] and a2["action"] == "set_cmd" and node.core.cmd == (0.04, 0.0, 0.0), a2
+        k = 0
+        while clk.want and k < 400:
+            H.tick(1); k += 1
+        assert 0.5 - 1e-6 <= clock.t - t1 <= 0.5 + 2 * b.TICK_SEC, clock.t - t1
+        R.append("걷는 중 명령 변경 + 새 기한 0.5 s → 새 기한에 끄기(앞 기한 5 s 무효)")
+        wait_stand()
+        a = on(vx=0.06)                                # dur_s 없음 = 종전: 계속 걷기
+        assert a["accepted"] and "dur_s" not in a and node.w3sup.burst_t_off is None
+        H.tick(int(3.0 / b.TICK_SEC))
+        assert clk.want and clk.ge, "기한 없는 켜기가 스스로 꺼짐"
+        R.append("dur_s 없는 켜기 = 3 s 뒤에도 걷는 중(종전 동작)")
+        a = on(vx=0.04, dur_s=3.0)                     # 기한 걸린 채 estop → 기한 해제·STOP_ALL 1 회
+        H.tick(int(1.1 / b.TICK_SEC))
+        a = on(vx=0.06, dur_s=3.0)
+        assert a["accepted"] and node.w3sup.burst_t_off is not None, a
+        n0 = len(H.stop_alls)
+        assert H.cmd({"cmd": "estop"})["accepted"] and node.w3sup.burst_t_off is None and len(H.stop_alls) == n0 + 1
+        R.append("기한 중 estop → 기한 해제·STOP_ALL")
+        S = W.W3Supervisor(cmd_limits=W.W3S3D_CMD_LIMITS)   # 버튼 표 전 항목이 실제 감독기 형식·범위 검사를 통과
+        t = 100.0
+        for i in range(120):
+            S.observe(t + i * b.TICK_SEC, (1.0, 1.0), (0.0, 0.0, 0.0), (0.0, 0.0, -1.0))
+        for i, name in enumerate(W.W3_MOVES):
+            c = W.w3_move_cmd(name)
+            d = S.handle(dict({"cmd": "step", "enable": True, "req_id": f"m{i}", "seq": 1000 + i, "heading_loop": False}, **c), t + 2.38,
+                         active=True, warmed=True, blend_done=True, ge_now=False, want_now=False, cmd_now=(0.0, 0.0, 0.0))
+            assert d["accepted"] and d["dur_s"] == c["dur_s"] and tuple(d["cmd"]) == (c["vx"], c["vy"], c["wz"]), (name, d)
+        R.append(f"버튼 표 {len(W.W3_MOVES)} 항목 감독기 통과")
+        out["burst"] = R
+    return driver
+
+
 def scenario_mon(b, clock, out):
     """1007 2 차 대비책 감시(--w3-monitor on) 노드 통합: 자세(저역 피치 14°) → 걷기 정지·정지 래치·로그(동결 아님) → rearm 뒤 재개,
     stage8 명령 처리 나이 120 ms(0.3 s 지속) → 걷기 정지·켜기 거부(이유 '감시') → 정상화 뒤 허용, 발 메시지 0.3 s 끊김 → 걷기 정지
@@ -863,6 +957,8 @@ def main():
               scenario, "w3"),
              ("W3S3d 세션 노드(1007)", ["--live", "--force-frame", "--force-gains", "--experimental-w3", "--checkpoint",
                                         b._W3.W3S3D_CKPT_KEY], scenario_s3d, "s3d"),
+             ("W3S3d 시간 제한 걷기(1007 콘솔 걷기 버튼)", ["--live", "--force-frame", "--force-gains", "--experimental-w3", "--checkpoint",
+                                                  b._W3.W3S3D_CKPT_KEY, "--w3-heading-loop", "off"], scenario_burst, "burst"),
              ("W3S3d 감시 켬 노드(1007 2 차 대비책)", ["--live", "--force-frame", "--force-gains", "--experimental-w3", "--checkpoint",
                                                    b._W3.W3S3D_CKPT_KEY, "--w3-monitor", "on"], scenario_mon, "mon"),
              ("플래그 꺼짐 노드", ["--force-frame", "--checkpoint", "stand_crouch_g21a"], scenario_off, "off")]

@@ -4783,6 +4783,27 @@ def main():
                 return
             self._on_cmd_base(d)
 
+        def _w3_burst_end(self, now, info):
+            """1007 시간 제한 걷기의 기한 도달 — step 끄기와 같은 실행(명령 0·gait_enable 0 → 반주기 경계에서 서기)을 브리지가 스스로 한다.
+            같은 req_id 로 event="burst_end" 응답을 낸다(콘솔은 이것으로 '걷기 끝 요청됨'을 안다. 서기 완료는 ge 0 관측으로 따로 판정)."""
+            rid, dur, ran = info
+            if self.core.w3cmd:
+                self.core.cmd = (0.0, 0.0, 0.0)
+            self.core.set_gait_enable(False)
+            self._bb_write({"timestamp": now, "event": "w3_step", "enable": False, "by": "burst", "req_id": rid, "dur_s": dur, "ran_s": round(float(ran), 3)})
+            ack = {"timestamp": now, "cmd": "step", "event": "burst_end", "req_id": rid, "accepted": True,
+                   "why": f"기한 {dur:g}s 경과 — 끄기(반주기 경계에서 서기)", "action": "set_want", "dur_s": dur,
+                   "active": bool(self.core.active), "w3": self.core.runner._w3_clock.snapshot() if self.core.w3 else None,
+                   "sup": self.w3sup.snapshot(), "guard_mode": self.guard_mode}
+            if self.core.kew3:
+                ack["kew3"] = self.core.kew3_snapshot()
+            try:
+                self.pub_ack.publish(String(data=json.dumps(ack, default=str)))
+            except Exception:  # noqa: BLE001 — 응답 실패가 끄기를 막으면 안 된다
+                pass
+            self._bb_write(dict(ack, event="w3_burst_end"))
+            self.get_logger().info(f"W3 시간 제한 걷기 끝(req {rid}, 기한 {dur:g}s) — 끄기 요청")
+
         def _w3_ack(self, d, accepted, why, action=None):
             """1006 W3 세션: 모든 명령에 응답(수락/거부+이유) — BRIDGE_ACK_TOPIC + 블랙박스."""
             now = time.time()
@@ -4840,6 +4861,13 @@ def main():
                     g = self.grav_last
                     dec = dict(dec, accepted=False,
                                why=f"stand 시작 거부(종전 게이트) — {g[1] if g and not g[0] else 'hang_arm/touchdown 조건 — 로그 참조'}")
+            # 1007 시간 제한 걷기(버스트, 콘솔 걷기 버튼): 수락·실행된 켜기/명령 변경에만 기한을 건다(dur_s 없으면 기한 해제 = 종전 연속 걷기).
+            # 끄기·stop·estop 은 기한을 지운다. 기한이 지나면 _tick 이 끄기와 같은 실행을 한다(_w3_burst_end).
+            if dec["accepted"] and self.core.w3:
+                if (act == "set_want" and dec["want"]) or act == "set_cmd":
+                    self.w3sup.burst_arm(now, d.get("req_id"), dec.get("dur_s"))
+                elif act in ("set_want", "stop", "estop"):
+                    self.w3sup.burst_clear()
             self._w3_ack(d, dec["accepted"], dec["why"], act)
 
         def _on_cmd_base(self, d):
@@ -5198,6 +5226,10 @@ def main():
                 self.w3sup.observe(now, contact2, gyro, correct_gravity(projected_gravity(quat)))
                 if self._w3_freeze_check(now):
                     return
+                if self.w3sup.burst_t_off is not None:      # 1007 시간 제한 걷기: 기한이 걸린 동안에만 확인(그 밖 세션은 이 줄에서 끝)
+                    _bd = self.w3sup.burst_due(now, bool(self.core.runner._w3_clock.want) if self.core.w3 else False)
+                    if _bd is not None:
+                        self._w3_burst_end(now, _bd)
             # 리프트 가드 — 양발 무접촉 LIFT_STOP_S 지속 시 동결 (발버둥 차단).
             # 0908: HangGuard 상태기로 이관. hang_arm 미명시면 종전과 동일 동작(셀프테스트 고정),
             # hang_arm 명시면 접지 획득 전에만 무접촉 허용(상한 HANG_MAX_S).

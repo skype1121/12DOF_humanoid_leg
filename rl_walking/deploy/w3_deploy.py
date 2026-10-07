@@ -207,6 +207,35 @@ class W3CmdLimits:
 
 
 W3S3D_CMD_LIMITS = W3CmdLimits()
+
+#: 1007 콘솔 걷기 버튼: 시간 제한 걷기(버스트) 허용 범위 [s]. step 켜기·명령 변경에 dur_s 를 주면 그 시간이 지난 뒤 **브리지(감독기)가** 끄기를 요구한다 —
+#: 콘솔·통신이 죽어도 걷기가 무한히 이어지지 않게 하는 기한이다(끄기는 종전과 같이 반주기 경계에서 서기).
+W3_BURST_RANGE = (0.3, 10.0)
+#: 1007 콘솔 걷기 버튼 표(단일 원본 — 콘솔·시뮬 평가가 같은 값을 읽는다). 전부 W3S3d 학습 범위 안의 단일 축 명령 + 지속 시간.
+#: 걸음 주기 = 1 / f_step = 0.909 s(왼발·오른발 한 번씩). 끄기는 다음 반주기 경계에서 걸리므로 dur_s 0.6 → 한 주기(0.91 s), 2.4 → 세 주기(2.73 s), 2.0 → 2.5 주기(2.27 s).
+#: 부호: +vx 앞 · +vy 왼 · +wz 왼쪽(반시계) 회전 — 실물 부호는 계획서 T6 에서 확인 전(현장 확인 필요).
+W3_MOVES = {
+    "fwd1": {"label": "전진 한 걸음", "vx": 0.06, "vy": 0.0, "wz": 0.0, "dur_s": 0.6},
+    "fwd3": {"label": "전진 세 걸음", "vx": 0.06, "vy": 0.0, "wz": 0.0, "dur_s": 2.4},
+    "back1": {"label": "후진 한 걸음", "vx": -0.04, "vy": 0.0, "wz": 0.0, "dur_s": 0.6},
+    "left1": {"label": "왼쪽 옆걸음", "vx": 0.0, "vy": 0.035, "wz": 0.0, "dur_s": 0.6},
+    "right1": {"label": "오른쪽 옆걸음", "vx": 0.0, "vy": -0.035, "wz": 0.0, "dur_s": 0.6},
+    "turn_l": {"label": "좌측 회전", "vx": 0.0, "vy": 0.0, "wz": 0.15, "dur_s": 2.0},
+    "turn_r": {"label": "우측 회전", "vx": 0.0, "vy": 0.0, "wz": -0.15, "dur_s": 2.0},
+    "inplace": {"label": "제자리 걸음", "vx": 0.0, "vy": 0.0, "wz": 0.0, "dur_s": 2.0},
+}
+
+
+def w3_move_cmd(name, limits: "W3CmdLimits" = W3S3D_CMD_LIMITS) -> dict:
+    """버튼 이름 → 검증된 step 켜기 필드 {vx, vy, wz, dur_s}(학습 범위·단일 축·기한 범위 검사, 위반 ValueError)."""
+    if name not in W3_MOVES:
+        raise ValueError(f"모르는 걷기 버튼 {name!r} (허용 {sorted(W3_MOVES)})")
+    m = W3_MOVES[name]
+    vx, vy, wz = validate_w3_cmd({"vx": m["vx"], "vy": m["vy"], "wz": m["wz"]}, limits)
+    dur = float(m["dur_s"])
+    if not (W3_BURST_RANGE[0] - 1e-9 <= dur <= W3_BURST_RANGE[1] + 1e-9):
+        raise ValueError(f"{name}: dur_s {dur} 범위 밖 {W3_BURST_RANGE}")
+    return {"vx": vx, "vy": vy, "wz": wz, "dur_s": dur}
 #: --w3-cmd-limits 로 넓힐 수 있는 상한(시뮬 평가 근거: vy 0.05–0.08 추종·wz 0.3 회전 — W3S3d-15800 확장 평가, 학습 범위 밖이라 기본은 안 씀).
 W3_CMD_LIMIT_RANGES = {"vy_max": (0.03, 0.08), "wz_max": (0.1, 0.3), "min_dwell_s": (0.5, 10.0)}
 
@@ -474,6 +503,41 @@ class W3Supervisor:
         self.tilt = None
         self.w_xy = None
         self.contact = None
+        # 1007 시간 제한 걷기(버스트): 기한(초, 호출자 시계)·요청 ID·길이. 한 번도 안 쓰면 snapshot 에 필드가 없다(종전 스키마 불변).
+        self.burst_t_off = None
+        self.burst_req = None
+        self.burst_dur = None
+        self.burst_used = False
+        self.last_burst_end = None
+
+    # ---- 1007 시간 제한 걷기(버스트) ----
+    def burst_arm(self, now, req_id, dur_s) -> None:
+        """수락·실행된 켜기/명령 변경 뒤에 호출자가 부른다. dur_s None = 기한 없음(종전 연속 걷기 — 걸려 있던 기한도 지운다)."""
+        if dur_s is None:
+            self.burst_t_off = self.burst_req = self.burst_dur = None
+            return
+        self.burst_used = True
+        self.burst_t_off = float(now) + float(dur_s)
+        self.burst_req = req_id
+        self.burst_dur = float(dur_s)
+
+    def burst_clear(self) -> None:
+        self.burst_t_off = self.burst_req = self.burst_dur = None
+
+    def burst_due(self, now, want_now):
+        """기한이 지났고 아직 걷기 요청 중(want 1)이면 (req_id, dur_s, 지난 시간) 을 돌려주고 기한을 지운다 — 호출자는 step 끄기와 같은 실행을 한다.
+        want 0(이미 꺼짐)이면 기한만 지우고 None."""
+        if self.burst_t_off is None:
+            return None
+        if not want_now:
+            self.burst_clear()
+            return None
+        if now < self.burst_t_off - 1e-9:
+            return None
+        info = (self.burst_req, self.burst_dur, float(now) - (self.burst_t_off - self.burst_dur))
+        self.last_burst_end = {"req_id": self.burst_req, "dur_s": self.burst_dur, "t": float(now)}
+        self.burst_clear()
+        return info
 
     # ---- 관측(정책 틱마다, 가드·정책 계산 전) ----
     def observe(self, now, contact2, gyro, grav) -> None:
@@ -528,8 +592,11 @@ class W3Supervisor:
         리샘플과 같음 → 리드 발 규칙이 이 명령을 본다). cmd = 검증된 (vx, vy, wz), hl = 헤딩 고리 사용 여부. 채널 없는 키는 0 아닌 속도 거부."""
         c = d.get("cmd", "")
 
-        def out(acc, why, action="none", want=None, cmd=None, hl=None):
-            return {"accepted": bool(acc), "why": why, "action": action, "want": want, "cmd": cmd, "hl": hl}
+        def out(acc, why, action="none", want=None, cmd=None, hl=None, dur=None):
+            r = {"accepted": bool(acc), "why": why, "action": action, "want": want, "cmd": cmd, "hl": hl}
+            if dur is not None:              # 1007 버스트: dur_s 를 준 명령에만 필드 추가(종전 결정 dict 불변)
+                r["dur_s"] = dur
+            return r
 
         if c in ("estop", "stop"):
             _rid, seq, err = _check_req(d)
@@ -558,6 +625,12 @@ class W3Supervisor:
                 return out(False, f"중복/오래된 seq {seq} ≤ 마지막 {self.last_seq}")
             self.last_seq = seq                # 형식이 맞는 새 seq 는 거부돼도 소비(재시도는 새 seq)
             cmd = hl = None
+            dur = d.get("dur_s", None)         # 1007 버스트: 없으면 종전(기한 없음)
+            if dur is not None:
+                if (isinstance(dur, bool) or not isinstance(dur, (int, float)) or not math.isfinite(float(dur))
+                        or not (W3_BURST_RANGE[0] - 1e-9 <= float(dur) <= W3_BURST_RANGE[1] + 1e-9)):
+                    return out(False, f"dur_s 는 {W3_BURST_RANGE[0]:g}–{W3_BURST_RANGE[1]:g} s 의 수(받음 {dur!r})")
+                dur = float(dur)
             if self.cmd_limits is None:        # 명령 채널 없는 키(W3-A): (0,0,0) 고정 — 0 아닌 속도는 조용히 버리지 않고 거부
                 if any(isinstance(d.get(k), bool) or not isinstance(d.get(k, 0.0), (int, float)) or d.get(k, 0.0) != 0
                        for k in ("vx", "vy", "wz")):
@@ -579,15 +652,15 @@ class W3Supervisor:
                 if self.last_cmd_t is not None and now - self.last_cmd_t < self.cmd_limits.min_dwell_s - 1e-9:
                     return out(False, f"명령 변경 간격 {now - self.last_cmd_t:.2f}s < {self.cmd_limits.min_dwell_s:g}s(체류) — 다시")
                 self.last_cmd_t = now
-                return out(True, f"명령 변경 {cur} → {cmd}(위상 유지)", "set_cmd", None, cmd, hl)
+                return out(True, f"명령 변경 {cur} → {cmd}(위상 유지)" + (f"·기한 {dur:g}s" if dur is not None else ""), "set_cmd", None, cmd, hl, dur)
             ok, why = self.enable_preconditions(now, active=active, warmed=warmed, blend_done=blend_done, ge_now=ge_now)
             if not ok:
                 return out(False, why)
             if self.cmd_limits is None:
-                return out(True, "켜기 — 다음 틱 위상 0(왼발 스윙)", "set_want", True)
+                return out(True, "켜기 — 다음 틱 위상 0(왼발 스윙)" + (f"·기한 {dur:g}s" if dur is not None else ""), "set_want", True, dur=dur)
             self.last_cmd_t = now
-            return out(True, f"켜기 — 명령 {cmd}·헤딩 고리 {'켜짐' if hl else '꺼짐'}(다음 틱, 리드 발은 명령 부호 규칙)",
-                       "set_want", True, cmd, hl)
+            return out(True, f"켜기 — 명령 {cmd}·헤딩 고리 {'켜짐' if hl else '꺼짐'}(다음 틱, 리드 발은 명령 부호 규칙)"
+                       + (f"·기한 {dur:g}s" if dur is not None else ""), "set_want", True, cmd, hl, dur)
         if c == "rearm":
             _rid, seq, err = _check_req(d)
             if err is not None:
@@ -619,6 +692,7 @@ class W3Supervisor:
     def begin_freeze(self, now, why) -> bool:
         """처음 트립이면 True(새로 시작). 이미 대기 중이면 첫 사유·시각을 유지하고 False. 정지 래치를 건다."""
         self.stop_latched = True
+        self.burst_clear()                   # 1007: 가드 트립 뒤에는 기한 끄기가 따로 나가지 않게
         if self.freeze_state is not None:
             return False
         self.latch_reason = f"guard: {why}"
@@ -655,6 +729,7 @@ class W3Supervisor:
         self.freeze_state = None
         self.freeze_t0 = None
         self.freeze_latch_t = None
+        self.burst_clear()
         if not self.stop_latched:
             self.latch_reason = f"stop_all: {reason}"
         self.stop_latched = True
@@ -666,4 +741,7 @@ class W3Supervisor:
                 **({} if self.cmd_limits is None else {"last_cmd_t": self.last_cmd_t}),
                 "freeze": self.freeze_state, "freeze_why": self.freeze_why if self.freeze_state else None,
                 "tilt_deg": r(self.tilt, 2), "w_xy": r(self.w_xy, 3),
-                "contact": list(self.contact) if self.contact else None}
+                "contact": list(self.contact) if self.contact else None,
+                **({} if not self.burst_used else {"burst": (None if self.burst_t_off is None else
+                                                          {"req_id": self.burst_req, "dur_s": self.burst_dur, "t_off": round(self.burst_t_off, 3)}),
+                                                 "last_burst_end": self.last_burst_end})}

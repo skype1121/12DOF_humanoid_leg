@@ -4,18 +4,18 @@
 #   x13 = 토크 한계 민감도 대본(제자리 6 s → 앞 0.06 8 s → 정지 → 뒤 12 N, 배율 1.0/0.8/0.7/0.6) · ff = 앞 0.06 × 5 주기 왕복 · x14 = 콘솔 버튼 10 번 대본.
 S=/tmp/claude-1000/-home-ryu-humanoid-leg-test1/f0e513e9-71ac-45c3-820b-1b06b07d54af/scratchpad; cd /home/ryu/humanoid_leg_test1 || exit 2; export OMNI_KIT_ACCEPT_EULA=YES PYTHONPATH=$PWD
 NM=$1; CKS=${2:-"16299 16100"}; STAGES=${3:-"x13 ff"}; SEEDS=${4:-"1 2"}; TAG=$(echo $NM | tr a-z A-Z)
-until grep -q ${TAG}_TRAIN_DONE $S/$NM/chain.out 2>/dev/null; do sleep 30; done
-RN=$(sed 's/^run //' $S/$NM/run.txt); R=logs/rsl_rl/biped12_stepb0/$RN; echo "$(date +%H:%M) ${TAG}_EVAL 시작 run $RN · 체크포인트 $CKS · 단계 $STAGES"
+mkdir -p $S/$NM
+if [ -n "${W3C_RUN:-}" ]; then RN=$W3C_RUN; else until grep -q ${TAG}_TRAIN_DONE $S/$NM/chain.out 2>/dev/null; do sleep 30; done; RN=$(sed 's/^run //' $S/$NM/run.txt); fi
+R=logs/rsl_rl/biped12_stepb0/$RN; echo "$(date +%H:%M) ${TAG}_EVAL 시작 run $RN · 체크포인트 $CKS · 단계 $STAGES"
 for CK in $CKS; do
   [ -f $R/model_$CK.pt ] || { echo "$(date +%H:%M) ${TAG}_EVAL 체크포인트 없음 $CK"; continue; }
   if [ ! -f $R/exported_$CK/policy.pt ]; then
-    while [ -d $R/exported ]; do sleep 5; done
-    /home/ryu/IsaacLab/isaaclab.sh -p rl_walking/scripts/export_ckpt_offline.py $R model_$CK.pt > $S/$NM/export_$CK.log 2>&1
-    [ -f $R/exported/policy.pt ] && mv $R/exported $R/exported_$CK || { echo "$(date +%H:%M) ${TAG}_EVAL 내보내기 실패 $CK"; continue; }
+    /home/ryu/IsaacLab/isaaclab.sh -p rl_walking/scripts/export_ckpt_offline.py $R model_$CK.pt --out_name exported_$CK > $S/$NM/export_$CK.log 2>&1
+    [ -f $R/exported_$CK/policy.pt ] || { echo "$(date +%H:%M) ${TAG}_EVAL 내보내기 실패 $CK"; continue; }
     echo "$(date +%H:%M) ${TAG}_EVAL 내보내기 $CK: $(md5sum $R/exported_$CK/policy.pt | cut -c1-8) onnx $(md5sum $R/exported_$CK/policy.onnx | cut -c1-8)"
   fi
 done
-export TR_SCRIPT=rl_walking/scripts/eval_transition_kwx.py EVAL_TIMEOUT=3000 EVAL_ENVS=256 EVAL_POLL=1
+export TR_SCRIPT=rl_walking/scripts/eval_transition_kwx.py EVAL_TIMEOUT=3000 EVAL_ENVS=256 EVAL_POLL=${EVAL_POLL:-1} EVAL_YIELD=${EVAL_YIELD:-3}
 ok() { grep -q '사전 검사(무개입 자립 [0-9.]*s) 통과: [1-9]' log_picture/ground_recovery_$1.txt 2>/dev/null && [ -f log_picture/ground_recovery_$1_envs.csv ]; }
 run() { local t=$1; shift; ok $t && { echo "skip $t"; return; }; $S/safe_tr.sh $t "$@"; }
 CM="--ke_mode direct --runner_loop --kw_requiet 2.0,0.3 --delay_steps 2,2 --trace_all 128"

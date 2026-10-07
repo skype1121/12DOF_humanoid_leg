@@ -6,7 +6,7 @@ RN=$(grep ROB_TRAIN_DONE $S/rob/train.out | tail -1 | awk '{print $2}'); B=2026-
 E2="--cmds f06:0.06,0,0 --grid imu_pitch=-3,-1.5 --grid com_x=0.02 --seconds 15"
 SW="imu_pitch=-6,-3,3,6;com_x=0.03,0.04,-0.04;play=0.5,2"
 run() { local t=$1; shift; [ -f log_picture/w3env_$t.json ] && { echo "skip $t"; return; }; $S/safe_env.sh $t "$@"; }
-CKS=""; for ck in 16000 16100 16300; do [ -f logs/rsl_rl/biped12_stepb0/$RN/model_$ck.pt ] && CKS="$CKS $ck"; done
+CKS=""; for ck in 16000 16100 16299; do [ -f logs/rsl_rl/biped12_stepb0/$RN/model_$ck.pt ] && CKS="$CKS $ck"; done
 [ -z "$CKS" ] && CKS=$(ls logs/rsl_rl/biped12_stepb0/$RN/model_*.pt | sed 's/.*model_//;s/.pt//' | sort -n | tail -1)
 echo "run $RN 후보 $CKS"
 for ck in $CKS; do run rob_r${ck}_e2_s1 $RN $ck $E2 --seed 1; done

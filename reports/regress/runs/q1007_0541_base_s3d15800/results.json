@@ -1,0 +1,1230 @@
+{
+ "rid": "q1007_0541",
+ "mode": "quick",
+ "profile": "s3d",
+ "started": "2026-10-07 05:41:39",
+ "overall": "PASS(경계 있음)",
+ "counts": {
+  "PASS": 63,
+  "미실행": 29,
+  "참고": 4,
+  "경계": 1
+ },
+ "verdicts": {
+  "S-nd.pre": "PASS",
+  "S-nd.fall": "PASS",
+  "S-nd.quiet": "PASS",
+  "S-nd.pose": "PASS",
+  "S-b18.fall": "PASS",
+  "S-b18.pose": "PASS",
+  "W-st.warm": "미실행",
+  "W-st.fall": "미실행",
+  "W-st.steps": "미실행",
+  "W-st.prms": "미실행",
+  "W-st.vx": "미실행",
+  "W-z.fall": "PASS",
+  "W-z.warm": "PASS",
+  "W-z.vx": "PASS",
+  "W-z.vy": "PASS",
+  "W-z.alt": "PASS",
+  "W-z.cad": "PASS",
+  "W-f.vx": "PASS",
+  "W-f.fall": "PASS",
+  "W-b.vx": "PASS",
+  "W-b.fall": "PASS",
+  "W-l.vy": "PASS",
+  "W-l.fall": "PASS",
+  "W-r.vy": "PASS",
+  "W-r.fall": "PASS",
+  "W-tl.yg": "PASS",
+  "W-tl.fall": "PASS",
+  "W-tr.yg": "PASS",
+  "W-tr.fall": "PASS",
+  "W-mix.gx": "참고",
+  "W-mix.gy": "참고",
+  "W-mix.yg": "참고",
+  "W-mix.fall": "참고",
+  "W-hl.yaw": "PASS",
+  "W-hl.fall": "PASS",
+  "W-hl.vx": "PASS",
+  "W-hl.vy": "PASS",
+  "W-d4.fall": "PASS",
+  "W-d4.vx": "PASS",
+  "W-d4hl.yaw": "미실행",
+  "W-d4hl.fall": "미실행",
+  "W-stop.settle": "경계",
+  "W-stop.foot": "PASS",
+  "W-stop.sfall": "PASS",
+  "W-dist.f0.fall": "PASS",
+  "W-dist.l0.fall": "PASS",
+  "W-dist.f12.fall": "PASS",
+  "W-dist.f12.rec": "PASS",
+  "W-dist.b18.fall": "PASS",
+  "W-dist.b18.rec": "PASS",
+  "W-dist.l30.fall": "PASS",
+  "W-dist.l30.rec": "PASS",
+  "K-pair.fall": "PASS",
+  "K-ref-odicw.fall": "PASS",
+  "K-ref-imu.fall": "미실행",
+  "K-odicw-nd.fall": "PASS",
+  "K-odicw-nd.chain": "PASS",
+  "K-odicw-nd.pose": "PASS",
+  "K-odicw-nd.quiet": "PASS",
+  "K-odicw-nd.false": "PASS",
+  "K-odicw-nd.long": "PASS",
+  "K-odicw-sf15.fall": "PASS",
+  "K-odicw-sf15.chain": "PASS",
+  "K-odicw-sf15.pose": "PASS",
+  "K-odicw-sf15.quiet": "PASS",
+  "K-odicw-sf15.long": "PASS",
+  "K-odicw-fi40.fall": "PASS",
+  "K-odicw-fi40.chain": "PASS",
+  "K-odicw-fi40.pose": "PASS",
+  "K-odicw-fi40.quiet": "PASS",
+  "K-odicw-fi40.long": "PASS",
+  "K-odicw-b18.fall": "PASS",
+  "K-odicw-b18.chain": "PASS",
+  "K-odicw-b18.pose": "PASS",
+  "K-odicw-b18.quiet": "PASS",
+  "K-odicw-b18.long": "PASS",
+  "K-imu-nd.fall": "미실행",
+  "K-imu-nd.chain": "미실행",
+  "K-imu-nd.pose": "미실행",
+  "K-imu-nd.quiet": "미실행",
+  "K-imu-nd.false": "미실행",
+  "K-imu-nd.long": "미실행",
+  "K-imu-sf15.fall": "미실행",
+  "K-imu-sf15.chain": "미실행",
+  "K-imu-sf15.pose": "미실행",
+  "K-imu-sf15.quiet": "미실행",
+  "K-imu-sf15.long": "미실행",
+  "K-imu-fi40.fall": "미실행",
+  "K-imu-fi40.chain": "미실행",
+  "K-imu-fi40.pose": "미실행",
+  "K-imu-fi40.quiet": "미실행",
+  "K-imu-fi40.long": "미실행",
+  "K-imu-b18.fall": "미실행",
+  "K-imu-b18.chain": "미실행",
+  "K-imu-b18.pose": "미실행",
+  "K-imu-b18.quiet": "미실행",
+  "K-imu-b18.long": "미실행"
+ },
+ "values": {
+  "W-z.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 121
+  },
+  "W-z.warm": {
+   "kind": "rate",
+   "k": 7,
+   "n": 128
+  },
+  "W-z.vx": {
+   "kind": "cont",
+   "v": 0.0006683245301246643,
+   "per": [
+    0.0006683245301246643
+   ]
+  },
+  "W-z.vy": {
+   "kind": "cont",
+   "v": 0.01015152595937252,
+   "per": [
+    0.01015152595937252
+   ]
+  },
+  "W-z.alt": {
+   "kind": "cont",
+   "v": 1.0,
+   "per": [
+    1.0
+   ]
+  },
+  "W-z.cad": {
+   "kind": "cont",
+   "v": 1.0666666666666682,
+   "per": [
+    1.0666666666666682
+   ]
+  },
+  "W-z.yaw": {
+   "kind": "cont",
+   "v": 11.463922500610352,
+   "per": [
+    11.463922500610352
+   ]
+  },
+  "W-z.prms": {
+   "kind": "cont",
+   "v": 0.8878670334815979,
+   "per": [
+    0.8878670334815979
+   ]
+  },
+  "W-z.steps": {
+   "kind": "cont",
+   "v": 2.1333333333333364,
+   "per": [
+    2.1333333333333364
+   ]
+  },
+  "W-z.yg": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-z.gx": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-z.gy": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-f.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 121
+  },
+  "W-f.warm": {
+   "kind": "rate",
+   "k": 7,
+   "n": 128
+  },
+  "W-f.vx": {
+   "kind": "cont",
+   "v": 0.0684383437037468,
+   "per": [
+    0.0684383437037468
+   ]
+  },
+  "W-f.vy": {
+   "kind": "cont",
+   "v": 0.011966593563556671,
+   "per": [
+    0.011966593563556671
+   ]
+  },
+  "W-f.alt": {
+   "kind": "cont",
+   "v": 1.0,
+   "per": [
+    1.0
+   ]
+  },
+  "W-f.cad": {
+   "kind": "cont",
+   "v": 1.0666666666666682,
+   "per": [
+    1.0666666666666682
+   ]
+  },
+  "W-f.yaw": {
+   "kind": "cont",
+   "v": 16.07298469543457,
+   "per": [
+    16.07298469543457
+   ]
+  },
+  "W-f.prms": {
+   "kind": "cont",
+   "v": 0.8842098116874695,
+   "per": [
+    0.8842098116874695
+   ]
+  },
+  "W-f.steps": {
+   "kind": "cont",
+   "v": 2.1333333333333364,
+   "per": [
+    2.1333333333333364
+   ]
+  },
+  "W-f.yg": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-f.gx": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-f.gy": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-b.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 121
+  },
+  "W-b.warm": {
+   "kind": "rate",
+   "k": 7,
+   "n": 128
+  },
+  "W-b.vx": {
+   "kind": "cont",
+   "v": -0.04735924303531647,
+   "per": [
+    -0.04735924303531647
+   ]
+  },
+  "W-b.vy": {
+   "kind": "cont",
+   "v": 0.006824670825153589,
+   "per": [
+    0.006824670825153589
+   ]
+  },
+  "W-b.alt": {
+   "kind": "cont",
+   "v": 1.0,
+   "per": [
+    1.0
+   ]
+  },
+  "W-b.cad": {
+   "kind": "cont",
+   "v": 1.0666666666666682,
+   "per": [
+    1.0666666666666682
+   ]
+  },
+  "W-b.yaw": {
+   "kind": "cont",
+   "v": 12.517511367797852,
+   "per": [
+    12.517511367797852
+   ]
+  },
+  "W-b.prms": {
+   "kind": "cont",
+   "v": 0.9584717154502869,
+   "per": [
+    0.9584717154502869
+   ]
+  },
+  "W-b.steps": {
+   "kind": "cont",
+   "v": 2.1333333333333364,
+   "per": [
+    2.1333333333333364
+   ]
+  },
+  "W-b.yg": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-b.gx": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-b.gy": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-l.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 121
+  },
+  "W-l.warm": {
+   "kind": "rate",
+   "k": 7,
+   "n": 128
+  },
+  "W-l.vx": {
+   "kind": "cont",
+   "v": -0.006484817247837782,
+   "per": [
+    -0.006484817247837782
+   ]
+  },
+  "W-l.vy": {
+   "kind": "cont",
+   "v": 0.0634642168879509,
+   "per": [
+    0.0634642168879509
+   ]
+  },
+  "W-l.alt": {
+   "kind": "cont",
+   "v": 1.0,
+   "per": [
+    1.0
+   ]
+  },
+  "W-l.cad": {
+   "kind": "cont",
+   "v": 1.0666666666666682,
+   "per": [
+    1.0666666666666682
+   ]
+  },
+  "W-l.yaw": {
+   "kind": "cont",
+   "v": 16.427505493164062,
+   "per": [
+    16.427505493164062
+   ]
+  },
+  "W-l.prms": {
+   "kind": "cont",
+   "v": 0.9704996943473816,
+   "per": [
+    0.9704996943473816
+   ]
+  },
+  "W-l.steps": {
+   "kind": "cont",
+   "v": 2.1333333333333364,
+   "per": [
+    2.1333333333333364
+   ]
+  },
+  "W-l.yg": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-l.gx": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-l.gy": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-r.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 121
+  },
+  "W-r.warm": {
+   "kind": "rate",
+   "k": 7,
+   "n": 128
+  },
+  "W-r.vx": {
+   "kind": "cont",
+   "v": -0.0007729863282293081,
+   "per": [
+    -0.0007729863282293081
+   ]
+  },
+  "W-r.vy": {
+   "kind": "cont",
+   "v": -0.05641810968518257,
+   "per": [
+    -0.05641810968518257
+   ]
+  },
+  "W-r.alt": {
+   "kind": "cont",
+   "v": 0.9997331910352187,
+   "per": [
+    0.9997331910352187
+   ]
+  },
+  "W-r.cad": {
+   "kind": "cont",
+   "v": 1.0658402203856765,
+   "per": [
+    1.0658402203856765
+   ]
+  },
+  "W-r.yaw": {
+   "kind": "cont",
+   "v": 13.168256759643555,
+   "per": [
+    13.168256759643555
+   ]
+  },
+  "W-r.prms": {
+   "kind": "cont",
+   "v": 0.9631351828575134,
+   "per": [
+    0.9631351828575134
+   ]
+  },
+  "W-r.steps": {
+   "kind": "cont",
+   "v": 2.131680440771353,
+   "per": [
+    2.131680440771353
+   ]
+  },
+  "W-r.yg": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-r.gx": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-r.gy": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-tl.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 121
+  },
+  "W-tl.warm": {
+   "kind": "rate",
+   "k": 7,
+   "n": 128
+  },
+  "W-tl.vx": {
+   "kind": "cont",
+   "v": -0.014778879471123219,
+   "per": [
+    -0.014778879471123219
+   ]
+  },
+  "W-tl.vy": {
+   "kind": "cont",
+   "v": 0.006674116477370262,
+   "per": [
+    0.006674116477370262
+   ]
+  },
+  "W-tl.alt": {
+   "kind": "cont",
+   "v": 1.0,
+   "per": [
+    1.0
+   ]
+  },
+  "W-tl.cad": {
+   "kind": "cont",
+   "v": 1.0666666666666682,
+   "per": [
+    1.0666666666666682
+   ]
+  },
+  "W-tl.yaw": {
+   "kind": "cont",
+   "v": 19.071836471557617,
+   "per": [
+    19.071836471557617
+   ]
+  },
+  "W-tl.prms": {
+   "kind": "cont",
+   "v": 1.1015843152999878,
+   "per": [
+    1.1015843152999878
+   ]
+  },
+  "W-tl.steps": {
+   "kind": "cont",
+   "v": 2.1333333333333364,
+   "per": [
+    2.1333333333333364
+   ]
+  },
+  "W-tl.yg": {
+   "kind": "cont",
+   "v": 0.8963263961635983,
+   "per": [
+    0.8963263961635983
+   ]
+  },
+  "W-tl.gx": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-tl.gy": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-tr.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 121
+  },
+  "W-tr.warm": {
+   "kind": "rate",
+   "k": 7,
+   "n": 128
+  },
+  "W-tr.vx": {
+   "kind": "cont",
+   "v": -0.012788012623786926,
+   "per": [
+    -0.012788012623786926
+   ]
+  },
+  "W-tr.vy": {
+   "kind": "cont",
+   "v": -0.008675252087414265,
+   "per": [
+    -0.008675252087414265
+   ]
+  },
+  "W-tr.alt": {
+   "kind": "cont",
+   "v": 1.0,
+   "per": [
+    1.0
+   ]
+  },
+  "W-tr.cad": {
+   "kind": "cont",
+   "v": 1.0666666666666682,
+   "per": [
+    1.0666666666666682
+   ]
+  },
+  "W-tr.yaw": {
+   "kind": "cont",
+   "v": 29.930940628051758,
+   "per": [
+    29.930940628051758
+   ]
+  },
+  "W-tr.prms": {
+   "kind": "cont",
+   "v": 1.4156125783920288,
+   "per": [
+    1.4156125783920288
+   ]
+  },
+  "W-tr.steps": {
+   "kind": "cont",
+   "v": 2.1333333333333364,
+   "per": [
+    2.1333333333333364
+   ]
+  },
+  "W-tr.yg": {
+   "kind": "cont",
+   "v": 0.8311797334591597,
+   "per": [
+    0.8311797334591597
+   ]
+  },
+  "W-tr.gx": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-tr.gy": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-mix.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 121
+  },
+  "W-mix.warm": {
+   "kind": "rate",
+   "k": 7,
+   "n": 128
+  },
+  "W-mix.vx": {
+   "kind": "cont",
+   "v": -0.033754780888557434,
+   "per": [
+    -0.033754780888557434
+   ]
+  },
+  "W-mix.vy": {
+   "kind": "cont",
+   "v": 0.05447869375348091,
+   "per": [
+    0.05447869375348091
+   ]
+  },
+  "W-mix.alt": {
+   "kind": "cont",
+   "v": 0.9991995731056563,
+   "per": [
+    0.9991995731056563
+   ]
+  },
+  "W-mix.cad": {
+   "kind": "cont",
+   "v": 1.0658402203856765,
+   "per": [
+    1.0658402203856765
+   ]
+  },
+  "W-mix.yaw": {
+   "kind": "cont",
+   "v": 23.697050094604492,
+   "per": [
+    23.697050094604492
+   ]
+  },
+  "W-mix.prms": {
+   "kind": "cont",
+   "v": 1.097090721130371,
+   "per": [
+    1.097090721130371
+   ]
+  },
+  "W-mix.steps": {
+   "kind": "cont",
+   "v": 2.131680440771353,
+   "per": [
+    2.131680440771353
+   ]
+  },
+  "W-mix.yg": {
+   "kind": "cont",
+   "v": 0.8721203424493797,
+   "per": [
+    0.8721203424493797
+   ]
+  },
+  "W-mix.gx": {
+   "kind": "cont",
+   "v": 0.8878017216920853,
+   "per": [
+    0.8878017216920853
+   ]
+  },
+  "W-mix.gy": {
+   "kind": "cont",
+   "v": 1.553652435541153,
+   "per": [
+    1.553652435541153
+   ]
+  },
+  "W-hl.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 94
+  },
+  "W-hl.warm": {
+   "kind": "rate",
+   "k": 2,
+   "n": 96
+  },
+  "W-hl.vx": {
+   "kind": "cont",
+   "v": 0.004287704359740019,
+   "per": [
+    0.004287704359740019
+   ]
+  },
+  "W-hl.vy": {
+   "kind": "cont",
+   "v": 0.003340102732181549,
+   "per": [
+    0.003340102732181549
+   ]
+  },
+  "W-hl.alt": {
+   "kind": "cont",
+   "v": 1.0,
+   "per": [
+    1.0
+   ]
+  },
+  "W-hl.cad": {
+   "kind": "cont",
+   "v": 1.0958333333333357,
+   "per": [
+    1.0958333333333357
+   ]
+  },
+  "W-hl.yaw": {
+   "kind": "cont",
+   "v": 1.8008993864059448,
+   "per": [
+    1.8008993864059448
+   ]
+  },
+  "W-hl.prms": {
+   "kind": "cont",
+   "v": 0.895318329334259,
+   "per": [
+    0.895318329334259
+   ]
+  },
+  "W-hl.steps": {
+   "kind": "cont",
+   "v": 2.1916666666666713,
+   "per": [
+    2.1916666666666713
+   ]
+  },
+  "W-hl.yg": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-hl.gx": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-hl.gy": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-d4.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 121
+  },
+  "W-d4.warm": {
+   "kind": "rate",
+   "k": 7,
+   "n": 128
+  },
+  "W-d4.vx": {
+   "kind": "cont",
+   "v": 0.049030907452106476,
+   "per": [
+    0.049030907452106476
+   ]
+  },
+  "W-d4.vy": {
+   "kind": "cont",
+   "v": 0.0057739391922950745,
+   "per": [
+    0.0057739391922950745
+   ]
+  },
+  "W-d4.alt": {
+   "kind": "cont",
+   "v": 0.9997332622032542,
+   "per": [
+    0.9997332622032542
+   ]
+  },
+  "W-d4.cad": {
+   "kind": "cont",
+   "v": 1.0661157024793404,
+   "per": [
+    1.0661157024793404
+   ]
+  },
+  "W-d4.yaw": {
+   "kind": "cont",
+   "v": 13.346090316772461,
+   "per": [
+    13.346090316772461
+   ]
+  },
+  "W-d4.prms": {
+   "kind": "cont",
+   "v": 1.0575283765792847,
+   "per": [
+    1.0575283765792847
+   ]
+  },
+  "W-d4.steps": {
+   "kind": "cont",
+   "v": 2.132231404958681,
+   "per": [
+    2.132231404958681
+   ]
+  },
+  "W-d4.yg": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-d4.gx": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-d4.gy": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-stop.fall": {
+   "kind": "rate",
+   "k": 1,
+   "n": 121
+  },
+  "W-stop.warm": {
+   "kind": "rate",
+   "k": 7,
+   "n": 128
+  },
+  "W-stop.vx": {
+   "kind": "cont",
+   "v": 0.03212963417172432,
+   "per": [
+    0.03212963417172432
+   ]
+  },
+  "W-stop.vy": {
+   "kind": "cont",
+   "v": 0.005594525020569563,
+   "per": [
+    0.005594525020569563
+   ]
+  },
+  "W-stop.alt": {
+   "kind": "cont",
+   "v": 1.0,
+   "per": [
+    1.0
+   ]
+  },
+  "W-stop.cad": {
+   "kind": "cont",
+   "v": 0.49771878888428084,
+   "per": [
+    0.49771878888428084
+   ]
+  },
+  "W-stop.yaw": {
+   "kind": "cont",
+   "v": 6.69093656539917,
+   "per": [
+    6.69093656539917
+   ]
+  },
+  "W-stop.prms": {
+   "kind": "cont",
+   "v": 1.8653020858764648,
+   "per": [
+    1.8653020858764648
+   ]
+  },
+  "W-stop.steps": {
+   "kind": "cont",
+   "v": 0.9954375777685617,
+   "per": [
+    0.9954375777685617
+   ]
+  },
+  "W-stop.yg": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-stop.gx": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-stop.gy": {
+   "kind": "cont",
+   "v": NaN,
+   "per": []
+  },
+  "W-stop.settle": {
+   "kind": "rate",
+   "k": 110,
+   "n": 121
+  },
+  "W-stop.sfall": {
+   "kind": "rate",
+   "k": 1,
+   "n": 121
+  },
+  "W-stop.foot": {
+   "kind": "cont",
+   "v": 4.683575630187988,
+   "per": [
+    4.683575630187988
+   ]
+  },
+  "W-dist.f0.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 29
+  },
+  "W-dist.f0.rec": {
+   "kind": "rate",
+   "k": 29,
+   "n": 29
+  },
+  "W-dist.f12.fall": {
+   "kind": "rate",
+   "k": 4,
+   "n": 31
+  },
+  "W-dist.f12.rec": {
+   "kind": "rate",
+   "k": 27,
+   "n": 31
+  },
+  "W-dist.b18.fall": {
+   "kind": "rate",
+   "k": 4,
+   "n": 30
+  },
+  "W-dist.b18.rec": {
+   "kind": "rate",
+   "k": 26,
+   "n": 30
+  },
+  "W-dist.l0.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 31
+  },
+  "W-dist.l0.rec": {
+   "kind": "rate",
+   "k": 31,
+   "n": 31
+  },
+  "W-dist.l30.fall": {
+   "kind": "rate",
+   "k": 7,
+   "n": 29
+  },
+  "W-dist.l30.rec": {
+   "kind": "rate",
+   "k": 22,
+   "n": 29
+  },
+  "S-nd.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 104
+  },
+  "S-nd.quiet": {
+   "kind": "rate",
+   "k": 102,
+   "n": 104
+  },
+  "S-nd.pose": {
+   "kind": "rate",
+   "k": 102,
+   "n": 104
+  },
+  "S-nd.chain": {
+   "kind": "rate",
+   "k": 102,
+   "n": 104
+  },
+  "S-nd.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 104
+  },
+  "S-nd.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 104
+  },
+  "S-nd.pre": {
+   "kind": "rate",
+   "k": 104,
+   "n": 128
+  },
+  "S-b18.fall": {
+   "kind": "rate",
+   "k": 22,
+   "n": 104
+  },
+  "S-b18.quiet": {
+   "kind": "rate",
+   "k": 74,
+   "n": 104
+  },
+  "S-b18.pose": {
+   "kind": "rate",
+   "k": 75,
+   "n": 104
+  },
+  "S-b18.chain": {
+   "kind": "rate",
+   "k": 0,
+   "n": 104
+  },
+  "S-b18.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 104
+  },
+  "S-b18.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 104
+  },
+  "S-b18.pre": {
+   "kind": "rate",
+   "k": 104,
+   "n": 128
+  },
+  "K-odicw-nd.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 104
+  },
+  "K-odicw-nd.quiet": {
+   "kind": "rate",
+   "k": 101,
+   "n": 104
+  },
+  "K-odicw-nd.pose": {
+   "kind": "rate",
+   "k": 101,
+   "n": 104
+  },
+  "K-odicw-nd.chain": {
+   "kind": "rate",
+   "k": 101,
+   "n": 104
+  },
+  "K-odicw-nd.false": {
+   "kind": "rate",
+   "k": 5,
+   "n": 104
+  },
+  "K-odicw-nd.long": {
+   "kind": "rate",
+   "k": 4,
+   "n": 104
+  },
+  "K-odicw-nd.pre": {
+   "kind": "rate",
+   "k": 104,
+   "n": 128
+  },
+  "K-odicw-sf15.fall": {
+   "kind": "rate",
+   "k": 20,
+   "n": 104
+  },
+  "K-odicw-sf15.quiet": {
+   "kind": "rate",
+   "k": 70,
+   "n": 104
+  },
+  "K-odicw-sf15.pose": {
+   "kind": "rate",
+   "k": 60,
+   "n": 104
+  },
+  "K-odicw-sf15.chain": {
+   "kind": "rate",
+   "k": 43,
+   "n": 104
+  },
+  "K-odicw-sf15.false": {
+   "kind": "rate",
+   "k": 102,
+   "n": 104
+  },
+  "K-odicw-sf15.long": {
+   "kind": "rate",
+   "k": 6,
+   "n": 104
+  },
+  "K-odicw-sf15.pre": {
+   "kind": "rate",
+   "k": 104,
+   "n": 128
+  },
+  "K-odicw-fi40.fall": {
+   "kind": "rate",
+   "k": 24,
+   "n": 104
+  },
+  "K-odicw-fi40.quiet": {
+   "kind": "rate",
+   "k": 71,
+   "n": 104
+  },
+  "K-odicw-fi40.pose": {
+   "kind": "rate",
+   "k": 65,
+   "n": 104
+  },
+  "K-odicw-fi40.chain": {
+   "kind": "rate",
+   "k": 41,
+   "n": 104
+  },
+  "K-odicw-fi40.false": {
+   "kind": "rate",
+   "k": 104,
+   "n": 104
+  },
+  "K-odicw-fi40.long": {
+   "kind": "rate",
+   "k": 3,
+   "n": 104
+  },
+  "K-odicw-fi40.pre": {
+   "kind": "rate",
+   "k": 104,
+   "n": 128
+  },
+  "K-odicw-b18.fall": {
+   "kind": "rate",
+   "k": 3,
+   "n": 104
+  },
+  "K-odicw-b18.quiet": {
+   "kind": "rate",
+   "k": 88,
+   "n": 104
+  },
+  "K-odicw-b18.pose": {
+   "kind": "rate",
+   "k": 85,
+   "n": 104
+  },
+  "K-odicw-b18.chain": {
+   "kind": "rate",
+   "k": 84,
+   "n": 104
+  },
+  "K-odicw-b18.false": {
+   "kind": "rate",
+   "k": 104,
+   "n": 104
+  },
+  "K-odicw-b18.long": {
+   "kind": "rate",
+   "k": 4,
+   "n": 104
+  },
+  "K-odicw-b18.pre": {
+   "kind": "rate",
+   "k": 104,
+   "n": 128
+  },
+  "K-pair.fall": {
+   "kind": "pair",
+   "n": 312,
+   "cand": 3,
+   "base": 11,
+   "note": "odicw만 낙상 3 / imu만 11 (외란 3 조건 합, 저장 기준선 sab_imu)"
+  },
+  "K-ref-odicw.fall": {
+   "kind": "pair",
+   "n": 416,
+   "cand": 0,
+   "base": 0,
+   "note": "이번에만 낙상 0 / 기준선(sab_odicw)에만 0 · 0/0 = 비트 재현"
+  }
+ },
+ "prev": null
+}

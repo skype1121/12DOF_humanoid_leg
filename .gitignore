@@ -25,3 +25,6 @@ deploy/*.tar.gz
 deploy/old/
 reports/real_20260912/*/pads_inc_*.jsonl
 reports/real_20260912/*/stiff_cop_*.jsonl
+
+# 회귀 검사 실행 로그(Isaac stdout — 큼, 판정은 summary.md·results.json)
+reports/regress/runs/*/logs/

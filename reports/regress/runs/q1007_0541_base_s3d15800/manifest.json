@@ -1,0 +1,382 @@
+{
+ "rid": "q1007_0541",
+ "cfg": {
+  "mode": "quick",
+  "rid": "q1007_0541",
+  "w3": "2026-10-07_00-11-12_w3S3d_from_s2d:model_15800.pt",
+  "w3_task": "Biped12-HangStand-W3S3d-v0",
+  "profile": "s3d",
+  "stand": "2026-10-02_21-23-08_g21a:model_11300.pt",
+  "rec": "2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt",
+  "ke_arms": null,
+  "w3_extra": "",
+  "stand_extra": "",
+  "ke_extra": "",
+  "only": "w3,dist,stand,ke",
+  "tag": "base_s3d15800"
+ },
+ "mode_params": {
+  "w3_envs": 128,
+  "w3_sec": 15,
+  "hl_envs": 96,
+  "stop": [
+   8,
+   14
+  ],
+  "dist_envs": 160,
+  "dist_sec": 14,
+  "w3_seeds": [
+   1
+  ],
+  "dist_seeds": [
+   1
+  ],
+  "stand_seeds": [
+   1
+  ],
+  "ke_seeds": [
+   1
+  ],
+  "ke_arms": [
+   "odicw"
+  ],
+  "d4hl": false
+ },
+ "started": "2026-10-07 05:41:39",
+ "code": {
+  "worktree": "/home/ryu/humanoid_leg_test1/.claude/worktrees/agent-aadaeed1e0a42a88a",
+  "head": "be5f45f2e371b75f57c0d3455f89140f2ce50b84",
+  "branch": "worktree-agent-aadaeed1e0a42a88a",
+  "dirty": [
+   "?? reports/regress/"
+  ],
+  "diff_md5": "d41d8cd98f00b204e9800998ecf8427e"
+ },
+ "scripts": {
+  "rl_walking/scripts/eval_w3.py": "2e4ccc275b96c63ed5db5962069fa078",
+  "rl_walking/scripts/eval_ground_recovery.py": "70e31e05f2f359a95f6b0abf7f74896c",
+  "reports/regress/THRESHOLDS.md": "35d6643338dab980d91dd993526b2ddb",
+  "reports/regress/summarize.py": "966d02d516df075e1ba13cb2e57ec5f9",
+  "reports/regress/regress_lib.py": "822bfe3664af94dbc8e71803b52417b0",
+  "reports/regress/run_regress.sh": "1e61676574cc22db3bd0825ba6ef2293"
+ },
+ "checkpoints": {
+  "w3": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-10-07_00-11-12_w3S3d_from_s2d/model_15800.pt",
+   "md5": "3da9f2e5b6c435d6b6df220e3a7969b2"
+  },
+  "stand": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_g22r/2026-10-02_21-23-08_g21a/model_11300.pt",
+   "md5": "599c47d3c3f190ad91a80a1ab7ff9fa7"
+  },
+  "rec": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/model_21793.pt",
+   "md5": "05e6b8ee4109ef40fd24bd8437bdfcba"
+  }
+ },
+ "gpu": "NVIDIA GeForce RTX 5080, 580.159.04, 16303 MiB",
+ "data_repo": "/home/ryu/humanoid_leg_test1",
+ "jobs": {
+  "W-z-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_0541_w_z_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0,0,0",
+   "item": "W-z",
+   "seed": 1,
+   "cmd": "0,0,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-f-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_0541_w_f_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0.06,0,0",
+   "item": "W-f",
+   "seed": 1,
+   "cmd": "0.06,0,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-b-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_0541_w_b_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=-0.04,0,0",
+   "item": "W-b",
+   "seed": 1,
+   "cmd": "-0.04,0,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-l-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_0541_w_l_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0,0.05,0",
+   "item": "W-l",
+   "seed": 1,
+   "cmd": "0,0.05,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-r-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_0541_w_r_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0,-0.05,0",
+   "item": "W-r",
+   "seed": 1,
+   "cmd": "0,-0.05,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-tl-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_0541_w_tl_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0,0,0.2 --turn_metrics",
+   "item": "W-tl",
+   "seed": 1,
+   "cmd": "0,0,0.2",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-tr-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_0541_w_tr_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0,0,-0.2 --turn_metrics",
+   "item": "W-tr",
+   "seed": 1,
+   "cmd": "0,0,-0.2",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-mix-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_0541_w_mix_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0.05,0.04,0.2 --turn_metrics",
+   "item": "W-mix",
+   "seed": 1,
+   "cmd": "0.05,0.04,0.2",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-hl-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_0541_w_hl_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 96 --long --ramp_off --delay 2 --seed 1 --cmd=0,0,0 --heading_loop 0.5 --turn_metrics",
+   "item": "W-hl",
+   "seed": 1,
+   "cmd": "0,0,0",
+   "delay": 2,
+   "num_envs": 96,
+   "seconds": 120.0
+  },
+  "W-d4-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_0541_w_d4_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 128 --seconds 15 --delay 4 --seed 1 --cmd=0.06,0,0",
+   "item": "W-d4",
+   "seed": 1,
+   "cmd": "0.06,0,0",
+   "delay": 4,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-stop-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_0541_w_stop_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 128 --seconds 14 --delay 2 --seed 1 --cmd=0.06,0,0 --stop_at 8",
+   "item": "W-stop",
+   "seed": 1,
+   "cmd": "0.06,0,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 14
+  },
+  "W-dist-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_0541_w_dist_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --warmup 2 --num_envs 160 --seconds 14 --delay 2 --seed 1 --cmd=0.06,0,0 --ramp_off --dist_jitter 0.91 --dist \"push:f:6:0:0.3|push:f:6:12:0.3|push:b:6:18:0.3|cmd=0,0.05,0;push:l:6:0:0.2|cmd=0,0.05,0;push:l:6:30:0.2\"",
+   "item": "W-dist",
+   "seed": 1,
+   "cmd": "0.06,0,0",
+   "delay": 2,
+   "num_envs": 160,
+   "seconds": 14
+  },
+  "S-nd-s1": {
+   "kind": "gr",
+   "tag": "rg_q1007_0541_s_nd_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1",
+   "item": "S-nd",
+   "seed": 1,
+   "cond": "nd",
+   "num_envs": 128
+  },
+  "S-b18-s1": {
+   "kind": "gr",
+   "tag": "rg_q1007_0541_s_b18_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1 --dist push:b:2:18:0.3",
+   "item": "S-b18",
+   "seed": 1,
+   "cond": "b18",
+   "num_envs": 128
+  },
+  "K-odicw-nd-s1": {
+   "kind": "gr",
+   "tag": "rg_q1007_0541_k_odicw_nd_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --seed 1 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4",
+   "item": "K-odicw-nd",
+   "seed": 1,
+   "cond": "nd",
+   "arm": "odicw",
+   "num_envs": 128
+  },
+  "K-odicw-sf15-s1": {
+   "kind": "gr",
+   "tag": "rg_q1007_0541_k_odicw_sf15_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --seed 1 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --dist ramp:f:2:15:0.5:1.0",
+   "item": "K-odicw-sf15",
+   "seed": 1,
+   "cond": "sf15",
+   "arm": "odicw",
+   "num_envs": 128
+  },
+  "K-odicw-fi40-s1": {
+   "kind": "gr",
+   "tag": "rg_q1007_0541_k_odicw_fi40_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --seed 1 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --dist push:f:2:40:0.2",
+   "item": "K-odicw-fi40",
+   "seed": 1,
+   "cond": "fi40",
+   "arm": "odicw",
+   "num_envs": 128
+  },
+  "K-odicw-b18-s1": {
+   "kind": "gr",
+   "tag": "rg_q1007_0541_k_odicw_b18_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --seed 1 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --dist push:b:2:18:0.3",
+   "item": "K-odicw-b18",
+   "seed": 1,
+   "cond": "b18",
+   "arm": "odicw",
+   "num_envs": 128
+  }
+ },
+ "finished": "2026-10-07 07:41:57",
+ "status": {
+  "W-z-s1": {
+   "status": "유효",
+   "tries": "2",
+   "note": "유효",
+   "t_s": "114"
+  },
+  "W-f-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "127"
+  },
+  "W-b-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "117"
+  },
+  "W-l-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "115"
+  },
+  "W-r-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "108"
+  },
+  "W-tl-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "108"
+  },
+  "W-tr-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "100"
+  },
+  "W-mix-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "117"
+  },
+  "W-hl-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "537"
+  },
+  "W-d4-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "84"
+  },
+  "W-stop-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "66"
+  },
+  "W-dist-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "81"
+  },
+  "S-nd-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "48"
+  },
+  "S-b18-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "72"
+  },
+  "K-odicw-nd-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "69"
+  },
+  "K-odicw-sf15-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "69"
+  },
+  "K-odicw-fi40-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "84"
+  },
+  "K-odicw-b18-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "60"
+  }
+ }
+}

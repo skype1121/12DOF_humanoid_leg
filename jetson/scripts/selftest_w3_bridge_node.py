@@ -16,6 +16,9 @@ STOP_ALL), 과속 트립 즉시 동결, 동결 뒤 rearm 전 켜기 거부. 마�
 1007 KE↔W3 합성 러너(--experimental-kew3): 합성 세션 시나리오(stand = KE → 켜기 다음 틱 W3 → 끄기 → 반주기 래치 → 조용한 양발 서기 0.5 s → KE,
 KE 회복 모드 켜기 거부[응답 사유], stop 정지 래치·rearm, 한발 지지 트립 지연 동결, 재시작, --c5-overtime 은 KE 모드에서만) + 합성 플래그 꺼짐
 (또는 켜도 다른 키) 세션의 발행이 연결 전 커밋(--ref-kew3)과 비트 동일 + 기동 거부 경로. 하위 러너는 스텁 정책, 묶는 것은 브리지 _kew3_compose.
+1008 둘째 합성 키(KEW3Q — 첫 키 + KE 감지기 갇힘 해소 = 시뮬 합성 평가 구성): 같은 합성 세션 시나리오 + 갇힘 해소 대조(같은 입력에서 첫 키는 회복 모드에
+갇혀 걷기 켜기가 계속 거부되고 둘째 키는 조용한 양발 서기 2 s 뒤 서기로 돌아와 수락) + 갇힘 해소가 발동하지 않는 세션은 첫 키 세션과 발행 비트 동일
+(키 이름·디버그 c5.requiet 필드만 다름) + 기동 거부 경로. 위의 첫 키 시나리오·기준 커밋 비교는 그대로다.
 """
 from __future__ import annotations
 
@@ -598,18 +601,22 @@ def scenario_off(b, clock, out):
     return driver
 
 
-def scenario_kew3(b, clock, out):
-    """1007 KE↔W3 합성 세션(--experimental-w3 --experimental-kew3 --checkpoint 합성 키) — 노드 _on_cmd → 감독기 → 러너 켜기 게이트 → 코어 → 합성 러너.
+def scenario_kew3(b, clock, out, ckpt=None, tag="kew3"):
+    """1008: ckpt·tag 로 둘째 합성 키를 같은 시나리오로 돌린다(기본 = KEW3_CKPT_KEY, 결과 out["kew3"] — 종전 그대로). 감지기 갇힘 해소 설정 = 그 키의 명세.
+    1007 KE↔W3 합성 세션(--experimental-w3 --experimental-kew3 --checkpoint 합성 키) — 노드 _on_cmd → 감독기 → 러너 켜기 게이트 → 코어 → 합성 러너.
     하위 러너 둘은 스텁 정책(걷기 W3 러너 + C5Runner[실제 감지기 설정])이고 묶는 것은 브리지 _kew3_compose(전환 방식·정착 시간 = 실제 명세).
     접촉은 클록 위상 가정 모형(ge 1 한발 지지, ge 0 뒤 0.1 s 착지 지연). 순서·계약 검증이며 폐루프 성능 증명이 아니다."""
     def driver(node):
         H = Harness(node, b, clock)
         R = []
-        key, core, dt = b.KEW3_CKPT_KEY, node.core, b.TICK_SEC
+        key, core, dt = (b.KEW3_CKPT_KEY if ckpt is None else ckpt), node.core, b.TICK_SEC
         run = core.runner
         clk = run._w3_clock
         assert node.w3sup is not None and core.kew3 and core.w3 and core.w3cmd and type(run).__name__ == "KeW3Runner"
         assert run.handoff == "carry" and run.settle_quiet_s == 0.5 and any("KE↔W3 합성 러너 켜짐" in m for lv, m in node._log.lines)
+        spec = b.KEW3_SPECS[key]              # 1008: KE 감지기 갇힘 해소 = 이 키의 명세(첫 키 None·로그 문구 없음 / 둘째 키 (2.0, 0.3)·both·로그에 표시)
+        assert (run.det.requiet, run.det.requiet_contact) == b._kew3_det_want(spec), (key, run.det.requiet, run.det.requiet_contact)
+        assert any("갇힘 해소 켜짐" in m for lv, m in node._log.lines) is (spec.requiet is not None)
         sq = [0]
 
         def dbg():
@@ -649,6 +656,7 @@ def scenario_kew3(b, clock, out):
         d = dbg()
         assert d["checkpoint"] == key and d["kew3"]["mode"] == "ke" and d["kew3"]["n_to_w3"] == 0 and d["kew3"]["block"] is None, d["kew3"]
         assert d["c5"]["kew3"]["mode"] == "ke" and d["c5"]["mode"] == 0 and {"raw_stand", "raw_rec", "ref_deg"} <= set(d["c5"])
+        assert d["c5"].get("requiet") == (None if spec.requiet is None else {"n": 0, "run": 0.0}), d["c5"].get("requiet")
         assert d["w3"]["ge"] is False and "w3_cmd" in d and "w3_sup" in d and not core.w3hl.latched and not H.stop_alls
         R.append("hang_arm 시작 거부·stand = KE 모드·디버그 kew3/c5(KE 필드 + kew3)")
         # KE → W3: 켜기 수락 뒤 첫 틱에 W3(STAND), 다음 틱 gait 0→1
@@ -691,6 +699,7 @@ def scenario_kew3(b, clock, out):
         assert run.mode == "ke" and run.n_to_w3 == 1 and core.cmd == (0.0, 0.0, 0.0)
         H.pitch = 0.0
         k3 = until(lambda: run.last_mode == 0, 120, "회복 모드 → 서기")
+        assert run.det.n_requiet == 0, "이 시나리오의 회복 모드 체류(조용한 구간 < 2 s)에서는 갇힘 해소가 발동하지 않아야 한다(평온 경로로 꺼짐)"
         a = on()
         assert a["accepted"], a
         H.tick(2)
@@ -732,7 +741,73 @@ def scenario_kew3(b, clock, out):
         assert H.cmd({"cmd": "stand"})["accepted"]
         H.tick(20)
         assert H.cmd({"cmd": "estop"})["accepted"] and not core.active
-        out["kew3"] = R
+        out[tag] = R
+    return driver
+
+
+def scenario_kew3_requiet(b, clock, out, ckpt, tag):
+    """1008 갇힘 해소 대조(두 합성 키에 같은 입력): KE 서기 → 기준 대비 +4.5° 로 기울어 회복 모드(켜기 3° 초과·조기 복귀 자격 5° 미만·끄기 1.5° 초과
+    → 평온·조기 복귀 어느 길로도 못 나온다) → 그 자세로 조용한 양발 서기.
+    첫 키(requiet 없음): 2.5 s 넘게 회복 모드 그대로·걷기 켜기 계속 거부(자세를 되돌려야 풀린다).
+    둘째 키(requiet 2.0 s·0.3 rad/s·양발): 약 2 s 뒤 기준 자세를 다시 잡고 서기로 복귀(디버그 c5.requiet.n 1) → 걷기 켜기 수락 → 다음 틱 W3.
+    스텁 정책·가정 접촉 모형 — 감지기 규칙이 노드 경로(켜기 게이트·응답·디버그)에 닿는지의 확인이며 폐루프 성능 증명이 아니다."""
+    def driver(node):
+        H = Harness(node, b, clock)
+        core, dt, spec = node.core, b.TICK_SEC, b.KEW3_SPECS[ckpt]
+        run = core.runner
+        clk = run._w3_clock
+        assert core.kew3 and core.ckpt_name == ckpt and (run.det.requiet, run.det.requiet_contact) == b._kew3_det_want(spec)
+        sq = [0]
+
+        def dbg():
+            return json.loads(node._pubs[b.BRIDGE_DEBUG_TOPIC].msgs[-1])
+
+        def on():
+            sq[0] += 1
+            return H.cmd({"cmd": "step", "enable": True, "req_id": "op", "seq": sq[0], "vx": 0.06})
+        H.tick(5)
+        assert H.cmd({"cmd": "stand"})["accepted"]
+        H.tick(int(2.6 / dt) + 100)           # 인계 워밍업·블렌딩 + 감지기 기준 자세 고정(1.5 s 추종 창)
+        ref0 = dbg()["c5"]["ref_deg"]
+        assert run.mode == "ke" and run.last_mode == 0 and ref0 is not None
+        H.pitch = math.radians(4.5)
+        H.tick(15)
+        assert run.last_mode == 1 and dbg()["c5"]["mode"] == 1 and dbg()["kew3"]["block"], "시나리오 점검: KE 회복 모드"
+        ref1 = dbg()["c5"]["ref_deg"]         # 회복 모드가 켜진 뒤의 기준 자세(켜지기 전 몇 틱의 느린 추종 포함)
+        a = on()
+        assert not a["accepted"] and "회복 모드" in a["why"] and not clk.want, a
+        k = 15
+        while run.last_mode == 1 and k < 140:      # 그 자세로 조용한 양발 서기(자이로 기본 0.02·0.01 rad/s) — 기울인 뒤 최대 2.8 s
+            H.tick(1)
+            k += 1
+        d = dbg()
+        if spec.requiet is None:
+            assert k == 140 and run.last_mode == 1 and d["c5"]["mode"] == 1 and "requiet" not in d["c5"] and run.det.n_requiet == 0, (k, d["c5"])
+            assert d["c5"]["ref_deg"] == ref1 and d["kew3"]["block"], "첫 합성 키: 회복 모드 중 기준 자세가 바뀜"
+            a = on()
+            assert not a["accepted"] and "회복 모드" in a["why"] and run.mode == "ke" and run.n_to_w3 == 0, a
+            H.pitch = 0.0                     # 자세를 되돌려야만 풀린다(평온 1.0 s)
+            k2 = 0
+            while run.last_mode == 1:
+                H.tick(1)
+                k2 += 1
+                assert k2 <= 120, "자세 복귀 뒤에도 서기 모드로 안 돌아옴"
+            out[tag] = (f"{ckpt}: 기준 대비 +4.5° 로 조용히 {k * dt:.2f}s 서도 회복 모드 그대로(n_requiet 0)·걷기 켜기 2 회 거부 → "
+                        f"자세를 되돌린 뒤 {k2 * dt:.2f}s 에 서기 복귀")
+        else:
+            t_rq = k * dt
+            assert run.last_mode == 0 and 1.9 <= t_rq <= 2.3, f"둘째 합성 키: 갇힘 해소가 약 2 s 에 발동하지 않음(기울인 뒤 {t_rq:.2f}s, 모드 {run.last_mode})"
+            assert d["c5"]["mode"] == 0 and d["c5"]["requiet"]["n"] == 1 and run.det.n_requiet == 1 and run.det.n_early == 0 and d["kew3"]["block"] is None, d["c5"]
+            assert abs(abs(d["c5"]["ref_deg"][1] - ref0[1]) - 4.5) < 0.3 and abs(d["c5"]["ref_deg"][0] - ref0[0]) < 0.3, (ref0, d["c5"]["ref_deg"])
+            assert core.active and not H.stop_alls and run.mode == "ke" and run.n_to_w3 == 0
+            H.tick(int(1.2 / dt))             # 감독기 켜기 조건(조용한 양발 서기 연속) — 서기 모드가 유지되는지도 함께
+            assert run.last_mode == 0 and run.det.n_on == 1, "재기준 뒤 회복 모드가 다시 켜짐"
+            a = on()
+            assert a["accepted"] and a["kew3"]["block"] is None, a
+            H.tick(2)
+            assert run.mode == "w3" and clk.ge and run.n_to_w3 == 1
+            out[tag] = (f"{ckpt}: 기준 대비 +4.5° 로 조용히 선 지 {t_rq:.2f}s 에 갇힘 해소(기준 재설정·디버그 c5.requiet.n 1) → 서기 복귀 → 걷기 켜기 수락 → W3")
+        assert H.cmd({"cmd": "estop"})["accepted"] and not core.active
     return driver
 
 
@@ -808,16 +883,17 @@ def _patch(b, clock):
         o = np.asarray(obs, dtype=np.float32)
         return np.tanh(o[12:24] * np.float32(2.0) - o[:12]).astype(np.float32)
 
-    def make_runner(ck):
+    def make_runner(ck, det_kw=None):
         kws = getattr(b, "KEW3_CKPTS", {})
         if ck in kws:                               # 1007 합성 키: 하위 스텁 러너 둘을 브리지의 합성 함수로 묶는다(전환 방식·정착 시간 = 실제 명세)
-            return b._kew3_compose(ck, make_runner(kws[ck].w3), make_runner(kws[ck].ke))
+            dk = getattr(b, "_kew3_det_kw", lambda sp: {})(kws[ck])      # 1008: 명세의 KE 감지기 추가 인자(갇힘 해소 키만 비어 있지 않다 — 브리지 _make_runner 와 같은 자리)
+            return b._kew3_compose(ck, make_runner(kws[ck].w3), make_runner(kws[ck].ke, dk))
         kw = dict(model_path=stub, obs_dim=320, gait_freq=1.1, default_pose_rad=b.CKPT_DEFAULT_POSE.get(ck),
                   act_obs_ema_beta=0.27, jvel_obs_ema_beta=0.25)
         if ck in getattr(b, "C5_PAIRS", {}):         # 1007: C5 키 = 스텁 정책 2 개 + 실제 감지기·cue 설정(브리지 _make_runner 와 같은 조립, odic·parity 옵션 제외)
             ex = b.C5_EXTRA.get(ck, {})
             kw.pop("model_path")
-            return b.C5Runner(stub, stub_rec, detector=b.SwitchDetector(**b.C5_DETECTOR_KW, **ex.get("det", {})), **ex.get("runner", {}), **kw)
+            return b.C5Runner(stub, stub_rec, detector=b.SwitchDetector(**b.C5_DETECTOR_KW, **ex.get("det", {}), **(det_kw or {})), **ex.get("runner", {}), **kw)
         if ck in b.W3_CKPTS:
             kw["w3"] = b.W3_CKPTS[ck]
         return b.PolicyRunnerStage4(**kw)
@@ -1155,6 +1231,67 @@ def main():
     except Exception as e:  # noqa: BLE001
         fails += 1
         print(f"[FAIL] --experimental-kew3 기동 거부: {type(e).__name__}: {e}")
+    # ---- 1008 둘째 합성 키(첫 키 + KE 감지기 갇힘 해소 = 시뮬 합성 평가 구성) — 위의 첫 키 시나리오·기준 커밋 비교는 그대로 두고 뒤에 덧붙인다 ----
+    KQ = b.KEW3Q_CKPT_KEY
+    kargv_q = live + ["--experimental-w3", "--experimental-kew3", "--checkpoint", KQ]
+    for name, argv, mk, key in (
+            ("KE↔W3 합성 세션 노드 — 둘째 키(1008 갇힘 해소)", kargv_q, lambda ck: scenario_kew3(b, ck, out, ckpt=KQ, tag="kew3q"), "kew3q"),
+            ("갇힘 해소 대조 — 첫 합성 키(옵션 꺼짐)", kargv, lambda ck: scenario_kew3_requiet(b, ck, out, b.KEW3_CKPT_KEY, "rq_off"), "rq_off"),
+            ("갇힘 해소 대조 — 둘째 합성 키(1008)", kargv_q, lambda ck: scenario_kew3_requiet(b, ck, out, KQ, "rq_on"), "rq_on")):
+        try:
+            ck = FakeClock()
+            _patch(b, ck)
+            rc = _run_main(b, argv, mk(ck))
+            assert rc == 0, f"main rc {rc}"
+            v = out[key]
+            print(f"[PASS] {name}: " + (" / ".join(v) if isinstance(v, list) else v))
+        except Exception as e:  # noqa: BLE001
+            fails += 1
+            import traceback
+            traceback.print_exc()
+            print(f"[FAIL] {name}: {type(e).__name__}: {e}")
+    try:   # [Q1] 갇힘 해소가 발동하지 않는 세션: 둘째 키 세션 = 첫 키 세션 — 발행 전부가 키 이름과 디버그 c5.requiet 필드만 다르고 나머지는 비트 동일
+        logs = []
+        for argv in (kargv, kargv_q):
+            if b.EXPERIMENTAL_W3:
+                b.disable_experimental_w3()
+            logs.append(replay(b, argv, driver_fn=replay_driver))
+        la, lb = logs
+        assert len(la) == len(lb), f"발행 수 {len(la)} vs 둘째 키 {len(lb)}"
+        n_named = n_rq = 0
+        for i, ((ta, da), (tb, db)) in enumerate(zip(la, lb)):
+            dr = db.replace(KQ, b.KEW3_CKPT_KEY)
+            n_named += dr != db
+            if '"requiet"' in dr:                # 둘째 키의 디버그 c5 에만 있는 필드 — 발동 0 회·진행 < 2 s 를 확인하고 빼서 비교
+                obj = json.loads(dr)
+                rq = obj["c5"].pop("requiet")
+                assert rq["n"] == 0 and 0.0 <= rq["run"] < 2.0, f"{i}번째 발행: 이 입력열에서 갇힘 해소가 발동함 {rq}"
+                dr = json.dumps(obj)
+                n_rq += 1
+            assert '"requiet"' not in da and ta == tb and da == dr, f"{i}번째 발행 다름(키 이름 치환·c5.requiet 제거 뒤)\n 첫 키 {ta} {da[:300]}\n 둘째 {tb} {dr[:300]}"
+        n_ack = sum(1 for t, _ in la if t == b.BRIDGE_ACK_TOPIC)
+        n_stop = sum('"STOP_ALL"' in d for t, d in la if t == b.COMMAND_TOPIC)
+        assert n_named > 0 and n_rq > 0 and n_ack >= 5 and n_stop >= 1, (n_named, n_rq, n_ack, n_stop)      # 이름·필드가 실제로 실려 있었고(빈 비교가 아님) 세션 경로를 지났다
+        print(f"[PASS] 둘째 합성 키 세션 = 첫 합성 키 세션(갇힘 해소 미발동 입력열·스텁 정책): 발행 {len(la)}건이 키 이름({n_named}건)·디버그 c5.requiet({n_rq}건) 말고 비트 동일"
+              f"(응답 {n_ack}·STOP_ALL {n_stop})")
+    except Exception as e:  # noqa: BLE001
+        fails += 1
+        import traceback
+        traceback.print_exc()
+        print(f"[FAIL] 둘째 합성 키 세션 비트 비교: {type(e).__name__}: {e}")
+    try:   # 둘째 키 기동 거부 — 첫 키와 같은 조합
+        rej = (["--checkpoint", KQ, "--selftest"], ["--experimental-w3", "--checkpoint", KQ, "--selftest"], ["--experimental-kew3", "--checkpoint", KQ, "--selftest"],
+               ["--experimental-w3", "--experimental-kew3", "--checkpoint", KQ, "--runner-ema-fresh", "2", "--selftest"],
+               ["--experimental-w3", "--experimental-kew3", "--checkpoint", KQ, "--c5-settle", "odic", "--selftest"],
+               ["--experimental-w3", "--experimental-kew3", "--checkpoint", KQ, "--c5-imu-f32", "--selftest"])
+        for argv in rej:
+            rc = _run_main(b, argv, lambda n: None)
+            assert rc == 2, (argv, rc)
+        assert b.RUNNER_EMA_FRESH == 1 and b.C5_SETTLE is None and not b.C5_IMU_F32, "거부된 기동이 전역 설정을 바꿈"
+        print(f"[PASS] 둘째 합성 키 기동 거부 {len(rej)} 경로(exit 2): 플래그 없이·W3 플래그만·합성 플래그만·--runner-ema-fresh 2·--c5-settle·--c5-imu-f32")
+    except Exception as e:  # noqa: BLE001
+        fails += 1
+        print(f"[FAIL] 둘째 합성 키 기동 거부: {type(e).__name__}: {e}")
     print("w3 node selftest:", "ALL PASS" if fails == 0 else f"{fails} FAILED")
     return 0 if fails == 0 else 1
 

@@ -386,10 +386,12 @@ def knee_tau_joint(tau_est_motor, status_age_s, dir_by_joint, max_age_s=KNEE_TAU
     return tuple(out)
 
 
-def _make_runner(checkpoint):
+def _make_runner(checkpoint, _det_kw=None):
     """체크포인트 이름 → 러너. C5 이름이면 C5Runner(서기 정책 계약 공유), 아니면 PolicyRunnerStage4(종전).
     1007: KE↔W3 합성 키(--experimental-kew3 로 등록된 경우에만 KEW3_CKPTS 에 있다)면 두 하위 키를 **이 함수로** 만들어 KeW3Runner 로 묶는다 —
-    하위 러너의 계약(기본자세·관측 필터·env.yaml 요구·클록·감지기 설정)은 각 하위 키의 종전 경로 한 곳에서만 정해진다."""
+    하위 러너의 계약(기본자세·관측 필터·env.yaml 요구·클록·감지기 설정)은 각 하위 키의 종전 경로 한 곳에서만 정해진다.
+    1008: _det_kw = 합성 키 명세가 KE 감지기 **생성자**에 더 넘기는 인자(_kew3_det_kw — 갇힘 해소 requiet). 합성 분기만 넘기고 C5 분기만 읽는다.
+    기본 None(직접 호출·첫 합성 키·단독 KE 키) = 감지기 생성자 인자가 종전 그대로."""
     if checkpoint in KEW3_CKPTS:                                                        # 1007 합성(실험 플래그 켜짐 + 합성 키에만)
         _sp = KEW3_CKPTS[checkpoint]
         if _sp.handoff == "carry" and RUNNER_EMA_FRESH != 1:                             # 모델을 읽기 전에 거부(파일이 없어도 같은 오류)
@@ -397,7 +399,8 @@ def _make_runner(checkpoint):
                 f"{checkpoint}: 합성 러너 전환(handoff 'carry' = 상태 이어받기)은 러너 ema_fresh_ticks 1 에서만 — "
                 f"--runner-ema-fresh {RUNNER_EMA_FRESH} 는 전환 틱에 저역 필터(gyro_ema·joint_vel_ema)를 순간값으로 재시작시킨다"
                 "(걷기 직후 KE 행동 폭주 경로, TRANSITION_W3KE.md §5.6). 기동 거부")
-        return _kew3_compose(checkpoint, _make_runner(_sp.w3), _make_runner(_sp.ke))
+        _dk = _kew3_det_kw(_sp)                                                          # 1008: 갇힘 해소 키만 비어 있지 않다 — 첫 합성 키는 종전과 같은 호출
+        return _kew3_compose(checkpoint, _make_runner(_sp.w3), _make_runner(_sp.ke, _det_kw=_dk) if _dk else _make_runner(_sp.ke))
     if checkpoint in C5_PAIRS:
         stand, rec_path = C5_PAIRS[checkpoint]
         _ex = C5_EXTRA.get(checkpoint, {})
@@ -406,7 +409,7 @@ def _make_runner(checkpoint):
         if C5_IMU_F32 and not _st and _ex.get("det", {}).get("early") is not None:      # 1007 parity(기본 꺼짐)
             _st = {"imu_f32": True}
         _ef = {"ema_fresh_ticks": RUNNER_EMA_FRESH} if RUNNER_EMA_FRESH != 1 else {}      # 1007 parity(기본 1 = 인자 자체 없음)
-        return C5Runner(CHECKPOINTS[stand], rec_path, detector=SwitchDetector(**C5_DETECTOR_KW, **_ex.get("det", {}), **_st), **_ex.get("runner", {}),
+        return C5Runner(CHECKPOINTS[stand], rec_path, detector=SwitchDetector(**C5_DETECTOR_KW, **_ex.get("det", {}), **_st, **(_det_kw or {})), **_ex.get("runner", {}),
                         gait_freq=CKPT_GAIT_FREQ.get(stand, CKPT_GAIT_FREQ_DEFAULT),
                         default_pose_rad=CKPT_DEFAULT_POSE.get(stand),
                         jvel_ema_mode=ckpt_jvel_ema_mode(stand),
@@ -595,6 +598,8 @@ def disable_experimental_w3():
 # ---------------------------------------------------------------------------
 # 1007 KE ↔ W3 합성 러너 실험 플래그 (**기본 꺼짐 · 실물 미검증 · 젯슨 미배포**) — reports/gen_w3/KEW3_DESIGN.md · TRANSITION_W3KE.md §1c·§5.6·§5.10
 # "서 있는 동안은 KE(G21a 서기 + G24Ra 회복 + 감지기 = C5Runner), 걷는 동안만 W3S3d-15800". 러너 = rl_walking/deploy/kew3_runner.KeW3Runner.
+# 1008: 합성 키가 둘이다(KEW3_SPECS) — 둘째 키(KEW3Q_CKPT_KEY)는 첫 키와 같은 구성에 KE 감지기의 갇힘 해소(requiet)만 켠 것 = 시뮬 합성 평가가 돌린 구성.
+#   첫 키의 이름·명세·감지기(requiet 없음)는 그대로다. 아래 규칙은 두 키에 똑같이 적용된다. 키 하나만 가정하지 말고 KEW3_KEYS(전부)·KEW3_CKPTS(등록된 것)를 볼 것.
 # 켜는 길은 기동 인자 --experimental-kew3 하나뿐이고 **--experimental-w3 와 함께만** 받는다: 합성 키는 W3 키 집합(W3_CKPTS·W3_CMD_LIMITS)에
 # 속해 W3 세션의 명령 채널(step·seq·ack)·감독기·헤딩 고리·감시를 runner._w3_clock 으로 그대로 쓰고, 하위 W3 키가 등록돼 있어야 만들어진다.
 # 꺼져 있으면 KEW3_CKPTS 가 비어 레지스트리·명령 처리·블랙박스 스키마 전부 종전과 같고 kew3_runner 모듈은 import 되지 않는다
@@ -607,10 +612,19 @@ def disable_experimental_w3():
 # 가드 트립은 W3 세션 규칙(지연 동결: 양발 지지 확인 뒤 STOP_ALL)이 KE 모드에도 그대로 적용된다(종전 C5 세션의 즉시 동결과 다름).
 # ---------------------------------------------------------------------------
 EXPERIMENTAL_KEW3 = False  # 요청 플래그. 합성 키의 실제 등록(KEW3_CKPTS)은 W3 키가 등록돼 있는 동안만
-KeW3Spec = collections.namedtuple("KeW3Spec", "w3 ke handoff settle_quiet_s")
+KeW3Spec = collections.namedtuple("KeW3Spec", "w3 ke handoff settle_quiet_s requiet", defaults=(None,))   # requiet(1008): 기본 None = 종전(KE 감지기 생성자 인자 그대로)
 KEW3_CKPT_KEY = "stand_kew3_g21a_g24ra_w3s3d15800"     # stand 가족 접두사(시작 = stand·LPF β0.27·heading_hold 강제 OFF)
-#: 합성 키 → (걷기 W3 키, 서기 KE 키[C5 키], 전환 방식, W3 → KE 정착 시간[s]). 정착 판정의 |ω_xy| 문턱 0.15·상한 3 s 는 KeW3Runner 기본값.
-KEW3_SPECS = {KEW3_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5)}
+#: 1008 둘째 합성 키(**실험 플래그 뒤 · 실물 미검증 · 젯슨 미배포**): 첫 키와 같은 걷기 키·KE 키·전환 방식·정착 시간 + KE 감지기 갇힘 해소
+#: requiet=(T_s, w, 접촉 요구) — 회복 모드 중 감지 |ω_xy| < 0.3 rad/s ∧ 양발 접촉이 2.0 s 이어지면 기준 자세를 현재 자세로 다시 잡고 회복 모드를 끈다
+#: (c5_switch.SwitchDetector 의 requiet — 정의·한계는 그 생성자 주석: 한쪽 패드가 0 을 내는 고장에서는 "both" 가 발동하지 않는다).
+#: **시뮬 합성 평가(eval_transition_kwx.py --kw_requiet 2.0,0.3 — X6b·X7·X14 …)가 돌린 구성이 이 키다.** 첫 키는 옵션이 꺼져 있어 그 평가 구성이 아니다:
+#: 조용히 선 채 회복 모드에 갇히면 걷기 켜기가 계속 거부된다(시뮬 관찰·대조: reports/gen_w3/TRANSITION_W3KE.md §5.10b·§5.10d·§5.11b).
+#: 단독 KE 키(stand_c5kr_*·stand_c5krh_*)의 감지기는 바뀌지 않는다(C5_EXTRA 불변 — requiet 는 이 명세에서 _make_runner 의 합성 분기로만 들어간다).
+KEW3Q_CKPT_KEY = "stand_kew3q_g21a_g24ra_w3s3d15800"
+#: 합성 키 → (걷기 W3 키, 서기 KE 키[C5 키], 전환 방식, W3 → KE 정착 시간[s][, KE 감지기 requiet]). 정착 판정의 |ω_xy| 문턱 0.15·상한 3 s 는 KeW3Runner 기본값.
+KEW3_SPECS = {KEW3_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5),
+              KEW3Q_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5,
+                                       requiet=(2.0, 0.3, "both"))}
 KEW3_KEYS = tuple(KEW3_SPECS)
 KEW3_CKPTS = {}            # 켜졌을 때만 {합성 키: KeW3Spec}
 
@@ -656,11 +670,31 @@ def disable_experimental_kew3():
     EXPERIMENTAL_KEW3 = False
 
 
+def _kew3_det_kw(sp):
+    """1008: 합성 키 명세가 KE 감지기 **생성자**에 더 넘기는 인자. requiet 없는 키(첫 합성 키) = {} → 생성자 인자가 종전 그대로.
+    값 검증은 SwitchDetector 생성자가 한다(T_s > 0 · w > 0 · 접촉 요구 'both' | 'off')."""
+    return {} if sp.requiet is None else {"requiet": tuple(sp.requiet)}
+
+
+def _kew3_det_want(sp):
+    """1008: 명세대로 만든 KE 감지기가 가져야 할 (requiet, requiet_contact). requiet 없는 키 = (None, "both") = 감지기 기본값."""
+    if sp.requiet is None:
+        return None, "both"
+    rq = tuple(sp.requiet)
+    return (float(rq[0]), float(rq[1])), (str(rq[2]) if len(rq) > 2 else "both")
+
+
 def _kew3_compose(key, w3_runner, ke_runner):
     """합성 키 명세(KEW3_CKPTS[key])대로 두 하위 러너를 KeW3Runner 로 묶는다 — _make_runner(실모델)와 selftest(스텁 주입)가 같은 함수를 쓴다.
-    계약 불일치(관측 레이아웃·기본자세·관측 필터 β·carry + ema_fresh 2)는 KeW3Runner 생성자가 ValueError 로 거부한다."""
+    계약 불일치(관측 레이아웃·기본자세·관측 필터 β·carry + ema_fresh 2)는 KeW3Runner 생성자가 ValueError 로 거부한다.
+    1008: KE 감지기의 갇힘 해소 설정이 이 키의 명세와 다르면 여기서 거부한다 — 키 이름과 실제 감지기가 어긋난 채(평가 구성이 아닌 채) 도는 일을 막는다.
+    첫 합성 키는 requiet 없는 감지기(종전 조립 그대로)만 통과한다."""
     from rl_walking.deploy.kew3_runner import KeW3Runner   # 지연 import — 합성 러너를 실제로 만들 때만(젯슨에 파일이 없어도 기본 기동 불변)
     sp = KEW3_CKPTS[key]
+    _det = getattr(ke_runner, "det", None)
+    _got = (getattr(_det, "requiet", None), getattr(_det, "requiet_contact", "both"))
+    if _got != _kew3_det_want(sp):
+        raise ValueError(f"{key}: KE 감지기 requiet {_got} ≠ 명세 {_kew3_det_want(sp)} — 감지기는 이 키의 명세(_kew3_det_kw)로 만들 것")
     return KeW3Runner(w3_runner, ke_runner, handoff=sp.handoff, settle_quiet_s=sp.settle_quiet_s)
 
 
@@ -2104,6 +2138,7 @@ def _selftest_c5krh():
     assert 5 <= dwell[H] - dwell[K] <= 27, f"회복 체류 차 {dwell[H] - dwell[K]} 틱(기대: 0 초과, 유지 시간 차 25 틱 + 2 이내)"
     core = BridgeCore(H)
     assert isinstance(core.runner, C5Runner) and tuple(core.runner.det.early) == (0.6, 6.0, 0.4, 0.7) and core.runner.cue_vx == 0.03, "실제 krh 키 러너 설정"
+    assert getattr(core.runner.det, "requiet", None) is None, "단독 krh 키 감지기에 갇힘 해소(requiet)가 켜짐 — 1008 옵션은 둘째 합성 키에만"
     return (f"krh 키 OK: kr 과 조기 복귀 유지 시간만 다름(0.2 → 0.7 s) · 회복 체류 kr {dwell[K]} 틱(조기 복귀 {nearly[K]}) / "
             f"krh {dwell[H]} 틱(조기 복귀 {nearly[H]} — 0 이면 평온 경로로 꺼짐)")
 
@@ -3771,8 +3806,13 @@ def _kew3_expand_required(required):
     return tuple(out)
 
 
-def _selftest_kew3():
-    """1007 KE↔W3 합성 러너 실험 플래그(--experimental-kew3): (a) 꺼짐 = 레지스트리에 합성 키 없음·W3 플래그 없이 등록 거부·켰다 끄면 레지스트리 원상
+def _selftest_kew3(key=None):
+    """1008: key = 합성 키(기본 None = KEW3_CKPT_KEY — 종전과 같은 시험). 둘째 합성 키(KEW3Q_CKPT_KEY = 첫 키 + KE 감지기 갇힘 해소)를 주면 **같은 시험 전체**를
+    그 키의 명세로 돈다(스텁 시나리오 + exported 가 있으면 실모델 왕복). 꺼짐 판정은 합성 키 전부(KEW3_KEYS)를 본다. 어느 키로 돌든 (g) 를 본다:
+    (g) KE 감지기 = 명세(첫 키·단독 KE 키는 requiet None, 둘째 키는 (2.0, 0.3)·'both' — 생성자 경로) · 명세와 다른 감지기는 합성 거부 · 두 합성 러너의
+    감지기에 같은 입력(가벼운 밀림으로 회복 모드 켜짐 → 기준과 2.2° 다른 자세로 조용한 양발 서기 6 s)을 넣으면 첫 키는 끝까지 갇히고 둘째 키만
+    약 2 s 뒤 requiet 로 나온다(n_requiet 1·기준 재설정). 감지기 단독 구동 — 계약·규칙 확인이며 폐루프 성능 증명이 아니다.
+    1007 KE↔W3 합성 러너 실험 플래그(--experimental-kew3): (a) 꺼짐 = 레지스트리에 합성 키 없음·W3 플래그 없이 등록 거부·켰다 끄면 레지스트리 원상
     (값·순서)·켜도 다른 키(W3S3d·C5 kr) 코어 출력 불변·W3 를 내리면 합성 키도 내려가고 다시 켜면 복원 (b) 켬: 키 계약(stand 가족·하위 키 계약 공유),
     stand = KE 모드(종전 C5 kr 코어와 목표각 비트 동일), 감독기 수락 켜기 → 다음 틱 W3(첫 틱 STAND·ψ* 래치, 둘째 틱 gait 0→1·리드 발·고리 출력), 끄기 → 반주기 래치 →
     조용한 양발 서기 0.5 s → KE, 시끄러우면 상한 3 s, 전 틱 유한·전환 틱 포함 |Δ목표| ≤ 4°(엔코더가 목표에서 17° 떨어져도) (c) KE 회복 모드에서는
@@ -3784,7 +3824,7 @@ def _selftest_kew3():
     global RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32
     was_w3, was_kw = EXPERIMENTAL_W3, EXPERIMENTAL_KEW3
     saved = (RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32, list(IMU_MOUNT_BIAS_DEG))
-    key = KEW3_CKPT_KEY
+    key = KEW3_CKPT_KEY if key is None else key
     spec = KEW3_SPECS[key]
     notes = []
     REG_NAMES = ("CHECKPOINTS", "CKPT_GAIT_FREQ", "CKPT_DEFAULT_POSE", "CKPT_REQUIRE_ENV_YAML", "CKPT_JVEL_EMA_MODE", "C5_PAIRS", "C5_EXTRA",
@@ -3794,8 +3834,11 @@ def _selftest_kew3():
         g = globals()
         return {n: (sorted(g[n]) if isinstance(g[n], set) else [(k, (list(v) if isinstance(v, list) else v)) for k, v in g[n].items()]) for n in REG_NAMES}
 
-    def has_key(snap):
-        return any(key in (r if n == "CKPT_REQUIRE_ENV_YAML" else [k for k, _ in r]) for n, r in snap.items())
+    def has_key(snap, keys=None):          # keys 생략 = 이 시험의 키. 꺼짐 판정은 has_any(합성 키 전부)
+        return any(kk in (r if n == "CKPT_REQUIRE_ENV_YAML" else [k for k, _ in r]) for n, r in snap.items() for kk in (keys or (key,)))
+
+    def has_any(snap):
+        return has_key(snap, KEW3_KEYS)
 
     try:
         RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32 = 1, None, _W3.W3_HL_DEFAULT, None, None, False
@@ -3811,9 +3854,13 @@ def _selftest_kew3():
         def mk_w3(**extra):                 # 걷기 러너(스텁 정책) — 실제 _make_runner(W3 키)와 같은 계약 인자
             return PolicyRunnerStage4(model_path=net(Ww), w3=W3_CKPTS[spec.w3], **rkw, **extra)
 
-        def mk_ke(**extra):                 # 서기 러너(스텁 정책 2 개) — 실제 _make_runner(C5 kr 키)와 같은 감지기·cue 설정
+        def mk_ke(det_kw=None, **extra):    # 서기 러너(스텁 정책 2 개) — 실제 _make_runner(C5 kr 키)와 같은 감지기·cue 설정. det_kw = _make_runner 의 _det_kw 와 같은 자리
             ex = C5_EXTRA.get(spec.ke, {})
-            return C5Runner(net(Ws), net(Wr), detector=SwitchDetector(**C5_DETECTOR_KW, **ex.get("det", {})), **ex.get("runner", {}), **rkw, **extra)
+            return C5Runner(net(Ws), net(Wr), detector=SwitchDetector(**C5_DETECTOR_KW, **ex.get("det", {}), **(det_kw or {})),
+                            **ex.get("runner", {}), **rkw, **extra)
+
+        def mk_ke_c(**extra):               # 이 합성 키의 KE 러너 = 위 + 명세의 감지기 인자(첫 키는 {} → mk_ke() 와 같은 호출)
+            return mk_ke(det_kw=_kew3_det_kw(spec), **extra)
 
         def quat(pitch_deg=0.0, yaw=0.4):   # 요 뒤 피치(투영중력 기울기 = 피치)
             p = math.radians(pitch_deg)
@@ -3916,7 +3963,7 @@ def _selftest_kew3():
         if EXPERIMENTAL_W3:
             disable_experimental_w3()
         snap0 = regs_snapshot()
-        assert not EXPERIMENTAL_KEW3 and not KEW3_CKPTS and not has_key(snap0), "꺼짐인데 합성 키가 등록돼 있음"
+        assert not EXPERIMENTAL_KEW3 and not KEW3_CKPTS and not has_any(snap0), "꺼짐인데 합성 키가 등록돼 있음"
         try:
             enable_experimental_kew3()
             raise AssertionError("W3 플래그 없이 합성 키 등록이 받아들여짐")
@@ -3925,7 +3972,7 @@ def _selftest_kew3():
         assert regs_snapshot() == snap0 and not EXPERIMENTAL_KEW3, "거부된 등록이 레지스트리를 바꿈"
         enable_experimental_w3()
         snap_w3 = regs_snapshot()
-        assert not has_key(snap_w3) and not KEW3_CKPTS, "W3 만 켰는데 합성 키가 등록됨"
+        assert not has_any(snap_w3) and not KEW3_CKPTS, "W3 만 켰는데 합성 키가 등록됨"
         dec0 = {"accepted": True, "why": "ok", "action": "set_want", "want": True, "cmd": (0.06, 0.0, 0.0), "hl": True}
         w3_off, cw = plain_w3_walk()
         c5_off, cc = plain_c5_run()
@@ -3944,6 +3991,12 @@ def _selftest_kew3():
         assert CKPT_DEFAULT_POSE[key] == CKPT_DEFAULT_POSE[spec.ke] == CKPT_DEFAULT_POSE[spec.w3] == [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
         assert W3_CKPTS[key] is W3_CKPTS[spec.w3] and W3_CMD_LIMITS[key] is W3_CMD_LIMITS[spec.w3] and key not in C5_PAIRS
         assert spec.handoff == "carry" and spec.settle_quiet_s == 0.5 and spec.w3 == _W3.W3S3D_CKPT_KEY and C5_EXTRA[spec.ke]["det"]["early"] is not None
+        # 1008: 합성 키 = 정확히 둘(등록 순서 = 명세 순서). 첫 키의 이름·명세는 그대로(requiet 없음), 둘째 키는 requiet 하나만 다르다.
+        assert KEW3_KEYS == (KEW3_CKPT_KEY, KEW3Q_CKPT_KEY) == ("stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800"), KEW3_KEYS
+        assert list(KEW3_CKPTS) == list(KEW3_KEYS) and all(k in CHECKPOINTS and k in W3_CKPTS and k in CKPT_REQUIRE_ENV_YAML for k in KEW3_KEYS)
+        assert KEW3_SPECS[KEW3_CKPT_KEY] == KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5) \
+            and KEW3_SPECS[KEW3_CKPT_KEY].requiet is None, KEW3_SPECS[KEW3_CKPT_KEY]
+        assert KEW3_SPECS[KEW3Q_CKPT_KEY] == KEW3_SPECS[KEW3_CKPT_KEY]._replace(requiet=(2.0, 0.3, "both")), KEW3_SPECS[KEW3Q_CKPT_KEY]
         env_note = []
         for sub in (spec.w3, spec.ke):        # 하위 키 학습 계약(env.yaml 있으면): 두 정책이 같은 관측 필터
             if os.path.isfile(_ckpt_env_yaml(sub)):
@@ -3963,7 +4016,7 @@ def _selftest_kew3():
         def mk_core(moncfg=None, hfcfg=None):
             global W3_MON_CFG, W3_HF_CFG
             W3_MON_CFG, W3_HF_CFG = moncfg, hfcfg       # 코어가 생성 때 읽는다(--w3-monitor·--w3-hl-fault 와 같은 경로)
-            c = BridgeCore(key, runner=_kew3_compose(key, mk_w3(), mk_ke()))
+            c = BridgeCore(key, runner=_kew3_compose(key, mk_w3(), mk_ke_c()))
             c.reset(); c.heading_hold = False; c.cmd = (0.0, 0.0, 0.0)      # stand 가족 경로와 같은 설정
             return c
 
@@ -3974,6 +4027,7 @@ def _selftest_kew3():
         clk = R._w3_clock
         assert core.w3 and core.w3cmd and core.kew3 and type(R).__name__ == "KeW3Runner" and R.mode == "ke" and R.handoff == "carry" \
             and R.settle_quiet_s == 0.5 and R.settle_w == 0.15 and R.settle_max_s == 3.0 and core.c5_view() is R and core.w3hl is not None
+        assert (R.det.requiet, R.det.requiet_contact) == _kew3_det_want(spec), f"{key}: 합성 러너의 KE 감지기 requiet ≠ 명세"
         ref = BridgeCore(spec.ke, runner=mk_ke()); ref.reset(); ref.heading_hold = False; ref.cmd = (0.0, 0.0, 0.0)
         L, Lr = Loop(core, S), Loop(ref)
         for n in range(80):                    # stand = KE 모드: 종전 C5 kr 코어와 목표각 비트 동일(헤딩 고리·감독기가 있어도)
@@ -3984,6 +4038,7 @@ def _selftest_kew3():
         bb = core.c5_view().blackbox()         # (f) KE 모드 블랙박스
         assert set(bb) >= {"mode", "switch", "n_on", "cue", "n_cue", "n_early", "ref_deg", "raw_stand", "raw_rec", "kew3"}, sorted(bb)
         assert bb["kew3"]["mode"] == "ke" and bb["kew3"]["n_to_w3"] == 0 and core.kew3_snapshot()["block"] is None
+        assert bb.get("requiet") == (None if spec.requiet is None else {"n": 0, "run": 0.0}), bb.get("requiet")     # 1008: 갇힘 해소 키에서만 블랙박스 필드(첫 키 스키마 불변)
         json.dumps(bb); json.dumps(core.kew3_snapshot())
         dec, _ = send(L, on_cmd())
         assert dec["accepted"] and dec["action"] == "set_want" and R.mode == "ke" and clk.want and core.cmd == (0.06, 0.0, 0.0), dec
@@ -4189,7 +4244,7 @@ def _selftest_kew3():
             CHECKPOINTS.update(_saved_dirs)
             RUNNER_EMA_FRESH = 1
         try:
-            _kew3_compose(key, mk_w3(ema_fresh_ticks=2), mk_ke(ema_fresh_ticks=2))
+            _kew3_compose(key, mk_w3(ema_fresh_ticks=2), mk_ke_c(ema_fresh_ticks=2))
             raise AssertionError("ema_fresh 2 하위 러너 합성이 받아들여짐")
         except ValueError:
             pass
@@ -4202,11 +4257,54 @@ def _selftest_kew3():
                        PolicyRunnerStage4(model_path=net(Ww), w3=W3_CKPTS[spec.w3], obs_dim=320, gait_freq=1.1,
                                           default_pose_rad=CKPT_DEFAULT_POSE[spec.ke])):               # 관측 필터 β 없음(KE 와 다른 계약)
             try:
-                _kew3_compose(key, bad_w3, mk_ke())
+                _kew3_compose(key, bad_w3, mk_ke_c())
                 raise AssertionError("계약이 다른 하위 러너 합성이 받아들여짐")
             except ValueError:
                 pass
         notes.append("RUNNER_EMA_FRESH 2 + 합성 키 거부(모델 읽기 전)·ema_fresh 2 하위 러너 거부·인자 조합 거부 4 종·계약 다른 하위 러너 거부 2 종")
+
+        # ── (g) 1008 KE 감지기 갇힘 해소: 감지기 = 명세(생성자 경로) · 명세와 다른 감지기 합성 거부 · 같은 입력에서 둘째 키만 requiet 로 회복 모드를 나온다 ──
+        sp_old, sp_new = KEW3_SPECS[KEW3_CKPT_KEY], KEW3_SPECS[KEW3Q_CKPT_KEY]
+        assert _kew3_det_kw(sp_old) == {} and _kew3_det_want(sp_old) == (None, "both"), "첫 합성 키: 감지기 추가 인자가 비어 있지 않음"
+        assert _kew3_det_kw(sp_new) == {"requiet": (2.0, 0.3, "both")} and _kew3_det_want(sp_new) == ((2.0, 0.3), "both"), "둘째 합성 키: 감지기 추가 인자 ≠ requiet (2.0, 0.3, both)"
+        assert mk_ke().det.requiet is None and all("requiet" not in v.get("det", {}) for v in C5_EXTRA.values()), "단독 KE 키 설정(C5_EXTRA)에 requiet 가 들어감"
+        for k2 in KEW3_KEYS:                   # 다른 합성 키의 명세로 만든 감지기를 이 키에 묶으면 거부(키 이름과 실제 감지기가 어긋난 채 돌지 않는다)
+            if _kew3_det_want(KEW3_SPECS[k2]) != _kew3_det_want(spec):
+                try:
+                    _kew3_compose(key, mk_w3(), mk_ke(det_kw=_kew3_det_kw(KEW3_SPECS[k2])))
+                    raise AssertionError(f"{key}: 명세({spec.requiet})와 다른 감지기({KEW3_SPECS[k2].requiet}) 합성이 받아들여짐")
+                except ValueError as e:
+                    assert "requiet" in str(e), e
+        try:                                   # 값 검증은 감지기 생성자가 한다(생성자 경로를 지난다는 뜻)
+            mk_ke(det_kw={"requiet": (2.0, 0.3, "any")})
+            raise AssertionError("잘못된 requiet 접촉 요구를 받아들임")
+        except ValueError:
+            pass
+        dets = {k2: _kew3_compose(k2, mk_w3(), mk_ke(det_kw=_kew3_det_kw(KEW3_SPECS[k2]))).det for k2 in KEW3_KEYS}   # 두 합성 러너에서 꺼낸 감지기
+        assert all((d.requiet, d.requiet_contact) == _kew3_det_want(KEW3_SPECS[k2]) for k2, d in dets.items())
+        d_old, d_new = dets[KEW3_CKPT_KEY], dets[KEW3Q_CKPT_KEY]
+        assert d_old.requiet is None and d_new.requiet == (2.0, 0.3) and d_new.requiet_contact == "both", (d_old.requiet, d_new.requiet, d_new.requiet_contact)
+
+        def det_run(d):
+            """감지기 단독 구동(c5_switch._selftest_requiet 와 같은 입력 꼴): 서기 2 s(기준 0°) → 가벼운 밀림 0.3 s(편차 1.5°·|ω| 0.6 — 회복 모드 켜짐,
+            조기 복귀 자격 없음) → 기준과 2.2° 다른 자세(끄기 문턱 1.5° 밖)로 조용한 양발 서기 6 s. 반환 = 틱별 모드."""
+            d.reset()
+            ms = []
+            for p_deg, w in [(0.0, 0.0)] * 100 + [(1.5, 0.6)] * 15 + [(2.2, 0.02)] * 300:
+                p = math.radians(p_deg)
+                ms.append(int(d.update(np.array([math.sin(p), 0.0, -math.cos(p)]), np.array([0.0, w, 0.0]), np.array([1.0, 1.0], np.float32))))
+            return ms
+        m_old, m_new = det_run(d_old), det_run(d_new)
+        assert max(m_old[:100]) == 0 and m_old[114] == 1 and d_old.n_on == 1, "시나리오 점검: 가벼운 밀림으로 회복 모드가 켜지지 않음"
+        assert sum(m_old[115:]) == 300 and d_old.n_requiet == 0 and d_old.n_early == 0, "첫 합성 키 감지기는 이 입력에서 끝까지 회복 모드여야 함(갇힘 해소 없음)"
+        k_off = next((i for i in range(115, len(m_new)) if m_new[i] == 0), None)
+        assert k_off is not None and m_new[:k_off] == m_old[:k_off] and sum(m_new[k_off:]) == 0, f"둘째 합성 키 감지기가 회복 모드를 나오지 않음(또는 다시 켜짐): {k_off}"
+        t_rq = (k_off - 115) * TICK_SEC
+        assert d_new.n_requiet == 1 and d_new.n_early == 0 and d_new.n_on == 1 and 1.9 <= t_rq <= 2.7, (d_new.n_requiet, d_new.n_early, d_new.n_on, t_rq)
+        assert abs(float(d_new.ref[1]) - 2.2) < 0.15 and abs(float(d_old.ref[1])) < 0.15, f"기준 자세: 둘째 키는 현재 자세로 재설정, 첫 키는 그대로여야 함 ({d_new.ref} / {d_old.ref})"
+        notes.append(f"갇힘 해소: 합성 키 {len(KEW3_KEYS)} 개 감지기 = 명세(첫 키·단독 KE requiet None / {KEW3Q_CKPT_KEY} (2.0, 0.3)·both, 생성자 검증)·명세와 다른 감지기 "
+                     f"합성 거부·같은 입력(가벼운 밀림 뒤 2.2° 어긋난 조용한 양발 서기 6 s)에서 첫 키 감지기는 갇힘({sum(m_old[115:])} 틱 회복 모드, n_requiet 0) / "
+                     f"둘째 키 감지기는 {t_rq:.2f} s 뒤 requiet 로 서기 복귀(n_requiet 1·조기 복귀 0·기준 재설정)")
 
         # ── 실모델(exported 3 곳이 다 있으면): _make_runner 경로·KE 모드 = 종전 C5 kr 세션·왕복 유한/슬루/시간 ──
         if all(os.path.exists(os.path.join(d, "policy.pt")) or os.path.exists(os.path.join(d, "policy.onnx")) for d in _ckpt_policy_dirs(key)):
@@ -4215,8 +4313,10 @@ def _selftest_kew3():
             assert type(rr).__name__ == "KeW3Runner" and isinstance(rr.ke, C5Runner) and isinstance(rr.w3r, PolicyRunnerStage4)
             assert rr.w3r.w3 == W3_CKPTS[spec.w3] and rr.handoff == "carry" and rr.settle_quiet_s == 0.5 and rr.obs_dim == 320
             assert rr.ke.det.early == C5_EXTRA[spec.ke]["det"]["early"] and rr.ke.cue_vx == C5_EXTRA[spec.ke]["runner"]["cue_vx"] and rr.ke.det.settle is None
+            assert (rr.ke.det.requiet, rr.ke.det.requiet_contact) == _kew3_det_want(spec), f"{key}: 실모델 경로(_make_runner) KE 감지기 requiet ≠ 명세"
             assert rr.ke.core.ema_fresh_ticks == 1 and rr.w3r.ema_fresh_ticks == 1 and (rr.act_obs_ema_beta, rr.jvel_obs_ema_beta) == (0.27, 0.25)
             cf = BridgeCore(spec.ke); cf.reset(); cf.heading_hold = False; cf.cmd = (0.0, 0.0, 0.0)
+            assert cf.runner.det.requiet is None and cf.runner.det.requiet_contact == "both", f"단독 KE 키 {spec.ke} 감지기에 갇힘 해소가 켜짐"
             La, Lb = Loop(cr), Loop(cf)
             t0 = time.perf_counter()
             for n in range(100):
@@ -4240,6 +4340,14 @@ def _selftest_kew3():
             assert rr.mode == "ke" and rr.n_to_w3 == 1 and rr.n_to_ke == 1 and dt < TICK_SEC, (rr.mode, dt)
             notes.append(f"실모델 {La.n} 틱(KE 100 틱 = 종전 {spec.ke} 코어 비트 동일 → 걷기 150 틱 → 래치·정착 {k_} 틱 → KE) 유한·슬루 최대 "
                          f"{math.degrees(La.smax):.2f}°/틱·{dt * 1000:.2f}ms [{rr.backend}]")
+            # 1008: 실모델 경로(_make_runner)로 만든 두 합성 러너의 감지기 = 명세, 갇힘 해소 동작 = 위 (g) 의 스텁 조립 감지기와 틱 단위로 같다
+            real = {k2: (rr if k2 == key else _make_runner(k2)).ke.det for k2 in KEW3_KEYS}
+            for k2, d in real.items():
+                assert (d.requiet, d.requiet_contact) == _kew3_det_want(KEW3_SPECS[k2]), f"{k2}: 실모델 경로 KE 감지기 requiet {d.requiet}·{d.requiet_contact}"
+                assert det_run(d) == (m_old if KEW3_SPECS[k2].requiet is None else m_new) and d.n_requiet == (0 if KEW3_SPECS[k2].requiet is None else 1), \
+                    f"{k2}: 실모델 경로 감지기의 갇힘 해소 동작이 스텁 조립 감지기와 다름"
+            notes.append(f"실모델 경로 감지기: {KEW3_CKPT_KEY} requiet None(갇힘 유지) · {KEW3Q_CKPT_KEY} {real[KEW3Q_CKPT_KEY].requiet}·{real[KEW3Q_CKPT_KEY].requiet_contact}"
+                         f"(같은 입력에서 requiet 로 서기 복귀) · 단독 {spec.ke} None")
         else:
             notes.append("실모델 exported 없음(왕복 SKIP)")
 
@@ -4489,6 +4597,8 @@ def run_selftest(required=()):
              ("parity 옵션(1007, 기본 꺼짐)", _selftest_parity_flags),
              ("헤딩 고리 고장 판별 분리(1007, 기본 꺼짐)", _selftest_w3_hl_fault),
              ("KE↔W3 합성 러너 실험 플래그(1007, 기본 꺼짐)", _selftest_kew3),
+             # 1008 둘째 합성 키(첫 키 + KE 감지기 갇힘 해소 = 시뮬 합성 평가 구성): 위 항목과 **같은 시험 전체**를 새 키의 명세로 한 번 더
+             ("KE↔W3 합성 러너 둘째 키 — 갇힘 해소(1008, 기본 꺼짐)", lambda: _selftest_kew3(KEW3Q_CKPT_KEY)),
              ("모터 오류 기록(1007)", _selftest_errlog),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
@@ -4529,8 +4639,10 @@ def main():
                          "스텝 = {\"cmd\":\"step\",\"enable\":true,\"req_id\":\"..\",\"seq\":N}(seq 단조 증가), "
                          "stop/estop/가드 = 정지 래치 → {\"cmd\":\"rearm\",\"req_id\":\"..\",\"seq\":N}. 응답 " + BRIDGE_ACK_TOPIC)
     ap.add_argument("--experimental-kew3", action="store_true",
-                    help="1007 실험(기본 꺼짐·실물 미검증·젯슨 미배포): KE↔W3 합성 러너 키 " + KEW3_CKPT_KEY + " 등록 — 서 있는 동안 KE"
-                         "(G21a 서기 + G24Ra 회복 + 감지기), 걷는 동안만 W3S3d-15800. **--experimental-w3 와 함께만**(합성 키는 W3 세션의 "
+                    help="1007 실험(기본 꺼짐·실물 미검증·젯슨 미배포): KE↔W3 합성 러너 키 " + ", ".join(KEW3_KEYS) + " 등록 — 서 있는 동안 KE"
+                         "(G21a 서기 + G24Ra 회복 + 감지기), 걷는 동안만 W3S3d-15800. 1008: " + KEW3Q_CKPT_KEY + " 는 같은 구성 + KE 감지기 "
+                         "갇힘 해소(회복 모드 중 조용한 양발 서기 2.0 s → 기준 재설정·서기 복귀) = 시뮬 합성 평가 구성, 첫 키는 그 옵션이 꺼져 있다. "
+                         "**--experimental-w3 와 함께만**(합성 키는 W3 세션의 "
                          "step·seq·ack·감독기·헤딩 고리·감시를 그대로 쓴다), --runner-ema-fresh 2 와는 함께 쓸 수 없다. 켜도 --checkpoint 로 "
                          "합성 키를 고른 세션에서만 러너가 바뀐다. 시작 = stand(KE 모드), 걷기 = step 켜기(KE 회복 모드 중에는 거부), "
                          "끄기 = 반주기 래치 → 조용한 양발 서기 0.5 s(상한 3 s) → KE. 문서 reports/gen_w3/KEW3_DESIGN.md")
@@ -4643,7 +4755,8 @@ def main():
                   + (" — rl_walking/deploy/kew3_runner.py 를 읽을 수 없음(배포 누락?)" if isinstance(e, ImportError) else ""), file=sys.stderr)
             return 2
         print("[경고] --experimental-kew3: KE↔W3 합성 러너 키 등록(실물 미검증·젯슨 미배포) — "
-              + ", ".join(f"{k} = 걷기 {sp.w3} + 서기 {sp.ke}(전환 {sp.handoff}·정착 {sp.settle_quiet_s:g}s)" for k, sp in KEW3_CKPTS.items()),
+              + ", ".join(f"{k} = 걷기 {sp.w3} + 서기 {sp.ke}(전환 {sp.handoff}·정착 {sp.settle_quiet_s:g}s"
+                          + (f"·KE 감지기 갇힘 해소 requiet {sp.requiet}" if sp.requiet is not None else "") + ")" for k, sp in KEW3_CKPTS.items()),
               file=sys.stderr)
     if args.experimental_hturn2:
         enable_experimental_hturn2()
@@ -4812,7 +4925,9 @@ def main():
                 self.get_logger().warn(
                     f"KE↔W3 합성 러너 켜짐(실험·실물 미검증) — 서기 = KE {_sp.ke}, 걷기 = W3 {_sp.w3}, 전환 {_sp.handoff}·"
                     f"W3 → KE 정착 {_sp.settle_quiet_s:g}s(상한 {getattr(self.core.runner, 'settle_max_s', float('nan')):g}s). "
-                    "시작 = stand(KE 모드), KE 회복 모드 중 걷기 켜기 거부, 가드 트립 = W3 세션 지연 동결")
+                    "시작 = stand(KE 모드), KE 회복 모드 중 걷기 켜기 거부, 가드 트립 = W3 세션 지연 동결"
+                    + (f". KE 감지기 갇힘 해소 켜짐 requiet {_sp.requiet} — 회복 모드 중 조용한 양발 서기 {_sp.requiet[0]:g}s 뒤 기준 자세를 다시 잡고 "
+                       "서기로 복귀(블랙박스 c5.requiet = 발동 횟수 n·진행 run)" if _sp.requiet is not None else ""))     # 1008: 갇힘 해소 키에서만(첫 키 로그 불변)
 
         # ---- 입력 콜백 ----
         def _on_js(self, msg):

@@ -76,8 +76,10 @@ SYNC_GLOBS = ["jetson/scripts/*.py", "jetson/scripts/*.sh", "jetson/scripts/*.ht
 REF_FILES = [f"{CAND}/selftest_w3_node_refs.py"]
 RECORD_FILES = [f"{CAND}/OPERATOR_COMMANDS.md"]
 #: 정책 파일을 실어야 하는 키(사용자 지시의 세션 키). 여기에 브리지 STAND_DEFAULT(selftest 필수)와 콘솔 선택지 전부가 '확인' 대상으로 더해진다.
+#: 1008: 둘째 합성 키(첫 합성 키 + KE 감지기 갇힘 해소)를 뒤에 더했다 — 읽는 정책 파일은 첫 합성 키와 같은 세 run 이라 묶음에 새 파일은 늘지 않는다
+#: (콘솔 선택지에 올라가므로 '확인' 대상 키 목록·젯슨 selftest 인자와 맞춘다).
 POLICY_KEYS = ["stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra", "stand_w3s3d_15800",
-               "stand_kew3_g21a_g24ra_w3s3d15800"]
+               "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800"]
 #: 진입점별 import 사슬 표에만 쓰는 목록(젯슨에서 ~/rl_calib 사본으로 도는 것 — 저장소 사본 기준으로 사슬을 적는다)
 ENTRY_CALIB = ["jetson/scripts/hang_stand.py", "jetson/scripts/boot_pose_check.py", "jetson/scripts/release_all.py",
                "jetson/scripts/stage8_cmd.py", "jetson/scripts/ping_all.py", "jetson/scripts/imu_adapter_node.py",

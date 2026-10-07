@@ -99,11 +99,15 @@ def finite(value):
 # 1007 걷기 조작 — 시간 제한 걷기 버튼 한 번의 수명 상태기 (W3 세션 전용)
 # ---------------------------------------------------------------------------
 #: 걷기 실험 키: 브리지가 실험 플래그(--experimental-w3 [--experimental-kew3])로만 등록하는 정책 키.
-#: 값은 여기 한 곳에 적고 콘솔 selftest 가 원본(w3_deploy.W3S3D_CKPT_KEY · 브리지 KEW3_CKPT_KEY)과 대조한다.
+#: 값은 여기 한 곳에 적고 콘솔 selftest 가 원본(w3_deploy.W3S3D_CKPT_KEY · 브리지 KEW3_CKPT_KEY·KEW3Q_CKPT_KEY)과 대조한다.
 #:   composite = 합성 러너(서 있는 동안 KE, 걷는 동안 W3) — '서기 복귀' 판정에 kew3.mode == "ke" 를 더 요구한다.
+#: 1008: 셋째 걷기 키(브리지의 둘째 합성 키) = 첫 합성 키와 같은 구성에 KE 감지기 갇힘 해소(회복 모드 중 조용한 양발 서기 2 s → 기준 재설정·서기 복귀)만 켠 것 —
+#:   **시뮬 합성 평가가 돌린 구성이 이 키다**(첫 합성 키는 그 옵션이 꺼져 있다 — 회복 모드에 갇히면 걷기 켜기가 계속 거부될 수 있다). 실물 미검증.
+#:   **뒤에** 덧붙였다 — 앞의 두 키(이름·표시·순서)는 그대로다. 어느 키를 쓸지는 사용자가 정한다.
 WALK_KEYS = {
     "stand_w3s3d_15800": {"composite": False, "label": "걷기 실험 · W3 단독"},
     "stand_kew3_g21a_g24ra_w3s3d15800": {"composite": True, "label": "걷기 실험 · 서기 KE + 걷기 W3 합성"},
+    "stand_kew3q_g21a_g24ra_w3s3d15800": {"composite": True, "label": "걷기 실험 · 서기 KE + 걷기 W3 합성 + 갇힘 해소(시뮬 평가 구성) · 실물 미검증"},
 }
 WALK_KIND = {"w3_move": "move", "w3_off": "off", "w3_stop": "stop", "w3_rearm": "rearm"}
 WALK_SAFE = {"w3_off", "w3_stop"}      # 안전 방향(걷기 끄기·정지 래치) — 단계·고장 래치·앞 요청과 무관하게 받는다

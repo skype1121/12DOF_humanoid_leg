@@ -102,6 +102,8 @@ CKPT_DEFAULT = CKPT_CHOICES[0]
 WALK_BRIDGE_ARGS = {
     "stand_w3s3d_15800": ["--experimental-w3"],
     "stand_kew3_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
+    # 1008 둘째 합성 키(첫 합성 키 + KE 감지기 갇힘 해소 = 시뮬 합성 평가 구성 · 실물 미검증) — 첫 합성 키와 같은 실험 플래그. 위 두 키의 인자는 그대로다.
+    "stand_kew3q_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
 }
 #: 정책 로드(--live)에만 더 붙는 인자. 헤딩 고리는 기본 off — 시뮬 판정: 왕복에서 기준 미달(reports/gen_w3/HEADING_SESSION_1007.md §7).
 #: 셀프테스트 게이트에는 붙이지 않는다: 브리지 --selftest 의 'W3 감시 2 차 대비책'·'헤딩 고리 고장 판별 분리' 항목은 고리 설정이 켜진 채로만
@@ -148,6 +150,8 @@ def bridge_selftest_argv(ckpt):
 #: X14(1007 시뮬 평가 — 합성 키 배포 코드 폐루프, reports/gen_w3/TRANSITION_W3KE.md §5.18·§5.18b)에서 잰 '버튼 한 번'의 이동량.
 #: **시뮬 중앙값이고 실물에서는 확인하지 않았다.** 화면의 참고 표시일 뿐 명령 값이 아니다(명령 값의 원본은 W3_MOVES).
 #: 버튼 값(vx·vy·wz·기한)이나 정책이 바뀌면 이 숫자는 낡는다 — 다시 재서 고치거나 지운다. 비활성 버튼에는 보이지 않는다.
+#: 1008: X14 는 KE 감지기 갇힘 해소를 켠 구성(= 걷기 키 stand_kew3q_…)으로 쟀다. 이 표는 걷기 키 전부에 같은 값으로 보인다(키별 표 아님) —
+#: 갇힘 해소가 꺼진 첫 합성 키·W3 단독 키의 표시는 종전 그대로 두었다(따로 둘지는 이 변경의 범위 밖).
 WALK_SIM_REF = {"fwd1": "+4.8 cm", "fwd3": "+16 cm", "turn_l": "+17.6°", "turn_r": "−13.8°", "left1": "+4.4 cm"}
 WALK_SIM_REF_NOTE = "X14 시뮬 중앙값 · 실물 미확인"
 
@@ -2290,7 +2294,8 @@ def selftest_walk(directory):
             pass
         # 걷기 키: 실험 플래그는 정책 로드·셀프테스트 게이트 양쪽, 헤딩 고리 off 는 정책 로드에만(브리지 selftest 의 고리 항목은 off 에서 실패한다)
         expect = {W.W3S3D_CKPT_KEY: ["--experimental-w3"],
-                  "stand_kew3_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"]}
+                  "stand_kew3_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
+                  "stand_kew3q_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"]}       # 1008 둘째 합성 키(허용된 추가)
         for k, flags in expect.items():
             act_bridge_live({"checkpoint": k})
             ACTIONS["selftest"][0]({"checkpoint": k})
@@ -2298,8 +2303,23 @@ def selftest_walk(directory):
                                     ("selftest", [sys.executable, script, "--selftest", "--checkpoint", k] + flags)], (k, started[-2:])
     src = Path(__file__).with_name("rl_bridge_node.py").read_text(encoding="utf-8")
     kew3 = re.search(r'^KEW3_CKPT_KEY = "([A-Za-z0-9_]+)"', src, re.M)
-    assert kew3 and set(WALK_KEYS) == {W.W3S3D_CKPT_KEY, kew3[1]} == set(WALK_BRIDGE_ARGS) == set(expect) and WALK_CKPTS == list(WALK_KEYS)
+    kew3q = re.search(r'^KEW3Q_CKPT_KEY = "([A-Za-z0-9_]+)"', src, re.M)
+    # 1008: 걷기 키 = 1007 의 두 키(이름·순서·표시·인자 불변) + 허용된 추가 한 키(둘째 합성 키 — 갇힘 해소). 그 밖의 키가 끼면 실패.
+    assert kew3 and kew3q and set(WALK_KEYS) == {W.W3S3D_CKPT_KEY, kew3[1], kew3q[1]} == set(WALK_BRIDGE_ARGS) == set(expect) and WALK_CKPTS == list(WALK_KEYS)
+    assert list(WALK_KEYS) == [W.W3S3D_CKPT_KEY, kew3[1], kew3q[1]] == list(expect) \
+        == ["stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800"], list(WALK_KEYS)
     assert WALK_KEYS[W.W3S3D_CKPT_KEY]["composite"] is False and WALK_KEYS[kew3[1]]["composite"] is True
+    assert WALK_KEYS[W.W3S3D_CKPT_KEY] == {"composite": False, "label": "걷기 실험 · W3 단독"}
+    assert WALK_KEYS[kew3[1]] == {"composite": True, "label": "걷기 실험 · 서기 KE + 걷기 W3 합성"}
+    assert WALK_KEYS[kew3q[1]]["composite"] is True and WALK_BRIDGE_ARGS[kew3q[1]] == WALK_BRIDGE_ARGS[kew3[1]]
+    # 둘째 합성 키의 표시 이름: 무엇이 다른지(갇힘 해소)·시뮬 평가 구성임·실물 미검증을 적는다. 앞의 두 키 표시에는 그 문구가 없다.
+    assert all(s in WALK_KEYS[kew3q[1]]["label"] for s in ("서기 KE + 걷기 W3 합성 + 갇힘 해소(시뮬 평가 구성)", "실물 미검증")), WALK_KEYS[kew3q[1]]["label"]
+    assert not any("갇힘 해소" in WALK_KEYS[k]["label"] for k in (W.W3S3D_CKPT_KEY, kew3[1]))
+    assert len({v["label"] for v in WALK_KEYS.values()}) == len(WALK_KEYS), "걷기 키의 표시 이름이 겹친다(드롭다운에서 구분 불가)"
+    # 합성 키 ↔ 명세 = 브리지 KEW3_SPECS 원문: 두 키 모두 걷기 W3S3d, 갇힘 해소(requiet)는 둘째 키에만
+    specs = re.findall(r'(KEW3Q?_CKPT_KEY): KeW3Spec\(w3=_W3\.([A-Z0-9_]+), ke="([a-z0-9_]+)", handoff="carry", settle_quiet_s=0\.5(\)|,\s*requiet=\(2\.0, 0\.3, "both"\)\))', src)
+    assert [s[:3] for s in specs] == [("KEW3_CKPT_KEY", "W3S3D_CKPT_KEY", "stand_c5kr_g21a_g24ra"), ("KEW3Q_CKPT_KEY", "W3S3D_CKPT_KEY", "stand_c5kr_g21a_g24ra")], specs
+    assert specs[0][3] == ")" and "requiet" in specs[1][3], specs
     assert all(k.startswith("stand") for k in WALK_KEYS) and not set(WALK_KEYS) & set(CKPT_CHOICES) and CKPT_ALL[:len(CKPT_CHOICES)] == CKPT_CHOICES
     for flag in ("--experimental-w3", "--experimental-kew3", "--w3-heading-loop"):
         assert f'ap.add_argument("{flag}"' in src, flag
@@ -2307,7 +2327,8 @@ def selftest_walk(directory):
         assert re.search(rf'^{name} = "([^"]+)"', src, re.M)[1] == value, name
     for k in WALK_CKPTS:
         assert f'<option value="{k}">{k} — {html.escape(WALK_KEYS[k]["label"])}</option>' in page and "걷기 실험" in WALK_KEYS[k]["label"], k
-    out.append(f"② 브리지 기동 인자: 기존 {len(CKPT_CHOICES)} 키 live·selftest 종전과 같음 · 걷기 키 {len(expect)} 개에만 실험 플래그(정책 로드에는 헤딩 고리 off 추가, 셀프테스트 게이트에는 없음) · 키·토픽 = w3_deploy·브리지 원본")
+    out.append(f"② 브리지 기동 인자: 기존 {len(CKPT_CHOICES)} 키 live·selftest 종전과 같음 · 걷기 키 {len(expect)} 개에만 실험 플래그(정책 로드에는 헤딩 고리 off 추가, 셀프테스트 게이트에는 없음) · 키·토픽 = w3_deploy·브리지 원본"
+               f" · 1007 두 키 불변 + 1008 추가 {kew3q[1]}(첫 합성 키와 같은 인자, 브리지 명세에 갇힘 해소)")
 
     # ③ 텔레메트리(실제 경로): 응답은 순서대로 쌓였다가 한 번만 꺼내지고, 디버그의 w3·w3_sup·kew3 는 그대로 실린다(없으면 None)
     tel = Telemetry()

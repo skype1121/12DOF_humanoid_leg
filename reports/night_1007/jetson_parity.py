@@ -26,7 +26,10 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "jetson", "scripts"))
 T = 600
-KEYS = ["stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra", "stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800"]
+# 1008: 둘째 합성 키(첫 합성 키 + KE 감지기 갇힘 해소)를 **맨 뒤에** 더했다 — 앞의 5 키·순서·입력열은 그대로(키마다 독립 입력열·독립 러너라 기존 키의 기준값은 바뀌지 않는다).
+# --check 는 기준 파일에 들어 있는 키만 본다: 5 키 기준 파일이면 5 키만 대조하고, 새 키를 대조하려면 6 키로 --gen 한 기준 파일이 필요하다.
+KEYS = ["stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra", "stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800",
+        "stand_kew3q_g21a_g24ra_w3s3d15800"]
 WALK_EVENTS = [(100, True, (0.06, 0.0, 0.0)), (300, False, (0.0, 0.0, 0.0)), (420, True, (0.0, 0.0, 0.15)), (520, False, (0.0, 0.0, 0.0))]
 
 
@@ -59,11 +62,20 @@ def make_inputs(pose, seed=7):
     return gyro.astype(np.float32), grav, q, qv, ct
 
 
+def kew3_keys(b):
+    """브리지의 합성 키 전부(1008: KEW3_KEYS — 키가 하나뿐이던 판은 KEW3_CKPT_KEY, 합성 러너가 없는 판은 빈 튜플)."""
+    ks = getattr(b, "KEW3_KEYS", None)
+    if ks is None:
+        one = getattr(b, "KEW3_CKPT_KEY", None)
+        ks = () if one is None else (one,)
+    return tuple(ks)
+
+
 def run_key(b, key, inp=None):
-    if key in getattr(b._W3, "W3_KEYS", ()) or key == getattr(b, "KEW3_CKPT_KEY", None):
+    if key in getattr(b._W3, "W3_KEYS", ()) or key in kew3_keys(b):
         if not b.EXPERIMENTAL_W3:
             b.enable_experimental_w3()
-    if key == getattr(b, "KEW3_CKPT_KEY", None) and not getattr(b, "EXPERIMENTAL_KEW3", False):
+    if key in kew3_keys(b) and not getattr(b, "EXPERIMENTAL_KEW3", False):
         b.enable_experimental_kew3()
     r = b._make_runner(key)
     pose = b.CKPT_DEFAULT_POSE.get(key, None)
@@ -72,7 +84,7 @@ def run_key(b, key, inp=None):
     if inp is None:
         inp = make_inputs(pose)
     gyro, grav, q, qv, ct = inp
-    walking = hasattr(r, "set_gait_enable") and (key in getattr(b._W3, "W3_KEYS", ()) or key == getattr(b, "KEW3_CKPT_KEY", None))
+    walking = hasattr(r, "set_gait_enable") and (key in getattr(b._W3, "W3_KEYS", ()) or key in kew3_keys(b))
     r.reset()
     out = np.zeros((T, 12), np.float64); raw = np.zeros((T, 12), np.float32); mode = np.zeros(T, np.int16); cmd = (0.0, 0.0, 0.0); ev = {k0: (w, c) for k0, w, c in WALK_EVENTS}
     for k in range(T):
@@ -101,7 +113,7 @@ def files_of(b, key):
     """키가 읽는 정책 파일 md5(있는 것만)."""
     res = {}
     keys = [key]
-    if key == getattr(b, "KEW3_CKPT_KEY", None):
+    if key in kew3_keys(b):
         sp = b.KEW3_SPECS[key]; keys = [sp.w3, sp.ke]
     for kk in keys:
         dirs = []

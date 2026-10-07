@@ -47,6 +47,13 @@ python3 deploy/make_head_manifest.py [--inventory deploy/cand/head_1008/jetson_i
 | `stand_c5kr_g21a_g24ra`·`stand_c5krh_g21a_g24ra` | 위 + `…/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/policy.onnx`(+`.pt`·`SOURCE_CHECKPOINT`), `params/env.yaml` | 이미 있음(md5 같음) |
 | `stand_w3s3d_15800` | `…/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.onnx` 1321751 B `d908cd92…`, `policy.pt` 1332468 B `10e3ee40…`, `SOURCE_CHECKPOINT` 15 B `1ad3809e…`, `params/env.yaml` 60296 B `41d1e62a…` | **없음 — 새로 간다** |
 | `stand_kew3_g21a_g24ra_w3s3d15800` | 자체 파일 없음 — W3S3d + G21a + G24Ra 의 파일을 쓴다 | 위 셋으로 충족 |
+| `stand_kew3q_g21a_g24ra_w3s3d15800`(1008) | 자체 파일 없음 — 위 합성 키와 같은 세 파일 | 위 셋으로 충족 |
+
+**1008 추가 — 둘째 합성 키 `stand_kew3q_g21a_g24ra_w3s3d15800` [실물 미검증]**: 첫 합성 키와 같은 구성(걷기 W3S3d-15800 · 서기 `stand_c5kr_g21a_g24ra` · 상태 이어받기 ·
+정착 0.5 s)에 **KE 감지기의 갇힘 해소(`requiet` 2.0 s · 0.3 rad/s · 양발 접촉)만 켠 키**다. 시뮬 합성 평가(`eval_transition_kwx.py --kw_requiet 2.0,0.3`)가 돌린 구성이 이 키이고,
+첫 합성 키는 그 옵션이 **꺼져 있다**(평가 구성 아님). 같은 실험 플래그(`--experimental-w3 --experimental-kew3`) 뒤에 있고 콘솔 드롭다운 맨 뒤에 붙는다. 기존 키(단독 KE 키·첫 합성 키 포함)의
+감지기·기동 인자·발행은 그대로다(확인: 브리지 selftest 의 '갇힘 해소' 감지기 항목 · 러너 동치 5 키가 종전 기준과 차 0 · 기존 키 세션 발행이 변경 전 커밋과 비트 동일 — 커밋 메시지). 이 문서의 다른 표·수치(파일 수·selftest 20/20 등)는 이 키를 더하기 전의
+기록이다 — 매니페스트를 다시 만든 뒤 갱신한다. 러너 동치 기준(`parity_ref.npz`)은 5 키 그대로면 새 키를 대조하지 않는다(6 키로 `--gen` 해야 본다).
 
 브리지가 읽는 것은 `policy.onnx`(젯슨은 torch 가 없어 onnxruntime) 와 `params/env.yaml` 이다. `SOURCE_CHECKPOINT` 는 출처 표시, `params/agent.yaml`·`model_*.pt` 는 읽지 않아 싣지 않는다.
 
@@ -123,7 +130,7 @@ deploy/deploy_head_1008.sh --remove-policy=logs/rsl_rl/<실험>/<run>  # 그 추
 - **롤백 한 줄**: `deploy/deploy_head_1008.sh --rollback`(파일만) 또는 `--rollback --restart-console`. 젯슨에서 손으로 할 때는
   `cd ~/humanoid_repo_bak_1008 && while read -r m f; do cp -p "files/$f" ~/humanoid_repo/"$f"; done < BACKUP_MANIFEST.md5 && while read -r f; do rm -f ~/humanoid_repo/"$f"; done < CREATED.txt`.
   새로 생긴 파일은 `CREATED.txt`, 새 폴더는 `CREATED_DIRS.txt` 에 적혀 있고 롤백이 지운다(가짜 젯슨 시험: 복원 14·삭제 52·남은 것 0, 스냅샷 동일).
-- 젯슨 selftest 목록(전부 오프라인): 문법 · 러너 · c5_switch · kew3_runner · w3_cmd · latency_check · 콘솔 · 브리지 6 종(기본·g21a·krh·`--experimental-w3`·W3S3d·합성 키) ·
+- 젯슨 selftest 목록(전부 오프라인): 문법 · 러너 · c5_switch · kew3_runner · w3_cmd · latency_check · 콘솔 · 브리지 7 종(기본·g21a·krh·`--experimental-w3`·W3S3d·합성 키·1008 둘째 합성 키) ·
   W3 노드(실행기) · stage8 기본 인자·단위 시험 2 · 지연 옵션 꺼짐 · 매니페스트 `md5sum -c` · (묶음에 있으면) `reports/night_1007/jetson_parity.py --check reports/night_1007/jetson/parity_ref.npz`.
   하나라도 실패하면 자동 롤백한다. 러너 동치(parity)도 같은 게이트다 — 기준 npz 가 잘못 만들어졌다면 롤백 사유가 되므로 메인에서 `--gen` 한 직후의 파일을 실을 것.
 

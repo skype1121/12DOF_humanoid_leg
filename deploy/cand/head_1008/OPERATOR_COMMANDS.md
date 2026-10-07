@@ -87,6 +87,8 @@ python3 ~/humanoid_repo/jetson/scripts/rl_bridge_node.py --live --experimental-w
 - (a) 콘솔 걷기 패널 — **1007 23:53 병합(42da0c21) [실물 미검증]**. 아래는 코드(`operator_console.py`·`console_state.py`)에서 읽은 것이다.
   - 드롭다운 **뒤쪽**에 걷기 실험 키 2 개가 생긴다: `stand_w3s3d_15800`(W3 단독)·`stand_kew3_g21a_g24ra_w3s3d15800`(서기 KE + 걷기 W3 합성). 기본값과 기존 키 7 개,
     그 키들의 브리지 기동 인자는 그대로다(콘솔 selftest 가 고정). 걷기 모듈을 불러오지 못하면 걷기 키는 목록에 올라오지 않는다.
+    **1008 추가(이 묶음이 다시 배포된 뒤에 보인다)**: 맨 뒤에 `stand_kew3q_g21a_g24ra_w3s3d15800`(서기 KE + 걷기 W3 합성 + 갇힘 해소 — 시뮬 평가 구성 · 실물 미검증).
+    브리지 기동 인자는 첫 합성 키와 같다. 무엇이 다른지는 §4.
   - 걷기 키를 고른 시험에서 콘솔이 띄우는 브리지: `--live --checkpoint <키> --experimental-w3 [--experimental-kew3] --w3-heading-loop off`.
     준비 단계의 계약 검사는 `--selftest --checkpoint <키> --experimental-w3 [--experimental-kew3]`(헤딩 고리 인자 없이).
     **콘솔은 `--w3-monitor`·`--w3-hl-fault`·`--w3-safety`·`--w3-cmd-limits`·`--c5-overtime` 를 넘기지 않는다** → 걷기 감시는 꺼진 채(기록 `note` 도 없음) 돈다.
@@ -116,6 +118,11 @@ python3 ~/humanoid_repo/jetson/scripts/rl_bridge_node.py --live --experimental-w
 - 시작 = `stand`(KE 모드, 종전 인계 워밍업·블렌딩). 걷기 켜기 = `step` 켜기 → 다음 정책 틱에 W3. 끄기 = 반주기 경계에서 걸음 끔 → W3 서기로 조용한 양발 서기 0.5 s
   (|ω_xy| < 0.15, 상한 3 s) → KE 가 이어받음.
 - **KE 회복 모드가 켜져 있는 동안 걷기 켜기는 거부된다**(응답 사유에 표시). 회복 모드가 풀리지 않으면 운영자가 풀 수단은 재시작뿐이다.
+- **둘째 합성 키 `stand_kew3q_g21a_g24ra_w3s3d15800`(1008) [실물 미검증]** — 위 명령에서 `--checkpoint` 만 이 키로 바꾼다(플래그 같음).
+  첫 합성 키와 정책 3 개·전환 규칙이 같고, **KE 감지기의 갇힘 해소만 켠다**: 회복 모드 중 |ω_xy| < 0.3 rad/s·양발 접촉이 2.0 s 이어지면 기준 자세를 지금 자세로
+  다시 잡고 서기 모드로 돌아간다(블랙박스·디버그 `c5.requiet` = 발동 횟수 n·진행 run). **시뮬 합성 평가의 판정 구성(X6b·X7·X14 …, `--kw_requiet 2.0,0.3`)이 이 구성이다.**
+  첫 합성 키는 이 옵션이 **꺼져 있다** — 시뮬에서 평가한 구성이 아니고, 조용히 선 채 회복 모드에 갇히면 위 항목대로 걷기 켜기가 계속 거부된다.
+  한쪽 발 패드가 0 을 내는 고장에서는 갇힘 해소가 발동하지 않는다(양발 접촉 요구). 어느 키를 쓸지는 [결정]. 시뮬 성공률은 실물 성공 확률이 아니다.
 - 가드 트립은 KE 모드에서도 W3 세션 규칙(늦춘 동결)이다 — 종전 회복 세션의 즉시 동결과 다르다. `--c5-settle`·`--c5-imu-f32`·`--runner-ema-fresh 2` 는 합성 키에서 거부.
 - 명령·응답·감독기·기동 주체는 세션 B 와 같다.
 
@@ -177,6 +184,7 @@ python3 jetson/scripts/operator_console.py --selftest                 # console 
 python3 jetson/scripts/rl_bridge_node.py --selftest [--checkpoint <키>]
 python3 jetson/scripts/rl_bridge_node.py --selftest --experimental-w3 [--checkpoint stand_w3s3d_15800]
 python3 jetson/scripts/rl_bridge_node.py --selftest --experimental-w3 --experimental-kew3 --checkpoint stand_kew3_g21a_g24ra_w3s3d15800
+python3 jetson/scripts/rl_bridge_node.py --selftest --experimental-w3 --experimental-kew3 --checkpoint stand_kew3q_g21a_g24ra_w3s3d15800   # 1008 둘째 합성 키(갇힘 해소)
 python3 deploy/cand/head_1008/selftest_w3_node_refs.py                # w3 node selftest: ALL PASS
 LC_ALL=C md5sum -c --quiet deploy/head_1008.md5 && echo MD5_OK        # 배포된 파일 전체 대조
 ```

@@ -49,6 +49,8 @@ MIN_FREE_KB=${HEAD1008_MIN_FREE_KB:-204800}   # 복사에 필요한 양 말고�
 CONSOLE_SELFTEST_TIMEOUT_S=300; CONSOLE_SELFTEST_LIMIT_S=240
 # selftest 에 쓰는 키(계획서의 정책과 맞아야 한다)
 KEY_G21A=stand_crouch_g21a; KEY_KRH=stand_c5krh_g21a_g24ra; KEY_W3=stand_w3s3d_15800; KEY_KEW3=stand_kew3_g21a_g24ra_w3s3d15800
+# 1008 둘째 합성 키(첫 합성 키 + KE 감지기 갇힘 해소 = 시뮬 합성 평가 구성) — 콘솔 선택지에 올라가므로 젯슨 selftest 도 같은 인자로 돌린다(정책 파일은 첫 합성 키와 같다)
+KEY_KEW3Q=stand_kew3q_g21a_g24ra_w3s3d15800
 # 제어(=CAN 을 쓰거나 모터에 명령하는) 프로세스 — 하나라도 살아 있으면 복사·재기동·롤백 거부
 CTRL_RE='[r]l_bridge_node.py|[s]tage8_12axis_mit_control_node.py|[h]ang_stand.py|[p]osture_probe.py|[g]round_stand.py|[s]tatic_march.py|[p]ose_hold.py|[h]ang_leg_swing.py|[z]ero_anchor.py|[b]oot_pose_check.py|[r]elease_all.py|[p]lay_probe.py'
 SENS_RE='[i]mu_node|[f]oot_force_adapter|[p]ressure_serial_node|[i]mu_adapter'
@@ -165,6 +167,7 @@ local_gate() {
   lg "콘솔" "console selftest: ALL PASS" python3 jetson/scripts/operator_console.py --selftest
   lg "브리지(기본)" "selftest: ALL PASS" python3 jetson/scripts/rl_bridge_node.py --selftest
   lg "브리지(합성 키)" "selftest: ALL PASS" python3 jetson/scripts/rl_bridge_node.py --selftest --experimental-w3 --experimental-kew3 --checkpoint $KEY_KEW3
+  lg "브리지(둘째 합성 키 — 갇힘 해소)" "selftest: ALL PASS" python3 jetson/scripts/rl_bridge_node.py --selftest --experimental-w3 --experimental-kew3 --checkpoint $KEY_KEW3Q
   lg "W3 노드(git 기준 커밋 비교 포함)" "w3 node selftest: ALL PASS" python3 jetson/scripts/selftest_w3_bridge_node.py
   [ $ok -eq 1 ]
 }
@@ -292,8 +295,8 @@ remote_selftest() {   # 반환 0 = 전부 통과. 결과 요약은 표준 출력
   local sent_py="" p res rc=0 line name r tok nf last
   for p in "${P_PATH[@]}"; do [[ "$p" == *.py ]] && sent_py="$sent_py $p"; done
   local pol_dirs; pol_dirs=$(for p in "${P_PATH[@]}"; do [[ "$p" == logs/*/exported/policy.onnx ]] && dirname "$p"; done | sort -u | tr '\n' ' ')
-  res=$(rsh_in "bash -s -- '$R' '$BAK' '$PY' '$ROS_SETUP' '$KEY_G21A' '$KEY_KRH' '$KEY_W3' '$KEY_KEW3' '$sent_py' '$pol_dirs' '${HEAD1008_ALLOW_LATENCY_OPTS:-0}'" <<'EOS'
-R=$1; BAK=$2; PY=$3; ROS_SETUP=$4; KEY_G21A=$5; KEY_KRH=$6; KEY_W3=$7; KEY_KEW3=$8; SENT_PY=$9; POL_DIRS=${10}; ALLOW_LAT=${11}
+  res=$(rsh_in "bash -s -- '$R' '$BAK' '$PY' '$ROS_SETUP' '$KEY_G21A' '$KEY_KRH' '$KEY_W3' '$KEY_KEW3' '$sent_py' '$pol_dirs' '${HEAD1008_ALLOW_LATENCY_OPTS:-0}' '$KEY_KEW3Q'" <<'EOS'
+R=$1; BAK=$2; PY=$3; ROS_SETUP=$4; KEY_G21A=$5; KEY_KRH=$6; KEY_W3=$7; KEY_KEW3=$8; SENT_PY=$9; POL_DIRS=${10}; ALLOW_LAT=${11}; KEY_KEW3Q=${12}
 cd "$R" || { echo "ST|cd|90|0|0|0|저장소 폴더 없음"; exit 0; }
 # 콘솔 서비스와 같은 환경(ROS 경로)에서 돌린다 — selftest 는 rclpy 를 초기화하지 않는다(브리지 노드 시험은 가짜 rclpy)
 if [ -n "$ROS_SETUP" ] && [ -f "$ROS_SETUP" ]; then set +u; source "$ROS_SETUP"; fi
@@ -343,6 +346,7 @@ run "브리지(회복 $KEY_KRH)" 1200 "selftest: ALL PASS" $PY jetson/scripts/rl
 run "브리지(--experimental-w3)" 1200 "selftest: ALL PASS" $PY jetson/scripts/rl_bridge_node.py --selftest --experimental-w3
 run "브리지(W3 $KEY_W3)" 1200 "selftest: ALL PASS" $PY jetson/scripts/rl_bridge_node.py --selftest --experimental-w3 --checkpoint "$KEY_W3"
 run "브리지(합성 $KEY_KEW3)" 1200 "selftest: ALL PASS" $PY jetson/scripts/rl_bridge_node.py --selftest --experimental-w3 --experimental-kew3 --checkpoint "$KEY_KEW3"
+run "브리지(합성 $KEY_KEW3Q)" 1200 "selftest: ALL PASS" $PY jetson/scripts/rl_bridge_node.py --selftest --experimental-w3 --experimental-kew3 --checkpoint "$KEY_KEW3Q"
 run "W3 노드(기준 원문은 파일에서)" 1200 "w3 node selftest: ALL PASS" $PY deploy/cand/head_1008/selftest_w3_node_refs.py
 run "stage8 기본 인자 = 종전(지연 옵션 꺼짐)" 120 "STAGE8_DEFAULT_OK" $PY -c 'import sys
 sys.path.insert(0, ".")
@@ -381,6 +385,7 @@ EOS
     # 콘솔의 '브리지 셀프테스트' 준비 단계는 이 selftest 를 그대로 돌리고 CONSOLE_SELFTEST_TIMEOUT_S 뒤 시간 초과로 실패 처리한다
     # (console_state.py). 새 selftest 는 항목이 늘어 종전보다 오래 걸린다 → 콘솔 선택지 키의 selftest 가 여유 없이 길면 배포 실패로 본다.
     # 1007 밤(42da0c21): 걷기 실험 키 2 개도 콘솔 선택지가 됐다 — 콘솔이 같은 인자(--experimental-w3 [--experimental-kew3])로 돌리므로 같이 본다.
+    # 1008: 둘째 합성 키($KEY_KEW3Q)도 같은 이름 무늬("브리지(합성 ")라 이 시간 제한을 같이 받는다.
     case "$name" in "브리지(기본)"|"브리지(서기 "*|"브리지(회복 "*|"브리지(W3 "*|"브리지(합성 "*)
       if [ "${secs:-0}" -gt "$CONSOLE_SELFTEST_LIMIT_S" ]; then
         echo "     ★FAIL $name: ${secs}s — 콘솔 selftest 단계 제한 ${CONSOLE_SELFTEST_TIMEOUT_S}s 의 여유(${CONSOLE_SELFTEST_LIMIT_S}s)를 넘는다. 콘솔에서 준비 단계가 시간 초과로 막힌다"; rc=1

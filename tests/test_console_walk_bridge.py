@@ -15,6 +15,7 @@ jetson/scripts/selftest_w3_bridge_node.py 의 시험대(가짜 rclpy·가짜 시
 """
 import collections
 import json
+import math
 import os
 import sys
 from unittest.mock import Mock, patch
@@ -154,6 +155,9 @@ def run_session(bench, tmp_path, monkeypatch, key, guard, body):
     def driver(node):
         assert node.w3sup is not None, "콘솔 인자로 띄운 브리지가 걷기 세션(감독기)이 아님"
         assert node.core.kew3 is WALK_KEYS[key]["composite"] and node.core.w3cmd and node.core.w3hl is None, "합성 여부·헤딩 고리 off 가 인자와 다름"
+        if node.core.kew3:                    # 1008: 콘솔 인자로 뜬 합성 세션의 KE 감지기 갇힘 해소 = 그 키의 값(첫 합성 키는 꺼짐 — 종전 그대로)
+            det = node.core.runner.det
+            assert (det.requiet, det.requiet_contact) == REQUIET[key], (key, det.requiet, det.requiet_contact)
         link = Link(node, st, b, clock, key)
         trial = TrialState(key, clock=lambda: clock.t)
         trial.completed = set(trial.flow()) - {"stand"}            # 기존 단계별 절차로 정책 로드까지 끝난 상태에서 출발
@@ -189,6 +193,19 @@ def run_session(bench, tmp_path, monkeypatch, key, guard, body):
 
 
 CASES = [(key, guard) for key in WALK_KEYS for guard in ("safe", "data")]
+#: 1008: 합성 키별 KE 감지기 갇힘 해소 (requiet, 접촉 요구) — 여기 따로 적은 기대값(브리지 명세를 읽어 오지 않는다)
+REQUIET = {"stand_kew3_g21a_g24ra_w3s3d15800": (None, "both"), "stand_kew3q_g21a_g24ra_w3s3d15800": ((2.0, 0.3), "both")}
+
+
+def test_walk_keys_and_console_bridge_argv_are_pinned():
+    """1008: 이 계약 시험이 도는 걷기 키 = 1007 의 두 키 + 둘째 합성 키(갇힘 해소). 콘솔이 만드는 브리지 인자는 두 합성 키가 같다(키 이름만 다름)."""
+    assert list(WALK_KEYS) == ["stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800"]
+    assert [k for k, _g in CASES] == [k for k in WALK_KEYS for _ in range(2)] and set(REQUIET) == {k for k in WALK_KEYS if WALK_KEYS[k]["composite"]}
+    assert c.bridge_live_argv("stand_w3s3d_15800")[2:] == ["--live", "--checkpoint", "stand_w3s3d_15800", "--experimental-w3", "--w3-heading-loop", "off"]
+    for key in REQUIET:
+        assert c.bridge_live_argv(key)[2:] == ["--live", "--checkpoint", key, "--experimental-w3", "--experimental-kew3", "--w3-heading-loop", "off"]
+        assert c.bridge_selftest_argv(key)[2:] == ["--selftest", "--checkpoint", key, "--experimental-w3", "--experimental-kew3"]
+    assert "갇힘 해소(시뮬 평가 구성)" in WALK_KEYS["stand_kew3q_g21a_g24ra_w3s3d15800"]["label"] and "실물 미검증" in WALK_KEYS["stand_kew3q_g21a_g24ra_w3s3d15800"]["label"]
 
 
 @pytest.mark.parametrize("key,guard", CASES)
@@ -321,6 +338,48 @@ def test_walk_button_lifecycle_against_real_bridge_node(bench, tmp_path, monkeyp
         assert sum(1 for r in rows if r.get("kind") == "bridge_ack") == len(node._pubs[b.BRIDGE_ACK_TOPIC].msgs)
 
     run_session(bench, tmp_path, monkeypatch, key, guard, body)
+
+
+@pytest.mark.parametrize("key", list(REQUIET))
+def test_recovery_mode_lock_in_walk_panel_and_requiet_release(bench, tmp_path, monkeypatch, key):
+    """1008 갇힘 해소 대조(콘솔 ↔ 실제 브리지 노드, 두 합성 키에 같은 입력): 브리지 IMU 가 기준과 4.5° 다른 자세로 조용히 서서 KE 회복 모드에 갇히면
+    걷기 패널이 브리지 사유와 함께 잠긴다(콘솔은 발행하지 않는다). 첫 합성 키는 2.6 s 뒤에도 그대로이고 자세를 되돌려야 풀린다.
+    둘째 합성 키(갇힘 해소 2.0 s)는 그 자세 그대로 약 2 s 뒤 패널이 다시 열리고 걷기 버튼이 수락돼 서기 복귀까지 간다.
+    **계약·순서 검증이다 — 스텁 정책·가정 접촉 모형이라 실물에서 갇힘이 얼마나 생기는지·해소가 안전한지는 증명하지 않는다.**"""
+    short = min((m for m in c.walk_moves() if m["enabled"]), key=lambda m: m["dur_s"])
+
+    def body(link):
+        node = link.node
+        det = node.core.runner.det
+        link.until(lambda w: w["available"], 3.0, "정책 시작 뒤 걷기 버튼 열림")
+        link.tick(2.0)                                             # KE 감지기 기준 자세 고정(인계 뒤 1.5 s 추종 창)
+        link.H.pitch = math.radians(4.5)                           # 브리지 IMU 만 기운다(콘솔이 보는 IMU 는 수평) — 켜기 3° 초과·조기 복귀 자격 5° 미만·끄기 1.5° 초과
+        link.tick(0.3)
+        w = link.walk()
+        assert node.core.runner.last_mode == 1 and not w["available"] and "회복 모드" in w["reason"], w["reason"]
+        n_sent = len(link.sent)
+        code, res = link.req("w3_move", move=short["name"])
+        assert code == 409 and "회복 모드" in res["message"] and len(link.sent) == n_sent, (code, res)
+        link.tick(2.3)                                             # 기울인 뒤 2.6 s — 조용한 양발 서기
+        w = link.walk()
+        if REQUIET[key][0] is None:
+            assert node.core.runner.last_mode == 1 and det.n_requiet == 0 and not w["available"] and "회복 모드" in w["reason"], w["reason"]
+            code, res = link.req("w3_move", move=short["name"])
+            assert code == 409 and "회복 모드" in res["message"] and len(link.sent) == n_sent, (code, res)
+            link.H.pitch = 0.0                                     # 자세를 되돌려야만 풀린다
+            link.until(lambda w: w["available"], 4.0, "자세 복귀 뒤 버튼 열림")
+            assert det.n_requiet == 0
+        else:
+            assert node.core.runner.last_mode == 0 and det.n_requiet == 1 and det.n_early == 0, (node.core.runner.last_mode, det.n_requiet)
+            link.until(lambda w: w["available"], 3.0, "갇힘 해소 뒤 버튼 다시 열림")
+            assert w["bridge"]["fresh"] and link.walk()["mode"] == "ke"
+        code, res = link.req("w3_move", move=short["name"])       # 풀린 뒤에는 두 키 모두 걷기 버튼이 수락돼 서기 복귀까지 간다
+        link.tick()
+        assert code == 200 and res["ok"] and link.walk()["current"]["stage"] == "walking", (code, res, link.walk()["current"])
+        link.until(lambda w: w["current"]["stage"] == "done", 6.0, "서기 복귀")
+        assert node.core.active and not link.H.stop_alls
+
+    run_session(bench, tmp_path, monkeypatch, key, "safe", body)
 
 
 def test_non_walk_session_has_no_ack_topic_and_console_refuses(bench, tmp_path, monkeypatch):

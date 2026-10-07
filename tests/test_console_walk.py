@@ -8,7 +8,9 @@
 합성 브리지(console_demo.DemoW3Bridge)의 판정은 실제 감독기·래치 클록이지만 접촉·모드 전환은 모사다 — 계약·순서 검증이다.
 """
 import copy
+import html
 import json
+import re
 import threading
 from http.server import ThreadingHTTPServer
 from unittest.mock import patch
@@ -134,6 +136,51 @@ def test_sim_reference_is_labelled_and_only_on_enabled_buttons(tmp_path):
     assert f'<small>시뮬 {c.WALK_SIM_REF["fwd3"]}</small>' in page
 
 
+def test_walk_keys_are_the_1007_pair_plus_the_requiet_composite_key():
+    """1008: 걷기 키 = 1007 의 두 키(이름·순서·표시·기동 인자 그대로) + 둘째 합성 키(첫 합성 키 + KE 감지기 갇힘 해소 = 시뮬 합성 평가 구성).
+    그 밖의 키는 없다. 둘째 합성 키의 브리지 인자는 첫 합성 키와 같다(다른 것은 브리지 명세의 감지기 설정뿐)."""
+    old = {"stand_w3s3d_15800": ["--experimental-w3"], "stand_kew3_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"]}
+    new = {"stand_kew3q_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"]}
+    assert list(cs.WALK_KEYS) == list(old) + list(new) == c.WALK_CKPTS and set(c.WALK_BRIDGE_ARGS) == set(old) | set(new)
+    assert cs.WALK_KEYS["stand_w3s3d_15800"] == {"composite": False, "label": "걷기 실험 · W3 단독"}
+    assert cs.WALK_KEYS["stand_kew3_g21a_g24ra_w3s3d15800"] == {"composite": True, "label": "걷기 실험 · 서기 KE + 걷기 W3 합성"}
+    q = cs.WALK_KEYS["stand_kew3q_g21a_g24ra_w3s3d15800"]
+    assert set(q) == {"composite", "label"} and q["composite"] is True
+    # 표시 이름: 걷기 실험 키임 · 무엇이 다른지(갇힘 해소) · 시뮬 평가 구성임 · 실물 미검증. 앞의 두 키 표시에는 그 문구가 없다
+    assert all(s in q["label"] for s in ("걷기 실험", "서기 KE + 걷기 W3 합성 + 갇힘 해소(시뮬 평가 구성)", "실물 미검증")), q["label"]
+    assert not any("갇힘 해소" in cs.WALK_KEYS[k]["label"] or "실물 미검증" in cs.WALK_KEYS[k]["label"] for k in old)
+    assert len({v["label"] for v in cs.WALK_KEYS.values()}) == len(cs.WALK_KEYS)
+    for key, flags in {**old, **new}.items():
+        assert c.WALK_BRIDGE_ARGS[key] == flags
+        assert c.bridge_live_argv(key)[2:] == ["--live", "--checkpoint", key] + flags + ["--w3-heading-loop", "off"]
+        assert c.bridge_selftest_argv(key)[2:] == ["--selftest", "--checkpoint", key] + flags
+    for key in c.CKPT_CHOICES:                                  # 기존 선택지의 기동 인자는 그대로(실험 플래그 없음)
+        assert c.bridge_live_argv(key)[2:] == ["--live", "--checkpoint", key] and c.bridge_selftest_argv(key)[2:] == ["--selftest", "--checkpoint", key]
+    assert c.CKPT_ALL == c.CKPT_CHOICES + list(old) + list(new) and c.CKPT_DEFAULT == "stand_crouch_g12"
+    # 드롭다운: 기존 선택지(값 속성 없는 option) 뒤에 걷기 키 3 개가 이 순서로 — 새 키는 맨 뒤
+    page = c.render_page()
+    assert re.findall(r'<option value="(stand[A-Za-z0-9_]*)">', page) == list(old) + list(new)
+    for key in {**old, **new}:
+        assert f'<option value="{key}">{key} — {html.escape(cs.WALK_KEYS[key]["label"])}</option>' in page
+    assert page.index("".join(f"<option>{k}</option>" for k in c.CKPT_CHOICES)) < page.index('<option value="stand_w3s3d_15800">')
+
+
+def test_sim_reference_of_the_requiet_key_equals_what_the_first_composite_key_shows(tmp_path):
+    """1008: 참고 이동량(X14)은 갇힘 해소를 켠 구성으로 잰 값이다 — 둘째 합성 키는 첫 합성 키에 지금 보이는 것과 같은 숫자를 보인다(표는 키별이 아니다)."""
+    first, second = "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800"
+    enabled = {m["name"] for m in c.walk_moves() if m["enabled"]}
+    shown = {}
+    for key in (first, second):
+        with c.WalkBench(str(tmp_path), key) as bn:
+            bn.prepare()                                        # 이 키로 시험을 설정해 정책 실행 단계까지(걷기 세션)
+            w = bn.walk()
+            assert w["session"] and w["profile"]["checkpoint"] == key and w["profile"]["label"] == cs.WALK_KEYS[key]["label"], w["profile"]
+            assert "실물 미확인" in w["sim_ref_note"]
+            shown[key] = {b["name"]: b["sim_ref"] for b in w["buttons"]}
+    assert shown[second] == shown[first]
+    assert {n: v for n, v in shown[second].items() if v} == {n: v for n, v in c.WALK_SIM_REF.items() if n in enabled} and any(shown[second].values())
+
+
 # ---------------------------------------------------------------- HTTP 경로(실제 서버, 임시 포트)
 class Http:
     def __init__(self, port):
@@ -153,9 +200,10 @@ class Http:
             return e.code, json.loads(e.read())
 
 
-def test_http_duplicate_post_refresh_reconnect_and_stale(tmp_path):
+@pytest.mark.parametrize("key", [k for k in cs.WALK_KEYS if cs.WALK_KEYS[k]["composite"]])     # 1008: 합성 키 둘 다(종전에는 마지막 키 = 첫 합성 키 하나)
+def test_http_duplicate_post_refresh_reconnect_and_stale(tmp_path, key):
     """중복 클릭(같은 요청 재전송)·새로고침(새 GET)·재접속(새 요청 식별자)·교차 출처·오래된 요청으로 걷기가 반복되지 않는다."""
-    with c.WalkBench(str(tmp_path), c.WALK_CKPTS[-1]) as bn:
+    with c.WalkBench(str(tmp_path), key) as bn:
         bn.prepare()
         server = ThreadingHTTPServer(("127.0.0.1", 0), c.Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)

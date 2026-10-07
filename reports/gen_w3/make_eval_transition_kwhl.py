@@ -128,4 +128,23 @@ rep('''    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[
         print(f"[runner_loop] W3 하위 키 {_KW_KEYS[0]} 의 정책 폴더 덮어쓰기: {_BR.CHECKPOINTS[_KW_KEYS[0]]} → {_kwx_} · SOURCE_CHECKPOINT {open(os.path.join(_kwx_, 'SOURCE_CHECKPOINT')).read().strip()[:120] if os.path.exists(os.path.join(_kwx_, 'SOURCE_CHECKPOINT')) else '(없음)'}", flush=True)
         _BR.CHECKPOINTS[_KW_KEYS[0]] = _kwx_
     KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]),''')
+# 1007 X13: 토크 한계 민감도 — 인계 시점에 env 그룹별로 관절 토크 한계를 배율로 낮춘다(env i → 목록의 i % len 번째). mdp_stage4.resample_effort_scale 과 같은 방식(PhysX 한계 + 액추에이터 모델 한계 둘 다).
+rep('''parser.add_argument("--kw_hl", type=str, default="",''', '''parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토크 한계 배율 목록 '1.0,0.8,0.7,0.6'(env i → i % len). '' = 끔")
+parser.add_argument("--kw_hl", type=str, default="",''')
+rep('''            try:
+                _dd = dict(joint_names=_npk.array(list(robot.data.joint_names)))''', '''            if args_cli.kw_effort_scales:
+                _es_ = [float(x) for x in args_cli.kw_effort_scales.split(",")]
+                _sc_ = torch.tensor([_es_[e_ % len(_es_)] for e_ in range(N)], device=dev, dtype=torch.float32).unsqueeze(1)
+                _nom_ = robot.data.joint_effort_limits.clone(); _new_ = _nom_ * _sc_
+                robot.write_joint_effort_limit_to_sim(_new_)
+                for _act_ in robot.actuators.values():
+                    if hasattr(_act_, "effort_limit") and torch.is_tensor(_act_.effort_limit) and _act_.effort_limit.dim() == 2:
+                        _act_.effort_limit[:] = _new_[:, _act_.joint_indices]
+                kw_effort_scale[:] = _sc_.squeeze(1).cpu().numpy()
+                print(f"[runner_loop] X13 토크 한계 배율 {_es_} 적용(env i → i % {len(_es_)}) · 명목 한계 예 {[round(float(x), 1) for x in _nom_[0]]}", flush=True)
+            try:
+                _dd = dict(joint_names=_npk.array(list(robot.data.joint_names)))''')
+rep('''    _KW_RST = [float(x) for x in args_cli.kw_restore_at.split(",")] if args_cli.kw_restore_at else []''', '''    kw_effort_scale = _npk.ones(N, _npk.float32)
+    _KW_RST = [float(x) for x in args_cli.kw_restore_at.split(",")] if args_cli.kw_restore_at else []''')
+rep('''                          restore=json.dumps(kw_rst_log), hl=str(args_cli.kw_hl),''', '''                          effort_scale=kw_effort_scale, restore=json.dumps(kw_rst_log), hl=str(args_cli.kw_hl),''')
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

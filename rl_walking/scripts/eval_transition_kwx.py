@@ -190,6 +190,7 @@ parser.add_argument("--kw_settle_max", type=float, default=3.0, help="W3 → KE 
 parser.add_argument("--kw_restore_at", type=str, default="", help="X7d: 자세 되돌리기 시각 목록 't1,t2,...'(인계 기준 s). '' = 끔")
 parser.add_argument("--kw_restore_snap", type=float, default=1.5, help="X7d: 되돌릴 기준 상태를 찍는 시각 [s]")
 parser.add_argument("--kw_w3_export", type=str, default="", help="S3E: W3 하위 키의 exported 폴더 경로 덮어쓰기('' = 등록된 W3S3d-15800)")
+parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토크 한계 배율 목록 '1.0,0.8,0.7,0.6'(env i → i % len). '' = 끔")
 parser.add_argument("--kw_hl", type=str, default="", help="1007 HD: 헤딩 고리 — '' 끔 | 'on' 브리지 기본 | JSON")
 parser.add_argument("--kw_hl_e0", type=str, default="", help="HD2: 래치 직후 ψ* 초기 오차[°] 목록(env i → i % len)")
 parser.add_argument("--kw_yaw_drift", type=float, default=0.0, help="HD3: 고리에 주는 요 측정에 더할 표류[°/min](env 짝수 +, 홀수 −)")
@@ -1041,6 +1042,7 @@ if KWL:
     kw_hl_nfault = [0] * N; kw_hlerr_tl = []; kw_wzc_tl = []
     if KWH is not None:
         print(f"[runner_loop] 헤딩 고리 켬(브리지 _w3_cmd_step) {_KW_HLCFG} · 초기 오차 목록 {_KW_E0}° · 요 표류 주입 {args_cli.kw_yaw_drift}°/min", flush=True)
+    kw_effort_scale = _npk.ones(N, _npk.float32)
     _KW_RST = [float(x) for x in args_cli.kw_restore_at.split(",")] if args_cli.kw_restore_at else []
     _KW_RST_DONE = [False] * len(_KW_RST); _KW_SNAP = [None]; kw_rst_log = []
     kw_cur = [(0.0, 0.0, 0.0)] * N; kw_seq = [1] * N; kw_events = [[] for _ in range(N)]; kw_rej = [None] * N; kw_req_t = [None] * N
@@ -1077,6 +1079,16 @@ if KWL:
         if i == STEPS_PRE:
             for R in KWR:
                 R.reset()
+            if args_cli.kw_effort_scales:
+                _es_ = [float(x) for x in args_cli.kw_effort_scales.split(",")]
+                _sc_ = torch.tensor([_es_[e_ % len(_es_)] for e_ in range(N)], device=dev, dtype=torch.float32).unsqueeze(1)
+                _nom_ = robot.data.joint_effort_limits.clone(); _new_ = _nom_ * _sc_
+                robot.write_joint_effort_limit_to_sim(_new_)
+                for _act_ in robot.actuators.values():
+                    if hasattr(_act_, "effort_limit") and torch.is_tensor(_act_.effort_limit) and _act_.effort_limit.dim() == 2:
+                        _act_.effort_limit[:] = _new_[:, _act_.joint_indices]
+                kw_effort_scale[:] = _sc_.squeeze(1).cpu().numpy()
+                print(f"[runner_loop] X13 토크 한계 배율 {_es_} 적용(env i → i % {len(_es_)}) · 명목 한계 예 {[round(float(x), 1) for x in _nom_[0]]}", flush=True)
             try:
                 _dd = dict(joint_names=_npk.array(list(robot.data.joint_names)))
                 for _k, _v in (("calib_joint_bias", getattr(uenv, "_calib_joint_bias", None)), ("calib_imu_tilt", getattr(uenv, "_calib_imu_tilt", None)), ("calib_imu_roll", getattr(uenv, "_calib_imu_roll", None)),
@@ -2315,7 +2327,7 @@ if KWL:
                           obs_err=json.dumps(kw_obs_err), obs_err_late=json.dumps(kw_obs_err_late), obs_err_n=kw_obs_err_n[0], backend=_kw_backend, keys=json.dumps(_KW_KEYS),
                           requiet=args_cli.kw_requiet, yaw=_npk.stack(kw_yaw_tl, 0) if kw_yaw_tl else _npk.zeros((0, N), _npk.float16),
                           xy=_npk.stack(kw_xy_tl, 0) if kw_xy_tl else _npk.zeros((0, N, 2), _npk.float16),
-                          restore=json.dumps(kw_rst_log), hl=str(args_cli.kw_hl), hl_e0=_npk.asarray([_KW_E0[e_ % len(_KW_E0)] for e_ in range(N)], _npk.float32), hl_nfault=_npk.asarray(kw_hl_nfault, _npk.int16), yaw_drift=float(args_cli.kw_yaw_drift),
+                          effort_scale=kw_effort_scale, restore=json.dumps(kw_rst_log), hl=str(args_cli.kw_hl), hl_e0=_npk.asarray([_KW_E0[e_ % len(_KW_E0)] for e_ in range(N)], _npk.float32), hl_nfault=_npk.asarray(kw_hl_nfault, _npk.int16), yaw_drift=float(args_cli.kw_yaw_drift),
                           hlerr=_npk.stack(kw_hlerr_tl, 0) if kw_hlerr_tl else _npk.zeros((0, N), _npk.float16), wzc=_npk.stack(kw_wzc_tl, 0) if kw_wzc_tl else _npk.zeros((0, N), _npk.float16),
                           pg=_npk.stack(kw_pg_tl, 0) if kw_pg_tl else _npk.zeros((0, N, 2), _npk.float16), vb=_npk.stack(kw_vb_tl, 0) if kw_vb_tl else _npk.zeros((0, N, 2), _npk.float16),
                           ffwd=_npk.stack(kw_ff_tl, 0) if kw_ff_tl else _npk.zeros((0, N, 2), _npk.float16), flat=_npk.stack(kw_fl_tl, 0) if kw_fl_tl else _npk.zeros((0, N, 2), _npk.float16))

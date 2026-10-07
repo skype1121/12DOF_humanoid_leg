@@ -3844,3 +3844,47 @@ class Biped12HangStandW3S3tKEnvCfg(Biped12HangStandW3S3dEnvCfg):
         super().__post_init__()
         assert getattr(self.rewards, "w3_knee_over", None) is None
         self.rewards.w3_knee_over = RewTerm(func=_w3.w3_stance_knee_over, weight=float(self.W_KNEE), params={"max_flex_rad": float(self.KNEE_MAX_RAD)})
+
+
+@configclass
+class Biped12HangStandW3S3tFEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3 tF (1007, TORQUE_W3T_DESIGN.md §8): W3S3d 와 관측·행동·명령·DR·커리큘럼·학습 지연 1–5·기존 보상 전부 같고 **보상 항 하나만 추가** —
+    `w3_stride_lin` = 병진 명령에서 유효 착지마다 스윙발 변위의 목표 보폭 방향 진행 비율 clip(Δp·ΔP*/‖ΔP*‖², −1, 1) × W_PROG(사건당, 기존 w3_stride 와 같은 단위).
+    쓰임: 걸음을 다시 배우게 하는 압력(토크 한계 무작위화·토크 벌점·무릎 벌점)에서 전진이 먼저 무너질 때(W3S3f: 8 s 전진 0.62 → 0.25 m) 묶음에 넣을 전진 유인. 단독 팔로도 판정할 수 있다.
+    왜 새 항인가(측정, reports/gen_w3/fwd_incentive.py·학습 로그): 현 계열의 전진 보상은 명목 평가에서는 살아 있으나(앞 0.06 에서 w3_stride +0.27/s·w3_track +1.1/s)
+    학습 조건에서는 죽어 있다(걷기 초당 w3_stride +0.007·w3_track −0.16). 학습 조건의 한 주기 평균 속도 오차가 0.062 m/s(= w3_drift −0.185/s ÷ 3)로 명령(0.03–0.10 m/s)·보상 폭과 같은 크기라
+    '서기 대비 개선분'형 가우시안이 평균 0 또는 음수가 된다. w3_place 는 목표 반폭 0.10 대 실제 착지 0.184 m 로 죽어 있지만(값 0.011–0.020), 살려도 전진 유인이 아니다
+    (목표 x = vx/(4f) 는 0.7–2.3 cm; 1005 밤 W3S1e 수리 시험: 영점 못 고침·앞 과속 +0.082·낙상 4 / 8 대 0 / 1 → 미채택, reports/night_1005/LOG.md §W3S1e).
+    가중 +10(사건당): 온전한 보폭이면 병진 명령 동안 초당 +0.44, 전진을 절반으로 줄이면 −0.22/s(오프셋이 있어도 −0.08…−0.14/s). 명령 0·회전·서기에서는 0 이라 영점 표류는 다루지 않는다.
+    알려진 위험(사전 명시): 목표 보폭까지는 '더 가면 더 받는' 항이라 저속 명령에서 과속 쪽 치우침을 만들 수 있다(상한 1 과 w3_drift −3 이 막는다) · 옆걸음 보폭은 지금 목표의 23 % 라 옆 명령의 걸음 모양이 바뀔 수 있다.
+    시작 = W3S3d-15800 이어 학습(--resume). 기준은 문서(학습 전 고정)."""
+
+    W_PROG = 10.0           # 비주석 클래스 상수: w3_stride_lin 가중(사건당 — w3_stride·w3_place 와 같은 단위)
+
+    def __post_init__(self):
+        super().__post_init__()
+        assert getattr(self.rewards, "w3_stride_lin", None) is None and getattr(self.events, "w3_lat", None) is not None   # 변위는 w3_lat_tracker 가 채운다
+        self.rewards.w3_stride_lin = RewTerm(func=_w3.w3_stride_lin, weight=float(self.W_PROG))
+
+
+# ---------------------------------------------------------------- W3S3t* 묶음용 적용 함수(1007) ----------------------------------------------------------------
+# 위 단일 변경들을 다른 W3 설정(예: 메인의 W3S3f·W3S3g) 위에 얹어 묶음 팔을 만들 때 쓴다 — 각 함수는 보상 항 하나만 더하고 관측·행동·명령·이벤트는 건드리지 않는다.
+# 예) class Biped12HangStandW3S3fFEnvCfg(Biped12HangStandW3S3fEnvCfg):  def __post_init__(self): super().__post_init__(); _w3t_progress(self)
+# 위의 W3S3t·W3S3tK·W3S3tF 클래스는 같은 내용을 직접 적어 두었다(이 함수들을 쓰지 않는다 — 이미 돌린 학습 설정을 바꾸지 않으려고).
+def _w3t_torque_sat(cfg, weight: float = -40.0, thresh: float = 0.6):
+    """걷는 동안의 토크 포화 벌점(W3S3t 와 같은 항 `w3_torque_sat`)."""
+    from . import mdp_stage4 as _m4
+    assert getattr(cfg.rewards, "w3_torque_sat", None) is None
+    cfg.rewards.w3_torque_sat = RewTerm(func=_w3.w3_step_gated, weight=float(weight), params={"func": _m4.torque_saturation, "params": {"thresh": float(thresh)}})
+
+
+def _w3t_knee_over(cfg, weight: float = -1.0, max_flex_rad: float = 0.785):
+    """걷는 동안 접지 다리 무릎 굽힘의 문턱 초과분 벌점(W3S3tK 와 같은 항 `w3_knee_over`)."""
+    assert getattr(cfg.rewards, "w3_knee_over", None) is None
+    cfg.rewards.w3_knee_over = RewTerm(func=_w3.w3_stance_knee_over, weight=float(weight), params={"max_flex_rad": float(max_flex_rad)})
+
+
+def _w3t_progress(cfg, weight: float = 10.0):
+    """병진 명령에서 스윙발 변위의 목표 보폭 방향 진행 비율(W3S3tF 와 같은 항 `w3_stride_lin`) — w3_lat_tracker 이벤트가 있는 설정(W3S2 이후 계열)에서만."""
+    assert getattr(cfg.rewards, "w3_stride_lin", None) is None and getattr(cfg.events, "w3_lat", None) is not None
+    cfg.rewards.w3_stride_lin = RewTerm(func=_w3.w3_stride_lin, weight=float(weight))

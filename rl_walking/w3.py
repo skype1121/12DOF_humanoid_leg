@@ -1085,3 +1085,20 @@ def w3_stance_knee_over(env, max_flex_rad: float = 0.785, threshold: float = 5.0
     over = (flex - max_flex_rad).clamp(min=0.0, max=cap_rad)
     val = (over * c).sum(1) / c.sum(1).clamp(min=1.0)
     return val * _ge(env).float()
+
+
+def w3_stride_lin(env, cmin: float = 0.02) -> torch.Tensor:
+    """W3S3tF: 유효 착지 사건(_st.ev_td)마다 스윙발 이륙→착지 변위 Δp 의 **목표 보폭 방향 진행 비율** clip(Δp·ΔP*/‖ΔP*‖², −1, 1), ΔP* = (vx/f, vy/f).
+    제자리 디딤 = 0, 목표 보폭 이상 = 1(더 가도 늘지 않음 — 과속 유인 없음), 반대 방향 = 음수. 병진 명령(|vx| 또는 |vy| ≥ cmin)·STEP 에서만, 그 밖(명령 0·제자리 회전·서기)은 정확히 0.
+    w3_stride2 의 반대 방향 벌점 항(k_opp·clip(·, −1, 0))을 양수 쪽까지 편 것과 같은 식이다. 변위는 w3_lat_tracker 의 _w3lat.td_dx·td_dy(스윙발 자체의 월드 변위 — 몸 기울임·지지발 미끄럼으로는 못 얻는다).
+    선형인 이유(reports/gen_w3/fwd_incentive.py): 가우시안형 w3_stride(σ 0.03 m)·w3_track(σ 0.05 m/s)은 env 마다 다른 속도 치우침(학습 조건 한 주기 평균 오차 0.062 m/s ≈ 보폭 0.056 m)이
+    폭보다 크면 평평해져, 전진을 절반으로 줄여도 잃는 보상이 0.004–0.038/s 뿐이다. 선형은 같은 조건에서 0.08–0.14/s 를 유지한다."""
+    s = _st(env); L = _lat(env)
+    cmd = env.command_manager.get_command("base_velocity")
+    f_ = env._gf if getattr(env, "_gf", None) is not None else torch.full((env.num_envs,), 1.1, device=env.device)
+    fc = f_.clamp(min=0.5)
+    tx = (cmd[:, 0] / fc).unsqueeze(1); ty = (cmd[:, 1] / fc).unsqueeze(1)
+    n2 = (tx ** 2 + ty ** 2).clamp(min=1e-8)
+    r = ((L["td_dx"] * tx + L["td_dy"] * ty) / n2).clamp(-1.0, 1.0) * s["ev_td"]
+    on = ((cmd[:, 0].abs() >= cmin) | (cmd[:, 1].abs() >= cmin)) & _ge(env)
+    return torch.where(on, r.sum(1), torch.zeros_like(cmd[:, 0]))

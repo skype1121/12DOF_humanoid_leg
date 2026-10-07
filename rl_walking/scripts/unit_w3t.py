@@ -12,6 +12,8 @@ rl_walking/w3.py 를 스텁 mdp_hang 과 함께 올리고, mdp_stage4.torque_sat
       기본 창에서는 긴 > 짧은, 새 창 (0.25, 0.75) 에서는 짧은 > 긴 · 새 창에서 창 밖 양발 지지는 벌점 0 · 가만히 서기는 두 창 모두 음수.
   [F] 설정 정적 점검(AST): 새 클래스 4 개의 부모·상수, 건드리는 속성이 보상뿐(관측·행동·명령·이벤트·장면 불변 = 계약 불변), 등록 이름·중복 없음.
   [G] W3S3tK 의 새 함수 w3.w3_stance_knee_over: 접지 다리만·좌우 부호·선형(먼 곳에서도 기울기 일정)·상한·걷기만(ge 0 = 0) + X12 재생 평균(설계 문서 0.34 rad).
+  [H] W3S3tF 의 새 함수 w3.w3_stride_lin: 진행 비율(온전 1·절반 0.5·제자리 0·반대 음수·과속 1 에서 포화)·옆 명령·명령 0/회전/서기 = 0,
+      실제 추적기(w3_step_tracker → w3_lat_tracker)를 돌린 스윙 궤적에서 사건 합이 같은 값, env 별 보폭 오프셋 아래에서 가우시안 w3_stride 보다 전진 유인이 살아 있음.
 종료 코드 0 = 전부 통과.
 """
 from __future__ import annotations
@@ -79,14 +81,24 @@ class _Scene:
         return self.env
 
 
+class _CM:
+    def __init__(self, N):
+        self.vel_command_b = torch.zeros(N, 3)
+
+    def get_command(self, name):
+        return self.vel_command_b
+
+
 class _Env:
     def __init__(self, N):
         self.num_envs = N; self.device = torch.device("cpu"); self.step_dt = DT
         self.episode_length_buf = torch.full((N,), 10, dtype=torch.long); self.common_step_counter = 0
         self._ge = torch.zeros(N, dtype=torch.bool); self._gu = torch.zeros(N); self._gf = torch.full((N,), F_STEP)
         self.joint_names = list(JOINTS)
+        self.command_manager = _CM(N)
         self.data = types.SimpleNamespace(applied_torque=torch.zeros(N, 12), joint_effort_limits=LIM.repeat(N, 1).clone(), joint_pos=torch.zeros(N, 12),
-                                          default_mass=torch.tensor(MASS).repeat(N, 1), body_pos_w=torch.zeros(N, 2, 3), body_lin_vel_w=torch.zeros(N, 2, 3))
+                                          default_mass=torch.tensor(MASS).repeat(N, 1), body_pos_w=torch.zeros(N, 2, 3), body_lin_vel_w=torch.zeros(N, 2, 3),
+                                          root_pos_w=torch.zeros(N, 3), root_quat_w=torch.tensor([1.0, 0.0, 0.0, 0.0]).repeat(N, 1))
         self.sensor = types.SimpleNamespace(data=types.SimpleNamespace(net_forces_w=torch.zeros(N, 2, 3)))
         self.scene = _Scene(self)
 
@@ -250,7 +262,8 @@ def test_f():
     tree = ast.parse(src)
     cls = {n.name: n for n in tree.body if isinstance(n, ast.ClassDef)}
     want = {"Biped12HangStandW3S3tEnvCfg": "Biped12HangStandW3S3dEnvCfg", "Biped12HangStandW3S3tHEnvCfg": "Biped12HangStandW3S3tEnvCfg",
-            "Biped12HangStandW3S3tDEnvCfg": "Biped12HangStandW3S3dEnvCfg", "Biped12HangStandW3S3tKEnvCfg": "Biped12HangStandW3S3dEnvCfg"}
+            "Biped12HangStandW3S3tDEnvCfg": "Biped12HangStandW3S3dEnvCfg", "Biped12HangStandW3S3tKEnvCfg": "Biped12HangStandW3S3dEnvCfg",
+            "Biped12HangStandW3S3tFEnvCfg": "Biped12HangStandW3S3dEnvCfg"}
     for name, base in want.items():
         ok = name in cls and [b.id for b in cls[name].bases if isinstance(b, ast.Name)] == [base]
         check(ok, f"{name}({base})")
@@ -263,6 +276,7 @@ def test_f():
     check(consts(cls["Biped12HangStandW3S3tHEnvCfg"]) == {"W_TSAT": -80.0}, f"W3S3tH 상수 {consts(cls['Biped12HangStandW3S3tHEnvCfg'])}")
     check(consts(cls["Biped12HangStandW3S3tDEnvCfg"]) == {"SWING_WIN": (0.25, 0.75)}, f"W3S3tD 상수 {consts(cls['Biped12HangStandW3S3tDEnvCfg'])}")
     check(consts(cls["Biped12HangStandW3S3tKEnvCfg"]) == {"W_KNEE": -1.0, "KNEE_MAX_RAD": 0.785}, f"W3S3tK 상수 {consts(cls['Biped12HangStandW3S3tKEnvCfg'])}")
+    check(consts(cls["Biped12HangStandW3S3tFEnvCfg"]) == {"W_PROG": 10.0}, f"W3S3tF 상수 {consts(cls['Biped12HangStandW3S3tFEnvCfg'])}")
 
     def touched(c):
         """__post_init__ 에서 대입하는 속성 경로(self.rewards.x, rw.x.params …)."""
@@ -277,9 +291,25 @@ def test_f():
     check(touched(cls["Biped12HangStandW3S3tHEnvCfg"]) == [], "W3S3tH 는 상수만 다르다")
     check(touched(cls["Biped12HangStandW3S3tDEnvCfg"]) == ["rw.w3_height.params", "rw.w3_periodic.params"], f"W3S3tD 가 바꾸는 것: {touched(cls['Biped12HangStandW3S3tDEnvCfg'])} (두 보상 항의 인자)")
     check(touched(cls["Biped12HangStandW3S3tKEnvCfg"]) == ["self.rewards.w3_knee_over"], f"W3S3tK 가 바꾸는 것: {touched(cls['Biped12HangStandW3S3tKEnvCfg'])} (보상 항 하나 추가)")
-    body = "\n".join(ast.unparse(cls[n]) for n in want)
-    check(not any(k in body for k in ("self.observations", "self.actions", "self.commands", "self.events", "self.scene", "self.curriculum", "self.terminations")),
-          "새 클래스는 관측·행동·명령·이벤트·장면·커리큘럼·종료를 건드리지 않는다(배포 계약 불변)")
+    check(touched(cls["Biped12HangStandW3S3tFEnvCfg"]) == ["self.rewards.w3_stride_lin"], f"W3S3tF 가 바꾸는 것: {touched(cls['Biped12HangStandW3S3tFEnvCfg'])} (보상 항 하나 추가)")
+    bad = []
+    for n in want:
+        for node in ast.walk(cls[n]):
+            tg = node.targets if isinstance(node, ast.Assign) else ([node.target] if isinstance(node, (ast.AugAssign, ast.AnnAssign)) else [])
+            bad += [ast.unparse(t) for t in tg if ast.unparse(t).startswith(("self.observations", "self.actions", "self.commands", "self.events", "self.scene", "self.curriculum",
+                                                                           "self.terminations", "self.sim", "ev."))]
+            if isinstance(node, ast.Call) and getattr(node.func, "id", "") in ("setattr", "delattr"):
+                bad.append(ast.unparse(node)[:40])
+    check(not bad, f"새 클래스는 관측·행동·명령·이벤트·장면·커리큘럼·종료에 대입하지 않는다(배포 계약 불변){' — ' + str(bad) if bad else ''}")
+    fns = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    hp = {"_w3t_torque_sat": ([-40.0, 0.6], "cfg.rewards.w3_torque_sat"), "_w3t_knee_over": ([-1.0, 0.785], "cfg.rewards.w3_knee_over"), "_w3t_progress": ([10.0], "cfg.rewards.w3_stride_lin")}
+    for name, (dflt, tgt) in hp.items():
+        ok = name in fns
+        if ok:
+            fn = fns[name]; d_ = [ast.literal_eval(x) for x in fn.args.defaults]
+            tg = sorted(ast.unparse(t) for n in ast.walk(fn) if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Attribute))
+            ok = d_ == dflt and tg == [tgt]
+        check(ok, f"묶음용 적용 함수 {name}: 기본값 {dflt}(단일 팔 클래스의 상수와 같음)·대입은 {tgt} 하나")
     check("rw.w3_periodic = RewTerm(func=_w3.w3_periodic_contact, weight=-1.5)" in src and "rw.w3_height = RewTerm(func=_w3.w3_swing_height, weight=3.0)" in src,
           "W3Base 의 w3_periodic −1.5·w3_height 3.0 (이 시험 [E] 의 가중과 같음)")
     isrc = open(os.path.join(REPO, "rl_walking", "__init__.py"), encoding="utf-8").read()
@@ -289,7 +319,7 @@ def test_f():
             names += [e.value for e in n.iter.elts if isinstance(e, ast.Constant)]
         elif isinstance(n, ast.For) and isinstance(n.target, ast.Tuple) and isinstance(n.iter, ast.Tuple):
             names += [e.elts[0].value for e in n.iter.elts if isinstance(e, ast.Tuple) and e.elts and isinstance(e.elts[0], ast.Constant)]
-    check(all(s in names for s in ("W3S3t", "W3S3tH", "W3S3tD", "W3S3tK")), "등록 목록에 W3S3t·W3S3tH·W3S3tD·W3S3tK")
+    check(all(s in names for s in ("W3S3t", "W3S3tH", "W3S3tD", "W3S3tK", "W3S3tF")), "등록 목록에 W3S3t·W3S3tH·W3S3tD·W3S3tK·W3S3tF")
     dup = sorted({s for s in names if names.count(s) > 1})
     check(not dup, f"등록 이름 중복 없음(전체 {len(names)} 개){' — 중복 ' + str(dup) if dup else ''}")
     check(all(f"Biped12HangStand{s}EnvCfg" in cls for s in names if s.startswith("W3S3")), "W3S3* 등록 이름마다 설정 클래스가 있다")
@@ -353,9 +383,67 @@ def test_g(lp):
     check(float(f(env).abs().max()) == 0.0, "같은 자료를 서기(ge 0)로 두면 정확히 0")
 
 
+# ------------------------------------------------------------------ [H]
+def _swing_total(cmd, dx, dy, n_air=10, apex=0.05):
+    """왼발 스윙 한 번(이륙 → 공중 n_air 틱 → 착지)을 실제 추적기에 흘려 w3_stride_lin·w3_stride2 의 사건 합을 돌려준다. 스윙발 월드 변위 = (dx, dy)."""
+    env = _Env(1); env._ge[:] = True; env._gu = torch.full((1,), 0.25)
+    env.command_manager.vel_command_b[:] = torch.tensor(cmd)
+    mg = 9.81 * sum(MASS); tot_lin = tot_st2 = 0.0
+    for k in range(-3, n_air + 8):
+        air = 0 <= k < n_air
+        frac = min(max(k / n_air, 0.0), 1.0)
+        bp = torch.tensor([[[dx * frac, 0.15 + dy * frac, apex * math.sin(math.pi * frac) if air else 0.0], [0.0, -0.15, 0.0]]])
+        env.data.body_pos_w = bp
+        F = torch.zeros(1, 2, 3); F[0, 0, 2] = 0.0 if air else 0.5 * mg; F[0, 1, 2] = mg if air else 0.5 * mg
+        env.sensor.data.net_forces_w = F
+        W3.w3_step_tracker(env, None); W3.w3_lat_tracker(env, None, nominal_half_width=0.144, width_margin=0.05)
+        tot_lin += float(W3.w3_stride_lin(env)[0]); tot_st2 += float(W3.w3_stride2(env)[0])
+    return tot_lin, tot_st2
+
+
+def test_h():
+    print("[H] w3_stride_lin(병진 명령에서 스윙발 변위의 목표 보폭 방향 진행 비율)")
+    f = W3.w3_stride_lin
+    check(inspect.signature(f).parameters["cmin"].default == 0.02, "기본 인자 cmin 0.02(기존 w3_stride 와 같음)")
+    # 직접 주입: 추적기 출력(_w3.ev_td, _w3lat.td_dx·td_dy)을 넣고 식만 확인
+    tx = 0.06 / F_STEP
+    rows = [((0.06, 0, 0), tx, 0.0, 1, 1.0), ((0.06, 0, 0), 0.5 * tx, 0.0, 1, 0.5), ((0.06, 0, 0), 0.0, 0.0, 1, 0.0), ((0.06, 0, 0), -0.5 * tx, 0.0, 1, -0.5),
+            ((0.06, 0, 0), 3 * tx, 0.0, 1, 1.0), ((0.06, 0, 0), -3 * tx, 0.0, 1, -1.0), ((0.06, 0, 0), tx, 0.05, 1, 1.0),
+            ((0, 0.035, 0), 0.0, 0.035 / F_STEP, 1, 1.0), ((0, -0.035, 0), 0.0, 0.035 / F_STEP, 1, -1.0), ((-0.04, 0, 0), -0.04 / F_STEP, 0.0, 1, 1.0),
+            ((0, 0, 0), tx, 0.0, 1, 0.0), ((0, 0, 0.15), tx, 0.0, 1, 0.0), ((0.06, 0, 0), tx, 0.0, 0, 0.0), ((0.01, 0, 0), tx, 0.0, 1, 0.0)]
+    env = _Env(len(rows)); st = W3._st(env); L = W3._lat(env)
+    for i, (cmd, dx, dy, ge, _) in enumerate(rows):
+        env.command_manager.vel_command_b[i] = torch.tensor(cmd); env._ge[i] = bool(ge)
+        st["ev_td"][i, 0] = 1.0; L["td_dx"][i, 0] = dx; L["td_dy"][i, 0] = dy
+    v = f(env); exp = torch.tensor([r[4] for r in rows])
+    names = ["온전한 보폭 = 1", "절반 = 0.5", "제자리 디딤 = 0", "반대 절반 = −0.5", "3 배 과속 = 1(포화 — 과속 유인 없음)", "반대 3 배 = −1(하한)", "앞 명령에 옆 변위가 섞여도 앞 성분만",
+             "옆 명령·옆 변위 = 1", "옆 명령 반대쪽 = −1", "뒤 명령·뒤 변위 = 1", "명령 0 = 정확히 0", "제자리 회전 명령 = 정확히 0", "서기(ge 0) = 정확히 0", "명령 < cmin = 0"]
+    for i, nm in enumerate(names):
+        check(abs(float(v[i]) - float(exp[i])) < 1e-6, f"{nm} (실제 {float(v[i]):+.3f})")
+    st["ev_td"][:] = 0.0
+    check(float(f(env).abs().max()) == 0.0, "착지 사건이 없는 틱 = 0(밀집 보상이 아니라 사건 보상)")
+    # 실제 추적기 경유
+    for cmd, dx, dy, want in (((0.06, 0, 0), tx, 0.0, 1.0), ((0.06, 0, 0), 0.5 * tx, 0.0, 0.5), ((0.06, 0, 0), 0.0, 0.0, 0.0), ((0.06, 0, 0), -0.5 * tx, 0.0, -0.5),
+                              ((0.0, 0.035, 0), 0.0, 0.035 / F_STEP, 1.0), ((0.0, 0.0, 0.0), tx, 0.0, 0.0)):
+        lin, st2 = _swing_total(cmd, dx, dy)
+        check(abs(lin - want) < 1e-3, f"추적기 경유: 명령 {cmd}·스윙발 변위 ({dx:+.3f}, {dy:+.3f}) m → 사건 합 {lin:+.3f} (기대 {want:+.1f}; 같은 궤적의 w3_stride2 {st2:+.3f})")
+    lin_air, _ = _swing_total((0.06, 0, 0), tx, 0.0, n_air=4)
+    check(lin_air == 0.0, "공중 0.08 s 짜리 스윙(유효 스윙 아님: 0.12 s 미만)은 0 — 잘게 딛기로는 못 받는다")
+    # 오프셋 민감도(같은 식을 torch 로): 전진을 절반으로 줄였을 때 잃는 값
+    g = torch.Generator().manual_seed(0); eps = torch.randn(200000, generator=g) * 0.056
+    gs = lambda d: torch.exp(-((d - tx) / 0.03) ** 2) - math.exp(-(tx / 0.03) ** 2)      # noqa: E731
+    ln = lambda d: (d / tx).clamp(-1.0, 1.0)                                              # noqa: E731
+    loss_g0 = float(gs(torch.tensor(tx)) - gs(torch.tensor(0.5 * tx))); loss_l0 = 0.5
+    loss_g = float(gs(tx + eps).mean() - gs(0.5 * tx + eps).mean()); loss_l = float(ln(tx + eps).mean() - ln(0.5 * tx + eps).mean())
+    k = 10.0 * DT * 2.0 * F_STEP
+    print(f"    앞 0.06 에서 전진을 절반으로 줄이면 잃는 보상(초당): 가우시안 w3_stride {k * loss_g0:.3f} → 오프셋(σ 0.056 m) 아래 {k * loss_g:.3f} · 선형 {k * loss_l0:.3f} → {k * loss_l:.3f}")
+    check(loss_g < 0.15 * loss_g0, f"가우시안은 오프셋 아래에서 유인이 {loss_g / loss_g0:.0%} 로 줄어든다(학습 조건에서 '죽은' 까닭)")
+    check(loss_l > 3.0 * loss_g and loss_l > 0.4 * loss_l0, f"선형은 {loss_l / loss_l0:.0%} 를 유지하고 가우시안의 {loss_l / max(loss_g, 1e-9):.0f} 배다")
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--lp", default=os.path.join(REPO, "log_picture")); a = ap.parse_args()
-    test_a(); test_b(); test_c(a.lp); test_d(); test_e(); test_f(); test_g(a.lp)
+    test_a(); test_b(); test_c(a.lp); test_d(); test_e(); test_f(); test_g(a.lp); test_h()
     print(f"\n결과: {'전부 통과' if not FAILS else str(len(FAILS)) + ' 건 실패'}")
     for f in FAILS:
         print("  실패:", f)

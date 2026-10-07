@@ -189,11 +189,12 @@ rep("""    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[
 #   인계 시점에 config/joint_limits_12dof.json 의 soft 한계를 전 관절의 soft_joint_pos_limits 에 쓰고, 액션 항의 클램프 마스크를 전 관절로 넓힌다.
 #   (액션 항 SlewJointPositionAction 의 clamp_to_soft_limits 경로 그대로 — 슬루·LPF·블렌딩 뒤 최종 목표각을 자른다 = stage8 이 받은 목표를 자르는 것과 같은 자리.)
 rep("""parser.add_argument("--kw_hl", type=str, default="",""", """parser.add_argument("--kw_soft_clamp_all", action="store_true", help="X17: 실물 stage8 처럼 전 관절 목표각을 config soft 한계로 자른다(기본 = 학습과 같이 발목 앞뒤만)")
+parser.add_argument("--kw_soft_clamp_json", type=str, default="", help="X17b: --kw_soft_clamp_all 이 읽을 한계 표(기본 = config/joint_limits_12dof.json). 넓힌 soft 한계 제안의 대조 평가용")
 parser.add_argument("--kw_hl", type=str, default="",""")
 rep("""            if args_cli.kw_effort_scales:
                 _es_ = [float(x) for x in args_cli.kw_effort_scales.split(",")]""", """            if args_cli.kw_soft_clamp_all:
                 import json as _jsc
-                _lim_ = _jsc.load(open(os.path.join(REPO, "config", "joint_limits_12dof.json"), encoding="utf-8"))["limits_deg"]
+                _lim_ = _jsc.load(open(args_cli.kw_soft_clamp_json or os.path.join(REPO, "config", "joint_limits_12dof.json"), encoding="utf-8"))["limits_deg"]
                 _nm_ = list(robot.data.joint_names); assert all(n in _lim_ for n in _nm_), [n for n in _nm_ if n not in _lim_]
                 _sl_ = torch.tensor([[math.radians(_lim_[n]["soft_min"]), math.radians(_lim_[n]["soft_max"])] for n in _nm_], device=dev, dtype=torch.float32)
                 _term_ = uenv.action_manager.get_term("joint_pos")

@@ -1,0 +1,88 @@
+{
+  "_doc": {
+    "purpose": "12관절 절대각(deg) 제한 — 실물·시뮬·RL 공용 단일 원본. 부호/영점 = URDF 관절 규약(joint_direction 실측)과 동일.",
+    "provenance": "2026-08-02 갱신(v2). soft = [0726 RL 5게이트 실측 엔벨로프] ∪ [0802 배포 정책(march_v3·drv2, play+compliant) q∪슬루명령 엔벨로프 + 마진(5° 또는 스팬 15%)] 후 해부학 한계 -1° 이내로 클립. hard = 해부학·자기충돌 실측 한계 (config/sim_joint_limits.json, 2026-07-18) — 불변.",
+    "semantics": "v2 변경: soft 초과는 '거부'가 아니라 '경계 클램프' — stage8이 soft 경계로 클램프해 실행하고 status 카운터(soft_clamp_counts)로 노출한다. 근거: march_v3는 무릎을 과신전 스톱에 기대는 니락 전략을 학습(시뮬도 스톱에서 물리 포화) — 거부는 시뮬과 다른 폐루프, 통과는 기구 압박. hard = 기구 보호 한계 — 초과는 무조건 거부.",
+    "incident": "2026-07-26 cansend 생명령으로 모터 급동작 → 드라이버 전원선 파손. 소프트웨어 리밋은 노드 경유 명령만 보호 — 생 cansend는 구조적으로 우회되므로 수동 CAN 송신 금지 절차 병행.",
+    "proposal_1008": "제안본(미배포·미승인) — 시뮬 대조 평가 X17b 용. 바꾼 값 3 개: 힙 굴곡 soft 45/40.7 → 60(양쪽, hard 100), 오른 힙 외전 soft 23.8 → 34(왼쪽 34 와 대칭, hard 35). 근거 reports/gen_w3/TRANSITION_W3KE.md §5.20b·§5.20c. 실물 적용은 사용자 결정(하드웨어 안전).",
+    "proposal_1008_old_values": {
+      "left_hip_f_joint.soft_max": 45.0,
+      "right_hip_f_joint.soft_min": -40.7,
+      "right_hip_a_joint.soft_max": 23.8
+    }
+  },
+  "limits_deg": {
+    "left_hip_f_joint": {
+      "soft_min": -29.0,
+      "soft_max": 60.0,
+      "hard_min": -30.0,
+      "hard_max": 100.0
+    },
+    "right_hip_f_joint": {
+      "soft_min": -60.0,
+      "soft_max": 29.0,
+      "hard_min": -100.0,
+      "hard_max": 30.0
+    },
+    "left_hip_a_joint": {
+      "soft_min": -34.0,
+      "soft_max": 13.0,
+      "hard_min": -35.0,
+      "hard_max": 13.9
+    },
+    "right_hip_a_joint": {
+      "soft_min": -13.2,
+      "soft_max": 34.0,
+      "hard_min": -14.2,
+      "hard_max": 35.0
+    },
+    "left_hip_r_joint": {
+      "soft_min": -24.0,
+      "soft_max": 29.0,
+      "hard_min": -30.0,
+      "hard_max": 30.0
+    },
+    "right_hip_r_joint": {
+      "soft_min": -29.0,
+      "soft_max": 29.0,
+      "hard_min": -30.0,
+      "hard_max": 30.0
+    },
+    "left_knee_joint": {
+      "soft_min": -83.5,
+      "soft_max": 4.0,
+      "hard_min": -120.0,
+      "hard_max": 5.0
+    },
+    "right_knee_joint": {
+      "soft_min": -4.0,
+      "soft_max": 80.0,
+      "hard_min": -5.0,
+      "hard_max": 120.0
+    },
+    "left_ankle_f_joint": {
+      "soft_min": -22.0,
+      "soft_max": 39.0,
+      "hard_min": -45.0,
+      "hard_max": 40.0
+    },
+    "right_ankle_f_joint": {
+      "soft_min": -39.0,
+      "soft_max": 18.5,
+      "hard_min": -40.0,
+      "hard_max": 45.0
+    },
+    "left_ankle_r_joint": {
+      "soft_min": -19.0,
+      "soft_max": 19.0,
+      "hard_min": -20.0,
+      "hard_max": 20.0
+    },
+    "right_ankle_r_joint": {
+      "soft_min": -19.0,
+      "soft_max": 19.0,
+      "hard_min": -20.0,
+      "hard_max": 20.0
+    }
+  }
+}

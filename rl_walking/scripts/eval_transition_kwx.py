@@ -194,6 +194,7 @@ parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토�
 parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
 parser.add_argument("--kw_unload", type=float, default=0.0, help="X18: 인계 뒤 링크마다 자기 무게의 이 비율(0–0.9)을 위로 받친다(부분지지의 이상화, 1 s 램프). --dist 와 함께 쓰지 않는다")
 parser.add_argument("--kw_soft_clamp_all", action="store_true", help="X17: 실물 stage8 처럼 전 관절 목표각을 config soft 한계로 자른다(기본 = 학습과 같이 발목 앞뒤만)")
+parser.add_argument("--kw_soft_clamp_json", type=str, default="", help="X17b: --kw_soft_clamp_all 이 읽을 한계 표(기본 = config/joint_limits_12dof.json). 넓힌 soft 한계 제안의 대조 평가용")
 parser.add_argument("--kw_hl", type=str, default="", help="1007 HD: 헤딩 고리 — '' 끔 | 'on' 브리지 기본 | JSON")
 parser.add_argument("--kw_hl_e0", type=str, default="", help="HD2: 래치 직후 ψ* 초기 오차[°] 목록(env i → i % len)")
 parser.add_argument("--kw_yaw_drift", type=float, default=0.0, help="HD3: 고리에 주는 요 측정에 더할 표류[°/min](env 짝수 +, 홀수 −)")
@@ -1100,7 +1101,7 @@ if KWL:
                 R.reset()
             if args_cli.kw_soft_clamp_all:
                 import json as _jsc
-                _lim_ = _jsc.load(open(os.path.join(REPO, "config", "joint_limits_12dof.json"), encoding="utf-8"))["limits_deg"]
+                _lim_ = _jsc.load(open(args_cli.kw_soft_clamp_json or os.path.join(REPO, "config", "joint_limits_12dof.json"), encoding="utf-8"))["limits_deg"]
                 _nm_ = list(robot.data.joint_names); assert all(n in _lim_ for n in _nm_), [n for n in _nm_ if n not in _lim_]
                 _sl_ = torch.tensor([[math.radians(_lim_[n]["soft_min"]), math.radians(_lim_[n]["soft_max"])] for n in _nm_], device=dev, dtype=torch.float32)
                 _term_ = uenv.action_manager.get_term("joint_pos")

@@ -46,17 +46,18 @@ def clamp_activity(tag, lim, names):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--seeds", default="1,2"); a = ap.parse_args(); seeds = [int(x) for x in a.seeds.split(",")]
-    lim = json.load(open(os.path.join(REPO, "config", "joint_limits_12dof.json"), encoding="utf-8"))["limits_deg"]
+    ap = argparse.ArgumentParser(); ap.add_argument("--seeds", default="1,2"); ap.add_argument("--arm", default="tr_x17", help="클램프 팔 접두(X17b: tr_x17b)"); ap.add_argument("--conds", default="nd,b18,sf15"); ap.add_argument("--limits", default="", help="발동 비율 계산에 쓸 한계 표(기본 config)")
+    a = ap.parse_args(); seeds = [int(x) for x in a.seeds.split(",")]; ARM = a.arm; CONDS = a.conds.split(",")
+    lim = json.load(open(a.limits or os.path.join(REPO, "config", "joint_limits_12dof.json"), encoding="utf-8"))["limits_deg"]
     names = ["left_hip_f_joint", "right_hip_f_joint", "left_hip_a_joint", "right_hip_a_joint", "left_hip_r_joint", "right_hip_r_joint", "left_knee_joint", "right_knee_joint",
              "left_ankle_f_joint", "right_ankle_f_joint", "left_ankle_r_joint", "right_ankle_r_joint"]
     print("### C1 회복(KE) — 전 관절 클램프(X17) 대 대조(X15), env 짝")
     print("| 조건 | 배율 | 짝 n | 낙상 대조 | 낙상 클램프 | 차 | 대조만 / 클램프만 · p |"); print("|---|---|---|---|---|---|---|")
     ok1 = True; miss = []
-    for c in ("nd", "b18", "sf15"):
+    for c in CONDS:
         acc = {}
         for s in seeds:
-            A = falls(f"tr_x15_{c}_d2_s{s}"); B = falls(f"tr_x17_{c}_d2_s{s}")
+            A = falls(f"tr_x15_{c}_d2_s{s}"); B = falls(f"{ARM}_{c}_d2_s{s}")
             if A is None or B is None:
                 miss.append(f"{c}/s{s}"); continue
             both = A[0] & B[0]
@@ -71,14 +72,14 @@ def main():
     print(f"- **C1**: {'자료 부족 ' + ','.join(miss) if miss else ('무해' if ok1 else '유해')}")
     print("### 클램프 발동 비율 — 러너 목표각이 soft 한계 밖이라 잘린 틱의 비율 [%] (추적 env, 클램프 팔)")
     print("| 실행 | 구간(틱 수) | " + " | ".join(x.replace("_joint", "").replace("left_", "L ").replace("right_", "R ") for x in names) + " |"); print("|---|---|" + "---|" * len(names))
-    for tag in [f"tr_x17_{c}_d2_s{s}" for c in ("b18", "sf15", "nd") for s in seeds] + [f"tr_x17_ff_d2_s{s}" for s in seeds]:
+    for tag in [f"{ARM}_{c}_d2_s{s}" for c in CONDS for s in seeds] + [f"{ARM}_ff_d2_s{s}" for s in seeds]:
         ca = clamp_activity(tag, lim, names)
         if ca is None:
             continue
         for nm, (v, cnt) in ca.items():
             if cnt == 0:
                 continue
-            print(f"| {tag.replace('tr_x17_', '').replace('_d2', '')} | {nm} ({cnt}) | " + " | ".join(("—" if not np.isfinite(x) else (f"**{100 * x:.1f}**" if x >= 0.01 else f"{100 * x:.1f}")) for x in v) + " |")
+            print(f"| {tag.replace(ARM + '_', '').replace('_d2', '')} | {nm} ({cnt}) | " + " | ".join(("—" if not np.isfinite(x) else (f"**{100 * x:.1f}**" if x >= 0.01 else f"{100 * x:.1f}")) for x in v) + " |")
     print("### C2 걷기 왕복 — 명령줄")
     print("python3 reports/gen_w3/s3g_judge.py --cand tr_x17_ff --ctl tr_x7c_c0 --name 'X17 걷기 왕복(전 관절 클램프) 대 C0'")
     return 0

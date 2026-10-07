@@ -56,7 +56,12 @@ if KWL:
     sw_mode = torch.zeros(N, dtype=torch.bool, device=dev)
     kw_des = torch.zeros(N, dtype=torch.bool, device=dev); kw_cmd = torch.zeros(N, 3, device=dev)
     kw_cur = [(0.0, 0.0, 0.0)] * N; kw_seq = [1] * N; kw_events = [[] for _ in range(N)]; kw_rej = [None] * N; kw_req_t = [None] * N
-    kw_kind_tl = []; kw_want_tl = []; kw_ge_tl = []; kw_t_tl = []; kw_lastq = [0] * N; kw_yaw_tl = []; kw_xy_tl = []
+    kw_kind_tl = []; kw_want_tl = []; kw_ge_tl = []; kw_t_tl = []; kw_lastq = [0] * N; kw_yaw_tl = []; kw_xy_tl = []; kw_pg_tl = []; kw_ff_tl = []; kw_fl_tl = []; kw_vb_tl = []
+    # 코드 리뷰(1007) 반영: 러너가 조립한 관측과 env 관측을 매 틱 대조(같은 원천에서 만든 항만 — 클록·명령·α 0.1 EMA 두 항은 정의상 다름)
+    _KW_CMP = [(n_, _LAYT[n_]) for n_ in ("base_ang_vel", "projected_gravity", "joint_pos", "joint_vel", "actions", "feet_contact") if n_ in _LAYT]
+    kw_obs_err = {n_: 0.0 for n_, _ in _KW_CMP}; kw_obs_err_n = [0]
+    _kw_backend = str(getattr(_BR._make_runner(_KW_KEYS[0]), "backend", "?"))
+    print(f"[runner_loop] 추론 백엔드 {_kw_backend} · 러너 모델은 브리지 키 {_KW_KEYS} 고정(--load_run/--checkpoint/--ke/--switch_to·--sw_*·--settle·--ke_mode 는 이 팔에서 쓰이지 않음)", flush=True)
 
     def _kw_parse(s):
         ev = []
@@ -97,6 +102,7 @@ if KWL:
         qp = (po[:, _KW_JP1 - 12:_KW_JP1].cpu().numpy() + _KW_POSE[None]).astype(_npk.float32)
         jv = (_KW_RAWJV[0] if _KW_RAWJV[0] is not None else po[:, _KW_JV1 - 12:_KW_JV1]).cpu().numpy().astype(_npk.float32)
         al = alive.cpu().numpy(); des = kw_des.cpu().numpy(); cm = kw_cmd.cpu().numpy(); now = float(t_rel)
+        po_np = po.cpu().numpy()
         bd = t_rel >= (float(args_cli.blend_s) if args_cli.blend_s is not None else 1.5) - 1e-9
         act = _npk.zeros((N, J), _npk.float32); kind = _npk.full(N, -1, _npk.int8)
         want_v = _npk.zeros(N, bool); ge_top = _npk.zeros(N, bool); u_top = _npk.zeros(N, _npk.float32); first_ke = _npk.zeros(N, bool); en_now = _npk.zeros(N, bool)
@@ -135,6 +141,15 @@ if KWL:
                     kw_cur[e] = (0.0, 0.0, 0.0); R.set_gait_enable(False); kw_events[e].append((round(now, 2), "stop_req")); kw_req_t[e] = None
             R.step(gy[e], pg[e], kw_cur[e], qp[e], jv[e], ct[e])
             act[e] = R.last_step_action; kind[e] = R.last_step_kind; want_v[e] = bool(clk.want)
+            if not R.last_event and R.ticks_in_mode > 6:              # 전환 뒤 이력이 다 찬 틱만(fresh 전환의 백필 구간 제외)
+                _ro = (R.w3r if kind[e] == 2 else R.ke.core).last_obs
+                if _ro is not None:
+                    _eo = po_np[e]
+                    for n_, (a0_, b0_) in _KW_CMP:
+                        _d = float(_npk.abs(_ro[a0_:b0_] - _eo[a0_:b0_]).max())
+                        if _d > kw_obs_err[n_]:
+                            kw_obs_err[n_] = _d
+                    kw_obs_err_n[0] += 1
             if R.last_event:
                 kw_events[e].append((round(now, 2), R.last_event))
             if kind[e] != 2 and R.ke.last_switch:
@@ -169,6 +184,10 @@ if KWL:
         _qw = robot.data.root_quat_w                               # 기록 전용: 참 요(쿼터니언 wxyz)·골반 수평 위치(env 원점 기준) — 구간별 방향 변화·이동 집계용
         kw_yaw_tl.append(torch.atan2(2 * (_qw[:, 0] * _qw[:, 3] + _qw[:, 1] * _qw[:, 2]), 1 - 2 * (_qw[:, 2] ** 2 + _qw[:, 3] ** 2)).half().cpu().numpy())
         kw_xy_tl.append((robot.data.root_pos_w[:, :2] - uenv.scene.env_origins[:, :2]).half().cpu().numpy())
+        # 1007 X7b: 기록 전용 — 몸통 기울기(투영 중력 xy), 발-골반 앞·좌우 거리[m], 몸통 좌표 수평 속도. 걷기 시작 자세와 낙상의 관계를 보기 위함
+        kw_pg_tl.append(robot.data.projected_gravity_b[:, :2].half().cpu().numpy()); kw_vb_tl.append(robot.data.root_lin_vel_b[:, :2].half().cpu().numpy())
+        _fpK = robot.data.body_pos_w[:, _FT, :2] - robot.data.root_pos_w[:, None, :2]
+        kw_ff_tl.append((_fpK * _dir_vec("f")[:, None, :2]).sum(-1).half().cpu().numpy()); kw_fl_tl.append((_fpK * _dir_vec("l")[:, None, :2]).sum(-1).half().cpu().numpy())
         return torch.as_tensor(act, device=dev)
 
 for i in range(STEPS):
@@ -194,8 +213,12 @@ rep('''if C2MODE and _C2TR is not None:''', '''if KWL:
                           pre_pass=pre_pass.cpu().numpy(), fell=fell.cpu().numpy(), t_fall_post=t_fall_post.cpu().numpy(), events=json.dumps(kw_events), rej=json.dumps(kw_rej),
                           script=json.dumps(_KW_SCRIPT), ev_t=torch.stack(_KW_EVT).cpu().numpy(), n_to_w3=_npk.asarray([R.n_to_w3 for R in KWR]), n_to_ke=_npk.asarray([R.n_to_ke for R in KWR]),
                           handoff=args_cli.kw_handoff, settle=float(args_cli.kw_settle), dist=args_cli.dist, args=" ".join(sys.argv[1:]),
+                          obs_err=json.dumps(kw_obs_err), obs_err_n=kw_obs_err_n[0], backend=_kw_backend, keys=json.dumps(_KW_KEYS),
                           requiet=args_cli.kw_requiet, yaw=_npk.stack(kw_yaw_tl, 0) if kw_yaw_tl else _npk.zeros((0, N), _npk.float16),
-                          xy=_npk.stack(kw_xy_tl, 0) if kw_xy_tl else _npk.zeros((0, N, 2), _npk.float16))
+                          xy=_npk.stack(kw_xy_tl, 0) if kw_xy_tl else _npk.zeros((0, N, 2), _npk.float16),
+                          pg=_npk.stack(kw_pg_tl, 0) if kw_pg_tl else _npk.zeros((0, N, 2), _npk.float16), vb=_npk.stack(kw_vb_tl, 0) if kw_vb_tl else _npk.zeros((0, N, 2), _npk.float16),
+                          ffwd=_npk.stack(kw_ff_tl, 0) if kw_ff_tl else _npk.zeros((0, N, 2), _npk.float16), flat=_npk.stack(kw_fl_tl, 0) if kw_fl_tl else _npk.zeros((0, N, 2), _npk.float16))
+    print(f"[runner_loop] 러너 관측 대 env 관측 최대 |Δ|(비교 {kw_obs_err_n[0]} 틱·env): " + " · ".join(f"{k} {v:.2e}" for k, v in kw_obs_err.items()), flush=True)
     _pp_ = pre_pass.cpu().numpy()
     _rj_ = _colk.Counter((r[1][:40] if r is not None else "거부 없음") for r, p in zip(kw_rej, _pp_) if p)
     print(f"[runner_loop] log_picture/kwloop_{args_cli.out_tag}.npz · 통과 env {int(_pp_.sum())} · KE→W3 전환 합 {int(sum(R.n_to_w3 for R, p in zip(KWR, _pp_) if p))} · W3→KE 전환 합 {int(sum(R.n_to_ke for R, p in zip(KWR, _pp_) if p))}"

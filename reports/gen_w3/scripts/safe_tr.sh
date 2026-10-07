@@ -23,7 +23,7 @@ acquire_lane() {   # 레인 1 = 기존 공용 잠금(다른 도구와 직렬), 2
 mkdir -p "$(dirname $LOCK)" $S; acquire_lane
 for k in 1 2 3; do
   until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)" -le $MEM_MAX ]; do sleep 30; done
-  rm -f log_picture/ground_recovery_$TG.txt log_picture/ground_recovery_${TG}_envs.csv log_picture/trans_$TG.npz
+  rm -f log_picture/ground_recovery_$TG.txt log_picture/ground_recovery_${TG}_envs.csv log_picture/trans_$TG.npz log_picture/transall_$TG.npz log_picture/kwloop_$TG.npz log_picture/rqlog_$TG.json
   echo "$(date +%H:%M) 시작 $TG (시도 $k): $BASE --num_envs $ENVS $EXTRA $* --out_tag $TG"
   setsid timeout $TMO /home/ryu/IsaacLab/isaaclab.sh -p ${TR_SCRIPT:-rl_walking/scripts/eval_transition.py} $BASE --num_envs $ENVS $EXTRA "$@" --out_tag $TG > $S/$TG.l 2>&1 &
   pg=$!; wait $pg; kill -KILL -- -$pg 2>/dev/null

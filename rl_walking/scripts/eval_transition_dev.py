@@ -1766,7 +1766,7 @@ for i in range(STEPS):
         if args_cli.trace_all > 0:
             _na = min(int(args_cli.trace_all), N)
             if "_TALL" not in dir():
-                _TALL = {k_: [] for k_ in ("t", "gyro", "grav", "cont", "pitch", "roll", "w", "vxy", "ge", "u", "alive", "ke", "mode", "hold", "F", "ffwd", "flat", "h", "ref", "rp2", "cmd")}
+                _TALL = {k_: [] for k_ in ("t", "gyro", "grav", "cont", "pitch", "roll", "w", "vxy", "ge", "u", "alive", "ke", "mode", "hold", "F", "ffwd", "flat", "h", "ref", "rp2", "cmd", "q", "tq")}
                 _PG0, _PG1 = _LAYT["projected_gravity"]
             _pot = obs["policy"]
             _TALL["t"].append(t_rel); _TALL["F"].append(f_now)
@@ -1782,6 +1782,7 @@ for i in range(STEPS):
             _TALL["ffwd"].append((_fpT * _dir_vec("f")[:_na, None, :2]).sum(-1).half().cpu()); _TALL["flat"].append((_fpT * _dir_vec("l")[:_na, None, :2]).sum(-1).half().cpu())
             _TALL["h"].append(robot.data.root_pos_w[:_na, 2].half().cpu())
             _TALL["cmd"].append(cmd[:_na].half().cpu())      # 1007 X10: 체인이 낸 관절 목표[rad] — 발목 명령 스윙·속도 통계용
+            _TALL["q"].append(robot.data.joint_pos[:_na].half().cpu()); _TALL["tq"].append(robot.data.applied_torque[:_na].half().cpu())   # 실측 관절각·적용 토크(추종 오차·포화 통계)
             _nan2 = torch.full((_na, 2), float("nan"))
             _TALL["ref"].append(sw_ref[:_na].float().cpu() if "sw_ref" in dir() else _nan2); _TALL["rp2"].append(_rp2[:_na].float().cpu() if "_rp2" in dir() else _nan2)
         _cur = {"a": a, "cmd": cmd, "q": robot.data.joint_pos, "pitch": pitch, "roll": roll, "w": w_xy, "v": v_xy,

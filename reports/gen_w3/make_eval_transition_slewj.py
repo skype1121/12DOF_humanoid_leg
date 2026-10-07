@@ -24,7 +24,8 @@ rep('''        _chain = DeployChain(_DEF, _land, qpos0=_land.clone(), stand=True
             _chain.slew = _sj
             print(f"[slew_joint] 관절별 슬루 [°/틱]: {dict(zip(jn, [round(math.degrees(float(x)), 2) for x in _sj]))}", flush=True)''')
 # trace_all: 체인 목표 기록
-rep('''"ge", "u", "alive", "ke", "mode", "hold", "F", "ffwd", "flat", "h", "ref", "rp2")}''', '''"ge", "u", "alive", "ke", "mode", "hold", "F", "ffwd", "flat", "h", "ref", "rp2", "cmd")}''')
+rep('''"ge", "u", "alive", "ke", "mode", "hold", "F", "ffwd", "flat", "h", "ref", "rp2")}''', '''"ge", "u", "alive", "ke", "mode", "hold", "F", "ffwd", "flat", "h", "ref", "rp2", "cmd", "q", "tq")}''')
 rep('''            _TALL["h"].append(robot.data.root_pos_w[:_na, 2].half().cpu())''', '''            _TALL["h"].append(robot.data.root_pos_w[:_na, 2].half().cpu())
-            _TALL["cmd"].append(cmd[:_na].half().cpu())      # 1007 X10: 체인이 낸 관절 목표[rad] — 발목 명령 스윙·속도 통계용''')
+            _TALL["cmd"].append(cmd[:_na].half().cpu())      # 1007 X10: 체인이 낸 관절 목표[rad] — 발목 명령 스윙·속도 통계용
+            _TALL["q"].append(robot.data.joint_pos[:_na].half().cpu()); _TALL["tq"].append(robot.data.applied_torque[:_na].half().cpu())   # 실측 관절각·적용 토크(추종 오차·포화 통계)''')
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("slew_joint patch applied", len(src.splitlines()))

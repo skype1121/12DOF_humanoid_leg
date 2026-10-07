@@ -3888,3 +3888,15 @@ def _w3t_progress(cfg, weight: float = 10.0):
     """병진 명령에서 스윙발 변위의 목표 보폭 방향 진행 비율(W3S3tF 와 같은 항 `w3_stride_lin`) — w3_lat_tracker 이벤트가 있는 설정(W3S2 이후 계열)에서만."""
     assert getattr(cfg.rewards, "w3_stride_lin", None) is None and getattr(cfg.events, "w3_lat", None) is not None
     cfg.rewards.w3_stride_lin = RewTerm(func=_w3.w3_stride_lin, weight=float(weight))
+
+
+@configclass
+class Biped12HangStandW3S3fFEnvCfg(Biped12HangStandW3S3fEnvCfg):
+    """W3S3 fF (1007 claude2, reports/gen_w3/TORQUE_BUDGET_1007.md §14): W3S3f(토크 한계 무작위화 0.7–1.0)와 전부 같고 **보상 항 하나만 추가** —
+    `w3_stride_lin`(+10, 에이전트 설계 W3S3tF 와 같은 항): 병진 명령에서 유효 착지마다 스윙발 변위의 목표 보폭 방향 진행 비율(제자리 디딤 0·목표 이상 1·반대 음수).
+    겨냥: W3S3f 가 낮은 한계 내성을 얻는 대신 전진을 잃은 것(8 s 전진 0.62 → 0.25 m). 짝 대조 = W3S3f 같은 체크포인트(무작위화는 같고 이 항만 다름).
+    시작 = W3S3d-15800 이어 학습. 관측·행동 계약 불변."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        _w3t_progress(self)

@@ -182,6 +182,7 @@ parser.add_argument("--ke2w3_at", type=float, default=4.0, help="ke2w3: KE→W3 
 parser.add_argument("--walk_s", type=float, default=5.0, help="ke2w3: 켜기 뒤 걷기 시간 [s]")
 parser.add_argument("--pre_both_s", type=float, default=1.0); parser.add_argument("--pre_tilt", type=float, default=7.0)
 parser.add_argument("--pre_w", type=float, default=0.25); parser.add_argument("--pre_w_s", type=float, default=1.0)
+parser.add_argument("--slew_joint", type=str, default="", help="1007 X10: 관절 이름 부분 일치별 슬루 [°/틱] 'ankle_r:2.0,ankle_f:3.0' — 나머지는 체인 기본. '' = 끔")
 parser.add_argument("--sw_requiet", type=str, default="", help="1007 X5: 'T,w[,both|off]' — 회복 모드 중 감지 |ω_xy| < w ∧ 접촉(기본 양발, off = 감지기 끄기 접촉 조건)이 T s 이어지면 기준 자세를 현재 자세로 다시 잡고 모드 끔(갇힘 해소). '' = 끔")
 parser.add_argument("--w3_fresh", action="store_true", help="ke2w3 즉시 켜기를 배포 러너 fresh 시작(게이트 즉시 1·위상 2 틱 고정)으로 모사(기본 = 에피소드 중 0→1 램프)")
 parser.add_argument("--trace_all", type=int, default=0, help="앞 N env 의 인계 뒤 전 구간 틱 추적 → log_picture/transall_<tag>.npz (기록 전용)")
@@ -984,6 +985,15 @@ for i in range(STEPS):
     if i == STEPS_PRE and use_chain:                        # 인계: 체인을 홀드 명령각에서 시작
         _land = _DEF + _BOFF          # 인계 출발 자세(= 실물 홀드 명령). 기본은 정책 기본자세와 동일.
         _chain = DeployChain(_DEF, _land, qpos0=_land.clone(), stand=True, **_kw)
+        if args_cli.slew_joint:      # 1007 X10: 관절별 슬루(이름 부분 일치) — 체인의 스칼라 슬루를 (12,) 텐서로 바꾼다
+            _sj = torch.full((len(jn),), float(_chain.slew), device=dev)
+            for _tok in args_cli.slew_joint.split(","):
+                _k, _v = _tok.split(":"); _hit = [ci for ci, nm in enumerate(jn) if _k.strip() in nm]
+                if not _hit:
+                    raise SystemExit(f"--slew_joint: '{_k}' 와 맞는 관절 없음 {jn}")
+                _sj[_hit] = math.radians(float(_v))
+            _chain.slew = _sj
+            print(f"[slew_joint] 관절별 슬루 [°/틱]: {dict(zip(jn, [round(math.degrees(float(x)), 2) for x in _sj]))}", flush=True)
         _chain_on[0] = True
     sw_now = torch.zeros(N, dtype=torch.bool, device=dev)
     with torch.inference_mode():      # 관측·체인·EMA 텐서는 추론 텐서 — 제자리 갱신은 추론 모드 안에서만
@@ -1756,7 +1766,7 @@ for i in range(STEPS):
         if args_cli.trace_all > 0:
             _na = min(int(args_cli.trace_all), N)
             if "_TALL" not in dir():
-                _TALL = {k_: [] for k_ in ("t", "gyro", "grav", "cont", "pitch", "roll", "w", "vxy", "ge", "u", "alive", "ke", "mode", "hold", "F", "ffwd", "flat", "h", "ref", "rp2")}
+                _TALL = {k_: [] for k_ in ("t", "gyro", "grav", "cont", "pitch", "roll", "w", "vxy", "ge", "u", "alive", "ke", "mode", "hold", "F", "ffwd", "flat", "h", "ref", "rp2", "cmd")}
                 _PG0, _PG1 = _LAYT["projected_gravity"]
             _pot = obs["policy"]
             _TALL["t"].append(t_rel); _TALL["F"].append(f_now)
@@ -1771,6 +1781,7 @@ for i in range(STEPS):
             _fpT = robot.data.body_pos_w[:_na, _FT, :2] - robot.data.root_pos_w[:_na, None, :2]
             _TALL["ffwd"].append((_fpT * _dir_vec("f")[:_na, None, :2]).sum(-1).half().cpu()); _TALL["flat"].append((_fpT * _dir_vec("l")[:_na, None, :2]).sum(-1).half().cpu())
             _TALL["h"].append(robot.data.root_pos_w[:_na, 2].half().cpu())
+            _TALL["cmd"].append(cmd[:_na].half().cpu())      # 1007 X10: 체인이 낸 관절 목표[rad] — 발목 명령 스윙·속도 통계용
             _nan2 = torch.full((_na, 2), float("nan"))
             _TALL["ref"].append(sw_ref[:_na].float().cpu() if "sw_ref" in dir() else _nan2); _TALL["rp2"].append(_rp2[:_na].float().cpu() if "_rp2" in dir() else _nan2)
         _cur = {"a": a, "cmd": cmd, "q": robot.data.joint_pos, "pitch": pitch, "roll": roll, "w": w_xy, "v": v_xy,

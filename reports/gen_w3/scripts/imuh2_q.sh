@@ -14,7 +14,7 @@ acquire_lane() {   # 레인 1 = 기존 공용 잠금(다른 도구와 직렬), 2
       if [ $i = 1 ]; then exec 9>"$LOCK"; else exec 9>"$LOCK.lane$i"; fi
       if flock -n 9; then return 0; fi
     done
-    sleep $((4 + RANDOM % 6))
+    sleep ${EVAL_POLL:-$((4 + RANDOM % 6))}      # EVAL_POLL=1 이면 우선(자주 확인)
   done
 }
 ok_txt() { grep -q '사전 검사(무개입 자립 [0-9.]*s) 통과: [1-9]' "$1" 2>/dev/null; }

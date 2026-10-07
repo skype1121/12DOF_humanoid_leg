@@ -55,4 +55,11 @@ fi
 if [ $ST = x2 ]; then   # X2: stop → ge 0 래치 즉시 KE(정착 대기 0)
   for SD in 1 2 3; do for C in nd b18 sf15; do run tr_latch_${C}_d2_s${SD} --ke_mode reset --settle fixed --settle_s 0.02 --delay_steps 2,2 --seed $SD ${X[$C]}; done; done
 fi
+if [ $ST = x2nd ]; then   # X2(reset) 무외란 재현 확인만
+  for SD in 2 3; do run tr_latch_nd_d2_s${SD} --ke_mode reset --settle fixed --settle_s 0.02 --delay_steps 2,2 --seed $SD; done
+fi
+if [ $ST = x2d ] || [ $ST = x2dd ]; then   # X2d: 래치 다음 틱 KE, 상태 이어받기 — x2d = 무외란, x2dd = 외란
+  CS="nd"; [ $ST = x2dd ] && CS="b18 sf15"
+  for SD in 1 2 3; do for C in $CS; do run tr_latchd_${C}_d2_s${SD} --ke_mode direct --settle fixed --settle_s 0.02 --delay_steps 2,2 --seed $SD ${X[$C]}; done; done
+fi
 echo "$(date +%H:%M) TRQ_DONE $ST"

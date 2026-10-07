@@ -63,6 +63,8 @@ class Sim:
         self.logs = []
         self.node = None
         self.tick_i = 0
+        # 1007 모터 오류 기록 시험용 주입(기본 = 종전과 같은 상태 메시지): 관절별 오류 바이트·피드백 나이, stage8 warnings
+        self.fb_err, self.fb_age, self.s8_warn = {}, {}, None
         monkeypatch.setenv("HOME", str(tmp_path))                 # 블랙박스 = tmp/logs (실제 ~/logs 오염 금지)
         real_time = M.time
         clock = self.clock
@@ -192,9 +194,18 @@ class Sim:
         cl, cr = self.contact(t)
         node._on_foot(self.String(json.dumps({"timestamp": ts, "left_n": 0.0, "right_n": 0.0,
                                                "left_contact": cl, "right_contact": cr})))
+        node._on_status(self.String(json.dumps(self.status_msg(self.fb_err, self.s8_warn))))
+
+    def status_msg(self, err=None, warnings=None):
+        """stage8 상태 메시지. err {관절: 오류 바이트}·warnings 를 주지 않으면 종전과 같은 내용(키도 같다)."""
         joints = {j: {"baseline_deg": self.baseline[j], "commanded_relative_deg": self.cmd_rel[j],
-                      "feedback_age_sec": 0.02, "latest_actual_deg": self.q[j]} for j in M.JOINT_ORDER}
-        node._on_status(self.String(json.dumps({"armed": True, "joints": joints})))
+                      "feedback_age_sec": self.fb_age.get(j, 0.02), "latest_actual_deg": self.q[j]} for j in M.JOINT_ORDER}
+        for j, code in (err or {}).items():
+            joints[j].update(feedback_error_raw=code, feedback_error_ok=(code == 0))
+        st = {"armed": True, "joints": joints}
+        if warnings is not None:
+            st["warnings"] = list(warnings)
+        return st
 
     def _stage8(self, i):
         for tick, topic, obj in self.pubs:
@@ -386,3 +397,80 @@ def test_touchdown_start_refuses_hold_pose_far_from_policy_default(monkeypatch, 
     assert len(sim.stops()) == 1 and any("touchdown_pose_mismatch" in m for _, m in sim.logs)
     worst, _, _ = max_step(sim)
     assert worst < 1e-9
+
+
+# ---- 1007 모터 오류 기록(블랙박스 전용) — 실제 노드 경로(_on_status → _tick → 블랙박스) ----
+ERRLOG_KEYS = {"err_raw", "s8_warn", "fb_age_max_s", "fb_age_max_joint", "fb_age_over", "errlog_fail"}
+
+
+def _blackbox(tmp_path):
+    files = sorted((tmp_path / "logs").glob("rl_bridge_*.jsonl"))
+    assert len(files) == 1, files
+    return [json.loads(line) for line in files[0].read_text(encoding="utf-8").splitlines()]
+
+
+def test_errlog_fields_go_to_blackbox_only_and_keep_values_between_ticks(monkeypatch, tmp_path):
+    """오류 바이트·warnings·피드백 나이 기록(1007): 발행 메시지는 그대로이고 블랙박스 틱 기록에만 붙는다.
+    · 틱마다 '블랙박스 기록 − 새 필드 == 그 틱에 발행한 디버그 메시지'(발행 내용 불변).
+    · 오류 0·warnings 없음 틱에 더해지는 것은 피드백 나이 2 개뿐.
+    · 한 메시지에만 있던 오류 바이트(틱 시점의 최신 메시지는 0)와 명령으로 비워진 warnings 도 그 틱 기록에 남는다.
+    · 두 관절 피드백이 함께 끊기면 둘 다 fb_age_over 에 나오고, 나이가 0.2 s 를 넘는 틱에 sensor_stale 로 멈춘다(정지 판정은 종전 코드)."""
+    AL, AR = "left_ankle_r_joint", "right_ankle_r_joint"
+    W = f"feedback_error:{AR}:5"
+    K1, K2, K3 = 60, 80, 110           # 틱 번호: 한 메시지짜리 오류 / 지속 오류 + warnings 10 틱 / 피드백 끊김 시작
+    STOP = K3 + 7                      # 나이 0.045 → 0.025 씩 증가 → 8 번째 틱에 0.22 s
+
+    def inject(sim, node, t, i):       # 틱 i 가 끝난 뒤 불린다 → 다음 틱(i + 1)의 입력을 정한다
+        nxt = i + 1
+        sim.fb_err, sim.s8_warn, sim.fb_age = {}, None, {}
+        if nxt == K1:                  # 다음 틱의 정규 상태(오류 0)보다 먼저 오류 메시지 한 건
+            node._on_status(sim.String(json.dumps(sim.status_msg({AL: 4}))))
+        if K2 <= nxt < K2 + 10:        # 오류는 지속, warnings 는 앞 메시지에만(정규 메시지는 명령으로 비워진 것처럼 없음)
+            node._on_status(sim.String(json.dumps(sim.status_msg({AR: 5}, [W]))))
+            sim.fb_err = {AR: 5}
+        if nxt >= K3:
+            a = 0.045 + 0.025 * (nxt - K3)
+            sim.fb_age = {AL: a, AR: a}
+    sim = run_sim(monkeypatch, tmp_path, {"cmd": "stand"}, scenario=inject, start_on_ground=True, t_end=2.6)
+    pub = sim.dbg()                                            # (틱, 발행한 디버그 메시지) — 이벤트 제외
+    bb = [r for r in _blackbox(tmp_path) if "event" not in r]
+    assert len(pub) == len(bb) > 80, (len(pub), len(bb))
+    assert all(not (ERRLOG_KEYS & set(o)) for _, o in pub), "발행 메시지에 기록 전용 필드가 실렸다"
+    by_tick = {}
+    for (i, o), r in zip(pub, bb):
+        assert {k: v for k, v in r.items() if k not in ERRLOG_KEYS} == o, f"틱 {i}: 블랙박스 − 새 필드 ≠ 발행 메시지"
+        by_tick[i] = {k: r[k] for k in r if k in ERRLOG_KEYS}
+    plain = [i for i in by_tick if i < K1 or K1 < i < K2 or K2 + 10 <= i < K3]
+    assert len(plain) > 60 and all(by_tick[i] == {"fb_age_max_s": 0.02, "fb_age_max_joint": M.JOINT_ORDER[0]} for i in plain), \
+        {i: by_tick[i] for i in plain if set(by_tick[i]) != {"fb_age_max_s", "fb_age_max_joint"}}
+    assert by_tick[K1].get("err_raw") == {AL: 4} and "s8_warn" not in by_tick[K1], by_tick[K1]
+    for i in range(K2, K2 + 10):
+        assert by_tick[i].get("err_raw") == {AR: 5} and by_tick[i].get("s8_warn") == [W], (i, by_tick[i])
+    assert by_tick[K3] == {"fb_age_max_s": 0.045, "fb_age_max_joint": AL}, by_tick[K3]              # 0.05 s 미만: 최대값만
+    assert by_tick[STOP - 1] == {"fb_age_max_s": 0.195, "fb_age_max_joint": AL, "fb_age_over": {AL: 0.195, AR: 0.195}}, by_tick[STOP - 1]
+    assert max(by_tick) == STOP - 1, f"마지막 틱 기록 {max(by_tick)} (기대 {STOP - 1})"
+    stops = [(i, o) for i, tp, o in sim.pubs if tp == M.COMMAND_TOPIC and o.get("command") == "STOP_ALL"]
+    assert [i for i, _ in stops] == [STOP] and sim.node.stop_reason == "sensor_stale", (stops, sim.node.stop_reason)
+    assert not any("errlog_fail" in v for v in by_tick.values())
+    print(f"[errlog] 틱 기록 {len(bb)} · 보통 틱 {len(plain)}(+피드백 나이 2 개) · 틱 {K1} err_raw {by_tick[K1]['err_raw']} · "
+          f"틱 {K2}–{K2 + 9} err_raw+s8_warn · 틱 {STOP - 1} fb_age_over {by_tick[STOP - 1]['fb_age_over']} · 틱 {STOP} sensor_stale 정지")
+
+
+def test_errlog_fields_also_on_touchdown_wait_records(monkeypatch, tmp_path):
+    """착지 대기(touchdown_start) 중의 틱 기록(정책 미구동 홀드)에도 같은 필드가 붙고, 발행 메시지는 그대로다."""
+    AL = "left_ankle_r_joint"
+
+    def inject(sim, node, t, i):
+        sim.fb_err = {AL: 4} if 40 <= i + 1 < 45 else {}
+    sim = run_sim(monkeypatch, tmp_path, {"cmd": "stand", "touchdown_start": True}, scenario=inject, t_end=2.0)   # 착지(3.5 s) 전에 끝
+    pub = sim.dbg()
+    bb = [r for r in _blackbox(tmp_path) if "event" not in r]
+    assert len(pub) == len(bb) > 50 and all(o.get("raw_action") is None for _, o in pub), "착지 대기 구간이 아님"
+    n_err = 0
+    for (i, o), r in zip(pub, bb):
+        assert not (ERRLOG_KEYS & set(o)) and {k: v for k, v in r.items() if k not in ERRLOG_KEYS} == o, i
+        assert r["fb_age_max_s"] == 0.02 and r["fb_age_max_joint"] == M.JOINT_ORDER[0]
+        assert ("err_raw" in r) == (40 <= i < 45), (i, r.get("err_raw"))
+        n_err += "err_raw" in r
+    assert n_err == 5 and not sim.stops()
+

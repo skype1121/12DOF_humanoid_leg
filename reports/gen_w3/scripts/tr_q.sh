@@ -83,4 +83,14 @@ if [ $ST = x3 ]; then   # X3: 정착 창에 오는 외란(7.3 s) — A = direct(
     run tr_none_${C}_d2_s${SD} --ke_mode none --delay_steps 2,2 --seed $SD ${XW[$C]}
   done; done
 fi
+if [ $ST = x4 ]; then   # X4: 깨끗한 KE 서기에서 가벼운 밀기로 회복 모드를 한 번 켠 뒤 앞 램프(H3) — reset 팔, 정지 4 s, 사본 평가기·추적
+  export TR_SCRIPT=rl_walking/scripts/eval_transition_dev.py
+  RS="--ke_mode reset --w3_stop 4 --delay_steps 2,2"
+  for SD in 1 2 3; do
+    run tr_x4C_sf15_d2_s${SD} $RS --seed $SD --dist "ramp:f:16:15:0.5:1.0" --trace_all 128
+    run tr_x4Pb_sf15_d2_s${SD} $RS --seed $SD --dist "push:b:9:12:0.3;ramp:f:16:15:0.5:1.0" --trace_all 128
+    run tr_x4Pf_sf15_d2_s${SD} $RS --seed $SD --dist "push:f:9:12:0.3;ramp:f:16:15:0.5:1.0" --trace_all 128
+  done
+  unset TR_SCRIPT
+fi
 echo "$(date +%H:%M) TRQ_DONE $ST"

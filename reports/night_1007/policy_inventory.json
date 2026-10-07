@@ -1,16 +1,16 @@
 {
- "generated": "2026-10-07 23:00:16",
- "command": "python3 reports/night_1007/policy_inventory.py --md5 all --scratch /tmp/claude-1000/-home-ryu-humanoid-leg-test1/e53dc80b-9c62-45a7-a400-3cd12071b2f1/scratchpad --scratch /tmp/claude-1000/-home-ryu-humanoid-leg-test1/f0e513e9-71ac-45c3-820b-1b06b07d54af/scratchpad",
+ "generated": "2026-10-08 00:54:44",
+ "command": "python3 reports/night_1007/policy_inventory.py --md5 all",
  "repo": "/home/ryu/humanoid_leg_test1",
  "git": {
   "branch": "hang2stand-prep-0911",
-  "head": "d9aaf1f6",
-  "head_date": "2026-10-07 22:56:40 +0900"
+  "head": "df775fa0",
+  "head_date": "2026-10-08 00:54:27 +0900"
  },
  "disk": {
   "total": 483902267392,
-  "free": 42373550080,
-  "free_pct": 8.756633918740041
+  "free": 77587746816,
+  "free_pct": 16.033763849498072
  },
  "md5_mode": "all",
  "fields": {
@@ -46,16 +46,16 @@
    "배포 후보": {
     "runs": 3,
     "ckpts": 32,
-    "bytes": 278926827,
+    "bytes": 284235295,
     "key_ckpts": 13,
     "thin_ckpts": 19,
     "thin_bytes": 152361133
    },
    "평가 중 후보": {
-    "runs": 2,
-    "ckpts": 8,
-    "bytes": 74637282,
-    "key_ckpts": 8,
+    "runs": 6,
+    "ckpts": 35,
+    "bytes": 321923809,
+    "key_ckpts": 35,
     "thin_ckpts": 0,
     "thin_bytes": 0
    },
@@ -105,10 +105,10 @@
    }
   },
   "total": {
-   "runs": 240,
-   "ckpts": 2650,
-   "bytes": 21489853348,
-   "ckpt_bytes": 20391794976
+   "runs": 244,
+   "ckpts": 2677,
+   "bytes": 21742448343,
+   "ckpt_bytes": 20608308165
   },
   "thin_ckpts": 772,
   "thin_bytes": 5517305094
@@ -781,6 +781,134 @@
    "code_missing": 0
   },
   {
+   "manifest": "deploy/head_1008.md5",
+   "policy": [
+    {
+     "path": "logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/exported/policy.onnx",
+     "state": "일치",
+     "want": "c577a65a3edbd9f856fbc4b0912f5908",
+     "got": "c577a65a3edbd9f856fbc4b0912f5908"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/exported/policy.pt",
+     "state": "일치",
+     "want": "fac90eb5490b47a77ca76281631af442",
+     "got": "fac90eb5490b47a77ca76281631af442"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/params/env.yaml",
+     "state": "일치",
+     "want": "a2f1f885aa64d01ef77f14e05549df00",
+     "got": "a2f1f885aa64d01ef77f14e05549df00"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stage4/2026-09-28_23-19-13_g11a/exported/policy.onnx",
+     "state": "일치",
+     "want": "a090aa871b654a099ada80b4287046fd",
+     "got": "a090aa871b654a099ada80b4287046fd"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stage4/2026-09-28_23-19-13_g11a/exported/policy.pt",
+     "state": "일치",
+     "want": "51f3e2b7b73168ec881312175447684b",
+     "got": "51f3e2b7b73168ec881312175447684b"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stage4/2026-09-28_23-19-13_g11a/params/env.yaml",
+     "state": "일치",
+     "want": "ab1c12ebc0a55ec3554c669f5eb5680d",
+     "got": "ab1c12ebc0a55ec3554c669f5eb5680d"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported/policy.onnx",
+     "state": "일치",
+     "want": "6c5f8a7e08696cd07b1e5abf328fa616",
+     "got": "6c5f8a7e08696cd07b1e5abf328fa616"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported/policy.pt",
+     "state": "일치",
+     "want": "dc9cd5867932e15103684055476565ba",
+     "got": "dc9cd5867932e15103684055476565ba"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/params/env.yaml",
+     "state": "일치",
+     "want": "0c07175148c9fdbbd71d9e1b125d7814",
+     "got": "0c07175148c9fdbbd71d9e1b125d7814"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported/policy.onnx",
+     "state": "일치",
+     "want": "43f113109a369a60e976a391cf8f17cd",
+     "got": "43f113109a369a60e976a391cf8f17cd"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported/policy.pt",
+     "state": "일치",
+     "want": "2464f5cdba2e819d03ffa2d8d03bbb69",
+     "got": "2464f5cdba2e819d03ffa2d8d03bbb69"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/params/env.yaml",
+     "state": "일치",
+     "want": "ebda410ec37987f788df920ccac4f264",
+     "got": "ebda410ec37987f788df920ccac4f264"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/SOURCE_CHECKPOINT",
+     "state": "일치",
+     "want": "e24b90e328fadb2a5c7ef9d87721d1a3",
+     "got": "e24b90e328fadb2a5c7ef9d87721d1a3"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/policy.onnx",
+     "state": "일치",
+     "want": "57547697918f679543413a5b24c36555",
+     "got": "57547697918f679543413a5b24c36555"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/policy.pt",
+     "state": "일치",
+     "want": "896ca613bc402de02caa8302988f9a68",
+     "got": "896ca613bc402de02caa8302988f9a68"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/params/env.yaml",
+     "state": "일치",
+     "want": "7ff27617abdb9dd8ee6155c5d7703eaf",
+     "got": "7ff27617abdb9dd8ee6155c5d7703eaf"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/SOURCE_CHECKPOINT",
+     "state": "일치",
+     "want": "1ad3809e4af40b1334e497b0d3714a7f",
+     "got": "1ad3809e4af40b1334e497b0d3714a7f"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.onnx",
+     "state": "일치",
+     "want": "d908cd92ba0916e790f9e3e28ff1d882",
+     "got": "d908cd92ba0916e790f9e3e28ff1d882"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.pt",
+     "state": "일치",
+     "want": "10e3ee405e1534ebe67574ddbeb9a2a2",
+     "got": "10e3ee405e1534ebe67574ddbeb9a2a2"
+    },
+    {
+     "path": "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/params/env.yaml",
+     "state": "일치",
+     "want": "41d1e62aed455029be7351a1db43f48f",
+     "got": "41d1e62aed455029be7351a1db43f48f"
+    }
+   ],
+   "code_same": 99,
+   "code_diff": 1,
+   "code_missing": 0
+  },
+  {
    "manifest": "deploy/lat_1006.md5",
    "policy": [],
    "code_same": 4,
@@ -955,8 +1083,8 @@
      "exists": true,
      "size": 1321751,
      "md5": "d908cd92ba0916e790f9e3e28ff1d882",
-     "jetson_md5": null,
-     "jetson": "없음",
+     "jetson_md5": "d908cd92ba0916e790f9e3e28ff1d882",
+     "jetson": "같음",
      "need": "필수 — 젯슨 실행 파일(onnxruntime 경로)"
     },
     {
@@ -964,8 +1092,8 @@
      "exists": true,
      "size": 1332468,
      "md5": "10e3ee405e1534ebe67574ddbeb9a2a2",
-     "jetson_md5": null,
-     "jetson": "없음",
+     "jetson_md5": "10e3ee405e1534ebe67574ddbeb9a2a2",
+     "jetson": "같음",
      "need": "선택 — PC torch 경로. 젯슨 selftest 일부 분기는 존재 여부만 본다"
     },
     {
@@ -973,8 +1101,8 @@
      "exists": true,
      "size": 60296,
      "md5": "41d1e62aed455029be7351a1db43f48f",
-     "jetson_md5": null,
-     "jetson": "없음",
+     "jetson_md5": "41d1e62aed455029be7351a1db43f48f",
+     "jetson": "같음",
      "need": "필수 — 관측 필터·기본자세·(W3) 명령 계약을 여기서 읽는다"
     },
     {
@@ -982,8 +1110,8 @@
      "exists": true,
      "size": 15,
      "md5": "1ad3809e4af40b1334e497b0d3714a7f",
-     "jetson_md5": null,
-     "jetson": "없음",
+     "jetson_md5": "1ad3809e4af40b1334e497b0d3714a7f",
+     "jetson": "같음",
      "need": "선택 — 코드가 읽지 않는다(출처 기록)"
     }
    ]
@@ -1132,12 +1260,12 @@
   }
  ],
  "jetson_snapshot": {
-  "file": "reports/night_1007/jetson/inventory_before_md5.txt",
-  "taken": "2026-10-07 22:20",
-  "n": 63,
+  "file": "reports/night_1007/jetson/inventory_after_md5.txt",
+  "taken": "2026-10-08 00:25",
+  "n": 67,
   "counts": {
    "PC 에 없음": 41,
-   "같음": 20,
+   "같음": 24,
    "다름": 2
   },
   "rows": [
@@ -1518,6 +1646,30 @@
     "jetson": "7ff27617abdb9dd8ee6155c5d7703eaf",
     "pc": "7ff27617abdb9dd8ee6155c5d7703eaf",
     "state": "같음"
+   },
+   {
+    "path": "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/SOURCE_CHECKPOINT",
+    "jetson": "1ad3809e4af40b1334e497b0d3714a7f",
+    "pc": "1ad3809e4af40b1334e497b0d3714a7f",
+    "state": "같음"
+   },
+   {
+    "path": "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.onnx",
+    "jetson": "d908cd92ba0916e790f9e3e28ff1d882",
+    "pc": "d908cd92ba0916e790f9e3e28ff1d882",
+    "state": "같음"
+   },
+   {
+    "path": "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.pt",
+    "jetson": "10e3ee405e1534ebe67574ddbeb9a2a2",
+    "pc": "10e3ee405e1534ebe67574ddbeb9a2a2",
+    "state": "같음"
+   },
+   {
+    "path": "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/params/env.yaml",
+    "jetson": "41d1e62aed455029be7351a1db43f48f",
+    "pc": "41d1e62aed455029be7351a1db43f48f",
+    "state": "같음"
    }
   ],
   "by_run": {
@@ -1586,6 +1738,9 @@
     "같음"
    ],
    "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294": [
+    "같음"
+   ],
+   "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d": [
     "같음"
    ]
   }
@@ -1948,7 +2103,7 @@
   {
    "name": "2026-08-03_03-18-21",
    "counts": {
-    "manifest": 1,
+    "manifest": 5,
     "registry": 1
    },
    "code": [
@@ -2011,7 +2166,7 @@
    "name": "2026-08-04_13-13-49",
    "counts": {
     "doc": 1,
-    "manifest": 5,
+    "manifest": 9,
     "script": 3,
     "registry": 1
    },
@@ -2027,7 +2182,7 @@
    "name": "2026-08-08_21-24-48",
    "counts": {
     "doc": 1,
-    "manifest": 1,
+    "manifest": 5,
     "script": 3,
     "registry": 1
    },
@@ -2042,7 +2197,7 @@
   {
    "name": "2026-08-09_03-59-22",
    "counts": {
-    "manifest": 1,
+    "manifest": 5,
     "script": 2,
     "registry": 1
    },
@@ -2088,7 +2243,7 @@
   {
    "name": "2026-09-04_16-43-02",
    "counts": {
-    "manifest": 10,
+    "manifest": 16,
     "doc": 21,
     "registry": 1
    },
@@ -2100,7 +2255,7 @@
   {
    "name": "2026-09-04_20-05-14",
    "counts": {
-    "manifest": 8,
+    "manifest": 14,
     "doc": 31,
     "registry": 1
    },
@@ -2113,7 +2268,7 @@
    "name": "2026-09-04_21-48-32",
    "counts": {
     "doc": 34,
-    "manifest": 9,
+    "manifest": 15,
     "script": 2,
     "registry": 1
    },
@@ -2127,7 +2282,7 @@
   {
    "name": "2026-09-05_17-57-21",
    "counts": {
-    "manifest": 7,
+    "manifest": 13,
     "doc": 21,
     "registry": 1
    },
@@ -2258,7 +2413,7 @@
    "name": "2026-09-09_12-33-03",
    "counts": {
     "doc": 31,
-    "manifest": 4,
+    "manifest": 10,
     "registry": 1
    },
    "code": [
@@ -2327,7 +2482,7 @@
    "name": "2026-09-09_19-15-42",
    "counts": {
     "doc": 32,
-    "manifest": 5,
+    "manifest": 11,
     "script": 2,
     "registry": 1
    },
@@ -2393,7 +2548,7 @@
   {
    "name": "2026-09-13_00-40-49",
    "counts": {
-    "manifest": 5,
+    "manifest": 11,
     "doc": 3,
     "script": 1,
     "registry": 1
@@ -2466,7 +2621,7 @@
   {
    "name": "2026-09-18_00-14-13_s9c",
    "counts": {
-    "manifest": 5,
+    "manifest": 11,
     "doc": 1,
     "registry": 1
    },
@@ -2478,7 +2633,7 @@
   {
    "name": "2026-09-18_01-08-37_s9c2",
    "counts": {
-    "manifest": 5,
+    "manifest": 11,
     "registry": 1
    },
    "code": [
@@ -2489,7 +2644,7 @@
   {
    "name": "2026-09-18_02-52-27_s9c3",
    "counts": {
-    "manifest": 5,
+    "manifest": 11,
     "registry": 1
    },
    "code": [
@@ -2500,8 +2655,8 @@
   {
    "name": "2026-09-18_19-06-31_s9d",
    "counts": {
-    "doc": 1,
-    "manifest": 3
+    "manifest": 9,
+    "doc": 1
    },
    "code": [],
    "eval_outputs": 14
@@ -2908,6 +3063,34 @@
    "is_dir": true
   },
   {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-07_23-17-51_w3S3t_from_15800",
+   "points_to": "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800",
+   "raw": "../biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800",
+   "exists": true,
+   "is_dir": true
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-07_23-42-16_w3S3tK_from_15800",
+   "points_to": "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800",
+   "raw": "../biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800",
+   "exists": true,
+   "is_dir": true
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-08_00-11-19_g24raf_from_21793",
+   "points_to": "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793",
+   "raw": "../biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793",
+   "exists": true,
+   "is_dir": true
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-08_00-37-31_w3S3fF_from_15800",
+   "points_to": "logs/rsl_rl/biped12_stepb0/2026-10-08_00-37-31_w3S3fF_from_15800",
+   "raw": "../biped12_stepb0/2026-10-08_00-37-31_w3S3fF_from_15800",
+   "exists": true,
+   "is_dir": true
+  },
+  {
    "link": "logs/rsl_rl/biped12_stage4/biped12_stepb0",
    "points_to": "logs/rsl_rl/biped12_stepb0",
    "raw": "../biped12_stepb0/",
@@ -2941,6 +3124,53 @@
  "strays": [],
  "outside_logs": {
   "models": [
+   {
+    "name": "recover_g24ra_21793",
+    "dir": "models/recover_g24ra_21793",
+    "run": "2026-10-04_10-08-41_g24ra_seed1_from_w2e20294",
+    "run_local": true,
+    "checkpoint": "model_21793.pt",
+    "checkpoint_md5": "05e6b8ee4109ef40fd24bd8437bdfcba",
+    "checkpoint_md5_now": "05e6b8ee4109ef40fd24bd8437bdfcba",
+    "task": "Biped12-HangStand-G24Ra-v0",
+    "legacy": false,
+    "files": {
+     "agent.yaml": {
+      "size": 1252,
+      "md5": "df9cf6e61457ef195920966519d1a558",
+      "meta_md5": "df9cf6e61457ef195920966519d1a558",
+      "match_meta": true,
+      "same_as": []
+     },
+     "env.yaml": {
+      "size": 62452,
+      "md5": "7ff27617abdb9dd8ee6155c5d7703eaf",
+      "meta_md5": "7ff27617abdb9dd8ee6155c5d7703eaf",
+      "match_meta": true,
+      "same_as": []
+     },
+     "policy.onnx": {
+      "size": 1321751,
+      "md5": "57547697918f679543413a5b24c36555",
+      "meta_md5": "57547697918f679543413a5b24c36555",
+      "match_meta": true,
+      "same_as": [
+       "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/policy.onnx"
+      ]
+     },
+     "policy.pt": {
+      "size": 1332626,
+      "md5": "896ca613bc402de02caa8302988f9a68",
+      "meta_md5": "896ca613bc402de02caa8302988f9a68",
+      "match_meta": true,
+      "same_as": [
+       "logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/policy.pt"
+      ]
+     }
+    },
+    "files_match_meta": true,
+    "weights_match_ckpt": true
+   },
    {
     "name": "stand_crouch_g11a",
     "dir": "models/stand_crouch_g11a",
@@ -3278,6 +3508,53 @@
       "meta_md5": "238a62a02771aa22decaa365861e2a48",
       "match_meta": true,
       "same_as": []
+     }
+    },
+    "files_match_meta": true,
+    "weights_match_ckpt": true
+   },
+   {
+    "name": "stand_g21a_11300",
+    "dir": "models/stand_g21a_11300",
+    "run": "2026-10-02_21-23-08_g21a",
+    "run_local": true,
+    "checkpoint": "model_11300.pt",
+    "checkpoint_md5": "599c47d3c3f190ad91a80a1ab7ff9fa7",
+    "checkpoint_md5_now": "599c47d3c3f190ad91a80a1ab7ff9fa7",
+    "task": "Biped12-HangStand-G21a-v0",
+    "legacy": false,
+    "files": {
+     "agent.yaml": {
+      "size": 1212,
+      "md5": "8e61e739e6fd6c6536c40e030cb6180c",
+      "meta_md5": "8e61e739e6fd6c6536c40e030cb6180c",
+      "match_meta": true,
+      "same_as": []
+     },
+     "env.yaml": {
+      "size": 54800,
+      "md5": "ebda410ec37987f788df920ccac4f264",
+      "meta_md5": "ebda410ec37987f788df920ccac4f264",
+      "match_meta": true,
+      "same_as": []
+     },
+     "policy.onnx": {
+      "size": 1321751,
+      "md5": "43f113109a369a60e976a391cf8f17cd",
+      "meta_md5": "43f113109a369a60e976a391cf8f17cd",
+      "match_meta": true,
+      "same_as": [
+       "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported/policy.onnx"
+      ]
+     },
+     "policy.pt": {
+      "size": 1332626,
+      "md5": "2464f5cdba2e819d03ffa2d8d03bbb69",
+      "meta_md5": "2464f5cdba2e819d03ffa2d8d03bbb69",
+      "match_meta": true,
+      "same_as": [
+       "logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported/policy.pt"
+      ]
      }
     },
     "files_match_meta": true,
@@ -4017,6 +4294,53 @@
     },
     "files_match_meta": true,
     "weights_match_ckpt": null
+   },
+   {
+    "name": "walk_w3s3d_15800",
+    "dir": "models/walk_w3s3d_15800",
+    "run": "2026-10-07_00-11-12_w3S3d_from_s2d",
+    "run_local": true,
+    "checkpoint": "model_15800.pt",
+    "checkpoint_md5": "3da9f2e5b6c435d6b6df220e3a7969b2",
+    "checkpoint_md5_now": "3da9f2e5b6c435d6b6df220e3a7969b2",
+    "task": "Biped12-HangStand-W3S3d-v0",
+    "legacy": false,
+    "files": {
+     "agent.yaml": {
+      "size": 1230,
+      "md5": "8757acfb3435503cec55a32227b75b27",
+      "meta_md5": "8757acfb3435503cec55a32227b75b27",
+      "match_meta": true,
+      "same_as": []
+     },
+     "env.yaml": {
+      "size": 60296,
+      "md5": "41d1e62aed455029be7351a1db43f48f",
+      "meta_md5": "41d1e62aed455029be7351a1db43f48f",
+      "match_meta": true,
+      "same_as": []
+     },
+     "policy.onnx": {
+      "size": 1321751,
+      "md5": "d908cd92ba0916e790f9e3e28ff1d882",
+      "meta_md5": "d908cd92ba0916e790f9e3e28ff1d882",
+      "match_meta": true,
+      "same_as": [
+       "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.onnx"
+      ]
+     },
+     "policy.pt": {
+      "size": 1332468,
+      "md5": "10e3ee405e1534ebe67574ddbeb9a2a2",
+      "meta_md5": "10e3ee405e1534ebe67574ddbeb9a2a2",
+      "match_meta": true,
+      "same_as": [
+       "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.pt"
+      ]
+     }
+    },
+    "files_match_meta": true,
+    "weights_match_ckpt": true
    }
   ],
   "deploy_cand": [
@@ -4154,6 +4478,74 @@
     },
     "claimed_source": "logs/rsl_rl/biped12_stage4/2026-09-21_20-30-32_g9/model_8499.pt",
     "weights_match_ckpt": true
+   },
+   {
+    "name": "head_1008",
+    "dir": "deploy/cand/head_1008",
+    "files": {
+     "DIFF_LIST.md": {
+      "size": 29565,
+      "md5": "d24a50ffe21c4bbd9c58d2cef2c46fde",
+      "same_as": []
+     },
+     "OPERATOR_COMMANDS.md": {
+      "size": 23497,
+      "md5": "81ab09d3b9a451d4db74ee4edc7cfc9a",
+      "same_as": []
+     },
+     "README.md": {
+      "size": 26794,
+      "md5": "e3a6fce3f30415abcf8906ccd02e6004",
+      "same_as": []
+     },
+     "check_numpy_compat.py": {
+      "size": 5705,
+      "md5": "a5f718da9ed0eb238399af022df69800",
+      "same_as": []
+     },
+     "jetson_inventory_before_md5.txt": {
+      "size": 14369,
+      "md5": "35a129c9f16a082e1cb6d3ba9cb13855",
+      "same_as": []
+     },
+     "jetson_inventory_before_sizes.txt": {
+      "size": 9551,
+      "md5": "6377906f506016236fccffbe8a926c42",
+      "same_as": []
+     },
+     "make_fake_jetson.py": {
+      "size": 8924,
+      "md5": "97aaa6bd4cb9c2c4f2bc9470fee2ba3e",
+      "same_as": []
+     },
+     "numpy_1.21.5_api.json": {
+      "size": 28470,
+      "md5": "2edc5b2f37d26a1be64f251572c49a68",
+      "same_as": []
+     },
+     "replay_compare.py": {
+      "size": 24900,
+      "md5": "bd07d59691a8750eebf79f79a3afef25",
+      "same_as": []
+     },
+     "replay_mutate.py": {
+      "size": 2693,
+      "md5": "834704da514f72943154a73fe00eaaad",
+      "same_as": []
+     },
+     "selftest_w3_node_refs.py": {
+      "size": 2883,
+      "md5": "40edb00b9d06bde97f39f2b12efb1e09",
+      "same_as": []
+     },
+     "stage8_frame_compare.py": {
+      "size": 16566,
+      "md5": "60fcbf4ac546d884860214ace3504c6d",
+      "same_as": []
+     }
+    },
+    "claimed_source": null,
+    "weights_match_ckpt": null
    }
   ],
   "worktrees": [
@@ -4490,7 +4882,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 100.45,
+   "age_h": 102.36,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -4764,7 +5156,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 100.43,
+   "age_h": 102.34,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -5052,7 +5444,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 100.4,
+   "age_h": 102.3,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -5340,7 +5732,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 100.37,
+   "age_h": 102.28,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -5628,7 +6020,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 100.35,
+   "age_h": 102.26,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -5928,7 +6320,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 100.08,
+   "age_h": 101.99,
    "task": "Biped12-HangStand-G22R-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -6209,7 +6601,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 100.04,
+   "age_h": 101.95,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -6483,7 +6875,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 97.57,
+   "age_h": 99.48,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -6756,7 +7148,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 95.2,
+   "age_h": 97.1,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -7055,7 +7447,7 @@
    },
    "n_eval_files": 3,
    "eval_tasks": {},
-   "age_h": 91.33,
+   "age_h": 93.23,
    "task": "Biped12-HangStand-StepB1-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -7345,7 +7737,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 91.48,
+   "age_h": 93.38,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -7640,7 +8032,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 91.16,
+   "age_h": 93.07,
    "task": "Biped12-HangStand-StepI0-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -7965,7 +8357,7 @@
    },
    "n_eval_files": 3,
    "eval_tasks": {},
-   "age_h": 90.93,
+   "age_h": 92.83,
    "task": "Biped12-HangStand-StepA0-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -8289,7 +8681,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 90.67,
+   "age_h": 92.58,
    "task": "Biped12-HangStand-StepA0b-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -8592,7 +8984,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 90.5,
+   "age_h": 92.41,
    "task": "Biped12-HangStand-StepA0c-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -8896,7 +9288,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 90.32,
+   "age_h": 92.23,
    "task": "Biped12-HangStand-StepA0e-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -9185,7 +9577,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 90.29,
+   "age_h": 92.19,
    "task": "Biped12-HangStand-StepA0f-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -9488,7 +9880,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 90.08,
+   "age_h": 91.99,
    "task": "Biped12-HangStand-StepA0g-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -9791,7 +10183,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 89.9,
+   "age_h": 91.81,
    "task": "Biped12-HangStand-StepA0h-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -10080,7 +10472,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 89.61,
+   "age_h": 91.52,
    "task": "Biped12-HangStand-StepA0j-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -10372,7 +10764,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 89.52,
+   "age_h": 91.43,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -10647,7 +11039,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 88.62,
+   "age_h": 90.52,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -10922,7 +11314,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 88.61,
+   "age_h": 90.52,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -11200,7 +11592,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 86.94,
+   "age_h": 88.85,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -11475,7 +11867,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 86.36,
+   "age_h": 88.27,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -11750,7 +12142,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 82.98,
+   "age_h": 84.89,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -12025,7 +12417,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 100.45,
+   "age_h": 102.36,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -12300,7 +12692,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 100.42,
+   "age_h": 102.33,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -12589,7 +12981,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 100.39,
+   "age_h": 102.3,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -12878,7 +13270,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 100.35,
+   "age_h": 102.26,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -13167,7 +13559,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 100.03,
+   "age_h": 101.93,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -13387,7 +13779,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 1938.67,
+   "age_h": 1940.58,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -13718,7 +14110,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 1938.01,
+   "age_h": 1939.91,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -14002,7 +14394,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 1938.05,
+   "age_h": 1939.96,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -14309,7 +14701,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 1937.53,
+   "age_h": 1939.43,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -14559,7 +14951,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 1937.51,
+   "age_h": 1939.41,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -14899,7 +15291,7 @@
    },
    "n_eval_files": 5,
    "eval_tasks": {},
-   "age_h": 1042.01,
+   "age_h": 1043.92,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -15261,7 +15653,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 1936.45,
+   "age_h": 1938.35,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -15556,7 +15948,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 1935.77,
+   "age_h": 1937.68,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -15884,7 +16276,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 1579.66,
+   "age_h": 1581.57,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -16169,7 +16561,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 1777.9,
+   "age_h": 1779.81,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -16450,7 +16842,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 1777.83,
+   "age_h": 1779.73,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -16767,7 +17159,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 1777.29,
+   "age_h": 1779.2,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -17055,7 +17447,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 1777.08,
+   "age_h": 1778.99,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -17373,7 +17765,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 1774.46,
+   "age_h": 1776.36,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -17695,7 +18087,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 1776.59,
+   "age_h": 1778.5,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -17941,7 +18333,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 1776.43,
+   "age_h": 1778.33,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -18215,7 +18607,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 1776.23,
+   "age_h": 1778.14,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -18491,7 +18883,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 1775.82,
+   "age_h": 1777.73,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -18785,7 +19177,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 1775.02,
+   "age_h": 1776.93,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -19173,7 +19565,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 24
    },
-   "age_h": 99.38,
+   "age_h": 101.29,
    "task": "Biped12-HangStand-G22R-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -19545,7 +19937,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 24
    },
-   "age_h": 96.23,
+   "age_h": 98.14,
    "task": "Biped12-HangStand-G22R2-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -19840,8 +20232,8 @@
    "console_choices": [],
    "ref_counts": {
     "doc": 26,
-    "manifest": 7,
-    "result": 8,
+    "manifest": 22,
+    "result": 11,
     "script": 8,
     "registry": 1
    },
@@ -19880,6 +20272,111 @@
      "kind": "manifest",
      "file": "deploy/MANIFEST.md5",
      "line": 37,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 57,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 58,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 59,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 71,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 72,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 73,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 126,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 127,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 128,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 260,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 261,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 262,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 72,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 73,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 74,
      "hard": false,
      "ckpts": []
     },
@@ -20065,133 +20562,6 @@
      "ckpts": [
       120998
      ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/gen_v18b/README.md",
-     "line": 126,
-     "hard": false,
-     "ckpts": [
-      120998
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/gen_v18b/README.md",
-     "line": 127,
-     "hard": false,
-     "ckpts": [
-      120998
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/gen_v18b/README.md",
-     "line": 128,
-     "hard": false,
-     "ckpts": [
-      120998
-     ]
-    },
-    {
-     "kind": "manifest",
-     "file": "models/stand_v18b/meta.json",
-     "line": 3,
-     "hard": false,
-     "ckpts": []
-    },
-    {
-     "kind": "manifest",
-     "file": "models/stand_v18b/meta.json",
-     "line": 17,
-     "hard": false,
-     "ckpts": []
-    },
-    {
-     "kind": "manifest",
-     "file": "models/stand_v18b/env.yaml",
-     "line": 943,
-     "hard": false,
-     "ckpts": []
-    },
-    {
-     "kind": "script",
-     "file": "rl_walking/hang_stand_env_cfg.py",
-     "line": 8,
-     "hard": false,
-     "ckpts": [
-      120998
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "rl_walking/hang_stand_env_cfg.py",
-     "line": 10,
-     "hard": false,
-     "ckpts": [
-      120998
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "rl_walking/scripts/summarize_hang2stand.py",
-     "line": 12,
-     "hard": false,
-     "ckpts": []
-    },
-    {
-     "kind": "script",
-     "file": "rl_walking/scripts/eval_hang2stand.py",
-     "line": 10,
-     "hard": false,
-     "ckpts": [
-      120998
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "rl_walking/scripts/night_0906/h3_chain.sh",
-     "line": 7,
-     "hard": false,
-     "ckpts": [
-      120998
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "rl_walking/scripts/night_0906/train_chain_v20.sh",
-     "line": 7,
-     "hard": false,
-     "ckpts": [
-      120998
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "rl_walking/scripts/night_0906/train_chain_h3.sh",
-     "line": 3,
-     "hard": false,
-     "ckpts": [
-      120998
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "rl_walking/scripts/night_0906/train_chain_h3.sh",
-     "line": 9,
-     "hard": false,
-     "ckpts": [
-      120998
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": ".scratch/gpt_tasks/4_v18b_판정_반박.md",
-     "line": 97,
-     "hard": false,
-     "ckpts": [
-      120998
-     ]
     }
    ],
    "evaluated": {
@@ -20211,7 +20581,7 @@
     "Biped12-HangStand-S3r-v0": 2,
     "Biped12-HangStand-S1-v0": 1
    },
-   "age_h": 199.16,
+   "age_h": 201.07,
    "task": "Biped12-Velocity-Stage4V2-Stand-V18-v0",
    "task_src": "확인: models/stand_v18b/meta.json",
    "curated": {
@@ -20665,7 +21035,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G2-v0": 13
    },
-   "age_h": 423.87,
+   "age_h": 425.78,
    "task": "Biped12-HangStand-G2-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -21192,7 +21562,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G3-v0": 16
    },
-   "age_h": 423.79,
+   "age_h": 425.7,
    "task": "Biped12-HangStand-G3-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -21606,7 +21976,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 415.9,
+   "age_h": 417.81,
    "task": "Biped12-HangStand-G4-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -22020,9 +22390,21 @@
    "children": [],
    "registry": [],
    "console_choices": [],
-   "ref_counts": {},
-   "doc_files": [],
-   "refs_sample": [],
+   "ref_counts": {
+    "doc": 1
+   },
+   "doc_files": [
+    "reports/gen_w3/TORQUE_W3T_DESIGN.md"
+   ],
+   "refs_sample": [
+    {
+     "kind": "doc",
+     "file": "reports/gen_w3/TORQUE_W3T_DESIGN.md",
+     "line": 187,
+     "hard": false,
+     "ckpts": []
+    }
+   ],
    "evaluated": {
     "5700": {
      "n": 1,
@@ -22049,7 +22431,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G5-v0": 8
    },
-   "age_h": 413.68,
+   "age_h": 415.59,
    "task": "Biped12-HangStand-G5-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -22581,7 +22963,7 @@
     "Biped12-HangStand-G7-v0": 40,
     "Biped12-HangStand-G8a-v0": 1
    },
-   "age_h": 385.14,
+   "age_h": 387.05,
    "task": "Biped12-HangStand-G6-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -22942,7 +23324,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 409.72,
+   "age_h": 411.63,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -23205,7 +23587,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 409.7,
+   "age_h": 411.61,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -23569,7 +23951,7 @@
     "Biped12-HangStand-G8-v0": 44,
     "Biped12-HangStand-G7-v0": 38
    },
-   "age_h": 408.44,
+   "age_h": 410.35,
    "task": "Biped12-HangStand-G7-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -23847,7 +24229,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 404.17,
+   "age_h": 406.08,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -24111,7 +24493,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 404.16,
+   "age_h": 406.06,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -24375,7 +24757,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 404.14,
+   "age_h": 406.04,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -24639,7 +25021,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 404.12,
+   "age_h": 406.03,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -24903,7 +25285,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 404.09,
+   "age_h": 406.0,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -25189,7 +25571,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G8a-v0": 3
    },
-   "age_h": 403.89,
+   "age_h": 405.79,
    "task": "Biped12-HangStand-G8a-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -25489,7 +25871,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G8b-v0": 2
    },
-   "age_h": 403.68,
+   "age_h": 405.58,
    "task": "Biped12-HangStand-G8b-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -25789,7 +26171,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G8c-v0": 2
    },
-   "age_h": 403.46,
+   "age_h": 405.37,
    "task": "Biped12-HangStand-G8c-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -26089,7 +26471,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G8d-v0": 2
    },
-   "age_h": 403.24,
+   "age_h": 405.15,
    "task": "Biped12-HangStand-G8d-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -26487,7 +26869,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G8-v0": 97
    },
-   "age_h": 385.13,
+   "age_h": 387.04,
    "task": "Biped12-HangStand-G8-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -26887,8 +27269,8 @@
    "console_choices": [],
    "ref_counts": {
     "doc": 1,
-    "manifest": 8,
-    "result": 6,
+    "manifest": 14,
+    "result": 9,
     "registry": 1
    },
    "doc_files": [
@@ -26922,6 +27304,48 @@
      "kind": "manifest",
      "file": "deploy/MANIFEST.md5",
      "line": 40,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 95,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 96,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 97,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 96,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 97,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 98,
      "hard": false,
      "ckpts": []
     },
@@ -26994,7 +27418,7 @@
     "Biped12-HangStand-G11a-v0": 12,
     "Biped12-HangStand-G10-v0": 9
    },
-   "age_h": 384.17,
+   "age_h": 386.08,
    "task": "Biped12-HangStand-G9-v0",
    "task_src": "확인: models/stand_crouch_v5/meta.json",
    "curated": {
@@ -27339,7 +27763,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 369.46,
+   "age_h": 371.37,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -27687,8 +28111,8 @@
    ],
    "console_choices": [],
    "ref_counts": {
-    "manifest": 6,
-    "result": 6,
+    "manifest": 12,
+    "result": 9,
     "registry": 1
    },
    "doc_files": [],
@@ -27711,6 +28135,48 @@
      "kind": "manifest",
      "file": "deploy/MANIFEST.md5",
      "line": 43,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 98,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 99,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 100,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 99,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 100,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 101,
      "hard": false,
      "ckpts": []
     },
@@ -27765,7 +28231,7 @@
     "Biped12-HangStand-G10-v0": 24,
     "Biped12-HangStand-G11a-v0": 9
    },
-   "age_h": 368.27,
+   "age_h": 370.17,
    "task": "Biped12-HangStand-G10-v0",
    "task_src": "확인: models/stand_crouch_v6/meta.json",
    "curated": {
@@ -28190,8 +28656,8 @@
     "stand_crouch_g11a"
    ],
    "ref_counts": {
-    "manifest": 8,
-    "result": 6,
+    "manifest": 23,
+    "result": 9,
     "registry": 1
    },
    "doc_files": [],
@@ -28214,6 +28680,111 @@
      "kind": "manifest",
      "file": "deploy/MANIFEST.md5",
      "line": 46,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 60,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 61,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 62,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 101,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 102,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 103,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 129,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 130,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 131,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 263,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 264,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 265,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 102,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 103,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 104,
      "hard": false,
      "ckpts": []
     },
@@ -28281,7 +28852,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 77
    },
-   "age_h": 203.86,
+   "age_h": 205.76,
    "task": "Biped12-HangStand-G11a-v0",
    "task_src": "확인: models/stand_crouch_g11a/meta.json",
    "curated": {
@@ -28689,7 +29260,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 27
    },
-   "age_h": 213.4,
+   "age_h": 215.31,
    "task": "Biped12-HangStand-G11b-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -29034,7 +29605,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 36
    },
-   "age_h": 203.23,
+   "age_h": 205.13,
    "task": "Biped12-HangStand-G11c-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -29543,10 +30114,10 @@
     "stand_crouch_g12_ema0"
    ],
    "ref_counts": {
-    "manifest": 10,
+    "manifest": 25,
     "script": 8,
     "test": 1,
-    "result": 8,
+    "result": 11,
     "registry": 2
    },
    "doc_files": [],
@@ -29590,6 +30161,111 @@
      "kind": "manifest",
      "file": "deploy/MANIFEST.md5",
      "line": 49,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 63,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 64,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 65,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 104,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 105,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 106,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 132,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 133,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 134,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 266,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 267,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 268,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 105,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 106,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 107,
      "hard": false,
      "ckpts": []
     },
@@ -29726,7 +30402,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 319
    },
-   "age_h": 199.23,
+   "age_h": 201.14,
    "task": "Biped12-HangStand-G12-v0",
    "task_src": "확인: models/stand_crouch_g12/meta.json",
    "curated": {
@@ -30214,7 +30890,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G13-v0": 108
    },
-   "age_h": 177.47,
+   "age_h": 179.37,
    "task": "Biped12-HangStand-G13-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -30621,7 +31297,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 256
    },
-   "age_h": 177.47,
+   "age_h": 179.38,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -30810,7 +31486,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 178.93,
+   "age_h": 180.83,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -31161,7 +31837,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 108
    },
-   "age_h": 173.93,
+   "age_h": 175.83,
    "task": "Biped12-HangStand-G14a-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -31507,7 +32183,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G13-v0": 108
    },
-   "age_h": 173.9,
+   "age_h": 175.81,
    "task": "Biped12-HangStand-G14b-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -31837,7 +32513,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 54
    },
-   "age_h": 171.64,
+   "age_h": 173.55,
    "task": "Biped12-HangStand-G15w-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -32167,7 +32843,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 54
    },
-   "age_h": 169.89,
+   "age_h": 171.8,
    "task": "Biped12-HangStand-G15q-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -32497,7 +33173,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 54
    },
-   "age_h": 169.82,
+   "age_h": 171.73,
    "task": "Biped12-HangStand-G15u-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -32827,7 +33503,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 54
    },
-   "age_h": 168.61,
+   "age_h": 170.52,
    "task": "Biped12-HangStand-G15d-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -33157,7 +33833,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G15k-v0": 54
    },
-   "age_h": 167.29,
+   "age_h": 169.19,
    "task": "Biped12-HangStand-G15k-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -33515,7 +34191,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 32
    },
-   "age_h": 164.12,
+   "age_h": 166.03,
    "task": "Biped12-HangStand-G16o-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -33911,7 +34587,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 32
    },
-   "age_h": 162.28,
+   "age_h": 164.18,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -34251,7 +34927,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 32
    },
-   "age_h": 162.24,
+   "age_h": 164.15,
    "task": "Biped12-HangStand-G16a-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -34552,7 +35228,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 161.15,
+   "age_h": 163.06,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -34892,7 +35568,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 32
    },
-   "age_h": 160.37,
+   "age_h": 162.28,
    "task": "Biped12-HangStand-G16d-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -35183,7 +35859,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 140.72,
+   "age_h": 142.63,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -35472,7 +36148,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 140.72,
+   "age_h": 142.63,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -35810,7 +36486,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 76
    },
-   "age_h": 138.99,
+   "age_h": 140.89,
    "task": "Biped12-HangStand-G17o-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -36149,7 +36825,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 56
    },
-   "age_h": 138.95,
+   "age_h": 140.86,
    "task": "Biped12-HangStand-G17r-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -36488,7 +37164,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 52
    },
-   "age_h": 137.62,
+   "age_h": 139.53,
    "task": "Biped12-HangStand-G17p-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -36827,7 +37503,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 52
    },
-   "age_h": 137.59,
+   "age_h": 139.49,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -37166,7 +37842,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 52
    },
-   "age_h": 136.26,
+   "age_h": 138.17,
    "task": "Biped12-HangStand-G17rp-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -37505,7 +38181,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 52
    },
-   "age_h": 136.24,
+   "age_h": 138.14,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -37788,7 +38464,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 136.22,
+   "age_h": 138.12,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -38056,7 +38732,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 136.21,
+   "age_h": 138.12,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -38324,7 +39000,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 136.21,
+   "age_h": 138.11,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -38592,7 +39268,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 136.2,
+   "age_h": 138.11,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -38916,7 +39592,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 52
    },
-   "age_h": 135.09,
+   "age_h": 137.0,
    "task": "Biped12-HangStand-G18o-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -39255,7 +39931,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 56
    },
-   "age_h": 133.95,
+   "age_h": 135.85,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -39594,7 +40270,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 52
    },
-   "age_h": 132.61,
+   "age_h": 134.52,
    "task": "Biped12-HangStand-G18d-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -39879,7 +40555,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 133.91,
+   "age_h": 135.81,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -40205,7 +40881,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 55
    },
-   "age_h": 132.57,
+   "age_h": 134.47,
    "task": "Biped12-HangStand-G18f-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -40544,7 +41220,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 52
    },
-   "age_h": 131.59,
+   "age_h": 133.5,
    "task": "Biped12-HangStand-G18q-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -40885,7 +41561,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 60
    },
-   "age_h": 131.04,
+   "age_h": 132.94,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -41172,7 +41848,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 130.57,
+   "age_h": 132.48,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -41537,7 +42213,8 @@
    "registry": [],
    "console_choices": [],
    "ref_counts": {
-    "doc": 1
+    "doc": 1,
+    "manifest": 1
    },
    "doc_files": [
     "reports/gen_g18/G21_DESIGN_CRITERIA.md"
@@ -41551,6 +42228,13 @@
      "ckpts": [
       10700
      ]
+    },
+    {
+     "kind": "manifest",
+     "file": "models/stand_g21a_11300/agent.yaml",
+     "line": 20,
+     "hard": false,
+     "ckpts": []
     }
    ],
    "evaluated": {
@@ -41579,7 +42263,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 58
    },
-   "age_h": 129.52,
+   "age_h": 131.43,
    "task": "Biped12-HangStand-G19v-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -41896,7 +42580,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 130.55,
+   "age_h": 132.46,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -42222,7 +42906,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 52
    },
-   "age_h": 129.5,
+   "age_h": 131.4,
    "task": "Biped12-HangStand-G19n-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -42509,7 +43193,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 128.88,
+   "age_h": 130.79,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -42837,7 +43521,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 97
    },
-   "age_h": 127.81,
+   "age_h": 129.72,
    "task": "Biped12-HangStand-G20d-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -43124,7 +43808,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 128.86,
+   "age_h": 130.77,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -43452,7 +44136,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 97
    },
-   "age_h": 127.78,
+   "age_h": 129.69,
    "task": "Biped12-HangStand-G20s-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -43742,7 +44426,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 127.76,
+   "age_h": 129.67,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": null,
@@ -44048,7 +44732,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 26
    },
-   "age_h": 126.83,
+   "age_h": 128.74,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -44355,7 +45039,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 126.93,
+   "age_h": 128.84,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -44675,7 +45359,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 26
    },
-   "age_h": 125.6,
+   "age_h": 127.51,
    "task": "Biped12-HangStand-G21b-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -44995,7 +45679,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 26
    },
-   "age_h": 125.58,
+   "age_h": 127.49,
    "task": "Biped12-HangStand-G21a1-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -45315,7 +45999,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 26
    },
-   "age_h": 124.58,
+   "age_h": 126.49,
    "task": "Biped12-HangStand-G21a2-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -45635,7 +46319,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 71
    },
-   "age_h": 124.55,
+   "age_h": 126.46,
    "task": "Biped12-HangStand-G21a3-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -45956,7 +46640,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 71
    },
-   "age_h": 123.41,
+   "age_h": 125.32,
    "task": "Biped12-HangStand-G21c1-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -46279,7 +46963,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 71
    },
-   "age_h": 123.36,
+   "age_h": 125.27,
    "task": "Biped12-HangStand-G21c2-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -46599,7 +47283,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 26
    },
-   "age_h": 122.92,
+   "age_h": 124.82,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -46922,7 +47606,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 71
    },
-   "age_h": 122.18,
+   "age_h": 124.08,
    "task": "Biped12-HangStand-G21d-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -47447,10 +48131,10 @@
     "stand_c5krh_g21a_g24ra"
    ],
    "ref_counts": {
-    "doc": 14,
-    "manifest": 7,
+    "doc": 18,
+    "manifest": 27,
     "script": 14,
-    "result": 117,
+    "result": 120,
     "selftest": 2,
     "registry": 4
    },
@@ -47464,6 +48148,7 @@
     "reports/gen_step/drt_StepA0h_a1.0.md",
     "reports/gen_step/drt_StepA0i_a0.0.md",
     "reports/gen_step/drt_StepA0i_a1.0.md",
+    "reports/night_1007/CONTRACT_AUDIT.md",
     "reports/regress/runs/f1007_0852_d2base_s3d15800/summary.md",
     "reports/regress/runs/q1007_0541_base_s3d15800/summary.md",
     "reports/regress/runs/q1007_0541_base_s3d15800/summary_v1.md",
@@ -47506,6 +48191,125 @@
      "file": "deploy/deploy_g21a_1003.sh",
      "line": 13,
      "hard": true,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 66,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 67,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 68,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/README.md",
+     "line": 46,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 107,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 108,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 109,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 135,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 136,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 137,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 269,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 270,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 271,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 279,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 108,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 109,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 110,
+     "hard": false,
      "ckpts": []
     },
     {
@@ -47657,153 +48461,12 @@
      "ckpts": [
       11300
      ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/scripts/imuh_q.sh",
-     "line": 7,
-     "hard": true,
-     "ckpts": [
-      11300
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/scripts/safe_tr.sh",
-     "line": 9,
-     "hard": true,
-     "ckpts": [
-      11300
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/scripts/imuh2b_q.sh",
-     "line": 7,
-     "hard": true,
-     "ckpts": [
-      11300
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_g22r/g22r_verdict.py",
-     "line": 9,
-     "hard": false,
-     "ckpts": []
-    },
-    {
-     "kind": "script",
-     "file": "reports/regress/stand_mode_cmp.py",
-     "line": 14,
-     "hard": true,
-     "ckpts": [
-      11300
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/regress/run_regress.sh",
-     "line": 26,
-     "hard": true,
-     "ckpts": [
-      11300
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/q1007_0541_base_s3d15800/summary_v1.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      11300
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/q1007_0541_base_s3d15800/summary.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      11300
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/smc1007_0918_stand_mode_cmp/summary.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      11300
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/q1007_1759_rob16299/summary.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      11300
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/f1007_0852_d2base_s3d15800/summary.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      11300
-     ]
-    },
-    {
-     "kind": "selftest",
-     "file": "rl_walking/deploy/selftest_w3_equiv.py",
-     "line": 40,
-     "hard": true,
-     "ckpts": []
-    },
-    {
-     "kind": "selftest",
-     "file": "rl_walking/deploy/selftest_hturn2_equiv.py",
-     "line": 81,
-     "hard": true,
-     "ckpts": []
-    },
-    {
-     "kind": "script",
-     "file": "rl_walking/scripts/eval_walk.py",
-     "line": 12,
-     "hard": false,
-     "ckpts": [
-      11300
-     ]
-    },
-    {
-     "kind": "registry",
-     "file": "jetson/scripts/rl_bridge_node.py",
-     "line": 287,
-     "hard": true,
-     "ckpts": []
-    },
-    {
-     "kind": "registry",
-     "file": "jetson/scripts/rl_bridge_node.py",
-     "line": 292,
-     "hard": true,
-     "ckpts": []
-    },
-    {
-     "kind": "registry",
-     "file": "jetson/scripts/rl_bridge_node.py",
-     "line": 296,
-     "hard": true,
-     "ckpts": []
     }
    ],
    "evaluated": {
     "11300": {
-     "n": 3535,
-     "last": "2026-10-07 23:00",
+     "n": 3608,
+     "last": "2026-10-08 00:50",
      "example": "log_picture/ground_recovery_c5c_sf12_s2.txt"
     },
     "11600": {
@@ -47812,11 +48475,11 @@
      "example": "log_picture/ground_recovery_g21_g21a_11600_b8_s1.txt"
     }
    },
-   "n_eval_files": 3548,
+   "n_eval_files": 3621,
    "eval_tasks": {
-    "Biped12-HangStand-G11a-v0": 3404
+    "Biped12-HangStand-G11a-v0": 3477
    },
-   "age_h": 105.35,
+   "age_h": 107.25,
    "task": "Biped12-HangStand-G21a-v0",
    "task_src": "확인: reports/gen_g18/runner_equiv_g21a.txt 1 행(이 태스크와 이 run 의 exported 를 짝지어 러너 동치를 봄) · rl_walking/hang_stand_env_cfg.py Biped12HangStandG21aEnvCfg",
    "curated": {
@@ -47852,6 +48515,7 @@
    "key_ckpts": {
     "11300": [
      "exported/SOURCE_CHECKPOINT",
+     "models/stand_g21a_11300/meta.json",
      "분류표: 배포",
      "웜스타트 원본 ← 2026-10-03_22-10-34_g22r2_cR1toR4_seed1_from_g21a11300",
      "웜스타트 원본 ← 2026-10-04_05-06-37_stepa0i_seed1_from_g21a11300",
@@ -47866,7 +48530,7 @@
      "reports/gen_w3/scripts/imuh2b_q.sh:7",
      "reports/regress/stand_mode_cmp.py:14",
      "reports/regress/run_regress.sh:26",
-     "평가 산출물 3535 건"
+     "평가 산출물 3608 건"
     ],
     "11599": [
      "분류표: G21 선별 (model_11600.pt 는 model_11599.pt 의 링크)",
@@ -48318,7 +48982,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 26
    },
-   "age_h": 117.79,
+   "age_h": 119.7,
    "task": "Biped12-HangStand-G22a-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -48611,7 +49275,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 118.37,
+   "age_h": 120.28,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -48931,7 +49595,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 71
    },
-   "age_h": 117.71,
+   "age_h": 119.61,
    "task": "Biped12-HangStand-G22w-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -49257,7 +49921,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 26
    },
-   "age_h": 117.29,
+   "age_h": 119.2,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -49593,7 +50257,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 4
    },
-   "age_h": 94.69,
+   "age_h": 96.6,
    "task": "Biped12-HangStand-StepB0-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -49932,7 +50596,7 @@
    },
    "n_eval_files": 4,
    "eval_tasks": {},
-   "age_h": 89.64,
+   "age_h": 91.54,
    "task": "Biped12-HangStand-StepA0i-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -50258,7 +50922,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 89.39,
+   "age_h": 91.3,
    "task": "Biped12-HangStand-StepA0ic-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -50571,7 +51235,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 89.15,
+   "age_h": 91.06,
    "task": "Biped12-HangStand-StepA0k-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -50987,7 +51651,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 9
    },
-   "age_h": 88.3,
+   "age_h": 90.21,
    "task": "Biped12-HangStand-StepA0m-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -51385,7 +52049,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 5
    },
-   "age_h": 87.66,
+   "age_h": 89.56,
    "task": "Biped12-HangStand-W2a-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -51769,7 +52433,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 20
    },
-   "age_h": 87.13,
+   "age_h": 89.04,
    "task": "Biped12-HangStand-G23Ra-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -52115,7 +52779,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 5
    },
-   "age_h": 86.59,
+   "age_h": 88.5,
    "task": "Biped12-HangStand-W2b-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -52458,7 +53122,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 10
    },
-   "age_h": 86.37,
+   "age_h": 88.28,
    "task": "Biped12-HangStand-G23Rb-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -52794,7 +53458,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 5
    },
-   "age_h": 85.96,
+   "age_h": 87.86,
    "task": "Biped12-HangStand-W2c-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -53169,7 +53833,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 9
    },
-   "age_h": 85.37,
+   "age_h": 87.28,
    "task": "Biped12-HangStand-W2d-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -53508,7 +54172,8 @@
    "registry": [],
    "console_choices": [],
    "ref_counts": {
-    "doc": 1
+    "doc": 1,
+    "manifest": 1
    },
    "doc_files": [
     "reports/gen_step/w2e/eval17_20294.md"
@@ -53522,6 +54187,13 @@
      "ckpts": [
       20294
      ]
+    },
+    {
+     "kind": "manifest",
+     "file": "models/recover_g24ra_21793/agent.yaml",
+     "line": 20,
+     "hard": false,
+     "ckpts": []
     }
    ],
    "evaluated": {
@@ -53535,7 +54207,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 9
    },
-   "age_h": 84.94,
+   "age_h": 86.85,
    "task": "Biped12-HangStand-W2e-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -53975,6 +54647,10 @@
     {
      "run": "2026-10-06_06-04-22_pa1_from_g24ra21793",
      "ckpt": 21793
+    },
+    {
+     "run": "2026-10-08_00-11-19_g24raf_from_21793",
+     "ckpt": 21793
     }
    ],
    "registry": [
@@ -54003,16 +54679,17 @@
     "stand_c5krh_g21a_g24ra"
    ],
    "ref_counts": {
-    "doc": 8,
-    "script": 13,
-    "manifest": 11,
-    "result": 63,
+    "doc": 12,
+    "script": 16,
+    "manifest": 37,
+    "result": 67,
     "registry": 3
    },
    "doc_files": [
     "claude2.md",
     "reports/gen_step/OSS_STEP_RESEARCH.md",
     "reports/gen_step/g24ra/eval17_21793.md",
+    "reports/night_1007/CONTRACT_AUDIT.md",
     "reports/regress/runs/f1007_0852_d2base_s3d15800/summary.md",
     "reports/regress/runs/q1007_0541_base_s3d15800/summary.md",
     "reports/regress/runs/q1007_0541_base_s3d15800/summary_v1.md",
@@ -54034,6 +54711,34 @@
      "file": "deploy/deploy_c5_1004.sh",
      "line": 13,
      "hard": true,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 69,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 70,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 71,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 72,
+     "hard": false,
      "ckpts": []
     },
     {
@@ -54101,6 +54806,139 @@
     },
     {
      "kind": "manifest",
+     "file": "deploy/cand/head_1008/README.md",
+     "line": 47,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 110,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 111,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 112,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_md5.txt",
+     "line": 113,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 138,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 139,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 140,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 141,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 272,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 273,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 274,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 275,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 280,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 281,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 111,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 112,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 113,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/jetson_inventory_before_sizes.txt",
+     "line": 114,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
      "file": "deploy/cand/c5krh_1007/rl_bridge_node.py",
      "line": 311,
      "hard": false,
@@ -54144,162 +54982,6 @@
      "ckpts": [
       21793
      ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/c2_run.sh",
-     "line": 69,
-     "hard": true,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/settle_x_run.sh",
-     "line": 15,
-     "hard": true,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/settle_ab_run.sh",
-     "line": 17,
-     "hard": true,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/stopest_run.sh",
-     "line": 14,
-     "hard": true,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/scripts/imuh2_q.sh",
-     "line": 7,
-     "hard": true,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/scripts/imuh_q.sh",
-     "line": 7,
-     "hard": true,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/scripts/safe_tr.sh",
-     "line": 9,
-     "hard": true,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/scripts/imuh2b_q.sh",
-     "line": 7,
-     "hard": true,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/regress/stand_mode_cmp.py",
-     "line": 15,
-     "hard": true,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/regress/run_regress.sh",
-     "line": 26,
-     "hard": true,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/q1007_0541_base_s3d15800/summary_v1.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/q1007_0541_base_s3d15800/summary.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/smc1007_0918_stand_mode_cmp/summary.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/q1007_1759_rob16299/summary.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/f1007_0852_d2base_s3d15800/summary.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      21793
-     ]
-    },
-    {
-     "kind": "registry",
-     "file": "jetson/scripts/rl_bridge_node.py",
-     "line": 315,
-     "hard": true,
-     "ckpts": []
-    },
-    {
-     "kind": "registry",
-     "file": "jetson/scripts/rl_bridge_node.py",
-     "line": 317,
-     "hard": true,
-     "ckpts": []
-    },
-    {
-     "kind": "registry",
-     "file": "jetson/scripts/rl_bridge_node.py",
-     "line": 319,
-     "hard": true,
-     "ckpts": []
     }
    ],
    "evaluated": {
@@ -54324,16 +55006,16 @@
      "example": "log_picture/ground_recovery_fc21700d4_sf15_s1.txt"
     },
     "21793": {
-     "n": 2629,
-     "last": "2026-10-07 23:00",
+     "n": 2702,
+     "last": "2026-10-08 00:50",
      "example": "log_picture/ground_recovery_adk1_sf15_s1.txt"
     }
    },
-   "n_eval_files": 2673,
+   "n_eval_files": 2746,
    "eval_tasks": {
-    "Biped12-HangStand-G11a-v0": 2655
+    "Biped12-HangStand-G11a-v0": 2728
    },
-   "age_h": 73.44,
+   "age_h": 75.35,
    "task": "Biped12-HangStand-G24Ra-v0",
    "task_src": "확인: reports/gen_c5/g24rcont/hypothesis.md('변경: 없음(Biped12-HangStand-G24Ra-v0')",
    "curated": {
@@ -54388,10 +55070,12 @@
     ],
     "21793": [
      "exported/SOURCE_CHECKPOINT",
+     "models/recover_g24ra_21793/meta.json",
      "분류표: 배포",
      "웜스타트 원본 ← 2026-10-04_17-30-51_g24rcont_seed1_from_g24ra21793",
      "웜스타트 원본 ← 2026-10-04_20-41-39_g24rcontlr_seed1_from_g24ra21793",
      "웜스타트 원본 ← 2026-10-04_22-53-20_t1_seed1_from_g24ra21793",
+     "웜스타트 원본 ← 2026-10-08_00-11-19_g24raf_from_21793",
      "reports/gen_w3/c2_run.sh:69",
      "reports/gen_w3/settle_x_run.sh:15",
      "reports/gen_w3/settle_ab_run.sh:17",
@@ -54402,7 +55086,7 @@
      "reports/gen_w3/scripts/imuh2b_q.sh:7",
      "reports/regress/stand_mode_cmp.py:15",
      "reports/regress/run_regress.sh:26",
-     "평가 산출물 2629 건"
+     "평가 산출물 2702 건"
     ]
    },
    "key_missing": {},
@@ -54873,7 +55557,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 7
    },
-   "age_h": 83.7,
+   "age_h": 85.61,
    "task": "Biped12-HangStand-W2f-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -55240,7 +55924,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 10
    },
-   "age_h": 83.09,
+   "age_h": 85.0,
    "task": "Biped12-HangStand-G24Rb-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -55586,7 +56270,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 7
    },
-   "age_h": 82.48,
+   "age_h": 84.39,
    "task": "Biped12-HangStand-W2g-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -55953,7 +56637,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 34
    },
-   "age_h": 81.66,
+   "age_h": 83.57,
    "task": "Biped12-HangStand-G24Rc-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -56390,7 +57074,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 7
    },
-   "age_h": 81.01,
+   "age_h": 82.92,
    "task": "Biped12-HangStand-W2h-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -56729,7 +57413,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 79.87,
+   "age_h": 81.77,
    "task": "Biped12-HangStand-W2i-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -57067,7 +57751,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 78.89,
+   "age_h": 80.8,
    "task": "Biped12-HangStand-W2j-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -57413,7 +58097,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 32
    },
-   "age_h": 78.34,
+   "age_h": 80.25,
    "task": "Biped12-HangStand-G24Rd-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -57750,7 +58434,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 18
    },
-   "age_h": 76.19,
+   "age_h": 78.09,
    "task": "Biped12-HangStand-G24Re-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -58039,7 +58723,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 77.49,
+   "age_h": 79.4,
    "task": "Biped12-HangStand-G24Rf-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -58406,7 +59090,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 39
    },
-   "age_h": 76.07,
+   "age_h": 77.98,
    "task": "Biped12-HangStand-G24Ra-v0",
    "task_src": "확인: reports/gen_c5/g24rcont/hypothesis.md",
    "curated": {
@@ -58799,7 +59483,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 18
    },
-   "age_h": 74.37,
+   "age_h": 76.27,
    "task": "Biped12-HangStand-G24Rg-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -59136,7 +59820,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 18
    },
-   "age_h": 74.15,
+   "age_h": 76.06,
    "task": "Biped12-HangStand-G24Rh-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -59488,7 +60172,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 70
    },
-   "age_h": 73.29,
+   "age_h": 75.2,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -59822,7 +60506,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 73.63,
+   "age_h": 75.54,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -60144,7 +60828,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 128
    },
-   "age_h": 71.67,
+   "age_h": 73.58,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -60501,7 +61185,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 36
    },
-   "age_h": 71.66,
+   "age_h": 73.57,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -60818,7 +61502,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 36
    },
-   "age_h": 70.71,
+   "age_h": 72.62,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -61137,7 +61821,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 36
    },
-   "age_h": 70.7,
+   "age_h": 72.6,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -61454,7 +62138,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 72
    },
-   "age_h": 69.99,
+   "age_h": 71.9,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -61757,7 +62441,7 @@
    },
    "n_eval_files": 4,
    "eval_tasks": {},
-   "age_h": 67.9,
+   "age_h": 69.81,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -62058,7 +62742,7 @@
    },
    "n_eval_files": 9,
    "eval_tasks": {},
-   "age_h": 67.63,
+   "age_h": 69.54,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -62389,7 +63073,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 20
    },
-   "age_h": 66.89,
+   "age_h": 68.8,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -62708,7 +63392,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 20
    },
-   "age_h": 66.52,
+   "age_h": 68.43,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -63009,7 +63693,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 66.46,
+   "age_h": 68.37,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -63322,7 +64006,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 20
    },
-   "age_h": 66.21,
+   "age_h": 68.12,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -63623,7 +64307,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 66.04,
+   "age_h": 67.95,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -63910,7 +64594,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 65.37,
+   "age_h": 67.28,
    "task": "Biped12-HangStand-W2w-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -64211,7 +64895,7 @@
    },
    "n_eval_files": 3,
    "eval_tasks": {},
-   "age_h": 65.06,
+   "age_h": 66.97,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -64549,7 +65233,7 @@
    },
    "n_eval_files": 6,
    "eval_tasks": {},
-   "age_h": 63.89,
+   "age_h": 65.8,
    "task": "Biped12-HangStand-W2o-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -64953,7 +65637,7 @@
    },
    "n_eval_files": 21,
    "eval_tasks": {},
-   "age_h": 52.17,
+   "age_h": 54.07,
    "task": "Biped12-HangStand-W2q-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -65304,7 +65988,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 51.76,
+   "age_h": 53.67,
    "task": "Biped12-HangStand-W2q2-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -65613,7 +66297,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 51.4,
+   "age_h": 53.3,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -65941,7 +66625,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 51.04,
+   "age_h": 52.95,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -66241,7 +66925,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 48.46,
+   "age_h": 50.37,
    "task": "Biped12-HangStand-W2gs-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -66550,7 +67234,7 @@
    },
    "n_eval_files": 3,
    "eval_tasks": {},
-   "age_h": 48.19,
+   "age_h": 50.09,
    "task": "Biped12-HangStand-WOM-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -66871,7 +67555,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 44.41,
+   "age_h": 46.31,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -67192,7 +67876,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 43.7,
+   "age_h": 45.61,
    "task": "Biped12-HangStand-WOMX-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -67531,7 +68215,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 26
    },
-   "age_h": 43.47,
+   "age_h": 45.38,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -67882,7 +68566,7 @@
    },
    "n_eval_files": 5,
    "eval_tasks": {},
-   "age_h": 42.87,
+   "age_h": 44.77,
    "task": "Biped12-HangStand-W2om-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -68199,7 +68883,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 22
    },
-   "age_h": 42.31,
+   "age_h": 44.22,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -68516,7 +69200,7 @@
    },
    "n_eval_files": 4,
    "eval_tasks": {},
-   "age_h": 42.53,
+   "age_h": 44.43,
    "task": "Biped12-HangStand-W2omA-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -68819,7 +69503,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 42.0,
+   "age_h": 43.91,
    "task": "Biped12-HangStand-W2omL-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -69141,7 +69825,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 22
    },
-   "age_h": 41.14,
+   "age_h": 43.04,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -69467,7 +70151,7 @@
    },
    "n_eval_files": 6,
    "eval_tasks": {},
-   "age_h": 41.01,
+   "age_h": 42.91,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -69786,7 +70470,7 @@
    },
    "n_eval_files": 5,
    "eval_tasks": {},
-   "age_h": 40.2,
+   "age_h": 42.1,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -70108,7 +70792,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 32
    },
-   "age_h": 40.13,
+   "age_h": 42.03,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -70416,7 +71100,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 39.42,
+   "age_h": 41.33,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -70729,7 +71413,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 38.93,
+   "age_h": 40.84,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -71042,7 +71726,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 38.9,
+   "age_h": 40.81,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -71345,7 +72029,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 38.56,
+   "age_h": 40.47,
    "task": "Biped12-HangStand-W2omM-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -71674,7 +72358,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 38.28,
+   "age_h": 40.18,
    "task": "Biped12-HangStand-W2omP-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -71980,7 +72664,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 37.8,
+   "age_h": 39.71,
    "task": "Biped12-HangStand-W2omP2-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -72288,7 +72972,7 @@
    },
    "n_eval_files": 1,
    "eval_tasks": {},
-   "age_h": 37.76,
+   "age_h": 39.66,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -72603,7 +73287,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 37.6,
+   "age_h": 39.5,
    "task": "Biped12-HangStand-W2omP3-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -72911,7 +73595,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 37.41,
+   "age_h": 39.31,
    "task": "Biped12-HangStand-W2omI-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -73224,7 +73908,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 36.84,
+   "age_h": 38.75,
    "task": "Biped12-HangStand-W2omR1-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -73538,7 +74222,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 36.81,
+   "age_h": 38.71,
    "task": "Biped12-HangStand-W2omR2-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -73852,7 +74536,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 36.44,
+   "age_h": 38.35,
    "task": "Biped12-HangStand-W2omF-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -74156,7 +74840,7 @@
    },
    "n_eval_files": 4,
    "eval_tasks": {},
-   "age_h": 35.56,
+   "age_h": 37.47,
    "task": "Biped12-HangStand-W3C-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -74455,7 +75139,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 35.37,
+   "age_h": 37.28,
    "task": "Biped12-HangStand-W3U-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -74804,7 +75488,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 18
    },
-   "age_h": 35.01,
+   "age_h": 36.91,
    "task": "Biped12-HangStand-W3A-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -75146,7 +75830,7 @@
    },
    "n_eval_files": 6,
    "eval_tasks": {},
-   "age_h": 34.31,
+   "age_h": 36.22,
    "task": "Biped12-HangStand-W3CI-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -75475,7 +76159,7 @@
    },
    "n_eval_files": 24,
    "eval_tasks": {},
-   "age_h": 34.06,
+   "age_h": 35.97,
    "task": "Biped12-HangStand-W3A2-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -75825,7 +76509,7 @@
    },
    "n_eval_files": 46,
    "eval_tasks": {},
-   "age_h": 33.54,
+   "age_h": 35.45,
    "task": "Biped12-HangStand-W3A3-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -76175,7 +76859,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 15
    },
-   "age_h": 33.02,
+   "age_h": 34.93,
    "task": "Biped12-HangStand-W3S1b-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -76547,7 +77231,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 92
    },
-   "age_h": 30.87,
+   "age_h": 32.78,
    "task": "Biped12-HangStand-W3S1c-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -76923,7 +77607,7 @@
    },
    "n_eval_files": 30,
    "eval_tasks": {},
-   "age_h": 29.89,
+   "age_h": 31.79,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -77283,7 +77967,7 @@
    },
    "n_eval_files": 24,
    "eval_tasks": {},
-   "age_h": 28.29,
+   "age_h": 30.2,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -77591,7 +78275,7 @@
    },
    "n_eval_files": 12,
    "eval_tasks": {},
-   "age_h": 28.18,
+   "age_h": 30.09,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -77899,7 +78583,7 @@
    },
    "n_eval_files": 12,
    "eval_tasks": {},
-   "age_h": 27.51,
+   "age_h": 29.42,
    "task": "Biped12-HangStand-W3S1e-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -78235,7 +78919,7 @@
    },
    "n_eval_files": 82,
    "eval_tasks": {},
-   "age_h": 26.94,
+   "age_h": 28.84,
    "task": "Biped12-HangStand-W3S2-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -78579,7 +79263,7 @@
    },
    "n_eval_files": 12,
    "eval_tasks": {},
-   "age_h": 25.98,
+   "age_h": 27.89,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -78928,7 +79612,7 @@
    },
    "n_eval_files": 56,
    "eval_tasks": {},
-   "age_h": 24.65,
+   "age_h": 26.56,
    "task": "Biped12-HangStand-W3S3s2-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -79275,7 +79959,8 @@
    "registry": [],
    "console_choices": [],
    "ref_counts": {
-    "doc": 1
+    "doc": 1,
+    "manifest": 1
    },
    "doc_files": [
     "reports/gen_w3/C2_DESIGN.md"
@@ -79289,6 +79974,13 @@
      "ckpts": [
       15694
      ]
+    },
+    {
+     "kind": "manifest",
+     "file": "models/walk_w3s3d_15800/agent.yaml",
+     "line": 20,
+     "hard": false,
+     "ckpts": []
     }
    ],
    "evaluated": {
@@ -79300,7 +79992,7 @@
    },
    "n_eval_files": 24,
    "eval_tasks": {},
-   "age_h": 24.2,
+   "age_h": 26.11,
    "task": "Biped12-HangStand-W3S2d-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -79363,8 +80055,8 @@
    "name": "2026-10-07_00-11-12_w3S3d_from_s2d",
    "ts": "2026-10-07_00-11-12",
    "label": "w3S3d_from_s2d",
-   "size_bytes": 53931085,
-   "latest": "2026-10-07 01:55",
+   "size_bytes": 59239553,
+   "latest": "2026-10-07 23:09",
    "ckpts": [
     15700,
     15800,
@@ -79408,6 +80100,60 @@
       "actor_sig": "2c72efa1bd8e22070609ccc0df8b6d7e",
       "onnx_has_same_weights": true,
       "match_ckpt": 15800,
+      "n_compared": 1,
+      "source_agrees": true
+     }
+    },
+    {
+     "dir": "exported_16100",
+     "files": {
+      "SOURCE_CHECKPOINT": {
+       "size": 15,
+       "md5": "69932bb849fc90d996470f73e5a5f6a4"
+      },
+      "policy.onnx": {
+       "size": 1321751,
+       "md5": "96a647ce1b697e63d482f413e092bb07"
+      },
+      "policy.pt": {
+       "size": 1332468,
+       "md5": "0f6ece33bc5af8e7f8ace60398856040"
+      }
+     },
+     "source_checkpoint": "model_16100.pt",
+     "source_ckpt": 16100,
+     "provenance": {
+      "checked": true,
+      "actor_sig": "899f82d2dca9ef21aaae8545e2ccaeea",
+      "onnx_has_same_weights": true,
+      "match_ckpt": 16100,
+      "n_compared": 1,
+      "source_agrees": true
+     }
+    },
+    {
+     "dir": "exported_16193",
+     "files": {
+      "SOURCE_CHECKPOINT": {
+       "size": 15,
+       "md5": "338c679ec4c151bc23dd4314f4fb2501"
+      },
+      "policy.onnx": {
+       "size": 1321751,
+       "md5": "52fa9f68b01124e85fdc9f5549bd9a70"
+      },
+      "policy.pt": {
+       "size": 1332468,
+       "md5": "0ab7bc1639ecf7852713df4e4016bbbf"
+      }
+     },
+     "source_checkpoint": "model_16193.pt",
+     "source_ckpt": 16193,
+     "provenance": {
+      "checked": true,
+      "actor_sig": "b36de3d4f1b4ab5651c34086b981a11e",
+      "onnx_has_same_weights": true,
+      "match_ckpt": 16193,
       "n_compared": 1,
       "source_agrees": true
      }
@@ -79664,6 +80410,18 @@
     {
      "run": "2026-10-07_22-52-26_w3S3g_from_15800",
      "ckpt": 15800
+    },
+    {
+     "run": "2026-10-07_23-17-51_w3S3t_from_15800",
+     "ckpt": 15800
+    },
+    {
+     "run": "2026-10-07_23-42-16_w3S3tK_from_15800",
+     "ckpt": 15800
+    },
+    {
+     "run": "2026-10-08_00-37-31_w3S3fF_from_15800",
+     "ckpt": 15800
     }
    ],
    "registry": [
@@ -79677,10 +80435,10 @@
    ],
    "console_choices": [],
    "ref_counts": {
-    "doc": 14,
-    "manifest": 6,
-    "script": 8,
-    "result": 76,
+    "doc": 22,
+    "manifest": 23,
+    "script": 13,
+    "result": 81,
     "selftest": 1,
     "registry": 1
    },
@@ -79691,7 +80449,9 @@
     "reports/gen_w3/ENVELOPE.md",
     "reports/gen_w3/PARITY_AUDIT_1007.md",
     "reports/gen_w3/REAL_TEST1_PLAN.md",
+    "reports/gen_w3/TORQUE_W3T_DESIGN.md",
     "reports/night_1005/LOG.md",
+    "reports/night_1007/CONTRACT_AUDIT.md",
     "reports/regress/STAND_MODE_CMP.md",
     "reports/regress/runs/f1007_0852_d2base_s3d15800/summary.md",
     "reports/regress/runs/q1007_0541_base_s3d15800/summary.md",
@@ -79707,6 +80467,48 @@
      "ckpts": [
       15800
      ]
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 73,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 74,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 75,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/head_1008.md5",
+     "line": 76,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "script",
+     "file": "deploy/test_head_1008_local.sh",
+     "line": 92,
+     "hard": true,
+     "ckpts": []
+    },
+    {
+     "kind": "script",
+     "file": "deploy/test_head_1008_local.sh",
+     "line": 93,
+     "hard": true,
+     "ckpts": []
     },
     {
      "kind": "manifest",
@@ -79753,6 +80555,76 @@
      "ckpts": []
     },
     {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/README.md",
+     "line": 48,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 76,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 77,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 78,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 79,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 256,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 257,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 258,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 259,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "manifest",
+     "file": "deploy/cand/head_1008/DIFF_LIST.md",
+     "line": 282,
+     "hard": false,
+     "ckpts": []
+    },
+    {
      "kind": "doc",
      "file": "reports/night_1005/LOG.md",
      "line": 1464,
@@ -79765,6 +80637,20 @@
      "kind": "doc",
      "file": "reports/night_1005/LOG.md",
      "line": 1477,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "script",
+     "file": "reports/gen_w3/reward_scale.py",
+     "line": 4,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "script",
+     "file": "reports/gen_w3/reward_scale.py",
+     "line": 76,
      "hard": false,
      "ckpts": []
     },
@@ -79811,6 +80697,31 @@
     },
     {
      "kind": "doc",
+     "file": "reports/gen_w3/TORQUE_W3T_DESIGN.md",
+     "line": 134,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "doc",
+     "file": "reports/gen_w3/TORQUE_W3T_DESIGN.md",
+     "line": 265,
+     "hard": false,
+     "ckpts": [
+      15800
+     ]
+    },
+    {
+     "kind": "doc",
+     "file": "reports/gen_w3/TORQUE_W3T_DESIGN.md",
+     "line": 266,
+     "hard": false,
+     "ckpts": [
+      15800
+     ]
+    },
+    {
+     "kind": "doc",
      "file": "reports/gen_w3/C2_DESIGN.md",
      "line": 316,
      "hard": false,
@@ -79836,109 +80747,16 @@
     },
     {
      "kind": "script",
+     "file": "reports/gen_w3/scripts/ketrain.sh",
+     "line": 5,
+     "hard": true,
+     "ckpts": []
+    },
+    {
+     "kind": "script",
      "file": "reports/gen_w3/scripts/w3s3dr_eval.sh",
      "line": 5,
      "hard": false,
-     "ckpts": []
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/scripts/w3s3dr.sh",
-     "line": 5,
-     "hard": true,
-     "ckpts": []
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/scripts/safe_tr.sh",
-     "line": 8,
-     "hard": true,
-     "ckpts": [
-      15800
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/gen_w3/scripts/w3s3e.sh",
-     "line": 6,
-     "hard": true,
-     "ckpts": []
-    },
-    {
-     "kind": "script",
-     "file": "reports/regress/stand_mode_cmp.py",
-     "line": 13,
-     "hard": true,
-     "ckpts": [
-      15800
-     ]
-    },
-    {
-     "kind": "script",
-     "file": "reports/regress/run_regress.sh",
-     "line": 25,
-     "hard": true,
-     "ckpts": [
-      15800
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/STAND_MODE_CMP.md",
-     "line": 10,
-     "hard": false,
-     "ckpts": [
-      15800
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/q1007_0541_base_s3d15800/summary_v1.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      15800
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/q1007_0541_base_s3d15800/summary.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      15800
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/smc1007_0918_stand_mode_cmp/summary.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      15800
-     ]
-    },
-    {
-     "kind": "doc",
-     "file": "reports/regress/runs/f1007_0852_d2base_s3d15800/summary.md",
-     "line": 4,
-     "hard": false,
-     "ckpts": [
-      15800
-     ]
-    },
-    {
-     "kind": "selftest",
-     "file": "rl_walking/deploy/selftest_w3s3d_onnx.py",
-     "line": 13,
-     "hard": true,
-     "ckpts": []
-    },
-    {
-     "kind": "registry",
-     "file": "rl_walking/deploy/w3_deploy.py",
-     "line": 63,
-     "hard": true,
      "ckpts": []
     }
    ],
@@ -79949,8 +80767,8 @@
      "example": "log_picture/w3eval_s3d_15700_tl03.txt"
     },
     "15800": {
-     "n": 654,
-     "last": "2026-10-07 23:00",
+     "n": 706,
+     "last": "2026-10-08 00:50",
      "example": "log_picture/ground_recovery_tr_nostop_b18_d2_s2.txt"
     },
     "15900": {
@@ -79964,11 +80782,11 @@
      "example": "log_picture/c2unit_c2s3dg_B4_s2.txt"
     }
    },
-   "n_eval_files": 748,
+   "n_eval_files": 800,
    "eval_tasks": {
-    "Biped12-HangStand-G11a-v0": 443
+    "Biped12-HangStand-G11a-v0": 495
    },
-   "age_h": 21.07,
+   "age_h": 1.75,
    "task": "Biped12-HangStand-W3S3d-v0",
    "task_src": "확인: rl_walking/deploy/w3_deploy.py W3S3D_TASK · reports/gen_w3/REPRO.md",
    "curated": {
@@ -80014,16 +80832,20 @@
     "15800": [
      "exported/SOURCE_CHECKPOINT",
      "W3_SPECS(실험 플래그) stand_w3s3d_15800",
+     "models/walk_w3s3d_15800/meta.json",
      "분류표: 배포",
      "웜스타트 원본 ← 2026-10-07_01-44-18_w3S4d_from_s3d",
      "웜스타트 원본 ← 2026-10-07_21-51-10_w3S3e_from_s3d",
      "웜스타트 원본 ← 2026-10-07_22-25-32_w3S3f_from_15800",
      "웜스타트 원본 ← 2026-10-07_22-52-26_w3S3g_from_15800",
+     "웜스타트 원본 ← 2026-10-07_23-17-51_w3S3t_from_15800",
+     "웜스타트 원본 ← 2026-10-07_23-42-16_w3S3tK_from_15800",
+     "웜스타트 원본 ← 2026-10-08_00-37-31_w3S3fF_from_15800",
      "reports/gen_w3/scripts/safe_tr.sh:8",
      "reports/regress/stand_mode_cmp.py:13",
      "reports/regress/run_regress.sh:25",
      "deploy/w3s3d_1007.md5:4",
-     "평가 산출물 654 건",
+     "평가 산출물 706 건",
      "최근 24 시간 안에 바뀐 run — 솎기에서 뺌"
     ],
     "15900": [
@@ -80036,10 +80858,12 @@
      "최근 24 시간 안에 바뀐 run — 솎기에서 뺌"
     ],
     "16100": [
+     "exported_16100/SOURCE_CHECKPOINT",
      "분류표: REPRO 이웃",
      "최근 24 시간 안에 바뀐 run — 솎기에서 뺌"
     ],
     "16193": [
+     "exported_16193/SOURCE_CHECKPOINT",
      "분류표: REPRO 이웃·c2 시작",
      "reports/gen_w3/c2_train.sh:15",
      "평가 산출물 58 건",
@@ -80059,6 +80883,20 @@
    "hard_refs": [
     {
      "kind": "script",
+     "file": "deploy/test_head_1008_local.sh",
+     "line": 92,
+     "current": true,
+     "ckpts": []
+    },
+    {
+     "kind": "script",
+     "file": "deploy/test_head_1008_local.sh",
+     "line": 93,
+     "current": true,
+     "ckpts": []
+    },
+    {
+     "kind": "script",
      "file": "reports/gen_w3/c2_train.sh",
      "line": 15,
      "current": true,
@@ -80069,6 +80907,13 @@
     {
      "kind": "script",
      "file": "reports/gen_w3/scripts/w3train.sh",
+     "line": 5,
+     "current": true,
+     "ckpts": []
+    },
+    {
+     "kind": "script",
+     "file": "reports/gen_w3/scripts/ketrain.sh",
      "line": 5,
      "current": true,
      "ckpts": []
@@ -80402,7 +81247,7 @@
    },
    "n_eval_files": 4,
    "eval_tasks": {},
-   "age_h": 21.14,
+   "age_h": 23.04,
    "task": "Biped12-HangStand-W3S4d-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -80766,7 +81611,7 @@
    },
    "n_eval_files": 181,
    "eval_tasks": {},
-   "age_h": 20.69,
+   "age_h": 22.6,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -81139,7 +81984,7 @@
    "eval_tasks": {
     "Biped12-HangStand-G11a-v0": 70
    },
-   "age_h": 19.78,
+   "age_h": 21.69,
    "task": "Biped12-HangStand-W3S3dC2-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -81488,7 +82333,7 @@
    },
    "n_eval_files": 90,
    "eval_tasks": {},
-   "age_h": 13.67,
+   "age_h": 15.58,
    "task": "Biped12-HangStand-W3S4dD-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -81832,7 +82677,7 @@
    },
    "n_eval_files": 72,
    "eval_tasks": {},
-   "age_h": 13.67,
+   "age_h": 15.58,
    "task": null,
    "task_src": "미상(env.yaml 에 태스크 id 가 없다)",
    "curated": {
@@ -82149,7 +82994,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 17.09,
+   "age_h": 19.0,
    "task": "Biped12-HangStand-W3S3d-v0",
    "task_src": "확인: reports/gen_w3/REPRO.md 방법",
    "curated": {
@@ -82466,7 +83311,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 15.97,
+   "age_h": 17.88,
    "task": "Biped12-HangStand-W3S3d-v0",
    "task_src": "확인: reports/gen_w3/REPRO.md 방법",
    "curated": {
@@ -82783,7 +83628,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 12.53,
+   "age_h": 14.44,
    "task": "Biped12-HangStand-W3S3d-v0",
    "task_src": "확인: reports/gen_w3/REPRO.md 방법",
    "curated": {
@@ -83100,7 +83945,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 12.33,
+   "age_h": 14.24,
    "task": "Biped12-HangStand-W3S3d-v0",
    "task_src": "확인: reports/gen_w3/REPRO.md 방법",
    "curated": {
@@ -83462,7 +84307,7 @@
    },
    "n_eval_files": 44,
    "eval_tasks": {},
-   "age_h": 5.82,
+   "age_h": 7.73,
    "task": "Biped12-HangStand-W3S3dR-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -83820,7 +84665,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 0.75,
+   "age_h": 2.66,
    "task": "Biped12-HangStand-W3S3e-v0",
    "task_src": "확인: reports/gen_w3/scripts/w3s3e.sh · reports/gen_w3/S3E_DESIGN.md §2",
    "curated": {
@@ -84211,7 +85056,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": 0.2,
+   "age_h": 2.11,
    "task": "Biped12-HangStand-W3S3f-v0",
    "task_src": "확인: reports/gen_w3/TORQUE_BUDGET_1007.md §7",
    "curated": {
@@ -84231,12 +85076,19 @@
      "16100": "평가 후보",
      "16299": "평가 후보"
     },
-    "stale_hints": []
+    "stale_hints": [
+     {
+      "doc": "reports/gen_w3/TORQUE_BUDGET_1007.md",
+      "line": 82,
+      "text": "## 9. W3S3f 판정 (1007 23:09, `x13_summ.py --prefix tr_s3f<CK>_x13`, seed 1–2, 배율당 통과 env 100–109)"
+     }
+    ]
    },
    "cls": "평가 중 후보",
    "sub": null,
    "reasons": [
-    "W3S3f — 토크 한계 무작위화(0.7–1.0) 단일 변경, 후보 체크포인트 16100·16299(사전 등록만 있고 결과 없음)"
+    "W3S3f — 토크 한계 무작위화(0.7–1.0) 단일 변경, 후보 체크포인트 16100·16299(사전 등록만 있고 결과 없음)",
+    "⚠ 문서에 판정 문구가 생긴 것으로 보인다(`reports/gen_w3/TORQUE_BUDGET_1007.md`:82 '## 9. W3S3f 판정 (1007 23:09, `x13_summ.py --prefix tr_s3f<CK>') — 분류표(CURATED)를 고쳐야 한다"
    ],
    "key_ckpts": {
     "15800": [
@@ -84283,24 +85135,83 @@
    "name": "2026-10-07_22-52-26_w3S3g_from_15800",
    "ts": "2026-10-07_22-52-26",
    "label": "w3S3g_from_15800",
-   "size_bytes": 17788175,
-   "latest": "2026-10-07 23:00",
+   "size_bytes": 56883829,
+   "latest": "2026-10-07 23:15",
    "ckpts": [
     15800,
-    15900
+    15900,
+    16000,
+    16100,
+    16200,
+    16299
    ],
-   "n_ckpt": 2,
+   "n_ckpt": 6,
    "ckpt_min": 15800,
-   "ckpt_max": 15900,
-   "ckpt_bytes": 16038014,
+   "ckpt_max": 16299,
+   "ckpt_bytes": 48114042,
    "ckpt_links": [],
    "tfevents": 1,
    "other_entries": [],
    "train_span": [
     "2026-10-07 22:52",
-    "2026-10-07 22:56"
+    "2026-10-07 23:15"
    ],
-   "exported": [],
+   "exported": [
+    {
+     "dir": "exported_16100",
+     "files": {
+      "SOURCE_CHECKPOINT": {
+       "size": 15,
+       "md5": "69932bb849fc90d996470f73e5a5f6a4"
+      },
+      "policy.onnx": {
+       "size": 1321751,
+       "md5": "316dc09de3214fa0a0bf255385f0b352"
+      },
+      "policy.pt": {
+       "size": 1332468,
+       "md5": "ea6eb4ec5c001b9e7f8b4074d821bbe3"
+      }
+     },
+     "source_checkpoint": "model_16100.pt",
+     "source_ckpt": 16100,
+     "provenance": {
+      "checked": true,
+      "actor_sig": "ee3c4463e87a77c65afe9545a66885db",
+      "onnx_has_same_weights": true,
+      "match_ckpt": 16100,
+      "n_compared": 1,
+      "source_agrees": true
+     }
+    },
+    {
+     "dir": "exported_16299",
+     "files": {
+      "SOURCE_CHECKPOINT": {
+       "size": 15,
+       "md5": "639723b352b47b89c6feac2c5765b19c"
+      },
+      "policy.onnx": {
+       "size": 1321751,
+       "md5": "19a0196808575af26e6812e6134446be"
+      },
+      "policy.pt": {
+       "size": 1332468,
+       "md5": "c0f6fb19d29ed6ac5e539f24c3d3be98"
+      }
+     },
+     "source_checkpoint": "model_16299.pt",
+     "source_ckpt": 16299,
+     "provenance": {
+      "checked": true,
+      "actor_sig": "44dc4c60e9ef06de222c6ded7711e0db",
+      "onnx_has_same_weights": true,
+      "match_ckpt": 16299,
+      "n_compared": 1,
+      "source_agrees": true
+     }
+    }
+   ],
    "params": {
     "env.yaml": {
      "size": 60376,
@@ -84313,7 +85224,11 @@
    },
    "ckpt_md5": {
     "15800": "c4b6c6dc17dc23723044a3ff13084462",
-    "15900": "fc6e881087e2a0c4242d24f97dda6690"
+    "15900": "fc6e881087e2a0c4242d24f97dda6690",
+    "16000": "0c769d3a0fe05b80c5054f780b8817de",
+    "16100": "4aaf41f1f4b3978240ccd4dc1ff4d154",
+    "16200": "4092198fc18d0f45e20f470ab1d8c291",
+    "16299": "dbfb29a4150b45b58f5d670b33a27a0b"
    },
    "agent": {
     "seed": 1,
@@ -84533,7 +85448,7 @@
    "evaluated": {},
    "n_eval_files": 0,
    "eval_tasks": {},
-   "age_h": -0.0,
+   "age_h": 1.64,
    "task": "Biped12-HangStand-W3S3g-v0",
    "task_src": "확인: reports/gen_w3/TRANSITION_W3KE.md §5.19",
    "curated": {
@@ -84553,12 +85468,19 @@
      "16100": "평가 후보",
      "16299": "평가 후보"
     },
-    "stale_hints": []
+    "stale_hints": [
+     {
+      "doc": "reports/gen_w3/TRANSITION_W3KE.md",
+      "line": 762,
+      "text": "### 5.19b W3S3g 판정 — 쏠림 벌점 (1007 23:54, `s3g_judge.py`, seed 1–2, 256 env × 2)"
+     }
+    ]
    },
    "cls": "평가 중 후보",
    "sub": null,
    "reasons": [
-    "W3S3g — W3S3e + 쏠림 벌점(w3_lean) 단일 변경, 후보 체크포인트 16100·16299(사전 등록만 있고 결과 없음)"
+    "W3S3g — W3S3e + 쏠림 벌점(w3_lean) 단일 변경, 후보 체크포인트 16100·16299(사전 등록만 있고 결과 없음)",
+    "⚠ 문서에 판정 문구가 생긴 것으로 보인다(`reports/gen_w3/TRANSITION_W3KE.md`:762 '### 5.19b W3S3g 판정 — 쏠림 벌점 (1007 23:54, `s3g_judge.py`, seed') — 분류표(CURATED)를 고쳐야 한다"
    ],
    "key_ckpts": {
     "15800": [
@@ -84566,11 +85488,1396 @@
     ],
     "15900": [
      "평가 중 — 전부 남김"
+    ],
+    "16000": [
+     "평가 중 — 전부 남김"
+    ],
+    "16100": [
+     "exported_16100/SOURCE_CHECKPOINT",
+     "분류표: 평가 후보",
+     "평가 중 — 전부 남김"
+    ],
+    "16200": [
+     "평가 중 — 전부 남김"
+    ],
+    "16299": [
+     "exported_16299/SOURCE_CHECKPOINT",
+     "분류표: 평가 후보",
+     "평가 중 — 전부 남김"
     ]
    },
    "key_missing": {},
    "thin_ckpts": [],
    "thin_bytes": 0,
+   "dims": {
+    "obs": 320,
+    "critic_obs": 335,
+    "act": 12,
+    "iter": 15800,
+    "ckpt": 15800
+   },
+   "hard_refs": [],
+   "ckpt_size_each": [
+    8019007
+   ]
+  },
+  {
+   "path": "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800",
+   "exp": "logs/rsl_rl/biped12_stepb0",
+   "name": "2026-10-07_23-17-51_w3S3t_from_15800",
+   "ts": "2026-10-07_23-17-51",
+   "label": "w3S3t_from_15800",
+   "size_bytes": 54237436,
+   "latest": "2026-10-07 23:40",
+   "ckpts": [
+    15800,
+    15900,
+    16000,
+    16100,
+    16200,
+    16299
+   ],
+   "n_ckpt": 6,
+   "ckpt_min": 15800,
+   "ckpt_max": 16299,
+   "ckpt_bytes": 48114042,
+   "ckpt_links": [],
+   "tfevents": 1,
+   "other_entries": [],
+   "train_span": [
+    "2026-10-07 23:18",
+    "2026-10-07 23:40"
+   ],
+   "exported": [
+    {
+     "dir": "exported_16299",
+     "files": {
+      "SOURCE_CHECKPOINT": {
+       "size": 15,
+       "md5": "639723b352b47b89c6feac2c5765b19c"
+      },
+      "policy.onnx": {
+       "size": 1321751,
+       "md5": "d79c6c86f8814c8d534eb3876faec8e1"
+      },
+      "policy.pt": {
+       "size": 1332468,
+       "md5": "73c79f57025bcd7ae48cdbf57a58e264"
+      }
+     },
+     "source_checkpoint": "model_16299.pt",
+     "source_ckpt": 16299,
+     "provenance": {
+      "checked": true,
+      "actor_sig": "c1b6afb2ccf29417602024146c60c48c",
+      "onnx_has_same_weights": true,
+      "match_ckpt": 16299,
+      "n_compared": 1,
+      "source_agrees": true
+     }
+    }
+   ],
+   "params": {
+    "env.yaml": {
+     "size": 60500,
+     "md5": "ee5001fc6f93f4bbf926ad4e8ab99506"
+    },
+    "agent.yaml": {
+     "size": 1233,
+     "md5": "1c2123be49c5b56a590e4a75fc5b04da"
+    }
+   },
+   "ckpt_md5": {
+    "15800": "b477fdc54e7e116e847bbb3873e92c12",
+    "15900": "b705687d8e33de3615b08e07e7e12bdd",
+    "16000": "042834afb49db9613e66484a082487ca",
+    "16100": "b113406f3c498a6de03cec51dcf2ce3d",
+    "16200": "7c0ef6e96d100b4bb3573a58f4416b52",
+    "16299": "4b2582b65e51476f673be91eb0d90a6a"
+   },
+   "agent": {
+    "seed": 1,
+    "max_iterations": 500,
+    "experiment_name": "biped12_stepb0",
+    "run_name": "w3S3t_from_15800",
+    "resume": true,
+    "load_run": "2026-10-07_00-11-12_w3S3d_from_s2d",
+    "load_checkpoint": "model_15800.pt",
+    "save_interval": 100,
+    "runner": "OnPolicyRunner",
+    "algo": "PPO",
+    "actor": [
+     512,
+     256,
+     128
+    ],
+    "init_noise_std": 0.25,
+    "lr": 0.001,
+    "mirror": true
+   },
+   "env": {
+    "control": {
+     "sim_dt": 0.005,
+     "decimation": 4,
+     "hz": 50.0
+    },
+    "num_envs": 4096,
+    "episode_length_s": 20.0,
+    "usd": "rl_walking/assets/usd_final3/biped12.usd",
+    "default_pose": {
+     "left_hip_f": 0.5282,
+     "left_knee": -0.672,
+     "left_ankle_f": 0.4887,
+     "label": "CROUCH_V5"
+    },
+    "action": {
+     "cls": "SlewJointPositionAction",
+     "scale": 0.25,
+     "use_default_offset": true,
+     "slew_deg_per_tick": 4.0,
+     "delay_steps": [
+      1,
+      5
+     ],
+     "lpf_beta_range": [
+      0.2,
+      0.4
+     ],
+     "backlash_rad_range": [
+      0.005,
+      0.026
+     ]
+    },
+    "obs_policy": [
+     {
+      "name": "base_ang_vel",
+      "func": "base_ang_vel_lagged",
+      "hist": 5,
+      "params": {
+       "max_lag": 3
+      }
+     },
+     {
+      "name": "projected_gravity",
+      "func": "projected_gravity_lagged",
+      "hist": 5,
+      "params": {}
+     },
+     {
+      "name": "velocity_commands",
+      "func": "generated_commands",
+      "hist": 5,
+      "params": {
+       "command_name": "base_velocity"
+      }
+     },
+     {
+      "name": "joint_pos",
+      "func": "encoder_joint_pos_rel_v2",
+      "hist": 5,
+      "params": {}
+     },
+     {
+      "name": "joint_vel",
+      "func": "encoder_joint_vel_lpf",
+      "hist": 5,
+      "params": {
+       "beta": 0.25
+      }
+     },
+     {
+      "name": "actions",
+      "func": "last_action_lpf",
+      "hist": 5,
+      "params": {
+       "action_name": "joint_pos"
+      }
+     },
+     {
+      "name": "gait_clock",
+      "func": "gait_clock",
+      "hist": 5,
+      "params": {
+       "freq": 1.1
+      }
+     },
+     {
+      "name": "feet_contact",
+      "func": "feet_contact_real_v2",
+      "hist": 5,
+      "params": {
+       "threshold": 5.0,
+       "hold_ticks": 5,
+       "extra_delay": 1
+      }
+     },
+     {
+      "name": "gyro_ema",
+      "func": "gyro_ema_lagged",
+      "hist": 5,
+      "params": {
+       "alpha": 0.1,
+       "noise": 0.05,
+       "max_lag": 3
+      }
+     },
+     {
+      "name": "joint_vel_ema",
+      "func": "encoder_joint_vel_ema_v2",
+      "hist": 5,
+      "params": {
+       "alpha": 0.1,
+       "noise": 0.3
+      }
+     }
+    ],
+    "obs_filter": {
+     "actions": "last_action_lpf",
+     "joint_vel": "encoder_joint_vel_lpf",
+     "joint_vel_beta": 0.25,
+     "joint_vel_ema": "encoder_joint_vel_ema_v2",
+     "feet_contact": "feet_contact_real_v2",
+     "gait_clock_freq": 1.1
+    },
+    "command": {
+     "cls": "Stage4V2VelocityCommand",
+     "resample_s": [
+      8.0,
+      12.0
+     ],
+     "heading_command": false,
+     "vx": [
+      0.0,
+      0.0
+     ],
+     "vy": [
+      0.0,
+      0.0
+     ],
+     "wz": [
+      0.0,
+      0.0
+     ]
+    },
+    "events": [
+     "physics_material",
+     "add_base_mass",
+     "base_com",
+     "actuator_gains",
+     "joint_friction",
+     "joint_armature",
+     "base_external_force_torque",
+     "reset_base",
+     "reset_robot_joints",
+     "link_mass_calib",
+     "calib_bias",
+     "stance_asym",
+     "hang_support_reset",
+     "hang_support_step",
+     "ankle_r_friction",
+     "default_pose_bias",
+     "joint_limits_config",
+     "w3_cmd",
+     "w3_gait",
+     "w3_ref",
+     "w3_track",
+     "w3_lat",
+     "w3_turn"
+    ],
+    "n_rewards": 54,
+    "rewards_fp": "137db2f5",
+    "terminations": [
+     "time_out",
+     "base_contact",
+     "bad_orientation",
+     "base_too_low"
+    ],
+    "curriculum": [
+     "w3_assist",
+     "w3_vy",
+     "w3_wz"
+    ],
+    "contract_fp": "ecbeb86f"
+   },
+   "aliases": [
+    "logs/rsl_rl/biped12_stage4/2026-10-07_23-17-51_w3S3t_from_15800"
+   ],
+   "parent": "2026-10-07_00-11-12_w3S3d_from_s2d",
+   "parent_ckpt": 15800,
+   "children": [],
+   "registry": [],
+   "console_choices": [],
+   "ref_counts": {},
+   "doc_files": [],
+   "refs_sample": [],
+   "evaluated": {},
+   "n_eval_files": 0,
+   "eval_tasks": {},
+   "age_h": 1.23,
+   "task": "Biped12-HangStand-W3S3t-v0",
+   "task_src": "추정: run 이름 = 등록 단계 이름",
+   "curated": null,
+   "cls": "평가 중 후보",
+   "sub": null,
+   "reasons": [
+    "분류표에 없고 최근 24 시간 안에 생김(자동) — 학습·평가 중일 수 있어 읽기만 했다"
+   ],
+   "key_ckpts": {
+    "15800": [
+     "평가 중 — 전부 남김"
+    ],
+    "15900": [
+     "평가 중 — 전부 남김"
+    ],
+    "16000": [
+     "평가 중 — 전부 남김"
+    ],
+    "16100": [
+     "평가 중 — 전부 남김"
+    ],
+    "16200": [
+     "평가 중 — 전부 남김"
+    ],
+    "16299": [
+     "exported_16299/SOURCE_CHECKPOINT",
+     "평가 중 — 전부 남김"
+    ]
+   },
+   "key_missing": {},
+   "thin_ckpts": [],
+   "thin_bytes": 0,
+   "dims": {
+    "obs": 320,
+    "critic_obs": 335,
+    "act": 12,
+    "iter": 15800,
+    "ckpt": 15800
+   },
+   "hard_refs": [],
+   "ckpt_size_each": [
+    8019007
+   ]
+  },
+  {
+   "path": "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800",
+   "exp": "logs/rsl_rl/biped12_stepb0",
+   "name": "2026-10-07_23-42-16_w3S3tK_from_15800",
+   "ts": "2026-10-07_23-42-16",
+   "label": "w3S3tK_from_15800",
+   "size_bytes": 56896175,
+   "latest": "2026-10-08 00:26",
+   "ckpts": [
+    15800,
+    15900,
+    16000,
+    16100,
+    16200,
+    16299
+   ],
+   "n_ckpt": 6,
+   "ckpt_min": 15800,
+   "ckpt_max": 16299,
+   "ckpt_bytes": 48114042,
+   "ckpt_links": [],
+   "tfevents": 1,
+   "other_entries": [],
+   "train_span": [
+    "2026-10-07 23:42",
+    "2026-10-08 00:07"
+   ],
+   "exported": [
+    {
+     "dir": "exported_16100",
+     "files": {
+      "SOURCE_CHECKPOINT": {
+       "size": 15,
+       "md5": "69932bb849fc90d996470f73e5a5f6a4"
+      },
+      "policy.onnx": {
+       "size": 1321751,
+       "md5": "154dd4dc10de3166f6c939566c094d46"
+      },
+      "policy.pt": {
+       "size": 1332468,
+       "md5": "9bb859045e5355a8d2cb7936fb5bb1f7"
+      }
+     },
+     "source_checkpoint": "model_16100.pt",
+     "source_ckpt": 16100,
+     "provenance": {
+      "checked": true,
+      "actor_sig": "9a2df0ce31164d35b19d7e0a420943f4",
+      "onnx_has_same_weights": true,
+      "match_ckpt": 16100,
+      "n_compared": 1,
+      "source_agrees": true
+     }
+    },
+    {
+     "dir": "exported_16299",
+     "files": {
+      "SOURCE_CHECKPOINT": {
+       "size": 15,
+       "md5": "639723b352b47b89c6feac2c5765b19c"
+      },
+      "policy.onnx": {
+       "size": 1321751,
+       "md5": "7d2679adbe46cf9267d60e4334c888ad"
+      },
+      "policy.pt": {
+       "size": 1332468,
+       "md5": "52aa0fd3784ebe3108d8716b08543406"
+      }
+     },
+     "source_checkpoint": "model_16299.pt",
+     "source_ckpt": 16299,
+     "provenance": {
+      "checked": true,
+      "actor_sig": "ec5319ec785f5f71a32793e27df7fb5f",
+      "onnx_has_same_weights": true,
+      "match_ckpt": 16299,
+      "n_compared": 1,
+      "source_agrees": true
+     }
+    }
+   ],
+   "params": {
+    "env.yaml": {
+     "size": 60447,
+     "md5": "fd9403492dafdfe048dd834eac187a16"
+    },
+    "agent.yaml": {
+     "size": 1234,
+     "md5": "daf551fc108630b849442d6162132b9e"
+    }
+   },
+   "ckpt_md5": {
+    "15800": "99c5b2384bdd74b24248db6c849795dc",
+    "15900": "0b87ab9ed2e4989106d6d31755de35c0",
+    "16000": "2d757c5ac2230d8d4ff61b9407a9fc66",
+    "16100": "243cb9e0d022b1c49cb46ed38cf9a116",
+    "16200": "9373b8fbcb21012efd306b615914d839",
+    "16299": "bf5ff86589eefe422eb0573de05693aa"
+   },
+   "agent": {
+    "seed": 1,
+    "max_iterations": 500,
+    "experiment_name": "biped12_stepb0",
+    "run_name": "w3S3tK_from_15800",
+    "resume": true,
+    "load_run": "2026-10-07_00-11-12_w3S3d_from_s2d",
+    "load_checkpoint": "model_15800.pt",
+    "save_interval": 100,
+    "runner": "OnPolicyRunner",
+    "algo": "PPO",
+    "actor": [
+     512,
+     256,
+     128
+    ],
+    "init_noise_std": 0.25,
+    "lr": 0.001,
+    "mirror": true
+   },
+   "env": {
+    "control": {
+     "sim_dt": 0.005,
+     "decimation": 4,
+     "hz": 50.0
+    },
+    "num_envs": 4096,
+    "episode_length_s": 20.0,
+    "usd": "rl_walking/assets/usd_final3/biped12.usd",
+    "default_pose": {
+     "left_hip_f": 0.5282,
+     "left_knee": -0.672,
+     "left_ankle_f": 0.4887,
+     "label": "CROUCH_V5"
+    },
+    "action": {
+     "cls": "SlewJointPositionAction",
+     "scale": 0.25,
+     "use_default_offset": true,
+     "slew_deg_per_tick": 4.0,
+     "delay_steps": [
+      1,
+      5
+     ],
+     "lpf_beta_range": [
+      0.2,
+      0.4
+     ],
+     "backlash_rad_range": [
+      0.005,
+      0.026
+     ]
+    },
+    "obs_policy": [
+     {
+      "name": "base_ang_vel",
+      "func": "base_ang_vel_lagged",
+      "hist": 5,
+      "params": {
+       "max_lag": 3
+      }
+     },
+     {
+      "name": "projected_gravity",
+      "func": "projected_gravity_lagged",
+      "hist": 5,
+      "params": {}
+     },
+     {
+      "name": "velocity_commands",
+      "func": "generated_commands",
+      "hist": 5,
+      "params": {
+       "command_name": "base_velocity"
+      }
+     },
+     {
+      "name": "joint_pos",
+      "func": "encoder_joint_pos_rel_v2",
+      "hist": 5,
+      "params": {}
+     },
+     {
+      "name": "joint_vel",
+      "func": "encoder_joint_vel_lpf",
+      "hist": 5,
+      "params": {
+       "beta": 0.25
+      }
+     },
+     {
+      "name": "actions",
+      "func": "last_action_lpf",
+      "hist": 5,
+      "params": {
+       "action_name": "joint_pos"
+      }
+     },
+     {
+      "name": "gait_clock",
+      "func": "gait_clock",
+      "hist": 5,
+      "params": {
+       "freq": 1.1
+      }
+     },
+     {
+      "name": "feet_contact",
+      "func": "feet_contact_real_v2",
+      "hist": 5,
+      "params": {
+       "threshold": 5.0,
+       "hold_ticks": 5,
+       "extra_delay": 1
+      }
+     },
+     {
+      "name": "gyro_ema",
+      "func": "gyro_ema_lagged",
+      "hist": 5,
+      "params": {
+       "alpha": 0.1,
+       "noise": 0.05,
+       "max_lag": 3
+      }
+     },
+     {
+      "name": "joint_vel_ema",
+      "func": "encoder_joint_vel_ema_v2",
+      "hist": 5,
+      "params": {
+       "alpha": 0.1,
+       "noise": 0.3
+      }
+     }
+    ],
+    "obs_filter": {
+     "actions": "last_action_lpf",
+     "joint_vel": "encoder_joint_vel_lpf",
+     "joint_vel_beta": 0.25,
+     "joint_vel_ema": "encoder_joint_vel_ema_v2",
+     "feet_contact": "feet_contact_real_v2",
+     "gait_clock_freq": 1.1
+    },
+    "command": {
+     "cls": "Stage4V2VelocityCommand",
+     "resample_s": [
+      8.0,
+      12.0
+     ],
+     "heading_command": false,
+     "vx": [
+      0.0,
+      0.0
+     ],
+     "vy": [
+      0.0,
+      0.0
+     ],
+     "wz": [
+      0.0,
+      0.0
+     ]
+    },
+    "events": [
+     "physics_material",
+     "add_base_mass",
+     "base_com",
+     "actuator_gains",
+     "joint_friction",
+     "joint_armature",
+     "base_external_force_torque",
+     "reset_base",
+     "reset_robot_joints",
+     "link_mass_calib",
+     "calib_bias",
+     "stance_asym",
+     "hang_support_reset",
+     "hang_support_step",
+     "ankle_r_friction",
+     "default_pose_bias",
+     "joint_limits_config",
+     "w3_cmd",
+     "w3_gait",
+     "w3_ref",
+     "w3_track",
+     "w3_lat",
+     "w3_turn"
+    ],
+    "n_rewards": 54,
+    "rewards_fp": "4674b0d6",
+    "terminations": [
+     "time_out",
+     "base_contact",
+     "bad_orientation",
+     "base_too_low"
+    ],
+    "curriculum": [
+     "w3_assist",
+     "w3_vy",
+     "w3_wz"
+    ],
+    "contract_fp": "ecbeb86f"
+   },
+   "aliases": [
+    "logs/rsl_rl/biped12_stage4/2026-10-07_23-42-16_w3S3tK_from_15800"
+   ],
+   "parent": "2026-10-07_00-11-12_w3S3d_from_s2d",
+   "parent_ckpt": 15800,
+   "children": [],
+   "registry": [],
+   "console_choices": [],
+   "ref_counts": {
+    "doc": 1,
+    "script": 2
+   },
+   "doc_files": [
+    "reports/gen_w3/W3_FINAL_SELECT.md"
+   ],
+   "refs_sample": [
+    {
+     "kind": "doc",
+     "file": "reports/gen_w3/W3_FINAL_SELECT.md",
+     "line": 50,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "script",
+     "file": "reports/gen_w3/scripts/s3tk_confirm.sh",
+     "line": 4,
+     "hard": false,
+     "ckpts": []
+    },
+    {
+     "kind": "script",
+     "file": "reports/gen_w3/scripts/s3tk_k1b.sh",
+     "line": 4,
+     "hard": false,
+     "ckpts": []
+    }
+   ],
+   "evaluated": {},
+   "n_eval_files": 0,
+   "eval_tasks": {},
+   "age_h": 0.47,
+   "task": "Biped12-HangStand-W3S3tK-v0",
+   "task_src": "추정: run 이름 = 등록 단계 이름",
+   "curated": null,
+   "cls": "평가 중 후보",
+   "sub": null,
+   "reasons": [
+    "분류표에 없고 최근 24 시간 안에 생김(자동) — 학습·평가 중일 수 있어 읽기만 했다"
+   ],
+   "key_ckpts": {
+    "15800": [
+     "평가 중 — 전부 남김"
+    ],
+    "15900": [
+     "평가 중 — 전부 남김"
+    ],
+    "16000": [
+     "평가 중 — 전부 남김"
+    ],
+    "16100": [
+     "exported_16100/SOURCE_CHECKPOINT",
+     "평가 중 — 전부 남김"
+    ],
+    "16200": [
+     "평가 중 — 전부 남김"
+    ],
+    "16299": [
+     "exported_16299/SOURCE_CHECKPOINT",
+     "평가 중 — 전부 남김"
+    ]
+   },
+   "key_missing": {},
+   "thin_ckpts": [],
+   "thin_bytes": 0,
+   "dims": {
+    "obs": 320,
+    "critic_obs": 335,
+    "act": 12,
+    "iter": 15800,
+    "ckpt": 15800
+   },
+   "hard_refs": [],
+   "ckpt_size_each": [
+    8019007
+   ]
+  },
+  {
+   "path": "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793",
+   "exp": "logs/rsl_rl/biped12_stepb0",
+   "name": "2026-10-08_00-11-19_g24raf_from_21793",
+   "ts": "2026-10-08_00-11-19",
+   "label": "g24raf_from_21793",
+   "size_bytes": 53963160,
+   "latest": "2026-10-08 00:35",
+   "ckpts": [
+    21800,
+    21900,
+    22000,
+    22100,
+    22200,
+    22292
+   ],
+   "n_ckpt": 6,
+   "ckpt_min": 21800,
+   "ckpt_max": 22292,
+   "ckpt_bytes": 48114042,
+   "ckpt_links": [],
+   "tfevents": 1,
+   "other_entries": [],
+   "train_span": [
+    "2026-10-08 00:11",
+    "2026-10-08 00:35"
+   ],
+   "exported": [
+    {
+     "dir": "exported_22292",
+     "files": {
+      "SOURCE_CHECKPOINT": {
+       "size": 15,
+       "md5": "84fe4f4ace160dd0d4be1a099e2b3b87"
+      },
+      "policy.onnx": {
+       "size": 1321751,
+       "md5": "e27b3ec5d953f088a01c693e142110e5"
+      },
+      "policy.pt": {
+       "size": 1332468,
+       "md5": "c074b24adcdb77ba8ae8daf6690cd311"
+      }
+     },
+     "source_checkpoint": "model_22292.pt",
+     "source_ckpt": 22292,
+     "provenance": {
+      "checked": true,
+      "actor_sig": "90fc684e73f72d017b30b494ceaa2962",
+      "onnx_has_same_weights": true,
+      "match_ckpt": 22292,
+      "n_compared": 1,
+      "source_agrees": true
+     }
+    }
+   ],
+   "params": {
+    "env.yaml": {
+     "size": 62668,
+     "md5": "64c79e8edbb8923bc00ecf8247321f1a"
+    },
+    "agent.yaml": {
+     "size": 1245,
+     "md5": "c7544939a622b1252c4cb59b05e88de7"
+    }
+   },
+   "ckpt_md5": {
+    "21800": "2272a2b8fa183d6fd3ee9c51c913da4e",
+    "21900": "09d0f6830fa66530772ac78fb2665721",
+    "22000": "be2c0ba1591d502cb4dfe06d796fbed8",
+    "22100": "7b600d1090c39c5b773cd8ad83166ce8",
+    "22200": "380b8c030c145d677cfdc7cb389a74bd",
+    "22292": "2994536c6c95083445cd2fda3f548312"
+   },
+   "agent": {
+    "seed": 1,
+    "max_iterations": 500,
+    "experiment_name": "biped12_stepb0",
+    "run_name": "g24raf_from_21793",
+    "resume": true,
+    "load_run": "2026-10-04_10-08-41_g24ra_seed1_from_w2e20294",
+    "load_checkpoint": "model_21793.pt",
+    "save_interval": 100,
+    "runner": "OnPolicyRunner",
+    "algo": "PPO",
+    "actor": [
+     512,
+     256,
+     128
+    ],
+    "init_noise_std": 0.25,
+    "lr": 0.001,
+    "mirror": true
+   },
+   "env": {
+    "control": {
+     "sim_dt": 0.005,
+     "decimation": 4,
+     "hz": 50.0
+    },
+    "num_envs": 4096,
+    "episode_length_s": 20.0,
+    "usd": "rl_walking/assets/usd_final3/biped12.usd",
+    "default_pose": {
+     "left_hip_f": 0.5282,
+     "left_knee": -0.672,
+     "left_ankle_f": 0.4887,
+     "label": "CROUCH_V5"
+    },
+    "action": {
+     "cls": "SlewJointPositionAction",
+     "scale": 0.25,
+     "use_default_offset": true,
+     "slew_deg_per_tick": 4.0,
+     "delay_steps": [
+      0,
+      3
+     ],
+     "lpf_beta_range": [
+      0.2,
+      0.4
+     ],
+     "backlash_rad_range": [
+      0.005,
+      0.026
+     ]
+    },
+    "obs_policy": [
+     {
+      "name": "base_ang_vel",
+      "func": "base_ang_vel_lagged",
+      "hist": 5,
+      "params": {
+       "max_lag": 3
+      }
+     },
+     {
+      "name": "projected_gravity",
+      "func": "projected_gravity_lagged",
+      "hist": 5,
+      "params": {}
+     },
+     {
+      "name": "velocity_commands",
+      "func": "generated_commands",
+      "hist": 5,
+      "params": {
+       "command_name": "base_velocity"
+      }
+     },
+     {
+      "name": "joint_pos",
+      "func": "encoder_joint_pos_rel_v2",
+      "hist": 5,
+      "params": {}
+     },
+     {
+      "name": "joint_vel",
+      "func": "encoder_joint_vel_lpf",
+      "hist": 5,
+      "params": {
+       "beta": 0.25
+      }
+     },
+     {
+      "name": "actions",
+      "func": "last_action_lpf",
+      "hist": 5,
+      "params": {
+       "action_name": "joint_pos"
+      }
+     },
+     {
+      "name": "gait_clock",
+      "func": "gait_clock",
+      "hist": 5,
+      "params": {
+       "freq": 1.1
+      }
+     },
+     {
+      "name": "feet_contact",
+      "func": "feet_contact_real_v2",
+      "hist": 5,
+      "params": {
+       "threshold": 5.0,
+       "hold_ticks": 5,
+       "extra_delay": 1
+      }
+     },
+     {
+      "name": "gyro_ema",
+      "func": "gyro_ema_lagged",
+      "hist": 5,
+      "params": {
+       "alpha": 0.1,
+       "noise": 0.05,
+       "max_lag": 3
+      }
+     },
+     {
+      "name": "joint_vel_ema",
+      "func": "encoder_joint_vel_ema_v2",
+      "hist": 5,
+      "params": {
+       "alpha": 0.1,
+       "noise": 0.3
+      }
+     }
+    ],
+    "obs_filter": {
+     "actions": "last_action_lpf",
+     "joint_vel": "encoder_joint_vel_lpf",
+     "joint_vel_beta": 0.25,
+     "joint_vel_ema": "encoder_joint_vel_ema_v2",
+     "feet_contact": "feet_contact_real_v2",
+     "gait_clock_freq": 1.1
+    },
+    "command": {
+     "cls": "Stage4V2VelocityCommand",
+     "resample_s": [
+      4.0,
+      6.0
+     ],
+     "heading_command": true,
+     "vx": [
+      0.05,
+      0.15
+     ],
+     "vy": [
+      0.0,
+      0.0
+     ],
+     "wz": [
+      0.0,
+      0.0
+     ]
+    },
+    "events": [
+     "physics_material",
+     "add_base_mass",
+     "base_com",
+     "actuator_gains",
+     "joint_friction",
+     "joint_armature",
+     "base_external_force_torque",
+     "reset_base",
+     "reset_robot_joints",
+     "push_robot",
+     "link_mass_calib",
+     "calib_bias",
+     "stance_asym",
+     "effort_scale",
+     "hang_support_reset",
+     "hang_support_step",
+     "ankle_r_friction",
+     "default_pose_bias",
+     "joint_limits_config",
+     "disturbance",
+     "recovery_gate",
+     "sb0",
+     "sbi",
+     "step_assist"
+    ],
+    "n_rewards": 51,
+    "rewards_fp": "5ead3276",
+    "terminations": [
+     "time_out",
+     "base_contact",
+     "bad_orientation",
+     "base_too_low"
+    ],
+    "curriculum": [],
+    "contract_fp": "ecbeb86f"
+   },
+   "aliases": [
+    "logs/rsl_rl/biped12_stage4/2026-10-08_00-11-19_g24raf_from_21793"
+   ],
+   "parent": "2026-10-04_10-08-41_g24ra_seed1_from_w2e20294",
+   "parent_ckpt": 21793,
+   "children": [],
+   "registry": [],
+   "console_choices": [],
+   "ref_counts": {},
+   "doc_files": [],
+   "refs_sample": [],
+   "evaluated": {},
+   "n_eval_files": 0,
+   "eval_tasks": {},
+   "age_h": 0.32,
+   "task": "Biped12-HangStand-G24RaF-v0",
+   "task_src": "추정: run 이름 = 등록 단계 이름",
+   "curated": null,
+   "cls": "평가 중 후보",
+   "sub": null,
+   "reasons": [
+    "분류표에 없고 최근 24 시간 안에 생김(자동) — 학습·평가 중일 수 있어 읽기만 했다"
+   ],
+   "key_ckpts": {
+    "21800": [
+     "평가 중 — 전부 남김"
+    ],
+    "21900": [
+     "평가 중 — 전부 남김"
+    ],
+    "22000": [
+     "평가 중 — 전부 남김"
+    ],
+    "22100": [
+     "평가 중 — 전부 남김"
+    ],
+    "22200": [
+     "평가 중 — 전부 남김"
+    ],
+    "22292": [
+     "exported_22292/SOURCE_CHECKPOINT",
+     "평가 중 — 전부 남김"
+    ]
+   },
+   "key_missing": {},
+   "thin_ckpts": [],
+   "thin_bytes": 0,
+   "dims": {
+    "obs": 320,
+    "critic_obs": 335,
+    "act": 12,
+    "iter": 21800,
+    "ckpt": 21800
+   },
+   "hard_refs": [],
+   "ckpt_size_each": [
+    8019007
+   ]
+  },
+  {
+   "path": "logs/rsl_rl/biped12_stepb0/2026-10-08_00-37-31_w3S3fF_from_15800",
+   "exp": "logs/rsl_rl/biped12_stepb0",
+   "name": "2026-10-08_00-37-31_w3S3fF_from_15800",
+   "ts": "2026-10-08_00-37-31",
+   "label": "w3S3fF_from_15800",
+   "size_bytes": 43094102,
+   "latest": "2026-10-08 00:54",
+   "ckpts": [
+    15800,
+    15900,
+    16000,
+    16100,
+    16200
+   ],
+   "n_ckpt": 5,
+   "ckpt_min": 15800,
+   "ckpt_max": 16200,
+   "ckpt_bytes": 40095035,
+   "ckpt_links": [],
+   "tfevents": 1,
+   "other_entries": [],
+   "train_span": [
+    "2026-10-08 00:37",
+    "2026-10-08 00:54"
+   ],
+   "exported": [],
+   "params": {
+    "env.yaml": {
+     "size": 60610,
+     "md5": "4d4cf5a59012862aea507934f2a94b46"
+    },
+    "agent.yaml": {
+     "size": 1234,
+     "md5": "3cef6de166a246b02ce5026d8b047c8e"
+    }
+   },
+   "ckpt_md5": {
+    "15800": "a5d2d55ec51b1c6ff071ec3ce7d34d08",
+    "15900": "bb3d06d787fa0a66d91bac60d21db4ed",
+    "16000": "6329d6dc344719df4b362bf9f6992cd4",
+    "16100": "0495d39ac89dd536f86c963a785f6099"
+   },
+   "agent": {
+    "seed": 1,
+    "max_iterations": 500,
+    "experiment_name": "biped12_stepb0",
+    "run_name": "w3S3fF_from_15800",
+    "resume": true,
+    "load_run": "2026-10-07_00-11-12_w3S3d_from_s2d",
+    "load_checkpoint": "model_15800.pt",
+    "save_interval": 100,
+    "runner": "OnPolicyRunner",
+    "algo": "PPO",
+    "actor": [
+     512,
+     256,
+     128
+    ],
+    "init_noise_std": 0.25,
+    "lr": 0.001,
+    "mirror": true
+   },
+   "env": {
+    "control": {
+     "sim_dt": 0.005,
+     "decimation": 4,
+     "hz": 50.0
+    },
+    "num_envs": 4096,
+    "episode_length_s": 20.0,
+    "usd": "rl_walking/assets/usd_final3/biped12.usd",
+    "default_pose": {
+     "left_hip_f": 0.5282,
+     "left_knee": -0.672,
+     "left_ankle_f": 0.4887,
+     "label": "CROUCH_V5"
+    },
+    "action": {
+     "cls": "SlewJointPositionAction",
+     "scale": 0.25,
+     "use_default_offset": true,
+     "slew_deg_per_tick": 4.0,
+     "delay_steps": [
+      1,
+      5
+     ],
+     "lpf_beta_range": [
+      0.2,
+      0.4
+     ],
+     "backlash_rad_range": [
+      0.005,
+      0.026
+     ]
+    },
+    "obs_policy": [
+     {
+      "name": "base_ang_vel",
+      "func": "base_ang_vel_lagged",
+      "hist": 5,
+      "params": {
+       "max_lag": 3
+      }
+     },
+     {
+      "name": "projected_gravity",
+      "func": "projected_gravity_lagged",
+      "hist": 5,
+      "params": {}
+     },
+     {
+      "name": "velocity_commands",
+      "func": "generated_commands",
+      "hist": 5,
+      "params": {
+       "command_name": "base_velocity"
+      }
+     },
+     {
+      "name": "joint_pos",
+      "func": "encoder_joint_pos_rel_v2",
+      "hist": 5,
+      "params": {}
+     },
+     {
+      "name": "joint_vel",
+      "func": "encoder_joint_vel_lpf",
+      "hist": 5,
+      "params": {
+       "beta": 0.25
+      }
+     },
+     {
+      "name": "actions",
+      "func": "last_action_lpf",
+      "hist": 5,
+      "params": {
+       "action_name": "joint_pos"
+      }
+     },
+     {
+      "name": "gait_clock",
+      "func": "gait_clock",
+      "hist": 5,
+      "params": {
+       "freq": 1.1
+      }
+     },
+     {
+      "name": "feet_contact",
+      "func": "feet_contact_real_v2",
+      "hist": 5,
+      "params": {
+       "threshold": 5.0,
+       "hold_ticks": 5,
+       "extra_delay": 1
+      }
+     },
+     {
+      "name": "gyro_ema",
+      "func": "gyro_ema_lagged",
+      "hist": 5,
+      "params": {
+       "alpha": 0.1,
+       "noise": 0.05,
+       "max_lag": 3
+      }
+     },
+     {
+      "name": "joint_vel_ema",
+      "func": "encoder_joint_vel_ema_v2",
+      "hist": 5,
+      "params": {
+       "alpha": 0.1,
+       "noise": 0.3
+      }
+     }
+    ],
+    "obs_filter": {
+     "actions": "last_action_lpf",
+     "joint_vel": "encoder_joint_vel_lpf",
+     "joint_vel_beta": 0.25,
+     "joint_vel_ema": "encoder_joint_vel_ema_v2",
+     "feet_contact": "feet_contact_real_v2",
+     "gait_clock_freq": 1.1
+    },
+    "command": {
+     "cls": "Stage4V2VelocityCommand",
+     "resample_s": [
+      8.0,
+      12.0
+     ],
+     "heading_command": false,
+     "vx": [
+      0.0,
+      0.0
+     ],
+     "vy": [
+      0.0,
+      0.0
+     ],
+     "wz": [
+      0.0,
+      0.0
+     ]
+    },
+    "events": [
+     "physics_material",
+     "add_base_mass",
+     "base_com",
+     "actuator_gains",
+     "joint_friction",
+     "joint_armature",
+     "base_external_force_torque",
+     "reset_base",
+     "reset_robot_joints",
+     "link_mass_calib",
+     "calib_bias",
+     "stance_asym",
+     "effort_scale",
+     "hang_support_reset",
+     "hang_support_step",
+     "ankle_r_friction",
+     "default_pose_bias",
+     "joint_limits_config",
+     "w3_cmd",
+     "w3_gait",
+     "w3_ref",
+     "w3_track",
+     "w3_lat",
+     "w3_turn"
+    ],
+    "n_rewards": 54,
+    "rewards_fp": "d5931eba",
+    "terminations": [
+     "time_out",
+     "base_contact",
+     "bad_orientation",
+     "base_too_low"
+    ],
+    "curriculum": [
+     "w3_assist",
+     "w3_vy",
+     "w3_wz"
+    ],
+    "contract_fp": "ecbeb86f"
+   },
+   "aliases": [
+    "logs/rsl_rl/biped12_stage4/2026-10-08_00-37-31_w3S3fF_from_15800"
+   ],
+   "parent": "2026-10-07_00-11-12_w3S3d_from_s2d",
+   "parent_ckpt": 15800,
+   "children": [],
+   "registry": [],
+   "console_choices": [],
+   "ref_counts": {},
+   "doc_files": [],
+   "refs_sample": [],
+   "evaluated": {},
+   "n_eval_files": 0,
+   "eval_tasks": {},
+   "age_h": -0.0,
+   "task": "Biped12-HangStand-W3S3fF-v0",
+   "task_src": "추정: run 이름 = 등록 단계 이름",
+   "curated": null,
+   "cls": "평가 중 후보",
+   "sub": null,
+   "reasons": [
+    "분류표에 없고 최근 24 시간 안에 생김(자동) — 학습·평가 중일 수 있어 읽기만 했다"
+   ],
+   "key_ckpts": {
+    "15800": [
+     "평가 중 — 전부 남김"
+    ],
+    "15900": [
+     "평가 중 — 전부 남김"
+    ],
+    "16000": [
+     "평가 중 — 전부 남김"
+    ],
+    "16100": [
+     "평가 중 — 전부 남김"
+    ],
+    "16200": [
+     "평가 중 — 전부 남김"
+    ]
+   },
+   "key_missing": {},
+   "thin_ckpts": [],
+   "thin_bytes": 0,
+   "md5_skipped_fresh": [
+    16200
+   ],
    "dims": {
     "obs": 320,
     "critic_obs": 335,
@@ -84890,7 +87197,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 98.58,
+   "age_h": 100.48,
    "task": "Biped12-HangStand-W1-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -85250,7 +87557,7 @@
    },
    "n_eval_files": 2,
    "eval_tasks": {},
-   "age_h": 96.86,
+   "age_h": 98.77,
    "task": "Biped12-HangStand-W1b-v0",
    "task_src": "추정: run 이름 = 등록 단계 이름",
    "curated": {
@@ -101825,6 +104132,416 @@
    8019007,
    1791381396227753627,
    "fc6e881087e2a0c4242d24f97dda6690"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported_16100/SOURCE_CHECKPOINT": [
+   15,
+   1791382176419864576,
+   "69932bb849fc90d996470f73e5a5f6a4"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported_16100/policy.onnx": [
+   1321751,
+   1791382176418864591,
+   "96a647ce1b697e63d482f413e092bb07"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported_16100/policy.pt": [
+   1332468,
+   1791382176387865059,
+   "0f6ece33bc5af8e7f8ace60398856040"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported_16193/SOURCE_CHECKPOINT": [
+   15,
+   1791382173976901411,
+   "338c679ec4c151bc23dd4314f4fb2501"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported_16193/policy.onnx": [
+   1321751,
+   1791382173975901426,
+   "52fa9f68b01124e85fdc9f5549bd9a70"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported_16193/policy.pt": [
+   1332468,
+   1791382173944901893,
+   "0ab7bc1639ecf7852713df4e4016bbbf"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800/exported_16100/SOURCE_CHECKPOINT": [
+   15,
+   1791382558894572185,
+   "69932bb849fc90d996470f73e5a5f6a4"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800/exported_16100/policy.onnx": [
+   1321751,
+   1791382558893572203,
+   "316dc09de3214fa0a0bf255385f0b352"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800/exported_16100/policy.pt": [
+   1332468,
+   1791382558862572746,
+   "ea6eb4ec5c001b9e7f8b4074d821bbe3"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800/exported_16299/SOURCE_CHECKPOINT": [
+   15,
+   1791382556608612213,
+   "639723b352b47b89c6feac2c5765b19c"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800/exported_16299/policy.onnx": [
+   1321751,
+   1791382556607612231,
+   "19a0196808575af26e6812e6134446be"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800/exported_16299/policy.pt": [
+   1332468,
+   1791382556576612774,
+   "c0f6fb19d29ed6ac5e539f24c3d3be98"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800/exported_16299/SOURCE_CHECKPOINT": [
+   15,
+   1791384040640567577,
+   "639723b352b47b89c6feac2c5765b19c"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800/exported_16299/policy.onnx": [
+   1321751,
+   1791384040639567598,
+   "d79c6c86f8814c8d534eb3876faec8e1"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800/exported_16299/policy.pt": [
+   1332468,
+   1791384040605568284,
+   "73c79f57025bcd7ae48cdbf57a58e264"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800/params/env.yaml": [
+   60500,
+   1791382678922441384,
+   "ee5001fc6f93f4bbf926ad4e8ab99506"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800/params/agent.yaml": [
+   1233,
+   1791382678925441330,
+   "1c2123be49c5b56a590e4a75fc5b04da"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/exported_16100/SOURCE_CHECKPOINT": [
+   15,
+   1791386792626081981,
+   "69932bb849fc90d996470f73e5a5f6a4"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/exported_16100/policy.onnx": [
+   1321751,
+   1791386792625082005,
+   "154dd4dc10de3166f6c939566c094d46"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/exported_16100/policy.pt": [
+   1332468,
+   1791386792596082707,
+   "9bb859045e5355a8d2cb7936fb5bb1f7"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/exported_16299/SOURCE_CHECKPOINT": [
+   15,
+   1791385660924769420,
+   "639723b352b47b89c6feac2c5765b19c"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/exported_16299/policy.onnx": [
+   1321751,
+   1791385660923769456,
+   "7d2679adbe46cf9267d60e4334c888ad"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/exported_16299/policy.pt": [
+   1332468,
+   1791385660877771098,
+   "52aa0fd3784ebe3108d8716b08543406"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/params/env.yaml": [
+   60447,
+   1791384144771467513,
+   "fd9403492dafdfe048dd834eac187a16"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/params/agent.yaml": [
+   1234,
+   1791384144773467473,
+   "daf551fc108630b849442d6162132b9e"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793/exported_22292/SOURCE_CHECKPOINT": [
+   15,
+   1791387311013791301,
+   "84fe4f4ace160dd0d4be1a099e2b3b87"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793/exported_22292/policy.onnx": [
+   1321751,
+   1791387311012791324,
+   "e27b3ec5d953f088a01c693e142110e5"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793/exported_22292/policy.pt": [
+   1332468,
+   1791387310983792001,
+   "c074b24adcdb77ba8ae8daf6690cd311"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793/params/env.yaml": [
+   62668,
+   1791385889953168360,
+   "64c79e8edbb8923bc00ecf8247321f1a"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793/params/agent.yaml": [
+   1245,
+   1791385889955168298,
+   "c7544939a622b1252c4cb59b05e88de7"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-37-31_w3S3fF_from_15800/params/env.yaml": [
+   60610,
+   1791387458811173756,
+   "4d4cf5a59012862aea507934f2a94b46"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-37-31_w3S3fF_from_15800/params/agent.yaml": [
+   1234,
+   1791387458814173633,
+   "3cef6de166a246b02ce5026d8b047c8e"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800/model_16000.pt": [
+   8019007,
+   1791381669963852527,
+   "0c769d3a0fe05b80c5054f780b8817de"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800/model_16100.pt": [
+   8019007,
+   1791381932328230794,
+   "4aaf41f1f4b3978240ccd4dc1ff4d154"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800/model_16200.pt": [
+   8019007,
+   1791382244074824026,
+   "4092198fc18d0f45e20f470ab1d8c291"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800/model_16299.pt": [
+   8019007,
+   1791382522961198754,
+   "dbfb29a4150b45b58f5d670b33a27a0b"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800/model_15800.pt": [
+   8019007,
+   1791382682441378121,
+   "b477fdc54e7e116e847bbb3873e92c12"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800/model_15900.pt": [
+   8019007,
+   1791382882865714460,
+   "b705687d8e33de3615b08e07e7e12bdd"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800/model_16000.pt": [
+   8019007,
+   1791383170908295834,
+   "042834afb49db9613e66484a082487ca"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800/model_16100.pt": [
+   8019007,
+   1791383465281349103,
+   "b113406f3c498a6de03cec51dcf2ce3d"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800/model_16200.pt": [
+   8019007,
+   1791383740930656645,
+   "7c0ef6e96d100b4bb3573a58f4416b52"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800/model_16299.pt": [
+   8019007,
+   1791384017705031017,
+   "4b2582b65e51476f673be91eb0d90a6a"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/model_15800.pt": [
+   8019007,
+   1791384149082380706,
+   "99c5b2384bdd74b24248db6c849795dc"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/model_15900.pt": [
+   8019007,
+   1791384399097360218,
+   "0b87ab9ed2e4989106d6d31755de35c0"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/model_16000.pt": [
+   8019007,
+   1791384665301036697,
+   "2d757c5ac2230d8d4ff61b9407a9fc66"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/model_16100.pt": [
+   8019007,
+   1791385004536271737,
+   "243cb9e0d022b1c49cb46ed38cf9a116"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/model_16200.pt": [
+   8019007,
+   1791385308730215641,
+   "9373b8fbcb21012efd306b615914d839"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/model_16299.pt": [
+   8019007,
+   1791385630133880225,
+   "bf5ff86589eefe422eb0573de05693aa"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793/model_21800.pt": [
+   8019007,
+   1791385913615438295,
+   "2272a2b8fa183d6fd3ee9c51c913da4e"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793/model_21900.pt": [
+   8019007,
+   1791386188422498063,
+   "09d0f6830fa66530772ac78fb2665721"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793/model_22000.pt": [
+   8019007,
+   1791386494760449415,
+   "be2c0ba1591d502cb4dfe06d796fbed8"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793/model_22100.pt": [
+   8019007,
+   1791386812971589531,
+   "7b600d1090c39c5b773cd8ad83166ce8"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793/model_22200.pt": [
+   8019007,
+   1791387056609766418,
+   "380b8c030c145d677cfdc7cb389a74bd"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793/model_22292.pt": [
+   8019007,
+   1791387304089952898,
+   "2994536c6c95083445cd2fda3f548312"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-37-31_w3S3fF_from_15800/model_15800.pt": [
+   8019007,
+   1791387462137036641,
+   "a5d2d55ec51b1c6ff071ec3ce7d34d08"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-37-31_w3S3fF_from_15800/model_15900.pt": [
+   8019007,
+   1791387639371180172,
+   "bb3d06d787fa0a66d91bac60d21db4ed"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-37-31_w3S3fF_from_15800/model_16000.pt": [
+   8019007,
+   1791387918080741433,
+   "6329d6dc344719df4b362bf9f6992cd4"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-37-31_w3S3fF_from_15800/model_16100.pt": [
+   8019007,
+   1791388228602412016,
+   "0495d39ac89dd536f86c963a785f6099"
+  ],
+  "models/recover_g24ra_21793/agent.yaml": [
+   1252,
+   1791076128637497194,
+   "df9cf6e61457ef195920966519d1a558"
+  ],
+  "models/recover_g24ra_21793/env.yaml": [
+   62452,
+   1791076128635497239,
+   "7ff27617abdb9dd8ee6155c5d7703eaf"
+  ],
+  "models/recover_g24ra_21793/policy.onnx": [
+   1321751,
+   1791117192491056230,
+   "57547697918f679543413a5b24c36555"
+  ],
+  "models/recover_g24ra_21793/policy.pt": [
+   1332626,
+   1791117192459056686,
+   "896ca613bc402de02caa8302988f9a68"
+  ],
+  "models/stand_g21a_11300/agent.yaml": [
+   1212,
+   1790943795573125734,
+   "8e61e739e6fd6c6536c40e030cb6180c"
+  ],
+  "models/stand_g21a_11300/env.yaml": [
+   54800,
+   1790943795571125777,
+   "ebda410ec37987f788df920ccac4f264"
+  ],
+  "models/stand_g21a_11300/policy.onnx": [
+   1321751,
+   1791002352658844657,
+   "43f113109a369a60e976a391cf8f17cd"
+  ],
+  "models/stand_g21a_11300/policy.pt": [
+   1332626,
+   1791002352598849159,
+   "2464f5cdba2e819d03ffa2d8d03bbb69"
+  ],
+  "models/walk_w3s3d_15800/agent.yaml": [
+   1230,
+   1791299481186672668,
+   "8757acfb3435503cec55a32227b75b27"
+  ],
+  "models/walk_w3s3d_15800/env.yaml": [
+   60296,
+   1791299481183672719,
+   "41d1e62aed455029be7351a1db43f48f"
+  ],
+  "models/walk_w3s3d_15800/policy.onnx": [
+   1321751,
+   1791305755133207461,
+   "d908cd92ba0916e790f9e3e28ff1d882"
+  ],
+  "models/walk_w3s3d_15800/policy.pt": [
+   1332468,
+   1791305755103207133,
+   "10e3ee405e1534ebe67574ddbeb9a2a2"
+  ],
+  "deploy/cand/head_1008/DIFF_LIST.md": [
+   29565,
+   1791386415088485060,
+   "d24a50ffe21c4bbd9c58d2cef2c46fde"
+  ],
+  "deploy/cand/head_1008/OPERATOR_COMMANDS.md": [
+   23497,
+   1791386415088485060,
+   "81ab09d3b9a451d4db74ee4edc7cfc9a"
+  ],
+  "deploy/cand/head_1008/README.md": [
+   26794,
+   1791386415088485060,
+   "e3a6fce3f30415abcf8906ccd02e6004"
+  ],
+  "deploy/cand/head_1008/check_numpy_compat.py": [
+   5705,
+   1791385688286802361,
+   "a5f718da9ed0eb238399af022df69800"
+  ],
+  "deploy/cand/head_1008/jetson_inventory_before_md5.txt": [
+   14369,
+   1791385688286802361,
+   "35a129c9f16a082e1cb6d3ba9cb13855"
+  ],
+  "deploy/cand/head_1008/jetson_inventory_before_sizes.txt": [
+   9551,
+   1791385688286802361,
+   "6377906f506016236fccffbe8a926c42"
+  ],
+  "deploy/cand/head_1008/make_fake_jetson.py": [
+   8924,
+   1791385773463902020,
+   "97aaa6bd4cb9c2c4f2bc9470fee2ba3e"
+  ],
+  "deploy/cand/head_1008/numpy_1.21.5_api.json": [
+   28470,
+   1791385688286802361,
+   "2edc5b2f37d26a1be64f251572c49a68"
+  ],
+  "deploy/cand/head_1008/replay_compare.py": [
+   24900,
+   1791385688289802256,
+   "bd07d59691a8750eebf79f79a3afef25"
+  ],
+  "deploy/cand/head_1008/replay_mutate.py": [
+   2693,
+   1791385688289802256,
+   "834704da514f72943154a73fe00eaaad"
+  ],
+  "deploy/cand/head_1008/selftest_w3_node_refs.py": [
+   2883,
+   1791385688289802256,
+   "40edb00b9d06bde97f39f2b12efb1e09"
+  ],
+  "deploy/cand/head_1008/stage8_frame_compare.py": [
+   16566,
+   1791385688289802256,
+   "60fcbf4ac546d884860214ace3504c6d"
   ]
  },
  "sig_cache": {
@@ -102042,6 +104759,46 @@
    8019007,
    1791380873205877775,
    "bd3cf11c73947800f043e2e887584989"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/model_16100.pt": [
+   8019007,
+   1791300957564386608,
+   "899f82d2dca9ef21aaae8545e2ccaeea"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/model_16193.pt": [
+   8019007,
+   1791301341404214859,
+   "b36de3d4f1b4ab5651c34086b981a11e"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800/model_16100.pt": [
+   8019007,
+   1791381932328230794,
+   "ee3c4463e87a77c65afe9545a66885db"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800/model_16299.pt": [
+   8019007,
+   1791382522961198754,
+   "44dc4c60e9ef06de222c6ded7711e0db"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800/model_16299.pt": [
+   8019007,
+   1791384017705031017,
+   "c1b6afb2ccf29417602024146c60c48c"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/model_16100.pt": [
+   8019007,
+   1791385004536271737,
+   "9a2df0ce31164d35b19d7e0a420943f4"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800/model_16299.pt": [
+   8019007,
+   1791385630133880225,
+   "ec5319ec785f5f71a32793e27df7fb5f"
+  ],
+  "logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793/model_22292.pt": [
+   8019007,
+   1791387304089952898,
+   "90fc684e73f72d017b30b494ceaa2962"
   ]
  },
  "separation": {
@@ -102077,8 +104834,8 @@
    "logs/rsl_rl/biped12_stage4/2026-10-07_16-49-39_w3S3dR_from_s3d"
   ],
   "script_refs": [],
-  "n_doc_files": 18,
-  "n_doc_lines": 26,
+  "n_doc_files": 19,
+  "n_doc_lines": 27,
   "doc_top": [
    [
     "reports/gen_step/OSS_STEP_RESEARCH.md",
@@ -102109,21 +104866,21 @@
     1
    ],
    [
+    "reports/gen_w3/TORQUE_W3T_DESIGN.md",
+    1
+   ],
+   [
     "reports/gen_g6/RECOVERY_EVAL_0920.md",
     1
    ],
    [
     "reports/gen_g13/G13_VERDICT.md",
     1
-   ],
-   [
-    "reports/gen_g13/REWARD_TERMS.md",
-    1
    ]
   ],
   "n_eval_files": 3440,
   "n_child_links": 12,
-  "last_stepb0": "2026-10-07_22-52-26_w3S3g_from_15800",
+  "last_stepb0": "2026-10-08_00-37-31_w3S3fF_from_15800",
   "last_stage4": "biped12_stepb0",
   "selftest_fallback": "logs/rsl_rl/biped12_stage4/2026-10-07_00-11-12_w3S3d_from_s2d/exported",
   "n_tar": 25,
@@ -102138,6 +104895,20 @@
    },
    {
     "file": "reports/gen_w3/scripts/w3train.sh",
+    "line": 21,
+    "pattern": "biped12_stepb0/*_$RNAME",
+    "runs": null,
+    "discard": []
+   },
+   {
+    "file": "reports/gen_w3/scripts/ketrain.sh",
+    "line": 17,
+    "pattern": "biped12_stepb0/*_$RNAME",
+    "runs": null,
+    "discard": []
+   },
+   {
+    "file": "reports/gen_w3/scripts/ketrain.sh",
     "line": 21,
     "pattern": "biped12_stepb0/*_$RNAME",
     "runs": null,
@@ -102184,277 +104955,7 @@
     "discard": []
    }
   ],
-  "scratch_dirs": [
-   "/tmp/claude-1000/-home-ryu-humanoid-leg-test1/e53dc80b-9c62-45a7-a400-3cd12071b2f1/scratchpad",
-   "/tmp/claude-1000/-home-ryu-humanoid-leg-test1/f0e513e9-71ac-45c3-820b-1b06b07d54af/scratchpad"
-  ],
-  "scratch_refs": [
-   {
-    "run": "2026-07-25_21-59-19",
-    "cls": "기준선·검증 의존",
-    "n_files": 4,
-    "newest_age_h": 3.9,
-    "newest_file": "f0e513e9-71ac-45c3-820b-1b06b07d54af/c5test/rl_walking/deploy/policy_runner.py"
-   },
-   {
-    "run": "2026-09-05_19-37-39",
-    "cls": "기준선·검증 의존",
-    "n_files": 24,
-    "newest_age_h": 0.1,
-    "newest_file": "f0e513e9-71ac-45c3-820b-1b06b07d54af/base_cfg.py"
-   },
-   {
-    "run": "2026-09-21_20-30-32_g9",
-    "cls": "기준선·검증 의존",
-    "n_files": 15,
-    "newest_age_h": 0.1,
-    "newest_file": "f0e513e9-71ac-45c3-820b-1b06b07d54af/errlog_agent/ref_68493c11.py"
-   },
-   {
-    "run": "2026-09-22_13-32-53_g10",
-    "cls": "기준선·검증 의존",
-    "n_files": 15,
-    "newest_age_h": 0.1,
-    "newest_file": "f0e513e9-71ac-45c3-820b-1b06b07d54af/errlog_agent/ref_68493c11.py"
-   },
-   {
-    "run": "2026-09-28_23-19-13_g11a",
-    "cls": "기준선·검증 의존",
-    "n_files": 15,
-    "newest_age_h": 0.1,
-    "newest_file": "f0e513e9-71ac-45c3-820b-1b06b07d54af/errlog_agent/ref_68493c11.py"
-   },
-   {
-    "run": "2026-09-29_14-32-50_g12",
-    "cls": "기준선·검증 의존",
-    "n_files": 64,
-    "newest_age_h": 0.1,
-    "newest_file": "f0e513e9-71ac-45c3-820b-1b06b07d54af/errlog_agent/ref_68493c11.py"
-   },
-   {
-    "run": "2026-09-30_12-05-46_g12c",
-    "cls": "기록 보존",
-    "n_files": 2,
-    "newest_age_h": 139.4,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/fix_ctrl.sh"
-   },
-   {
-    "run": "2026-10-01_01-46-29_g16o",
-    "cls": "기준선·검증 의존",
-    "n_files": 8,
-    "newest_age_h": 0.1,
-    "newest_file": "f0e513e9-71ac-45c3-820b-1b06b07d54af/errlog_agent/snap_main/tests/test_bridge_ema_contract.py"
-   },
-   {
-    "run": "2026-10-02_12-26-09_g19v",
-    "cls": "기록 보존",
-    "n_files": 6,
-    "newest_age_h": 118.4,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/train22.sh"
-   },
-   {
-    "run": "2026-10-02_21-23-08_g21a",
-    "cls": "배포 후보",
-    "n_files": 160,
-    "newest_age_h": 0.1,
-    "newest_file": "f0e513e9-71ac-45c3-820b-1b06b07d54af/errlog_agent/ref_68493c11.py"
-   },
-   {
-    "run": "2026-10-04_05-06-37_stepa0i_seed1_from_g21a11300",
-    "cls": "기록 보존",
-    "n_files": 5,
-    "newest_age_h": 89.1,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/train_sa0m.sh"
-   },
-   {
-    "run": "2026-10-04_05-51-40_stepa0m_seed1_from_a0i11900",
-    "cls": "기록 보존",
-    "n_files": 9,
-    "newest_age_h": 34.6,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/s1unit4.sh"
-   },
-   {
-    "run": "2026-10-04_10-08-41_g24ra_seed1_from_w2e20294",
-    "cls": "배포 후보",
-    "n_files": 128,
-    "newest_age_h": 0.1,
-    "newest_file": "f0e513e9-71ac-45c3-820b-1b06b07d54af/errlog_agent/ref_68493c11.py"
-   },
-   {
-    "run": "2026-10-04_10-45-08_w2f_seed1_from_w2e20294",
-    "cls": "기록 보존",
-    "n_files": 1,
-    "newest_age_h": 82.4,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/wz_diag.sh"
-   },
-   {
-    "run": "2026-10-04_12-00-09_w2g_seed1_from_w2f21793",
-    "cls": "기록 보존",
-    "n_files": 1,
-    "newest_age_h": 82.4,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/wz_diag.sh"
-   },
-   {
-    "run": "2026-10-04_12-35-53_g24rc_seed1_from_g24ra21793",
-    "cls": "폐기 후보",
-    "n_files": 1,
-    "newest_age_h": 79.6,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/c5c.sh"
-   },
-   {
-    "run": "2026-10-04_13-26-17_w2h_seed1_from_w2g23292",
-    "cls": "기록 보존",
-    "n_files": 22,
-    "newest_age_h": 36.3,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/landscape.sh"
-   },
-   {
-    "run": "2026-10-04_16-06-52_g24rd_seed1_from_g24ra21793",
-    "cls": "폐기 후보",
-    "n_files": 1,
-    "newest_age_h": 78.0,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/lat.sh"
-   },
-   {
-    "run": "2026-10-04_17-30-51_g24rcont_seed1_from_g24ra21793",
-    "cls": "기록 보존",
-    "n_files": 2,
-    "newest_age_h": 74.4,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/ckvar.sh"
-   },
-   {
-    "run": "2026-10-05_03-54-56_r2_seed1_from_g24ra21793",
-    "cls": "폐기 후보",
-    "n_files": 1,
-    "newest_age_h": 66.9,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/rcap2.sh"
-   },
-   {
-    "run": "2026-10-05_06-30-46_w2o_seed1_from_w2h24791",
-    "cls": "폐기 후보",
-    "n_files": 1,
-    "newest_age_h": 52.8,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/w2oev.sh"
-   },
-   {
-    "run": "2026-10-05_18-18-43_w2q_seed1_from_w2h24791",
-    "cls": "기준선·검증 의존",
-    "n_files": 14,
-    "newest_age_h": 3.9,
-    "newest_file": "f0e513e9-71ac-45c3-820b-1b06b07d54af/c5test/rl_walking/deploy/hturn2.py"
-   },
-   {
-    "run": "2026-10-06_02-42-32_rd5_from_g24ra21793",
-    "cls": "폐기 후보",
-    "n_files": 3,
-    "newest_age_h": 42.1,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/rds.sh"
-   },
-   {
-    "run": "2026-10-06_03-18-36_w2om_from_w2q25590",
-    "cls": "폐기 후보",
-    "n_files": 2,
-    "newest_age_h": 43.2,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/w2oma2.sh"
-   },
-   {
-    "run": "2026-10-06_11-10-14_w3C_s1_from_g21a",
-    "cls": "폐기 후보",
-    "n_files": 1,
-    "newest_age_h": 35.5,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/w3ci.sh"
-   },
-   {
-    "run": "2026-10-06_11-40-53_w3A_s1_from_g21a",
-    "cls": "기준선·검증 의존",
-    "n_files": 10,
-    "newest_age_h": 3.9,
-    "newest_file": "f0e513e9-71ac-45c3-820b-1b06b07d54af/c5test/rl_walking/deploy/w3_deploy.py"
-   },
-   {
-    "run": "2026-10-06_12-03-39_w3A2_from_w3A400",
-    "cls": "기록 보존",
-    "n_files": 3,
-    "newest_age_h": 33.3,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/stopq.sh"
-   },
-   {
-    "run": "2026-10-06_13-03-09_w3A3_from_w3A2",
-    "cls": "기록 보존",
-    "n_files": 9,
-    "newest_age_h": 31.2,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/yawdiag/run3.sh"
-   },
-   {
-    "run": "2026-10-06_13-03-09_w3S1b_from_w3A2",
-    "cls": "폐기 후보",
-    "n_files": 5,
-    "newest_age_h": 30.8,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/yawdiag/queue2.sh"
-   },
-   {
-    "run": "2026-10-06_15-06-14_w3S1c_from_w3A3",
-    "cls": "기준선·검증 의존",
-    "n_files": 16,
-    "newest_age_h": 22.6,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/queue9.sh"
-   },
-   {
-    "run": "2026-10-06_16-17-24_w3S1c2_from_w3A3",
-    "cls": "기록 보존",
-    "n_files": 4,
-    "newest_age_h": 28.1,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/zrep.sh"
-   },
-   {
-    "run": "2026-10-06_19-11-43_w3S2_from_s1c",
-    "cls": "기록 보존",
-    "n_files": 5,
-    "newest_age_h": 25.8,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/s4_land.sh"
-   },
-   {
-    "run": "2026-10-06_21-11-23_w3S3s2_from_s2",
-    "cls": "기록 보존",
-    "n_files": 2,
-    "newest_age_h": 17.3,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/review/q2.sh"
-   },
-   {
-    "run": "2026-10-06_22-14-02_w3S2d_from_s2",
-    "cls": "기록 보존",
-    "n_files": 3,
-    "newest_age_h": 13.1,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/repro/train_seeds45.sh"
-   },
-   {
-    "run": "2026-10-07_00-11-12_w3S3d_from_s2d",
-    "cls": "배포 후보",
-    "n_files": 26,
-    "newest_age_h": 0.2,
-    "newest_file": "f0e513e9-71ac-45c3-820b-1b06b07d54af/rewscale.py"
-   },
-   {
-    "run": "2026-10-07_01-44-18_w3S4d_from_s3d",
-    "cls": "기록 보존",
-    "n_files": 1,
-    "newest_age_h": 21.1,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/w3s4d2.sh"
-   },
-   {
-    "run": "2026-10-07_01-53-16_w3S4d2_from_s4d",
-    "cls": "기록 보존",
-    "n_files": 1,
-    "newest_age_h": 19.8,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/s4d_cand.sh"
-   },
-   {
-    "run": "2026-10-07_02-43-05_w3S3dC2_from_s3d",
-    "cls": "폐기 후보",
-    "n_files": 1,
-    "newest_age_h": 18.1,
-    "newest_file": "e53dc80b-9c62-45a7-a400-3cd12071b2f1/qB2.sh"
-   }
-  ]
+  "scratch_dirs": [],
+  "scratch_refs": []
  }
 }

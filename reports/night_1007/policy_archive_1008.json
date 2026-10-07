@@ -1,0 +1,980 @@
+{
+ "when": "2026-10-08T00:55:39",
+ "dst": "logs/rsl_rl/_archive_1007",
+ "moved": [
+  {
+   "from": "logs/rsl_rl/biped12_flat/2026-07-25_22-36-10",
+   "to": "logs/rsl_rl/_archive_1007/biped12_flat/2026-07-25_22-36-10",
+   "size_bytes": 54446676,
+   "n_ckpt": 11,
+   "reason": "기각 — 대칭 교정 시도 2회 — 문서가 '실패 기록'으로 적음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_flat/2026-07-25_23-00-29",
+   "to": "logs/rsl_rl/_archive_1007/biped12_flat/2026-07-25_23-00-29",
+   "size_bytes": 54448004,
+   "n_ckpt": 11,
+   "reason": "기각 — 대칭 교정 시도 2회 — 문서가 '실패 기록'으로 적음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_g22r/2026-10-03_19-01-59_g22r_cR1toR4_seed1_from_g21a11300",
+   "to": "logs/rsl_rl/_archive_1007/biped12_g22r/2026-10-03_19-01-59_g22r_cR1toR4_seed1_from_g21a11300",
+   "size_bytes": 161287139,
+   "n_ckpt": 19,
+   "reason": "기각 — G22R·W1 판정 — 통과 0"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-20_13-39-35_g5",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-20_13-39-35_g5",
+   "size_bytes": 512352841,
+   "n_ckpt": 61,
+   "reason": "기각 — 명목 0/256 '진짜 실패'"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-20_21-20-53_g7",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-20_21-20-53_g7",
+   "size_bytes": 343124766,
+   "n_ckpt": 41,
+   "reason": "기각 — G7 은 승격 대상이 아니다"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-21_02-55-23_g8a",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-21_02-55-23_g8a",
+   "size_bytes": 75229803,
+   "n_ckpt": 9,
+   "reason": "분리 실험 — action-rate 배율 × env LPF 분리 실험(각 800 반복) — 결론이 문서에 있고 후보가 아님"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-21_03-08-04_g8b",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-21_03-08-04_g8b",
+   "size_bytes": 75229971,
+   "n_ckpt": 9,
+   "reason": "분리 실험 — action-rate 배율 × env LPF 분리 실험(각 800 반복) — 결론이 문서에 있고 후보가 아님"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-21_03-20-41_g8c",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-21_03-20-41_g8c",
+   "size_bytes": 75230155,
+   "n_ckpt": 9,
+   "reason": "분리 실험 — action-rate 배율 × env LPF 분리 실험(각 800 반복) — 결론이 문서에 있고 후보가 아님"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-21_03-33-56_g8d",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-21_03-33-56_g8d",
+   "size_bytes": 75230657,
+   "n_ckpt": 9,
+   "reason": "분리 실험 — action-rate 배율 × env LPF 분리 실험(각 800 반복) — 결론이 문서에 있고 후보가 아님"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-21_09-08-58_g8",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-21_09-08-58_g8",
+   "size_bytes": 346046341,
+   "n_ckpt": 41,
+   "reason": "기각 — G8 체크포인트 선택 — 적격 후보 없음(익스포트 사본은 deploy/cand/g8_8499 에 따로 있음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-28_23-19-53_g11b",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-28_23-19-53_g11b",
+   "size_bytes": 259664005,
+   "n_ckpt": 31,
+   "reason": "기각 — G11 판정 — 적격 후보 없음, G11b 는 G11a 대비 일관된 이득 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-29_11-08-21_g11c",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-29_11-08-21_g11c",
+   "size_bytes": 175876267,
+   "n_ckpt": 21,
+   "reason": "기각 — G11c 판정 — 승격 없음(정착↔뒤 회복 교환)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-30_12-05-18_g13",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-30_12-05-18_g13",
+   "size_bytes": 225476407,
+   "n_ckpt": 21,
+   "reason": "기각 — G13 판정 — 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-30_15-26-19_g14a",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-30_15-26-19_g14a",
+   "size_bytes": 175829834,
+   "n_ckpt": 21,
+   "reason": "기각 — G14 판정 — 가설 미지지, 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-30_15-26-19_g14b",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-30_15-26-19_g14b",
+   "size_bytes": 225375316,
+   "n_ckpt": 21,
+   "reason": "기각 — G14 판정 — 가설 미지지, 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-30_17-49-39_g15w",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-30_17-49-39_g15w",
+   "size_bytes": 176106268,
+   "n_ckpt": 21,
+   "reason": "기각 — G15 판정 — 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-30_19-18-11_g15q",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-30_19-18-11_g15q",
+   "size_bytes": 175978032,
+   "n_ckpt": 21,
+   "reason": "기각 — G15 판정 — 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-30_19-22-14_g15u",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-30_19-22-14_g15u",
+   "size_bytes": 175832868,
+   "n_ckpt": 21,
+   "reason": "기각 — G15 판정 — 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-30_21-06-44_g15d",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-30_21-06-44_g15d",
+   "size_bytes": 175986324,
+   "n_ckpt": 21,
+   "reason": "기각 — G15 판정 — 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-09-30_22-37-30_g15k",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-09-30_22-37-30_g15k",
+   "size_bytes": 176000468,
+   "n_ckpt": 21,
+   "reason": "기각 — G15 판정 — 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-01_02-53-25_g16o43",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-01_02-53-25_g16o43",
+   "size_bytes": 176027311,
+   "n_ckpt": 21,
+   "reason": "기각 — G16 판정 — H-o·H-a·H-d 기각, 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-01_02-54-55_g16a",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-01_02-54-55_g16a",
+   "size_bytes": 176027490,
+   "n_ckpt": 21,
+   "reason": "기각 — G16 판정 — H-o·H-a·H-d 기각, 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-01_04-43-55_g16a43",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-01_04-43-55_g16a43",
+   "size_bytes": 109095658,
+   "n_ckpt": 13,
+   "reason": "기각 — G16a seed 43 — 학습 붕괴 재현, 10719 반복에서 중단"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-01_04-46-25_g16d",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-01_04-46-25_g16d",
+   "size_bytes": 176035639,
+   "n_ckpt": 21,
+   "reason": "기각 — G16 판정 — H-o·H-a·H-d 기각, 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_01-53-44_g17o_void",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_01-53-44_g17o_void",
+   "size_bytes": 50436515,
+   "n_ckpt": 6,
+   "reason": "무효 — G17 1차 학습 폐기(접촉 관측 계약 불일치로 중단)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_01-55-14_g17r_void",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_01-55-14_g17r_void",
+   "size_bytes": 42131071,
+   "n_ckpt": 5,
+   "reason": "무효 — G17 1차 학습 폐기(접촉 관측 계약 불일치로 중단)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_02-39-53_g17o",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_02-39-53_g17o",
+   "size_bytes": 134190350,
+   "n_ckpt": 16,
+   "reason": "기각 — G17 판정 — 선별 C0 통과 0/24"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_02-41-23_g17r",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_02-41-23_g17r",
+   "size_bytes": 134190611,
+   "n_ckpt": 16,
+   "reason": "기각 — G17 판정 — 선별 C0 통과 0/24"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_04-01-27_g17p",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_04-01-27_g17p",
+   "size_bytes": 134199187,
+   "n_ckpt": 16,
+   "reason": "기각 — G17 판정 — 선별 C0 통과 0/24"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_04-03-27_g17o43",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_04-03-27_g17o43",
+   "size_bytes": 134199443,
+   "n_ckpt": 16,
+   "reason": "기각 — G17 판정 — 선별 C0 통과 0/24"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_05-23-24_g17rp",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_05-23-24_g17rp",
+   "size_bytes": 134214336,
+   "n_ckpt": 16,
+   "reason": "기각 — G17 판정 — 선별 C0 통과 0/24"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_05-25-23_g17r43",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_05-25-23_g17r43",
+   "size_bytes": 134214586,
+   "n_ckpt": 16,
+   "reason": "기각 — G17 판정 — 선별 C0 통과 0/24"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_06-48-23_g18o",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_06-48-23_g18o",
+   "size_bytes": 134224483,
+   "n_ckpt": 16,
+   "reason": "기각 — G18 판정 — 배포 자격(C0) 통과 0(G18f 는 '가장 유망'이었으나 통과 못 함)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_07-54-56_g18j",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_07-54-56_g18j",
+   "size_bytes": 134317243,
+   "n_ckpt": 16,
+   "reason": "기각 — G18 판정 — 배포 자격(C0) 통과 0(G18f 는 '가장 유망'이었으나 통과 못 함)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_09-03-53_g18d",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_09-03-53_g18d",
+   "size_bytes": 134250179,
+   "n_ckpt": 16,
+   "reason": "기각 — G18 판정 — 배포 자격(C0) 통과 0(G18f 는 '가장 유망'이었으나 통과 못 함)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_09-06-01_g18f",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_09-06-01_g18f",
+   "size_bytes": 134250599,
+   "n_ckpt": 16,
+   "reason": "기각 — G18 판정 — 배포 자격(C0) 통과 0(G18f 는 '가장 유망'이었으나 통과 못 함)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_10-23-53_g18q",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_10-23-53_g18q",
+   "size_bytes": 134258760,
+   "n_ckpt": 16,
+   "reason": "기각 — G18 판정 — 배포 자격(C0) 통과 0(G18f 는 '가장 유망'이었으나 통과 못 함)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_11-14-11_g18f43",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_11-14-11_g18f43",
+   "size_bytes": 134269440,
+   "n_ckpt": 16,
+   "reason": "기각 — G18 판정 — 배포 자격(C0) 통과 0(G18f 는 '가장 유망'이었으나 통과 못 함)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_12-27-11_g19n",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_12-27-11_g19n",
+   "size_bytes": 134288576,
+   "n_ckpt": 16,
+   "reason": "기각 — G19n — 회복 상실한 정숙 정책, 승격 금지"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_14-07-27_g20d",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_14-07-27_g20d",
+   "size_bytes": 134301329,
+   "n_ckpt": 16,
+   "reason": "기각 — G20d·G20s — 둘 다 정식 C0 탈락"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_14-08-27_g20s",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_14-08-27_g20s",
+   "size_bytes": 134402046,
+   "n_ckpt": 16,
+   "reason": "기각 — G20d·G20s — 둘 다 정식 C0 탈락"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_15-15-08_g21o",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_15-15-08_g21o",
+   "size_bytes": 84021994,
+   "n_ckpt": 10,
+   "reason": "기각 — G21 판정 — 배포 자격 통과 0(G21a 만 진단 실물 시험 후보로 남음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_15-16-09_g21a_void_explosion",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_15-16-09_g21a_void_explosion",
+   "size_bytes": 84022271,
+   "n_ckpt": 10,
+   "reason": "무효 — G21a 1차 — 물리 폭발 전염으로 무효(재실행이 배포본)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_16-33-38_g21b",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_16-33-38_g21b",
+   "size_bytes": 84545955,
+   "n_ckpt": 10,
+   "reason": "기각 — G21 판정 — 배포 자격 통과 0(G21a 만 진단 실물 시험 후보로 남음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_16-38-08_g21a1",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_16-38-08_g21a1",
+   "size_bytes": 84042185,
+   "n_ckpt": 10,
+   "reason": "기각 — G21 판정 — 배포 자격 통과 0(G21a 만 진단 실물 시험 후보로 남음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_17-48-08_g21a2",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_17-48-08_g21a2",
+   "size_bytes": 84054445,
+   "n_ckpt": 10,
+   "reason": "기각 — G21 판정 — 배포 자격 통과 0(G21a 만 진단 실물 시험 후보로 남음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_17-49-38_g21a3",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_17-49-38_g21a3",
+   "size_bytes": 84054629,
+   "n_ckpt": 10,
+   "reason": "기각 — G21 판정 — 배포 자격 통과 0(G21a 만 진단 실물 시험 후보로 남음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_18-46-38_g21c1",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_18-46-38_g21c1",
+   "size_bytes": 84562948,
+   "n_ckpt": 10,
+   "reason": "기각 — G21 판정 — 배포 자격 통과 0(G21a 만 진단 실물 시험 후보로 남음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_18-48-38_g21c2",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_18-48-38_g21c2",
+   "size_bytes": 84563253,
+   "n_ckpt": 10,
+   "reason": "기각 — G21 판정 — 배포 자격 통과 0(G21a 만 진단 실물 시험 후보로 남음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_19-36-57_g21a3s43",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_19-36-57_g21a3s43",
+   "size_bytes": 84066185,
+   "n_ckpt": 10,
+   "reason": "기각 — G21 판정 — 배포 자격 통과 0(G21a 만 진단 실물 시험 후보로 남음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-02_20-20-43_g21d",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-02_20-20-43_g21d",
+   "size_bytes": 84642625,
+   "n_ckpt": 10,
+   "reason": "기각 — G21 판정 — 배포 자격 통과 0(G21a 만 진단 실물 시험 후보로 남음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-03_00-35-40_g22a",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-03_00-35-40_g22a",
+   "size_bytes": 84102030,
+   "n_ckpt": 10,
+   "reason": "기각 — G22 판정 — H-22 미지지, 정식 C0 탈락"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-03_00-36-00_g22c_void_stopped",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-03_00-36-00_g22c_void_stopped",
+   "size_bytes": 8842373,
+   "n_ckpt": 1,
+   "reason": "무효 — G22c — 권고 순서에 따라 중단(무효)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-03_00-38-38_g22w",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-03_00-38-38_g22w",
+   "size_bytes": 84101365,
+   "n_ckpt": 10,
+   "reason": "기각 — G22 판정 — H-22 미지지, 정식 C0 탈락"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stage4/2026-10-03_01-13-13_g22ws43",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stage4/2026-10-03_01-13-13_g22ws43",
+   "size_bytes": 84101393,
+   "n_ckpt": 10,
+   "reason": "기각 — G22 판정 — H-22 미지지, 정식 C0 탈락"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-03_23-49-02_stepb0_seed1_from_g21a11300",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-03_23-49-02_stepb0_seed1_from_g21a11300",
+   "size_bytes": 135540670,
+   "n_ckpt": 16,
+   "reason": "기각 — STEP-B0 — 탈락: 스텝 0"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_05-23-28_stepa0ic_seed1_from_a0i11900",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_05-23-28_stepa0ic_seed1_from_a0i11900",
+   "size_bytes": 59184415,
+   "n_ckpt": 7,
+   "reason": "기각 — STEP-A0i-c — FAIL(진행 정체)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_05-37-09_stepa0k_seed1_from_a0i11900",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_05-37-09_stepa0k_seed1_from_a0i11900",
+   "size_bytes": 59346447,
+   "n_ckpt": 7,
+   "reason": "기각 — STEP-A0k — FAIL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_07-21-05_g23ra_seed1_from_a0m14299",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_07-21-05_g23ra_seed1_from_a0m14299",
+   "size_bytes": 135277980,
+   "n_ckpt": 16,
+   "reason": "기각 — G23R-a — FAIL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_08-27-46_g23rb_seed1_from_a0m14299",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_08-27-46_g23rb_seed1_from_a0m14299",
+   "size_bytes": 42297324,
+   "n_ckpt": 5,
+   "reason": "기각 — G23R-b — FAIL(진행 정체로 중단)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_11-23-07_g24rb_seed1_from_g24ra21793",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_11-23-07_g24rb_seed1_from_g24ra21793",
+   "size_bytes": 135597497,
+   "n_ckpt": 16,
+   "reason": "기각 — G24R-b — FAIL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_14-52-57_w2i_seed1_from_w2h24791",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_14-52-57_w2i_seed1_from_w2h24791",
+   "size_bytes": 42259476,
+   "n_ckpt": 5,
+   "reason": "기각 — W2-9 — 조기 중단(판정 불가)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_15-13-03_w2j_seed1_from_w2h24791",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_15-13-03_w2j_seed1_from_w2h24791",
+   "size_bytes": 178058992,
+   "n_ckpt": 21,
+   "reason": "기각 — W2-10 — FAIL, 요(회전) 갈래 일시 정지"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_17-20-12_g24re_seed1_from_g24ra21793",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_17-20-12_g24re_seed1_from_g24ra21793",
+   "size_bytes": 135650826,
+   "n_ckpt": 16,
+   "reason": "기각 — G24R-e — FAIL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_17-20-35_g24rf_seed1_from_g24ra21793",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_17-20-35_g24rf_seed1_from_g24ra21793",
+   "size_bytes": 16979956,
+   "n_ckpt": 2,
+   "reason": "무효 — G24R-f — 중단(옆 외란이 앞/뒤 사건을 대체하는 교란)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_19-24-01_g24rg_seed1_from_g24ra21793",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_19-24-01_g24rg_seed1_from_g24ra21793",
+   "size_bytes": 110428179,
+   "n_ckpt": 13,
+   "reason": "기각 — G24R-g — fail-fast 중단"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_19-24-24_g24rh_seed1_from_g24ra21793",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_19-24-24_g24rh_seed1_from_g24ra21793",
+   "size_bytes": 135687816,
+   "n_ckpt": 16,
+   "reason": "기각 — G24R-h — 잠정 FAIL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_23-48-25_t1b_seed1_from_t122292",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_23-48-25_t1b_seed1_from_t122292",
+   "size_bytes": 50759316,
+   "n_ckpt": 6,
+   "reason": "같은 실험 대조 — T1b — 토너먼트 1b 의 대조(처치 T2b = G25 계열 중단)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-04_23-48-56_t2b_seed1_from_t222292",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-04_23-48-56_t2b_seed1_from_t222292",
+   "size_bytes": 50824941,
+   "n_ckpt": 6,
+   "reason": "기각 — T2·T2b(G25 충격 커리큘럼) — 중단"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-05_00-48-54_t3_seed1_from_g24ra21793",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-05_00-48-54_t3_seed1_from_g24ra21793",
+   "size_bytes": 50796748,
+   "n_ckpt": 6,
+   "reason": "기각 — T3(G25D 지연 DR 0–5) — 중단"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-05_02-50-46_wt1_seed1_from_w2h24791",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-05_02-50-46_wt1_seed1_from_w2h24791",
+   "size_bytes": 42286065,
+   "n_ckpt": 5,
+   "reason": "기각 — WT1 — 중단(학습 루프 내 요 제어 이득 없음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-05_04-08-12_r2p_seed1_from_g24ra21793",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-05_04-08-12_r2p_seed1_from_g24ra21793",
+   "size_bytes": 50921490,
+   "n_ckpt": 6,
+   "reason": "기각 — R′ 토너먼트 — 전부 중단"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-05_04-14-50_wv1_seed1_from_w2h24791",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-05_04-14-50_wv1_seed1_from_w2h24791",
+   "size_bytes": 42184355,
+   "n_ckpt": 5,
+   "reason": "기각 — WV1 — 중단"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-05_04-28-53_r1p_seed1_from_g24ra21793",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-05_04-28-53_r1p_seed1_from_g24ra21793",
+   "size_bytes": 50777820,
+   "n_ckpt": 6,
+   "reason": "기각 — R′ 토너먼트 — 전부 중단"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-05_04-39-49_wv2_seed1_from_w2h24791",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-05_04-39-49_wv2_seed1_from_w2h24791",
+   "size_bytes": 42191590,
+   "n_ckpt": 5,
+   "reason": "기각 — WV2 — 중단"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-05_05-35-47_w2w_seed1_from_w2h24791",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-05_05-35-47_w2w_seed1_from_w2h24791",
+   "size_bytes": 8718922,
+   "n_ckpt": 1,
+   "reason": "기각 — W2w — 비구속 변수(폐기 목록)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-05_05-39-39_wv3_seed1_from_w2h24791",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-05_05-39-39_wv3_seed1_from_w2h24791",
+   "size_bytes": 42208049,
+   "n_ckpt": 5,
+   "reason": "기각 — WV3 — 중단"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-05_18-53-19_w2q2_seed1_from_w2q25590",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-05_18-53-19_w2q2_seed1_from_w2q25590",
+   "size_bytes": 50712117,
+   "n_ckpt": 6,
+   "reason": "기각 — W2q2 — 중단"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-05_19-41-44_wr_seed1_from_w2q25590",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-05_19-41-44_wr_seed1_from_w2q25590",
+   "size_bytes": 33770728,
+   "n_ckpt": 4,
+   "reason": "기각 — WR — 같은 반복 대조와 구별되지 않음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-05_22-15-47_w2gs_seed1_from_w2q25590",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-05_22-15-47_w2gs_seed1_from_w2q25590",
+   "size_bytes": 33928925,
+   "n_ckpt": 4,
+   "reason": "기각 — W2gs — 중단"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-05_22-33-07_wom_seed1_from_w2q25590",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-05_22-33-07_wom_seed1_from_w2q25590",
+   "size_bytes": 49529044,
+   "n_ckpt": 6,
+   "reason": "기각 — WOM — 중단"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_01-59-15_woms_seed1_scratch",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_01-59-15_woms_seed1_scratch",
+   "size_bytes": 98871559,
+   "n_ckpt": 12,
+   "reason": "기각 — WOMS — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_02-37-15_womx_seed1_scratch",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_02-37-15_womx_seed1_scratch",
+   "size_bytes": 90756445,
+   "n_ckpt": 11,
+   "reason": "기각 — WOMX — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_04-09-13_rd3_from_g24ra21793",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_04-09-13_rd3_from_g24ra21793",
+   "size_bytes": 93450366,
+   "n_ckpt": 11,
+   "reason": "기각 — RD(rd5·대조 rd3) — 사전 성공 미달, RDS KILL 로 계보 종료"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_04-47-57_w2omL_from_w2omA26400",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_04-47-57_w2omL_from_w2omA26400",
+   "size_bytes": 34170923,
+   "n_ckpt": 4,
+   "reason": "기각 — W2omL — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_05-07-08_rh2_from_g24ra21793",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_05-07-08_rh2_from_g24ra21793",
+   "size_bytes": 93461467,
+   "n_ckpt": 11,
+   "reason": "기각 — RH2 — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_05-10-43_wsteer_from_w2q25590",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_05-10-43_wsteer_from_w2q25590",
+   "size_bytes": 93238388,
+   "n_ckpt": 11,
+   "reason": "기각 — WSTEER — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_06-02-22_w2qC_from_w2q25590",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_06-02-22_w2qC_from_w2q25590",
+   "size_bytes": 93212168,
+   "n_ckpt": 11,
+   "reason": "무효 — 대조 C(W2q 이어학습) — 학습 붕괴, 대조 무효"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_06-04-22_pa1_from_g24ra21793",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_06-04-22_pa1_from_g24ra21793",
+   "size_bytes": 94454904,
+   "n_ckpt": 11,
+   "reason": "기각 — PA1 — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_06-58-58_cstab_s2_from_w2q25590",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_06-58-58_cstab_s2_from_w2q25590",
+   "size_bytes": 93214459,
+   "n_ckpt": 11,
+   "reason": "분리 실험 — CSTAB — 학습 틀 안정성 진단(결론 '확률적 사건'), 후보 아님"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_07-36-58_wsteer2_s1_from_w2q25590",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_07-36-58_wsteer2_s1_from_w2q25590",
+   "size_bytes": 59307754,
+   "n_ckpt": 7,
+   "reason": "기각 — WSTEER2 — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_07-38-58_wsteer2_s2_from_w2q25590",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_07-38-58_wsteer2_s2_from_w2q25590",
+   "size_bytes": 59307852,
+   "n_ckpt": 7,
+   "reason": "기각 — WSTEER2 — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_08-17-53_w2omM_from_w2omA26400",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_08-17-53_w2omM_from_w2omA26400",
+   "size_bytes": 34038961,
+   "n_ckpt": 4,
+   "reason": "기각 — W2omM — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_08-46-40_w2omP2_from_w2omP14898",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_08-46-40_w2omP2_from_w2omP14898",
+   "size_bytes": 50933020,
+   "n_ckpt": 6,
+   "reason": "기각 — W2omP2 — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_08-46-57_w2omPs2_from_a0m14299",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_08-46-57_w2omPs2_from_a0m14299",
+   "size_bytes": 59273626,
+   "n_ckpt": 7,
+   "reason": "기각 — W2omP seed 2 — 양성 신호만 재현, W2omP 계보는 KILL 로 끝남"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_09-14-04_w2omP3_from_w2omP14898",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_09-14-04_w2omP3_from_w2omP14898",
+   "size_bytes": 42393508,
+   "n_ckpt": 5,
+   "reason": "기각 — W2omP3 — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_09-26-31_w2omI_from_a0m14299",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_09-26-31_w2omI_from_a0m14299",
+   "size_bytes": 42436029,
+   "n_ckpt": 5,
+   "reason": "기각 — W2omI — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_09-43-24_w2omR1_from_w2omP14898",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_09-43-24_w2omR1_from_w2omP14898",
+   "size_bytes": 59273247,
+   "n_ckpt": 7,
+   "reason": "기각 — W2omR1·R2 — 둘 다 KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_09-45-24_w2omR2_from_w2omP14898",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_09-45-24_w2omR2_from_w2omP14898",
+   "size_bytes": 59273576,
+   "n_ckpt": 7,
+   "reason": "기각 — W2omR1·R2 — 둘 다 KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_10-20-05_w2omF_from_w2omP14898",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_10-20-05_w2omF_from_w2omP14898",
+   "size_bytes": 59273646,
+   "n_ckpt": 7,
+   "reason": "기각 — W2omF — KILL(학습 전체 붕괴)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_11-29-33_w3U_s1_from_g21a",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_11-29-33_w3U_s1_from_g21a",
+   "size_bytes": 42253783,
+   "n_ckpt": 5,
+   "reason": "기각 — W3-U — KILL"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_11-49-08_w3CI_from_w3C400",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_11-49-08_w3CI_from_w3C400",
+   "size_bytes": 93202279,
+   "n_ckpt": 11,
+   "reason": "분리 실험 — W3-CI — 엔진 2 번째 경로 확인으로 종료(추가 학습 없음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_17-54-42_w3S1d2_from_w3A3",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_17-54-42_w3S1d2_from_w3A3",
+   "size_bytes": 93349267,
+   "n_ckpt": 11,
+   "reason": "기각 — W3S1d seed 2(대칭 범위) — 명령 범위 비대칭 가설 기각"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_18-18-49_w3S1c2x_from_s1c2",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_18-18-49_w3S1c2x_from_s1c2",
+   "size_bytes": 50915563,
+   "n_ckpt": 6,
+   "reason": "같은 실험 대조 — S1c2x — W3S1e 의 이어학습 대조(처치 미채택)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-06_19-05-14_w3S1e_from_s1c2",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-06_19-05-14_w3S1e_from_s1c2",
+   "size_bytes": 50917962,
+   "n_ckpt": 6,
+   "reason": "기각 — W3S1e — 미채택"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-07_03-20-15_w3S4dD_from_s4d",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-07_03-20-15_w3S4dD_from_s4d",
+   "size_bytes": 51487599,
+   "n_ckpt": 6,
+   "reason": "기각 — W3S4dD run1·run2 — 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-07_04-59-14_w3S4dDb_from_s4d",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-07_04-59-14_w3S4dDb_from_s4d",
+   "size_bytes": 51490849,
+   "n_ckpt": 6,
+   "reason": "기각 — W3S4dD run1·run2 — 통과 후보 없음"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_stepb0/2026-10-07_16-49-39_w3S3dR_from_s3d",
+   "to": "logs/rsl_rl/_archive_1007/biped12_stepb0/2026-10-07_16-49-39_w3S3dR_from_s3d",
+   "size_bytes": 51455977,
+   "n_ckpt": 6,
+   "reason": "기각 — W3S3dR — 불합격, 기준선 15800 유지"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_w1/2026-10-03_19-38-00_w1_cS0toS3_seed1_from_g21a11300",
+   "to": "logs/rsl_rl/_archive_1007/biped12_w1/2026-10-03_19-38-00_w1_cS0toS3_seed1_from_g21a11300",
+   "size_bytes": 213160395,
+   "n_ckpt": 25,
+   "reason": "기각 — W1 — 착지 0(걷지 않음)"
+  },
+  {
+   "from": "logs/rsl_rl/biped12_w1/2026-10-03_21-20-36_w1b_cS0toS3_seed1_from_g21a11300",
+   "to": "logs/rsl_rl/_archive_1007/biped12_w1/2026-10-03_21-20-36_w1b_cS0toS3_seed1_from_g21a11300",
+   "size_bytes": 213162450,
+   "n_ckpt": 25,
+   "reason": "기각 — W1b — 스텝 0"
+  }
+ ],
+ "links_removed": [
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-04_14-52-57_w2i_seed1_from_w2h24791",
+   "target": "../biped12_stepb0/2026-10-04_14-52-57_w2i_seed1_from_w2h24791"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-04_17-20-12_g24re_seed1_from_g24ra21793",
+   "target": "../biped12_stepb0/2026-10-04_17-20-12_g24re_seed1_from_g24ra21793"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-03_23-49-02_stepb0_seed1_from_g21a11300",
+   "target": "../biped12_stepb0/2026-10-03_23-49-02_stepb0_seed1_from_g21a11300"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-06_04-09-13_rd3_from_g24ra21793",
+   "target": "../biped12_stepb0/2026-10-06_04-09-13_rd3_from_g24ra21793"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-04_19-24-01_g24rg_seed1_from_g24ra21793",
+   "target": "../biped12_stepb0/2026-10-04_19-24-01_g24rg_seed1_from_g24ra21793"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-04_07-21-05_g23ra_seed1_from_a0m14299",
+   "target": "../biped12_stepb0/2026-10-04_07-21-05_g23ra_seed1_from_a0m14299"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-04_11-23-07_g24rb_seed1_from_g24ra21793",
+   "target": "../biped12_stepb0/2026-10-04_11-23-07_g24rb_seed1_from_g24ra21793"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-06_05-07-08_rh2_from_g24ra21793",
+   "target": "../biped12_stepb0/2026-10-06_05-07-08_rh2_from_g24ra21793"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-06_17-54-42_w3S1d2_from_w3A3",
+   "target": "../biped12_stepb0/2026-10-06_17-54-42_w3S1d2_from_w3A3"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-04_15-13-03_w2j_seed1_from_w2h24791",
+   "target": "../biped12_stepb0/2026-10-04_15-13-03_w2j_seed1_from_w2h24791"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-04_19-24-24_g24rh_seed1_from_g24ra21793",
+   "target": "../biped12_stepb0/2026-10-04_19-24-24_g24rh_seed1_from_g24ra21793"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-04_23-48-25_t1b_seed1_from_t122292",
+   "target": "../biped12_stepb0/2026-10-04_23-48-25_t1b_seed1_from_t122292"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-04_08-27-46_g23rb_seed1_from_a0m14299",
+   "target": "../biped12_stepb0/2026-10-04_08-27-46_g23rb_seed1_from_a0m14299"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-05_04-28-53_r1p_seed1_from_g24ra21793",
+   "target": "../biped12_stepb0/2026-10-05_04-28-53_r1p_seed1_from_g24ra21793"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-04_23-48-56_t2b_seed1_from_t222292",
+   "target": "../biped12_stepb0/2026-10-04_23-48-56_t2b_seed1_from_t222292"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-05_04-08-12_r2p_seed1_from_g24ra21793",
+   "target": "../biped12_stepb0/2026-10-05_04-08-12_r2p_seed1_from_g24ra21793"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-03_19-01-59_g22r_cR1toR4_seed1_from_g21a11300",
+   "target": "../biped12_g22r/2026-10-03_19-01-59_g22r_cR1toR4_seed1_from_g21a11300"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-05_00-48-54_t3_seed1_from_g24ra21793",
+   "target": "../biped12_stepb0/2026-10-05_00-48-54_t3_seed1_from_g24ra21793"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-06_06-04-22_pa1_from_g24ra21793",
+   "target": "../biped12_stepb0/2026-10-06_06-04-22_pa1_from_g24ra21793"
+  },
+  {
+   "link": "logs/rsl_rl/biped12_stage4/2026-10-07_16-49-39_w3S3dR_from_s3d",
+   "target": "../biped12_stepb0/2026-10-07_16-49-39_w3S3dR_from_s3d"
+  }
+ ],
+ "skipped": [
+  {
+   "name": "2026-10-03_18-33-31_bench_solo_g",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-03_18-35-07_bench_duo_g",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-03_18-37-03_bench_solo4k",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-03_18-37-59_bench_duo2k_g",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-04_03-26-05_stepb1_seed1_from_g21a11300",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-04_03-41-02_stepi0_seed1_from_g21a11300",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-04_03-51-07_stepa0_seed1_from_g21a11300",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-04_04-04-57_stepa0b_seed1_from_g21a11300",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-04_04-20-02_stepa0c_seed1_from_g21a11300",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-04_04-30-29_stepa0e_seed1_from_g21a11300",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-04_04-41-35_stepa0f_seed1_from_g21a11300",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-04_04-43-59_stepa0g_seed1_from_g21a11300",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-04_04-56-07_stepa0h_seed1_from_g21a11300",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-04_05-22-16_stepa0j_seed1_from_g21a11300",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-03_18-34-17_bench_solo_w",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-03_18-35-07_bench_duo_w",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-10-03_18-37-59_bench_duo2k_w",
+   "why": "이미 분리 폴더 아래"
+  },
+  {
+   "name": "2026-09-30_12-10-00_g13init",
+   "why": "자식 2·직접 참조 0"
+  },
+  {
+   "name": "2026-10-04_12-35-53_g24rc_seed1_from_g24ra21793",
+   "why": "scratchpad 대기열 스크립트가 가리킴"
+  },
+  {
+   "name": "2026-10-04_16-06-52_g24rd_seed1_from_g24ra21793",
+   "why": "scratchpad 대기열 스크립트가 가리킴"
+  },
+  {
+   "name": "2026-10-04_22-53-50_t2_seed1_from_g24ra21793",
+   "why": "자식 1·직접 참조 0"
+  },
+  {
+   "name": "2026-10-05_03-54-56_r2_seed1_from_g24ra21793",
+   "why": "scratchpad 대기열 스크립트가 가리킴"
+  },
+  {
+   "name": "2026-10-05_06-30-46_w2o_seed1_from_w2h24791",
+   "why": "scratchpad 대기열 스크립트가 가리킴"
+  },
+  {
+   "name": "2026-10-06_02-42-32_rd5_from_g24ra21793",
+   "why": "scratchpad 대기열 스크립트가 가리킴"
+  },
+  {
+   "name": "2026-10-06_03-18-36_w2om_from_w2q25590",
+   "why": "scratchpad 대기열 스크립트가 가리킴"
+  },
+  {
+   "name": "2026-10-06_04-12-57_w2omA_from_w2om26100",
+   "why": "자식 2·직접 참조 0"
+  },
+  {
+   "name": "2026-10-06_08-30-20_w2omP_from_a0m14299",
+   "why": "자식 5·직접 참조 0"
+  },
+  {
+   "name": "2026-10-06_11-10-14_w3C_s1_from_g21a",
+   "why": "scratchpad 대기열 스크립트가 가리킴"
+  },
+  {
+   "name": "2026-10-06_13-03-09_w3S1b_from_w3A2",
+   "why": "scratchpad 대기열 스크립트가 가리킴"
+  },
+  {
+   "name": "2026-10-07_02-43-05_w3S3dC2_from_s3d",
+   "why": "scratchpad 대기열 스크립트가 가리킴"
+  }
+ ]
+}

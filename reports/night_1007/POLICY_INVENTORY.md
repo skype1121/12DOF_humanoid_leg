@@ -1,25 +1,25 @@
 # 정책·체크포인트 전수 목록과 분류 초안 (1007 밤)
 
-> 자동 생성: 2026-10-07 23:00:16 · 브랜치 `hang2stand-prep-0911` @ `d9aaf1f6` · 명령:
-> `python3 reports/night_1007/policy_inventory.py --md5 all --scratch /tmp/claude-1000/-home-ryu-humanoid-leg-test1/e53dc80b-9c62-45a7-a400-3cd12071b2f1/scratchpad --scratch /tmp/claude-1000/-home-ryu-humanoid-leg-test1/f0e513e9-71ac-45c3-820b-1b06b07d54af/scratchpad`
+> 자동 생성: 2026-10-08 00:54:44 · 브랜치 `hang2stand-prep-0911` @ `df775fa0` · 명령:
+> `python3 reports/night_1007/policy_inventory.py --md5 all`
 > 이 문서는 **초안**이다. 최종 후보 선별은 평가 결과로 주 작업자가 정한다. 이 작업에서는 **아무것도 지우거나 옮기지 않았다**(읽기만).
 > 젯슨·ROS·CAN·GPU·Isaac 은 쓰지 않았다. 젯슨에 관한 내용은 저장소 코드·문서와, 같은 폴더에 이미 받아져 있던 md5 목록(스냅숏)을 읽은 것이고 접속해서 확인한 것이 아니다.
 > 기계가 읽는 같은 내용: `reports/night_1007/policy_inventory.json` · 다시 만들기: `python3 reports/night_1007/policy_inventory.py [--md5 all]`
 
 ## 0. 한눈에
 
-- `logs/rsl_rl/` 의 run 디렉터리 **240 개**, 체크포인트(model_N.pt) **2650 개**, 합계 **20.01 GiB**(체크포인트만 18.99 GiB). run 을 가리키는 심볼릭 링크 59 개와 실험 폴더 링크 1 개는 별칭으로만 세고, 실제 경로를 한 번씩만 셌다.
-- 디스크: 전체 450.67 GiB 중 여유 39.46 GiB(9 %) — 측정 시각 2026-10-07 23:00:16.
+- `logs/rsl_rl/` 의 run 디렉터리 **244 개**, 체크포인트(model_N.pt) **2677 개**, 합계 **20.25 GiB**(체크포인트만 19.19 GiB). run 을 가리키는 심볼릭 링크 63 개와 실험 폴더 링크 1 개는 별칭으로만 세고, 실제 경로를 한 번씩만 셌다.
+- 디스크: 전체 450.67 GiB 중 여유 72.26 GiB(16 %) — 측정 시각 2026-10-08 00:54:44.
 
 | 분류 | run | 체크포인트 | 용량 | 그중 핵심 체크포인트 | 솎을 수 있는 체크포인트(남기는 run 안) |
 |---|---:|---:|---:|---:|---:|
-| 배포 후보 | 3 | 32 | 266.0 MiB | 13 | 19 개 · 145.3 MiB |
-| 평가 중 후보 | 2 | 8 | 71.2 MiB | 8 | — |
+| 배포 후보 | 3 | 32 | 271.1 MiB | 13 | 19 개 · 145.3 MiB |
+| 평가 중 후보 | 6 | 35 | 307.0 MiB | 35 | — |
 | 기준선·검증 의존 | 12 | 211 | 1.55 GiB | 32 | 179 개 · 1.23 GiB |
 | 기록 보존 | 43 | 694 | 4.90 GiB | 120 | 574 개 · 3.77 GiB |
 | 폐기 후보 | 172 | 1624 | 12.76 GiB | — | — |
 | 불명 | 8 | 81 | 484.7 MiB | — | — |
-| **합계** | **240** | **2650** | **20.01 GiB** | | 772 개 · 5.14 GiB |
+| **합계** | **244** | **2677** | **20.25 GiB** | | 772 개 · 5.14 GiB |
 
 - 폐기 후보의 근거별 내역: **문서에 기각·무효 기록이 있는 것 140 개(12.22 GiB)**, 문서 기록 없이 run 이름·설정만으로 무효로 본 것(스모크·점검·디버그·재기동 전 실행) 32 개(552.6 MiB). 뒤쪽은 지시의 정의('문서에 기각 기록')를 엄격히 적용하면 불명이다 — §5.2 에 따로 모았다.
 - '솎을 수 있는 체크포인트'는 남기는 run 안에서 **어떤 참조(익스포트 원본·레지스트리·계보·스크립트·문서·평가 산출물)도 걸리지 않은** 중간 저장본이다. run 을 남기더라도 이것만 따로 치울 수 있다. 최근 24 시간 안에 바뀐 run 은 솎기 대상에서 뺐다.
@@ -27,10 +27,11 @@
 눈여겨볼 것:
 
 - 배포 후보 세 정책: 코드(레지스트리)가 가리키는 run 의 `SOURCE_CHECKPOINT` 가 기대 체크포인트와 같은 것 **3/3**, 익스포트 가중치가 그 체크포인트와 같은 것 **3/3**, `exported/policy.pt`·`policy.onnx` 의 md5 가 배포 매니페스트(`deploy/*.md5`)와 같은 것 **3/3** (§1). 세 정책의 러너 계약 항목은 전부 같다(§1 계약 대조).
-- 세 정책 중 3 개가 등록부 `models/` 에 없다. 지금은 git 이 무시하는 `logs/` 와 `deploy/*.md5` 에만 기록이 있다(§8.1·§9).
+- 세 정책 중 0 개가 등록부 `models/` 에 없다. 지금은 git 이 무시하는 `logs/` 와 `deploy/*.md5` 에만 기록이 있다(§8.1·§9).
 - **익스포트와 등록부가 어긋난 곳이 있다**: `biped12_stage4/2026-09-22_13-32-53_g10/exported` 는 model_7500 의 익스포트인데 등록부 `stand_crouch_v6` 는 model_6600 (§7.4).
 - 브리지 `CHECKPOINTS` 37 키 중 27 키는 가리키는 run 이 로컬에 없다(§7.2).
-- 젯슨 스냅숏(2026-10-07 22:20 에 받아 둔 목록, 이 작업에서 접속하지 않음) 기준 필수 파일: 서기(STAND) — 젯슨에 있고 PC 와 같다 · 회복(RECOVERY) — 젯슨에 있고 PC 와 같다 · 걷기(WALK) — **젯슨에 없다** (§3.4).
+- 젯슨 스냅숏(2026-10-08 00:25 에 받아 둔 목록, 이 작업에서 접속하지 않음) 기준 필수 파일: 서기(STAND) — 젯슨에 있고 PC 와 같다 · 회복(RECOVERY) — 젯슨에 있고 PC 와 같다 · 걷기(WALK) — 젯슨에 있고 PC 와 같다 (§3.4).
+- ⚠ '평가 중'으로 적어 둔 run 에 판정 문구가 생긴 것으로 보인다 — 분류표를 고쳐야 한다: `biped12_stepb0/2026-10-07_22-25-32_w3S3f_from_15800` ← `reports/gen_w3/TORQUE_BUDGET_1007.md`:82; `biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800` ← `reports/gen_w3/TRANSITION_W3KE.md`:762
 
 분류 규칙(위에서부터 첫 일치):
 
@@ -76,9 +77,9 @@
 
 점검 결과(오프라인):
 
-- 서기(STAND): `exported/SOURCE_CHECKPOINT` = `model_11300.pt` → 기대값 model_11300.pt 와 **일치**. `exported/policy.pt` 의 가중치(actor 8 텐서)가 `model_11300.pt` 와 **바이트까지 같다** · `policy.onnx` 안에도 같은 가중치 바이트가 들어 있다. 별칭(심볼릭 링크) `logs/rsl_rl/biped12_g22r/2026-10-02_21-23-08_g21a`, `logs/rsl_rl/biped12_stepb0/2026-10-02_21-23-08_g21a`, `logs/rsl_rl/biped12_w1/2026-10-02_21-23-08_g21a`. 평가 산출물 3548 건(그중 model_11300: 3535 건).
-- 회복(RECOVERY): `exported/SOURCE_CHECKPOINT` = `model_21793.pt` → 기대값 model_21793.pt 와 **일치**. `exported/policy.pt` 의 가중치(actor 8 텐서)가 `model_21793.pt` 와 **바이트까지 같다** · `policy.onnx` 안에도 같은 가중치 바이트가 들어 있다. 별칭(심볼릭 링크) `logs/rsl_rl/biped12_stage4/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294`. 평가 산출물 2673 건(그중 model_21793: 2629 건).
-- 걷기(WALK): `exported/SOURCE_CHECKPOINT` = `model_15800.pt` → 기대값 model_15800.pt 와 **일치**. `exported/policy.pt` 의 가중치(actor 8 텐서)가 `model_15800.pt` 와 **바이트까지 같다** · `policy.onnx` 안에도 같은 가중치 바이트가 들어 있다. 별칭(심볼릭 링크) `logs/rsl_rl/biped12_stage4/2026-10-07_00-11-12_w3S3d_from_s2d`. 평가 산출물 748 건(그중 model_15800: 654 건).
+- 서기(STAND): `exported/SOURCE_CHECKPOINT` = `model_11300.pt` → 기대값 model_11300.pt 와 **일치**. `exported/policy.pt` 의 가중치(actor 8 텐서)가 `model_11300.pt` 와 **바이트까지 같다** · `policy.onnx` 안에도 같은 가중치 바이트가 들어 있다. 별칭(심볼릭 링크) `logs/rsl_rl/biped12_g22r/2026-10-02_21-23-08_g21a`, `logs/rsl_rl/biped12_stepb0/2026-10-02_21-23-08_g21a`, `logs/rsl_rl/biped12_w1/2026-10-02_21-23-08_g21a`. 평가 산출물 3621 건(그중 model_11300: 3608 건).
+- 회복(RECOVERY): `exported/SOURCE_CHECKPOINT` = `model_21793.pt` → 기대값 model_21793.pt 와 **일치**. `exported/policy.pt` 의 가중치(actor 8 텐서)가 `model_21793.pt` 와 **바이트까지 같다** · `policy.onnx` 안에도 같은 가중치 바이트가 들어 있다. 별칭(심볼릭 링크) `logs/rsl_rl/biped12_stage4/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294`. 평가 산출물 2746 건(그중 model_21793: 2702 건).
+- 걷기(WALK): `exported/SOURCE_CHECKPOINT` = `model_15800.pt` → 기대값 model_15800.pt 와 **일치**. `exported/policy.pt` 의 가중치(actor 8 텐서)가 `model_15800.pt` 와 **바이트까지 같다** · `policy.onnx` 안에도 같은 가중치 바이트가 들어 있다. 별칭(심볼릭 링크) `logs/rsl_rl/biped12_stage4/2026-10-07_00-11-12_w3S3d_from_s2d`. 평가 산출물 800 건(그중 model_15800: 706 건).
 
 - 가중치 대조가 보는 것은 '같은 숫자가 들어 있다'까지다. onnx 그래프의 연산 구조가 TorchScript 와 같은 출력을 내는지는 이 검사로 알 수 없다(W3S3d 는 `rl_walking/deploy/selftest_w3s3d_onnx.py` 가 따로 본다).
 
@@ -91,6 +92,7 @@
 | `deploy/c5kr_1005.md5` | 일치 4 | 0 / 4 / 0 |
 | `deploy/c5krh_1007.md5` | 정책 줄 없음 | 0 / 0 / 2 |
 | `deploy/g21a_1003.md5` | 일치 5 | 0 / 5 / 0 |
+| `deploy/head_1008.md5` | 일치 20 | 99 / 1 / 0 |
 | `deploy/lat_1006.md5` | 정책 줄 없음 | 4 / 1 / 0 |
 | `deploy/w3s3d_1007.md5` | 일치 6 | 0 / 3 / 0 |
 
@@ -127,7 +129,11 @@
 | run | 체크포인트 | exported* | 근거 | 마지막 변경 |
 |---|---|---|---|---|
 | `logs/rsl_rl/biped12_stepb0/2026-10-07_22-25-32_w3S3f_from_15800` | 6 (15800–16299) | exported_16100(← model_16100.pt), exported_16299(← model_16299.pt) | W3S3f — 토크 한계 무작위화(0.7–1.0) 단일 변경, 후보 체크포인트 16100·16299(사전 등록만 있고 결과 없음) `reports/gen_w3/TORQUE_BUDGET_1007.md`:55 | 2026-10-07 22:48 |
-| `logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800` | 2 (15800–15900) | 없음 | W3S3g — W3S3e + 쏠림 벌점(w3_lean) 단일 변경, 후보 체크포인트 16100·16299(사전 등록만 있고 결과 없음) `reports/gen_w3/TRANSITION_W3KE.md`:703 | 2026-10-07 23:00 |
+| `logs/rsl_rl/biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800` | 6 (15800–16299) | exported_16100(← model_16100.pt), exported_16299(← model_16299.pt) | W3S3g — W3S3e + 쏠림 벌점(w3_lean) 단일 변경, 후보 체크포인트 16100·16299(사전 등록만 있고 결과 없음) `reports/gen_w3/TRANSITION_W3KE.md`:703 | 2026-10-07 23:15 |
+| `logs/rsl_rl/biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800` | 6 (15800–16299) | exported_16299(← model_16299.pt) | 분류표에 없고 최근 24 시간 안에 생김(자동) — 학습·평가 중일 수 있어 읽기만 했다  | 2026-10-07 23:40 |
+| `logs/rsl_rl/biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800` | 6 (15800–16299) | exported_16100(← model_16100.pt), exported_16299(← model_16299.pt) | 분류표에 없고 최근 24 시간 안에 생김(자동) — 학습·평가 중일 수 있어 읽기만 했다  | 2026-10-08 00:26 |
+| `logs/rsl_rl/biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793` | 6 (21800–22292) | exported_22292(← model_22292.pt) | 분류표에 없고 최근 24 시간 안에 생김(자동) — 학습·평가 중일 수 있어 읽기만 했다  | 2026-10-08 00:35 |
+| `logs/rsl_rl/biped12_stepb0/2026-10-08_00-37-31_w3S3fF_from_15800` | 5 (15800–16200) | 없음 | 분류표에 없고 최근 24 시간 안에 생김(자동) — 학습·평가 중일 수 있어 읽기만 했다  | 2026-10-08 00:54 |
 
 - 학습 중인 run 은 체크포인트가 더 생긴다. 최근 3 분 안에 바뀐 파일은 md5 를 건너뛰었다(쓰는 중일 수 있음).
 
@@ -149,10 +155,10 @@
 |  | `logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/policy.pt` | 선택 — PC torch 경로. 젯슨 selftest 일부 분기는 존재 여부만 본다 | 1332626 | `896ca613bc402de02caa8302988f9a68` | 같음 |
 |  | `logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/params/env.yaml` | 선택 — 코드가 읽지 않는다(회복 정책은 서기 정책 계약을 쓴다). 배포 스크립트는 기록용으로 함께 보냄 | 62452 | `7ff27617abdb9dd8ee6155c5d7703eaf` | 같음 |
 |  | `logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/SOURCE_CHECKPOINT` | 선택 — 코드가 읽지 않는다(출처 기록) | 15 | `e24b90e328fadb2a5c7ef9d87721d1a3` | 같음 |
-| 걷기(WALK) | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.onnx` | 필수 — 젯슨 실행 파일(onnxruntime 경로) | 1321751 | `d908cd92ba0916e790f9e3e28ff1d882` | 없음 |
-|  | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.pt` | 선택 — PC torch 경로. 젯슨 selftest 일부 분기는 존재 여부만 본다 | 1332468 | `10e3ee405e1534ebe67574ddbeb9a2a2` | 없음 |
-|  | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/params/env.yaml` | 필수 — 관측 필터·기본자세·(W3) 명령 계약을 여기서 읽는다 | 60296 | `41d1e62aed455029be7351a1db43f48f` | 없음 |
-|  | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/SOURCE_CHECKPOINT` | 선택 — 코드가 읽지 않는다(출처 기록) | 15 | `1ad3809e4af40b1334e497b0d3714a7f` | 없음 |
+| 걷기(WALK) | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.onnx` | 필수 — 젯슨 실행 파일(onnxruntime 경로) | 1321751 | `d908cd92ba0916e790f9e3e28ff1d882` | 같음 |
+|  | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.pt` | 선택 — PC torch 경로. 젯슨 selftest 일부 분기는 존재 여부만 본다 | 1332468 | `10e3ee405e1534ebe67574ddbeb9a2a2` | 같음 |
+|  | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/params/env.yaml` | 필수 — 관측 필터·기본자세·(W3) 명령 계약을 여기서 읽는다 | 60296 | `41d1e62aed455029be7351a1db43f48f` | 같음 |
+|  | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/SOURCE_CHECKPOINT` | 선택 — 코드가 읽지 않는다(출처 기록) | 15 | `1ad3809e4af40b1334e497b0d3714a7f` | 같음 |
 
 ### 3.2 selftest 필수 — 브리지 `--selftest` 가 PASS 하려면 함께 있어야 하는 것
 
@@ -176,16 +182,15 @@
 |  | `logs/rsl_rl/biped12_stage4/2026-09-28_23-19-13_g11a/params/env.yaml` | 필수 — 관측 필터·기본자세·(W3) 명령 계약을 여기서 읽는다 | 54587 | `ab1c12ebc0a55ec3554c669f5eb5680d` | 같음 |
 |  | `logs/rsl_rl/biped12_stage4/2026-09-28_23-19-13_g11a/exported/SOURCE_CHECKPOINT` | 선택 — 코드가 읽지 않는다(출처 기록) | — | **PC 에 없음** | 없음 |
 
-### 3.4 젯슨 스냅숏과의 대조 — `reports/night_1007/jetson/inventory_before_md5.txt` (2026-10-07 22:20 에 받아 둔 목록)
+### 3.4 젯슨 스냅숏과의 대조 — `reports/night_1007/jetson/inventory_after_md5.txt` (2026-10-08 00:25 에 받아 둔 목록)
 
 이 파일은 이 작업이 만든 것이 아니다(같은 폴더에 있던 기록을 읽기만 했다). **젯슨에는 접속하지 않았고, 스냅숏 뒤에 젯슨이 바뀌었는지는 모른다.**
 
-- 합성 구조에 필요한 파일 12 개 중 스냅숏과 **같음 7**, 다름 0, 스냅숏에 **없음 5**.
+- 합성 구조에 필요한 파일 12 개 중 스냅숏과 **같음 11**, 다름 0, 스냅숏에 **없음 1**.
   - 서기(STAND) `biped12_stage4/2026-10-02_21-23-08_g21a`: 같음 3 · 없음 1
   - 회복(RECOVERY) `biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294`: 같음 4
-  - 걷기(WALK) `biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d`: 없음 4
-- **젯슨에 없는 필수 파일**(스냅숏 기준): `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.onnx`, `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/params/env.yaml`
-- 스냅숏의 `logs/rsl_rl/` 파일 63 개 전체: PC 와 같음 20 · **다름 2** · PC 에 없음 41(PC 에서는 그 run 디렉터리가 이미 없다).
+  - 걷기(WALK) `biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d`: 같음 4
+- 스냅숏의 `logs/rsl_rl/` 파일 67 개 전체: PC 와 같음 24 · **다름 2** · PC 에 없음 41(PC 에서는 그 run 디렉터리가 이미 없다).
   - **다름**: `logs/rsl_rl/biped12_stage4/2026-09-22_13-32-53_g10/exported/policy.onnx` — 젯슨 `43c4c3c76e0c5e613dadf7a27e30f21b` / PC `8769437fa40017a1ad3620049599bff6`
   - **다름**: `logs/rsl_rl/biped12_stage4/2026-09-22_13-32-53_g10/exported/policy.pt` — 젯슨 `238a62a02771aa22decaa365861e2a48` / PC `5bdf5bff682d73f3b82d81dd983073d7`
   - PC 에 run 이 없는 것 15 개: `biped12_stage4/2026-08-03_03-18-21`, `biped12_stage4/2026-08-04_13-13-49`, `biped12_stage4/2026-08-08_21-24-48`, `biped12_stage4/2026-08-09_03-59-22`, `biped12_stage4/2026-09-04_16-43-02`, `biped12_stage4/2026-09-04_20-05-14`, `biped12_stage4/2026-09-04_21-48-32`, `biped12_stage4/2026-09-05_17-57-21`, `biped12_stage4/2026-09-09_12-33-03`, `biped12_stage4/2026-09-09_19-15-42`, `biped12_stage4/2026-09-13_00-40-49`, `biped12_stage4/2026-09-18_00-14-13_s9c`, `biped12_stage4/2026-09-18_01-08-37_s9c2`, `biped12_stage4/2026-09-18_02-52-27_s9c3`, `biped12_stage4/2026-09-18_19-06-31_s9d`
@@ -198,20 +203,24 @@
 
 열 설명 — 체크포인트: 개수(최소–최대) · exported: 디렉터리(← SOURCE_CHECKPOINT) · 평가: log_picture 결과 파일 머리말에 이 run 이 나온 횟수 · 핵심: 참조가 걸린 체크포인트 · 솎기: 남기는 run 안에서 참조가 없는 체크포인트 수.
 
-### 4.1 배포 후보 — 3 개 · 266.0 MiB
+### 4.1 배포 후보 — 3 개 · 271.1 MiB
 
 | run | 날짜 | 체크포인트 | 용량 | exported | 태스크 | 평가 | 핵심 체크포인트 | 솎기 | 사유 | 근거(문서:줄) |
 |---|---|---|---:|---|---|---:|---|---:|---|---|
-| `biped12_stage4/2026-10-02_21-23-08_g21a` | 2026-10-02 | 10 (10700–11599) | 82.7 MiB | exported(← model_11300.pt) | HangStand-G21a-v0 | 3548 | 11300, 11599 | 8 | 합성 구조의 서기(STAND) 정책 — KEW3_SPECS[stand_kew3_g21a_g24ra_w3s3d15800].ke=stand_c5kr_g21a_g24ra → C5_PAIRS[..][0] / 문서 기록: 최종 STAND 후보 — G21a-11300 = 최종 STAND 후보 | `reports/FINAL_REPORT_1005.md`:7 · `reports/gen_g18/G21_VERDICT.md`:24 |
-| `biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294` | 2026-10-04 | 16 (20300–21793) | 131.8 MiB | exported(← model_21793.pt) | HangStand-G24Ra-v0 | 2673 | 21400, 21500, 21600, 21700, 21793 | 11 | 합성 구조의 회복(RECOVERY) 정책 — KEW3_SPECS[stand_kew3_g21a_g24ra_w3s3d15800].ke=stand_c5kr_g21a_g24ra → C5_PAIRS[..][1] / 문서 기록: 최종 RECOVERY 정책 — G24R-a-21793 = C5/KE 의 회복 정책(단독 사전 기준은 FAIL, 전환 구조에서 채택) | `reports/gen_c5/G3_SELECT_1004.md`:14 · `reports/FINAL_REPORT_1005.md`:17 |
-| `biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d` | 2026-10-07 | 6 (15700–16193) | 51.4 MiB | exported(← model_15800.pt) | HangStand-W3S3d-v0 | 748 | 15700, 15800, 15900, 16000, 16100, 16193 | — | 합성 구조의 걷기(WALK) 정책 — KEW3_SPECS[stand_kew3_g21a_g24ra_w3s3d15800].w3 / 문서 기록: 최종 WALK/TURN 후보 — W3S3d-15800 = 실물 WALK/TURN 1차 후보 | `reports/night_1005/LOG.md`:1453 · `claude2.md`:130 |
+| `biped12_stage4/2026-10-02_21-23-08_g21a` | 2026-10-02 | 10 (10700–11599) | 82.7 MiB | exported(← model_11300.pt) | HangStand-G21a-v0 | 3621 | 11300, 11599 | 8 | 합성 구조의 서기(STAND) 정책 — KEW3_SPECS[stand_kew3_g21a_g24ra_w3s3d15800].ke=stand_c5kr_g21a_g24ra → C5_PAIRS[..][0] / 문서 기록: 최종 STAND 후보 — G21a-11300 = 최종 STAND 후보 | `reports/FINAL_REPORT_1005.md`:7 · `reports/gen_g18/G21_VERDICT.md`:24 |
+| `biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294` | 2026-10-04 | 16 (20300–21793) | 131.8 MiB | exported(← model_21793.pt) | HangStand-G24Ra-v0 | 2746 | 21400, 21500, 21600, 21700, 21793 | 11 | 합성 구조의 회복(RECOVERY) 정책 — KEW3_SPECS[stand_kew3_g21a_g24ra_w3s3d15800].ke=stand_c5kr_g21a_g24ra → C5_PAIRS[..][1] / 문서 기록: 최종 RECOVERY 정책 — G24R-a-21793 = C5/KE 의 회복 정책(단독 사전 기준은 FAIL, 전환 구조에서 채택) | `reports/gen_c5/G3_SELECT_1004.md`:14 · `reports/FINAL_REPORT_1005.md`:17 |
+| `biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d` | 2026-10-07 | 6 (15700–16193) | 56.5 MiB | exported(← model_15800.pt)<br>exported_16100(← model_16100.pt)<br>exported_16193(← model_16193.pt) | HangStand-W3S3d-v0 | 800 | 15700, 15800, 15900, 16000, 16100, 16193 | — | 합성 구조의 걷기(WALK) 정책 — KEW3_SPECS[stand_kew3_g21a_g24ra_w3s3d15800].w3 / 문서 기록: 최종 WALK/TURN 후보 — W3S3d-15800 = 실물 WALK/TURN 1차 후보 | `reports/night_1005/LOG.md`:1453 · `claude2.md`:130 |
 
-### 4.2 평가 중 후보 — 2 개 · 71.2 MiB
+### 4.2 평가 중 후보 — 6 개 · 307.0 MiB
 
 | run | 날짜 | 체크포인트 | 용량 | exported | 태스크 | 평가 | 핵심 체크포인트 | 솎기 | 사유 | 근거(문서:줄) |
 |---|---|---|---:|---|---|---:|---|---:|---|---|
-| `biped12_stepb0/2026-10-07_22-25-32_w3S3f_from_15800` | 2026-10-07 | 6 (15800–16299) | 54.2 MiB | exported_16100(← model_16100.pt)<br>exported_16299(← model_16299.pt) | HangStand-W3S3f-v0 | 0 | 15800, 15900, 16000, 16100, 16200, 16299 | — | W3S3f — 토크 한계 무작위화(0.7–1.0) 단일 변경, 후보 체크포인트 16100·16299(사전 등록만 있고 결과 없음) | `reports/gen_w3/TORQUE_BUDGET_1007.md`:55 |
-| `biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800` | 2026-10-07 | 2 (15800–15900) | 17.0 MiB | — | HangStand-W3S3g-v0 | 0 | 15800, 15900 | — | W3S3g — W3S3e + 쏠림 벌점(w3_lean) 단일 변경, 후보 체크포인트 16100·16299(사전 등록만 있고 결과 없음) | `reports/gen_w3/TRANSITION_W3KE.md`:703 |
+| `biped12_stepb0/2026-10-07_22-25-32_w3S3f_from_15800` | 2026-10-07 | 6 (15800–16299) | 54.2 MiB | exported_16100(← model_16100.pt)<br>exported_16299(← model_16299.pt) | HangStand-W3S3f-v0 | 0 | 15800, 15900, 16000, 16100, 16200, 16299 | — | W3S3f — 토크 한계 무작위화(0.7–1.0) 단일 변경, 후보 체크포인트 16100·16299(사전 등록만 있고 결과 없음) / ⚠ 문서에 판정 문구가 생긴 것으로 보인다(`reports/gen_w3/TORQUE_BUDGET_1007.md`:82 '## 9. W3S3f 판정 (1007 23:09, `x13_summ.py --prefix tr_s3f<CK>') — 분류표(CURATED)를 고쳐야 한다 | `reports/gen_w3/TORQUE_BUDGET_1007.md`:55 |
+| `biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800` | 2026-10-07 | 6 (15800–16299) | 54.2 MiB | exported_16100(← model_16100.pt)<br>exported_16299(← model_16299.pt) | HangStand-W3S3g-v0 | 0 | 15800, 15900, 16000, 16100, 16200, 16299 | — | W3S3g — W3S3e + 쏠림 벌점(w3_lean) 단일 변경, 후보 체크포인트 16100·16299(사전 등록만 있고 결과 없음) / ⚠ 문서에 판정 문구가 생긴 것으로 보인다(`reports/gen_w3/TRANSITION_W3KE.md`:762 '### 5.19b W3S3g 판정 — 쏠림 벌점 (1007 23:54, `s3g_judge.py`, seed') — 분류표(CURATED)를 고쳐야 한다 | `reports/gen_w3/TRANSITION_W3KE.md`:703 |
+| `biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800` | 2026-10-07 | 6 (15800–16299) | 51.7 MiB | exported_16299(← model_16299.pt) | HangStand-W3S3t-v0(추정) | 0 | 15800, 15900, 16000, 16100, 16200, 16299 | — | 분류표에 없고 최근 24 시간 안에 생김(자동) — 학습·평가 중일 수 있어 읽기만 했다 |  |
+| `biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800` | 2026-10-07 | 6 (15800–16299) | 54.3 MiB | exported_16100(← model_16100.pt)<br>exported_16299(← model_16299.pt) | HangStand-W3S3tK-v0(추정) | 0 | 15800, 15900, 16000, 16100, 16200, 16299 | — | 분류표에 없고 최근 24 시간 안에 생김(자동) — 학습·평가 중일 수 있어 읽기만 했다 |  |
+| `biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793` | 2026-10-08 | 6 (21800–22292) | 51.5 MiB | exported_22292(← model_22292.pt) | HangStand-G24RaF-v0(추정) | 0 | 21800, 21900, 22000, 22100, 22200, 22292 | — | 분류표에 없고 최근 24 시간 안에 생김(자동) — 학습·평가 중일 수 있어 읽기만 했다 |  |
+| `biped12_stepb0/2026-10-08_00-37-31_w3S3fF_from_15800` | 2026-10-08 | 5 (15800–16200) | 41.1 MiB | — | HangStand-W3S3fF-v0(추정) | 0 | 15800, 15900, 16000, 16100, 16200 | — | 분류표에 없고 최근 24 시간 안에 생김(자동) — 학습·평가 중일 수 있어 읽기만 했다 |  |
 
 ### 4.3 기준선·검증 의존 — 12 개 · 1.55 GiB
 
@@ -678,7 +687,7 @@
 
 ### 7.3 심볼릭 링크(별칭)
 
-- run 디렉터리 링크 59 개: 대부분 `biped12_stage4/<run>` → `../biped12_stepb0/<run>` (G11a 지면 평가 태스크가 `biped12_stage4` 에서 run 을 찾기 때문 — `claude2.md` §8). 부모 run 링크(`biped12_{w1,g22r,stepb0}/…_g21a` → `../biped12_stage4/…_g21a`)도 있다.
+- run 디렉터리 링크 63 개: 대부분 `biped12_stage4/<run>` → `../biped12_stepb0/<run>` (G11a 지면 평가 태스크가 `biped12_stage4` 에서 run 을 찾기 때문 — `claude2.md` §8). 부모 run 링크(`biped12_{w1,g22r,stepb0}/…_g21a` → `../biped12_stage4/…_g21a`)도 있다.
 - 실험 폴더 링크: `logs/rsl_rl/biped12_stage4/biped12_stepb0` → `../biped12_stepb0/` — **자기 자신의 형제를 가리키는 고리**다(`biped12_stage4/biped12_stepb0/…` 로 같은 run 이 한 번 더 보인다). 재귀로 훑는 도구(`find -L`, `du -L`, glob `**`)는 중복 집계한다.
 - run 안의 파일 링크 30 개: `model_11600.pt → model_11599.pt`, `model_11000.pt → model_10999.pt` 꼴(마지막 저장본을 평가 격자의 반복 번호로 부르기 위한 것). 링크 대상을 치우면 그 번호를 쓰는 평가가 깨진다. 핵심 체크포인트 계산에서는 링크를 대상 파일로 바꿔 셌다.
 - 깨진 링크: 0 개
@@ -712,16 +721,24 @@
 | `biped12_stage4/2026-09-22_13-32-53_g10` | exported | — | model_7500.pt | stand_crouch_v6: model_6600.pt | 예 | **⚠ 등록부와 다름** |
 | `biped12_stage4/2026-09-28_23-19-13_g11a` | exported | — | model_8699.pt | stand_crouch_g11a: model_8699.pt | 예 | 일치 |
 | `biped12_stage4/2026-09-29_14-32-50_g12` | exported | — | model_9500.pt | stand_crouch_g12: model_9500.pt | 예 | 일치 |
-| `biped12_stage4/2026-10-02_21-23-08_g21a` | exported | model_11300.pt | model_11300.pt | — | 예 | 일치 |
-| `biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294` | exported | model_21793.pt | model_21793.pt | — | 예 | 일치 |
-| `biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d` | exported | model_15800.pt | model_15800.pt | — | 예 | 일치 |
+| `biped12_stage4/2026-10-02_21-23-08_g21a` | exported | model_11300.pt | model_11300.pt | stand_g21a_11300: model_11300.pt | 예 | 일치 |
+| `biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294` | exported | model_21793.pt | model_21793.pt | recover_g24ra_21793: model_21793.pt | 예 | 일치 |
+| `biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d` | exported | model_15800.pt | model_15800.pt | walk_w3s3d_15800: model_15800.pt | 예 | 일치 |
+| `biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d` | exported_16100 | model_16100.pt | model_16100.pt | — | 예 | 일치 |
+| `biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d` | exported_16193 | model_16193.pt | model_16193.pt | — | 예 | 일치 |
 | `biped12_stepb0/2026-10-07_21-51-10_w3S3e_from_s3d` | exported_16100 | model_16100.pt | model_16100.pt | — | 예 | 일치 |
 | `biped12_stepb0/2026-10-07_21-51-10_w3S3e_from_s3d` | exported_16299 | model_16299.pt | model_16299.pt | — | 예 | 일치 |
 | `biped12_stepb0/2026-10-07_22-25-32_w3S3f_from_15800` | exported_16100 | model_16100.pt | model_16100.pt | — | 예 | 일치 |
 | `biped12_stepb0/2026-10-07_22-25-32_w3S3f_from_15800` | exported_16299 | model_16299.pt | model_16299.pt | — | 예 | 일치 |
+| `biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800` | exported_16100 | model_16100.pt | model_16100.pt | — | 예 | 일치 |
+| `biped12_stepb0/2026-10-07_22-52-26_w3S3g_from_15800` | exported_16299 | model_16299.pt | model_16299.pt | — | 예 | 일치 |
+| `biped12_stepb0/2026-10-07_23-17-51_w3S3t_from_15800` | exported_16299 | model_16299.pt | model_16299.pt | — | 예 | 일치 |
+| `biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800` | exported_16100 | model_16100.pt | model_16100.pt | — | 예 | 일치 |
+| `biped12_stepb0/2026-10-07_23-42-16_w3S3tK_from_15800` | exported_16299 | model_16299.pt | model_16299.pt | — | 예 | 일치 |
+| `biped12_stepb0/2026-10-08_00-11-19_g24raf_from_21793` | exported_22292 | model_22292.pt | model_22292.pt | — | 예 | 일치 |
 
 - ⚠ `logs/rsl_rl/biped12_stage4/2026-09-22_13-32-53_g10/exported` 는 **model_7500.pt 의 익스포트**다. 등록부(stand_crouch_v6)는 model_6600.pt 의 익스포트를 담고 있고(가중치로 확인, §8.1), `deploy/MANIFEST.md5` 에 적힌 md5 도 지금 이 디렉터리의 파일과 다르다. 브리지 키 `stand_crouch_v6` 는 이 디렉터리를 읽으므로, **PC 에서 그 키로 도는 정책은 등록부·매니페스트가 말하는 정책과 다르다.**
-  - 젯슨 스냅숏(2026-10-07 22:20)의 같은 경로: `policy.onnx` PC 와 다름(= 등록부 사본과 같은 파일), `policy.pt` PC 와 다름(= 등록부 사본과 같은 파일) — 스냅숏 기준으로 젯슨에는 등록부와 같은 파일이 있고, PC 의 `exported/` 만 다르다.
+  - 젯슨 스냅숏(2026-10-08 00:25)의 같은 경로: `policy.onnx` PC 와 다름(= 등록부 사본과 같은 파일), `policy.pt` PC 와 다름(= 등록부 사본과 같은 파일) — 스냅숏 기준으로 젯슨에는 등록부와 같은 파일이 있고, PC 의 `exported/` 만 다르다.
 
 ## 8. `logs/rsl_rl/` 밖에 있는 정책 사본
 
@@ -729,6 +746,7 @@
 
 | 이름 | run / 체크포인트 | 태스크 | 파일 md5 = meta.json | run 이 로컬에 | 사본 가중치 = 그 체크포인트 | 지금 run 의 exported 와 같은 파일 |
 |---|---|---|---|---|---|---|
+| `models/recover_g24ra_21793` | 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294 / model_21793.pt | HangStand-G24Ra-v0 | 일치 | 있음 | 예 | 예 |
 | `models/stand_crouch_g11a` | 2026-09-28_23-19-13_g11a / model_8699.pt | HangStand-G11a-v0 | 일치 | 있음 | 예 | 예 |
 | `models/stand_crouch_g12` | 2026-09-29_14-32-50_g12 / model_9500.pt | HangStand-G12-v0 | 일치 | 있음 | 예 | 예 |
 | `models/stand_crouch_v1` | 2026-09-18_00-14-13_s9c / model_144485.pt | HangStand-S9c-v0 | 일치 | 없음 | — | — |
@@ -737,6 +755,7 @@
 | `models/stand_crouch_v2` | 2026-09-18_19-06-31_s9d / model_156300.pt | HangStand-S9d-v0 | 일치 | 없음 | — | — |
 | `models/stand_crouch_v5` | 2026-09-21_20-30-32_g9 / model_5700.pt | HangStand-G9-v0 | 일치 | 있음 | 예 | 예 |
 | `models/stand_crouch_v6` | 2026-09-22_13-32-53_g10 / model_6600.pt | HangStand-G10-v0 | 일치 | 있음 | 예 | **아니오 ⚠**(§7.4) |
+| `models/stand_g21a_11300` | 2026-10-02_21-23-08_g21a / model_11300.pt | HangStand-G21a-v0 | 일치 | 있음 | 예 | 예 |
 | `models/stand_hang_v1` | 2026-09-08_19-00-25 / model_129494.pt | HangStand-S4m-v0 | 일치 | 없음 | — | — |
 | `models/stand_hang_v2` | 2026-09-08_23-33-51 / model_133991.pt | HangStand-S5v-v0 | 일치 | 없음 | — | — |
 | `models/stand_hang_v3` | 2026-09-09_11-34-22 / model_135490.pt | HangStand-S5w-v0 | 일치 | 없음 | — | — |
@@ -754,8 +773,9 @@
 | `models/stand_v18b` | 2026-09-05_19-37-39 / model_120998.pt | Velocity-Stage4V2-Stand-V18-v0 | 일치 | 있음 | 확인 불가(체크포인트 없음) | 예 |
 | `models/legacy/stand_v6b` | 2026-08-04_11-31-27 / model_59899.pt | Velocity-Stage4V2-Stand-V6-v0 | 일치 | 없음 | — | — |
 | `models/legacy/stand_v7` | 2026-08-04_13-13-49 / model_63898.pt | Velocity-Stage4V2-Stand-V7-v0 | 일치 | 없음 | — | — |
+| `models/walk_w3s3d_15800` | 2026-10-07_00-11-12_w3S3d_from_s2d / model_15800.pt | HangStand-W3S3d-v0 | 일치 | 있음 | 예 | 예 |
 
-- **배포 후보 가운데 `models/` 에 등록되지 않은 것: 서기(STAND) `logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a`, 회복(RECOVERY) `logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294`, 걷기(WALK) `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d`.** 등록부의 마지막 항목은 `stand_crouch_g12`(0929)다. 그 뒤 세대는 git 이 무시하는 `logs/` 에만 있고, 체크섬은 `deploy/*.md5` 에 흩어져 있다.
+- **배포 후보 가운데 `models/` 에 등록되지 않은 것: 없음.** 등록부의 마지막 항목은 `stand_crouch_g12`(0929)다. 그 뒤 세대는 git 이 무시하는 `logs/` 에만 있고, 체크섬은 `deploy/*.md5` 에 흩어져 있다.
 
 ### 8.2 `deploy/cand/` (익스포트 보관 사본)
 
@@ -850,25 +870,26 @@ python3 rl_walking/scripts/register_model.py walk_w3s3d_15800 --experiment biped
    - `logs/rsl_rl/biped12_stage4/2026-10-07_16-49-39_w3S3dR_from_s3d`
 2. **스크립트가 이름으로 가리키는 곳 0 줄**(실행 코드 줄만. 주석·docstring 제외):
    - 없음(run 디렉터리 이름을 그대로 적은 실행 줄은 없다)
-   - 이름 꼬리로 run 을 찾는 줄(`ls -d logs/rsl_rl/<실험>/*_<꼬리> | tail -1`) 6 곳 중 폐기 후보에 걸리거나 꼬리가 변수인 것:
+   - 이름 꼬리로 run 을 찾는 줄(`ls -d logs/rsl_rl/<실험>/*_<꼬리> | tail -1`) 8 곳 중 폐기 후보에 걸리거나 꼬리가 변수인 것:
      - `reports/gen_w3/scripts/w3train.sh`:17 `biped12_stepb0/*_$RNAME` → 꼬리가 변수라 실행 때 정해진다
      - `reports/gen_w3/scripts/w3train.sh`:21 `biped12_stepb0/*_$RNAME` → 꼬리가 변수라 실행 때 정해진다
+     - `reports/gen_w3/scripts/ketrain.sh`:17 `biped12_stepb0/*_$RNAME` → 꼬리가 변수라 실행 때 정해진다
+     - `reports/gen_w3/scripts/ketrain.sh`:21 `biped12_stepb0/*_$RNAME` → 꼬리가 변수라 실행 때 정해진다
      - `reports/gen_w3/scripts/w3s3dr.sh`:11 `biped12_stepb0/*_w3S3dR_from_s3d` → `2026-10-07_16-49-39_w3S3dR_from_s3d`
      - `reports/gen_w3/scripts/w3s3dr.sh`:14 `biped12_stepb0/*_w3S3dR_from_s3d` → `2026-10-07_16-49-39_w3S3dR_from_s3d`
-3. **문서가 경로·이름을 적어 둔 곳**: 문서 18 개의 26 줄(판정 기록 — 고칠 필요는 없지만 경로가 죽은 링크가 된다). 많은 순: `reports/gen_step/OSS_STEP_RESEARCH.md`(6), `claude2.md`(3), `reports/gen_w3/WD_DESIGN.md`(2), `RL보행_명령어모음.txt`(1), `reports/gen_g22r/verdict_g22r_12500_s1.md`(1), `reports/gen_g22r/VERDICT_1003.md`(1), `reports/gen_g22r/verdict_g22r_13099_s1.md`(1), `reports/gen_g6/RECOVERY_EVAL_0920.md`(1)
+3. **문서가 경로·이름을 적어 둔 곳**: 문서 19 개의 27 줄(판정 기록 — 고칠 필요는 없지만 경로가 죽은 링크가 된다). 많은 순: `reports/gen_step/OSS_STEP_RESEARCH.md`(6), `claude2.md`(3), `reports/gen_w3/WD_DESIGN.md`(2), `RL보행_명령어모음.txt`(1), `reports/gen_g22r/verdict_g22r_12500_s1.md`(1), `reports/gen_g22r/VERDICT_1003.md`(1), `reports/gen_g22r/verdict_g22r_13099_s1.md`(1), `reports/gen_w3/TORQUE_W3T_DESIGN.md`(1)
 4. **평가 산출물 3440 건**의 머리말이 이 run 들의 체크포인트 경로를 가리킨다(`log_picture/` — 결과 파일은 남지만 같은 평가를 다시 돌릴 수 없게 된다).
 5. **웜스타트 기록**: 폐기 후보끼리의 부모–자식 12 쌍은 `params/agent.yaml` 의 `load_run` 이 죽은 이름이 된다(재현용 기록일 뿐 실행에는 영향 없음). 남기는 run 의 부모는 계보 규칙으로 이미 기록 보존에 들어가 있다.
 6. **이름순 마지막에 기대는 코드**:
-   - `isaaclab_tasks.utils.get_checkpoint_path(log_root, run_regex, ckpt_regex)` 는 실험 폴더의 디렉터리(링크 포함) 가운데 이름이 정규식에 **앞에서부터 맞는**(`re.match`) 것을 이름순으로 세워 **마지막**을 고른다. `--load_run` 을 안 주면(`.*`) 폴더의 마지막 항목이 뽑힌다 — 지금 `biped12_stepb0` 의 마지막은 `2026-10-07_22-52-26_w3S3g_from_15800`, `biped12_stage4` 의 마지막은 `biped12_stepb0`(고리 링크 — 안에 model_*.pt 가 없어서 `.*` 로 부르면 '체크포인트 없음' 오류로 끝난다).
+   - `isaaclab_tasks.utils.get_checkpoint_path(log_root, run_regex, ckpt_regex)` 는 실험 폴더의 디렉터리(링크 포함) 가운데 이름이 정규식에 **앞에서부터 맞는**(`re.match`) 것을 이름순으로 세워 **마지막**을 고른다. `--load_run` 을 안 주면(`.*`) 폴더의 마지막 항목이 뽑힌다 — 지금 `biped12_stepb0` 의 마지막은 `2026-10-08_00-37-31_w3S3fF_from_15800`, `biped12_stage4` 의 마지막은 `biped12_stepb0`(고리 링크 — 안에 model_*.pt 가 없어서 `.*` 로 부르면 '체크포인트 없음' 오류로 끝난다).
    - 같은 함수라서 `--load_run <이름>` 도 앞부분 일치다: 옮긴 뒤 같은 접두사의 다른 run 이 남아 있으면 그쪽이 잡힌다(타임스탬프가 붙어 있어 지금은 겹치는 이름이 없다).
    - `rl_walking/deploy/policy_runner_stage4.py --selftest` 실모델 시험의 대체 경로 = `biped12_stage4/*/exported/policy.pt` 의 이름순 마지막 — 지금 PC 에서는 `logs/rsl_rl/biped12_stage4/2026-10-07_00-11-12_w3S3d_from_s2d/exported`.
    - 평가 체인 스크립트의 `ls -d logs/rsl_rl/biped12_stepb0/*_<이름> | tail -1`(`reports/gen_w3/scripts/w3s3e.sh`·`w3s3dr.sh`·`w3train.sh`) — 같은 꼬리 이름의 run 을 옮기면 다른 run 이 잡히거나 비게 된다.
 7. **평가 태스크가 실험 폴더를 정한다**: `--load_run`·`--switch_to`·`--ke` 는 `logs/rsl_rl/<태스크의 experiment_name>/<run>` 에서만 찾는다(`eval_ground_recovery.py`·`eval_transition*.py`). 실험 폴더 밖으로 나간 run 은 이름을 알아도 잡히지 않는다 — 분리의 목적이기도 하고, 되돌릴 때는 원래 폴더로 돌려놓아야 한다는 뜻이기도 하다.
-8. **저장소 밖 대기열 스크립트**(세션 scratchpad 2 곳의 .sh/.py, 이번 실행에서 함께 봄): 폐기 후보·불명 run 을 가리키는 스크립트가 9 개 run 에 대해 있고, 그중 **최근 24 시간 안에 고쳐진 스크립트가 가리키는 것 1 개** — 도는 중인 대기열일 수 있으니 옮기기 전에 확인: `2026-10-07_02-43-05_w3S3dC2_from_s3d` ← `e53dc80b-9c62-45a7-a400-3cd12071b2f1/qB2.sh`(18.1 h 전)
 
 ### 10.2 제안 순서
 
-0. 조건: 학습·평가가 하나도 돌지 않을 때(이 목록을 만든 시각에는 평가 중 후보 2 개 — w3s3f, w3s3g — 가 있고 평가 대기열이 돌고 있었다). 평가 중 후보와 그 부모·대조 run 은 건드리지 않는다.
+0. 조건: 학습·평가가 하나도 돌지 않을 때(이 목록을 만든 시각에는 평가 중 후보 6 개 — w3s3f, w3s3g, w3s3t, w3s3tk, g24raf, w3s3ff — 가 있고 평가 대기열이 돌고 있었다). 평가 중 후보와 그 부모·대조 run 은 건드리지 않는다.
 1. `python3 reports/night_1007/policy_inventory.py --md5 all` 로 전 체크포인트 md5 를 남긴다(이 JSON 이 옮기기 전 기록이 된다).
 2. 주 작업자가 §11 의 결정 사항을 정하고, JSON 에서 대상 목록을 뽑는다(`runs[].cls == "폐기 후보"`, 필요하면 `sub` 로 좁힘).
 3. 옮길 곳: 같은 파일시스템의 `logs/rsl_rl/_archive_1007/<원래 실험 폴더>/<run>` — `_void_1003_bench/` 와 같은 구조다. 같은 디스크 안 이동이라 용량은 줄지 않는다. 용량을 줄이려면 그 폴더를 외부 저장소로 내보낸 뒤 지우는 단계가 따로 필요하고, 그것은 사용자 결정이다.
@@ -886,12 +907,12 @@ python3 rl_walking/scripts/register_model.py walk_w3s3d_15800 --experiment biped
 1. **폐기 후보의 범위** — 문서 근거 140 개(12.22 GiB)만인가, 이름·설정 근거 32 개(552.6 MiB)도 포함인가.
 2. **대조군·선정 근거 run 을 남길 것인가** — 여러 판정 문서가 수치로 인용하는 대조군과 선정 근거 12 개(872.3 MiB)를 기록 보존에 뒀다. 문서의 수치는 run 이 없어도 남지만 같은 평가를 다시 돌릴 수는 없게 된다.
 3. **계보 조상을 어디까지 남길 것인가** — 문서 판정은 기각이지만 남기는 run 의 웜스타트 원본이라 올린 것이 12 개(1.21 GiB)다. 부모 체크포인트 하나만 남기고 나머지를 솎으면 대부분 줄어든다(§0 의 솎기 수치에 포함).
-4. **솎기를 할 것인가** — 772 개 · 5.14 GiB. 폐기 후보 전체(12.76 GiB)와 합치면 `logs/rsl_rl/` 의 89 % 다.
+4. **솎기를 할 것인가** — 772 개 · 5.14 GiB. 폐기 후보 전체(12.76 GiB)와 합치면 `logs/rsl_rl/` 의 88 % 다.
 5. **불명 8 개** — 0719·0725 평지 세대 중 문서에 역할이 안 적힌 것, G4, G24R-g-lr. 판정 기록을 남기고 폐기 후보로 내릴지, 그대로 둘지.
 6. **배포 후보의 등록·명명** — §9 의 별칭과 `models/` 등록을 할지. 세 정책 모두 지금은 `logs/`(git 무시)에만 있다.
 7. **실험 키의 처리** — exported 가 없는 채 등록만 된 키: `walk_w2q25590_hturn2`, `stand_w3a_11699`. 키를 남기면 그 run 은 기준선·검증 의존, 키를 내리면 기록 보존(계보·이전 후보)으로 바뀐다.
 8. **끊어진 레지스트리 키 27 개** — 0918 이전 세대 키(`walk`·`march*`·`stand_v*`·`stand_hang_*`·`stand_crouch_v1*`)는 run 이 로컬에 없다. 레지스트리에서 내릴지는 코드 변경이라 이 작업 범위 밖이다.
-9. **평가 중 후보(w3s3f, w3s3g) 판정 뒤 재분류** — 통과하면 걷기 정책이 바뀌므로 §1·§3·§9 가 전부 달라진다. 스크립트는 `KEW3_SPECS`·`W3_SPECS` 를 읽으므로 코드가 바뀐 뒤 다시 돌리면 따라온다. 탈락하면 분류표(`CURATED`)의 그 줄을 근거 문구와 함께 고쳐야 한다(문서에 판정 문구가 생기면 스크립트가 §0 에 경고를 띄운다).
+9. **평가 중 후보(w3s3f, w3s3g, w3s3t, w3s3tk, g24raf, w3s3ff) 판정 뒤 재분류** — 통과하면 걷기 정책이 바뀌므로 §1·§3·§9 가 전부 달라진다. 스크립트는 `KEW3_SPECS`·`W3_SPECS` 를 읽으므로 코드가 바뀐 뒤 다시 돌리면 따라온다. 탈락하면 분류표(`CURATED`)의 그 줄을 근거 문구와 함께 고쳐야 한다(문서에 판정 문구가 생기면 스크립트가 §0 에 경고를 띄운다).
 10. **`biped12_stage4/biped12_stepb0` 고리 링크** — 쓰는 곳을 코드에서 찾지 못했다(§7.3). 남길지 지울지.
 
 ## 12. 이 목록의 한계

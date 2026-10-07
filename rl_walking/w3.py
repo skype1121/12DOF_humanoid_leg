@@ -1065,3 +1065,23 @@ def w3_mix_curriculum(env, env_ids, scales: tuple = (0.0, 0.5, 1.0), min_sign: f
             g["stage"] += 1; g["since"] = it; env._w3_mix_scale = float(scales[g["stage"]])
         g["b"] = cur
     return {"mix_scale": float(env._w3_mix_scale), "mix_sign_x": g["sx"], "mix_sign_y": g["sy"], "mix_sign_w": g["sw"], "mix_width_bad": g["bad"]}
+
+
+# ================================================================ W3S3t* (1007) — 걷기 토크 예산. 기본 꺼짐(W3S3tK 설정을 고를 때만) ================================================================
+# 설계·사전 기준: reports/gen_w3/TORQUE_W3T_DESIGN.md · CPU 단위시험: rl_walking/scripts/unit_w3t.py. 기존 함수·상태(env._w3·_w3lat·_w3turn·_w3mix)는 손대지 않는다.
+def w3_stance_knee_over(env, max_flex_rad: float = 0.785, threshold: float = 5.0, cap_rad: float = 0.6) -> torch.Tensor:
+    """W3S3tK: 걷는 동안(ge 1) **접지한 다리**의 무릎 굽힘이 max_flex_rad 를 넘는 초과분[rad] — 접지 다리 평균, 선형(상한 cap_rad). 벌점 크기(양수).
+    무릎 굽힘 = 물리 관절각(왼 무릎 −·오른 무릎 + 가 굽힘 — mdp_stage4.knee_stance_flexion 과 같은 부호 보정). 공중(스윙) 다리는 자유, 두 발 다 공중이면 0.
+    선형인 이유: 현 걸음의 지지 무릎은 64°(문턱 45° 에서 19° 밖)라, 밴드형(knee_stance_flexion: 밴드 밖 0.15 rad 에서 0 으로 포화)은 기울기가 없다.
+    근거(reports/gen_w3/torque_phase.py bounds (B)): 한발 지지 무릎 정적 토크는 굽힘에 거의 비례 — 65° 21.3 → 45° 15.6 → 30° 11.0 N·m."""
+    asset = env.scene[H._base_cfg().name]
+    sensor = env.scene.sensors["contact_forces"]; fid = H._feet_body_ids(env)
+    c = (sensor.data.net_forces_w[:, fid, :].norm(dim=-1) > threshold).float()                     # (N,2) [왼, 오]
+    if getattr(env, "_w3_kneeidx", None) is None:
+        jn = list(asset.joint_names)
+        env._w3_kneeidx = torch.tensor([jn.index("left_knee_joint"), jn.index("right_knee_joint")], device=env.device)
+    q = asset.data.joint_pos[:, env._w3_kneeidx]
+    flex = torch.stack([-q[:, 0], q[:, 1]], dim=1)                                                 # 굽힘 + 로 통일
+    over = (flex - max_flex_rad).clamp(min=0.0, max=cap_rad)
+    val = (over * c).sum(1) / c.sum(1).clamp(min=1.0)
+    return val * _ge(env).float()

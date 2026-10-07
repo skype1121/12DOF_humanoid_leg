@@ -10,7 +10,8 @@ rl_walking/w3.py 를 스텁 mdp_hang 과 함께 올리고, mdp_stage4.torque_sat
   [D] 토크 한계 배율과 겹칠 때(W3S3f 의 effort_scale): 분모가 그 env 의 한계(data.joint_effort_limits)라 같은 토크의 벌점이 커진다.
   [E] W3S3tD 스윙 창 반사실: 같은 두 궤적(긴 스윙 v .12–.88 / 짧은 스윙 v .25–.75, 둘 다 5 cm 반사인)의 반주기 보상 합(w3_height 3·w3_periodic −1.5)이
       기본 창에서는 긴 > 짧은, 새 창 (0.25, 0.75) 에서는 짧은 > 긴 · 새 창에서 창 밖 양발 지지는 벌점 0 · 가만히 서기는 두 창 모두 음수.
-  [F] 설정 정적 점검(AST): 새 클래스 3 개의 부모·상수, 건드리는 속성이 보상뿐(관측·행동·명령·이벤트·장면 불변 = 계약 불변), 등록 이름·중복 없음.
+  [F] 설정 정적 점검(AST): 새 클래스 4 개의 부모·상수, 건드리는 속성이 보상뿐(관측·행동·명령·이벤트·장면 불변 = 계약 불변), 등록 이름·중복 없음.
+  [G] W3S3tK 의 새 함수 w3.w3_stance_knee_over: 접지 다리만·좌우 부호·선형(먼 곳에서도 기울기 일정)·상한·걷기만(ge 0 = 0) + X12 재생 평균(설계 문서 0.34 rad).
 종료 코드 0 = 전부 통과.
 """
 from __future__ import annotations
@@ -34,6 +35,8 @@ LIM = torch.tensor([25.0] * 10 + [24.0] * 2)                    # biped12_cfg: A
 MASS = (0.4, 0.4, 16.8)
 W_HEIGHT, W_PERIODIC = 3.0, -1.5                                 # Biped12HangStandW3BaseEnvCfg 의 가중([F] 에서 소스와 대조)
 W_STAND_SAT = -2.0                                               # 기존 서기 항 가중(stage4_v2_env_cfg V15)
+JOINTS = ["left_hip_f_joint", "right_hip_f_joint", "left_hip_a_joint", "right_hip_a_joint", "left_hip_r_joint", "right_hip_r_joint",
+          "left_knee_joint", "right_knee_joint", "left_ankle_f_joint", "right_ankle_f_joint", "left_ankle_r_joint", "right_ankle_r_joint"]   # Isaac 관절 순서
 
 
 def check(cond, msg):
@@ -81,7 +84,8 @@ class _Env:
         self.num_envs = N; self.device = torch.device("cpu"); self.step_dt = DT
         self.episode_length_buf = torch.full((N,), 10, dtype=torch.long); self.common_step_counter = 0
         self._ge = torch.zeros(N, dtype=torch.bool); self._gu = torch.zeros(N); self._gf = torch.full((N,), F_STEP)
-        self.data = types.SimpleNamespace(applied_torque=torch.zeros(N, 12), joint_effort_limits=LIM.repeat(N, 1).clone(),
+        self.joint_names = list(JOINTS)
+        self.data = types.SimpleNamespace(applied_torque=torch.zeros(N, 12), joint_effort_limits=LIM.repeat(N, 1).clone(), joint_pos=torch.zeros(N, 12),
                                           default_mass=torch.tensor(MASS).repeat(N, 1), body_pos_w=torch.zeros(N, 2, 3), body_lin_vel_w=torch.zeros(N, 2, 3))
         self.sensor = types.SimpleNamespace(data=types.SimpleNamespace(net_forces_w=torch.zeros(N, 2, 3)))
         self.scene = _Scene(self)
@@ -246,7 +250,7 @@ def test_f():
     tree = ast.parse(src)
     cls = {n.name: n for n in tree.body if isinstance(n, ast.ClassDef)}
     want = {"Biped12HangStandW3S3tEnvCfg": "Biped12HangStandW3S3dEnvCfg", "Biped12HangStandW3S3tHEnvCfg": "Biped12HangStandW3S3tEnvCfg",
-            "Biped12HangStandW3S3tDEnvCfg": "Biped12HangStandW3S3dEnvCfg"}
+            "Biped12HangStandW3S3tDEnvCfg": "Biped12HangStandW3S3dEnvCfg", "Biped12HangStandW3S3tKEnvCfg": "Biped12HangStandW3S3dEnvCfg"}
     for name, base in want.items():
         ok = name in cls and [b.id for b in cls[name].bases if isinstance(b, ast.Name)] == [base]
         check(ok, f"{name}({base})")
@@ -258,6 +262,7 @@ def test_f():
     check(consts(cls["Biped12HangStandW3S3tEnvCfg"]) == {"W_TSAT": -40.0, "TSAT_THRESH": 0.6}, f"W3S3t 상수 {consts(cls['Biped12HangStandW3S3tEnvCfg'])}")
     check(consts(cls["Biped12HangStandW3S3tHEnvCfg"]) == {"W_TSAT": -80.0}, f"W3S3tH 상수 {consts(cls['Biped12HangStandW3S3tHEnvCfg'])}")
     check(consts(cls["Biped12HangStandW3S3tDEnvCfg"]) == {"SWING_WIN": (0.25, 0.75)}, f"W3S3tD 상수 {consts(cls['Biped12HangStandW3S3tDEnvCfg'])}")
+    check(consts(cls["Biped12HangStandW3S3tKEnvCfg"]) == {"W_KNEE": -1.0, "KNEE_MAX_RAD": 0.785}, f"W3S3tK 상수 {consts(cls['Biped12HangStandW3S3tKEnvCfg'])}")
 
     def touched(c):
         """__post_init__ 에서 대입하는 속성 경로(self.rewards.x, rw.x.params …)."""
@@ -271,6 +276,7 @@ def test_f():
     check(touched(cls["Biped12HangStandW3S3tEnvCfg"]) == ["self.rewards.w3_torque_sat"], f"W3S3t 가 바꾸는 것: {touched(cls['Biped12HangStandW3S3tEnvCfg'])} (보상 항 하나 추가)")
     check(touched(cls["Biped12HangStandW3S3tHEnvCfg"]) == [], "W3S3tH 는 상수만 다르다")
     check(touched(cls["Biped12HangStandW3S3tDEnvCfg"]) == ["rw.w3_height.params", "rw.w3_periodic.params"], f"W3S3tD 가 바꾸는 것: {touched(cls['Biped12HangStandW3S3tDEnvCfg'])} (두 보상 항의 인자)")
+    check(touched(cls["Biped12HangStandW3S3tKEnvCfg"]) == ["self.rewards.w3_knee_over"], f"W3S3tK 가 바꾸는 것: {touched(cls['Biped12HangStandW3S3tKEnvCfg'])} (보상 항 하나 추가)")
     body = "\n".join(ast.unparse(cls[n]) for n in want)
     check(not any(k in body for k in ("self.observations", "self.actions", "self.commands", "self.events", "self.scene", "self.curriculum", "self.terminations")),
           "새 클래스는 관측·행동·명령·이벤트·장면·커리큘럼·종료를 건드리지 않는다(배포 계약 불변)")
@@ -283,15 +289,73 @@ def test_f():
             names += [e.value for e in n.iter.elts if isinstance(e, ast.Constant)]
         elif isinstance(n, ast.For) and isinstance(n.target, ast.Tuple) and isinstance(n.iter, ast.Tuple):
             names += [e.elts[0].value for e in n.iter.elts if isinstance(e, ast.Tuple) and e.elts and isinstance(e.elts[0], ast.Constant)]
-    check(all(s in names for s in ("W3S3t", "W3S3tH", "W3S3tD")), "등록 목록에 W3S3t·W3S3tH·W3S3tD")
+    check(all(s in names for s in ("W3S3t", "W3S3tH", "W3S3tD", "W3S3tK")), "등록 목록에 W3S3t·W3S3tH·W3S3tD·W3S3tK")
     dup = sorted({s for s in names if names.count(s) > 1})
     check(not dup, f"등록 이름 중복 없음(전체 {len(names)} 개){' — 중복 ' + str(dup) if dup else ''}")
     check(all(f"Biped12HangStand{s}EnvCfg" in cls for s in names if s.startswith("W3S3")), "W3S3* 등록 이름마다 설정 클래스가 있다")
 
 
+# ------------------------------------------------------------------ [G]
+def _knee_env(rows):
+    """rows = [(왼 무릎 관절각 °, 오른 무릎 관절각 °, 왼 접지?, 오른 접지?, ge)] → env."""
+    env = _Env(len(rows))
+    q = torch.zeros(len(rows), 12); F = torch.zeros(len(rows), 2, 3)
+    for i, (kl, kr, cl, cr, ge) in enumerate(rows):
+        q[i, 6] = math.radians(kl); q[i, 7] = math.radians(kr); F[i, 0, 2] = 80.0 * cl; F[i, 1, 2] = 80.0 * cr; env._ge[i] = bool(ge)
+    env.data.joint_pos = q; env.sensor.data.net_forces_w = F
+    return env
+
+
+def test_g(lp):
+    print("[G] w3_stance_knee_over(걷는 중 접지 다리 무릎 굽힘의 45° 초과분)")
+    f = W3.w3_stance_knee_over
+    p = inspect.signature(f).parameters
+    check((p["max_flex_rad"].default, p["threshold"].default, p["cap_rad"].default) == (0.785, 5.0, 0.6), "기본 인자 max_flex 0.785 rad(45°)·접촉 5 N·상한 0.6 rad")
+    d20 = math.radians(65.0) - 0.785
+    env = _knee_env([(-65, 65, 1, 1, 1),       # 0 양발 접지, 둘 다 65° 굽힘
+                     (-65, 80, 1, 0, 1),       # 1 왼 지지만 — 공중인 오른(80°)은 자유
+                     (-40, 80, 1, 0, 1),       # 2 지지 무릎 40° → 0
+                     (-65, 65, 0, 0, 1),       # 3 두 발 다 공중 → 0
+                     (-65, 65, 1, 1, 0),       # 4 서기(ge 0) → 0
+                     (65, -65, 1, 1, 1),       # 5 부호 반대(과신전 방향) → 0
+                     (-90, 65, 1, 0, 1),       # 6 상한
+                     (-65, 44, 1, 1, 1)])      # 7 양발 접지, 한쪽만 초과(44° 는 문턱 0.785 rad = 44.98° 아래) → 절반
+    v = f(env)
+    check(abs(float(v[0]) - d20) < 1e-6, f"양발 접지 65° → 초과 20° = {d20:.4f} rad (실제 {float(v[0]):.4f})")
+    check(abs(float(v[1]) - d20) < 1e-6, "한발 지지: 공중 다리(80°)는 세지 않는다")
+    check(float(v[2]) == 0.0, "지지 무릎 40°(문턱 아래) = 0 — 더 펴라는 끌림은 없다(무릎 잠금 유인 없음)")
+    check(float(v[3]) == 0.0 and float(v[4]) == 0.0, "두 발 다 공중 = 0, 서기(ge 0) = 정확히 0")
+    check(float(v[5]) == 0.0, "좌우 부호 보정: 왼 무릎 −·오른 무릎 + 가 굽힘(반대 부호는 굽힘 아님)")
+    check(abs(float(v[6]) - 0.6) < 1e-6, "상한 0.6 rad(무너지는 env 의 벌점 폭주 방지)")
+    check(abs(float(v[7]) - 0.5 * d20) < 1e-6, "접지 다리 평균(한쪽만 초과면 절반)")
+    xs = [50.0, 55.0, 60.0, 65.0, 70.0]
+    vv = f(_knee_env([(-x, 0, 1, 0, 1) for x in xs]))
+    dv = (vv[1:] - vv[:-1])
+    check(bool(torch.allclose(dv, torch.full_like(dv, math.radians(5.0)), atol=1e-6)), "선형: 50–70° 어디서나 5° 당 0.0873 rad(현 걸음 64° 에서도 기울기가 살아 있다)")
+    check(bool((f(_knee_env([(-64, 64, 1, 1, 1)])) * -1.0 < 0).all()), "가중 −1 과 곱하면 벌점")
+    import numpy as np
+    pth = os.path.join(lp, "transall_x12_w3load_cmds_d2_s21.npz")
+    if not os.path.exists(pth):
+        print(f"  [건너뜀] {pth} 없음"); return
+    z = np.load(pth, allow_pickle=True); pre = z["pre_pass"].astype(bool); K = lambda x: int(round(x / DT))   # noqa: E731
+    seg = [(3, 8), (9, 14), (15, 20), (21, 26), (32, 37), (38, 43), (49, 54), (60, 65)]
+    qs, cs = [], []
+    for a, b in seg:
+        m = z["alive"][K(a):K(b)] & z["ge"][K(a):K(b)] & pre[None]
+        qs.append(z["q"][K(a):K(b)].astype(np.float32)[m]); cs.append(z["cont"][K(a):K(b)][m])
+    q = np.concatenate(qs); c = np.concatenate(cs).astype(np.float32)
+    env = _Env(len(q)); env._ge[:] = True; env.data.joint_pos = torch.from_numpy(q)
+    F = torch.zeros(len(q), 2, 3); F[:, :, 2] = torch.from_numpy(c) * 80.0; env.sensor.data.net_forces_w = F
+    mean = float(f(env).mean())
+    check(0.28 <= mean <= 0.40, f"X12 걷기 {len(q)} 틱 평균 {mean:.3f} rad({math.degrees(mean):.1f}°) — 설계 문서 0.34 rad 근처(여기 접촉은 추적의 관측 접촉, 문서는 운동학 접촉)")
+    print(f"    가중 −1 → 걷기 초당 {-mean:+.3f} (걷기 순 보상 +1.28/s 의 {mean / 1.284:.0%})")
+    env._ge[:] = False
+    check(float(f(env).abs().max()) == 0.0, "같은 자료를 서기(ge 0)로 두면 정확히 0")
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--lp", default=os.path.join(REPO, "log_picture")); a = ap.parse_args()
-    test_a(); test_b(); test_c(a.lp); test_d(); test_e(); test_f()
+    test_a(); test_b(); test_c(a.lp); test_d(); test_e(); test_f(); test_g(a.lp)
     print(f"\n결과: {'전부 통과' if not FAILS else str(len(FAILS)) + ' 건 실패'}")
     for f in FAILS:
         print("  실패:", f)

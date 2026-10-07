@@ -3808,3 +3808,25 @@ class Biped12HangStandW3S3tDEnvCfg(Biped12HangStandW3S3dEnvCfg):
         _win = (float(self.SWING_WIN[0]), float(self.SWING_WIN[1]))
         rw.w3_periodic.params = dict(rw.w3_periodic.params or {}, win=_win)
         rw.w3_height.params = dict(rw.w3_height.params or {}, win=_win)
+
+
+@configclass
+class Biped12HangStandW3S3tKEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3 tK (1007, TORQUE_W3T_DESIGN.md §T4): W3S3d 와 관측·행동·명령·DR·커리큘럼·학습 지연 1–5·기존 보상 전부 같고 **보상 항 하나만 추가** —
+    `w3_knee_over` = 걷는 동안(ge 1) 접지한 다리의 무릎 굽힘이 KNEE_MAX_RAD(45°)를 넘는 초과분[rad](접지 다리 평균, 선형) × W_KNEE.
+    기본자세(DEFAULT_POSE — KE 서기와 공유하는 배포 계약)는 그대로 두고, 걷는 중 지지 무릎만 행동 오프셋으로 펴게 하는 후보다(서기 ge 0 에서는 정확히 0).
+    근거(X12 추적·정역학 모델, torque_phase.py): 걷기 지지 무릎 굽힘 중앙 64°[p10 61, p90 69] — KE 서기 55° 보다 깊다(지지 쪽 몸통 롤 11.8° 로 지지 힙이 약 3 cm 낮아지는 기하와 같은 방향; 원인 단정 아님),
+    그 자세의 한발 지지 무릎 정적 요구 21–23.5 N·m(한계의 85–94 %). 45° 면 15.6 N·m, 골반 +4 cm. 한계 0.8 배에서 지지 무릎이 지지 반주기의 61 % 동안 한계에 붙는다.
+    가중 근거: 현 걸음에서 이 값 평균 0.338 rad(19.4°, 명령별 0.313–0.360) → 가중 −1 = 걷기 초당 −0.34(걷기 순 보상 +1.28/s 의 26 % — W3S3t 의 −0.30 과 같은 급).
+    걷기 보상에 지지 무릎을 묶는 항은 없다(knee_stance_flexion·base_height·leg_pose_deviation 은 서기 전용). w3_imit 는 스윙 다리만 채점해 현 걸음 시간표에서는 겹치지 않는다
+    (스윙발이 모방 창 v .25–.75 안에서 착지하는 걸음이 되면 착지 다리의 참조 55–57° 와 12° 어긋난다 — W3S3tD 와 묶을 때 주의).
+    알려진 부작용 후보(사전 명시): 힙 굴곡이 줄어 힙 외전 분담이 는다(준정적 환산 23.0 → 25.0 N·m), 자세가 높아져 균형 여유·착지 충격 흡수가 바뀐다.
+    시작 = W3S3d-15800 이어 학습(--resume). 기준은 문서(학습 전 고정)."""
+
+    W_KNEE = -1.0           # 비주석 클래스 상수: w3_knee_over 가중(초과 1 rad·초당)
+    KNEE_MAX_RAD = 0.785    # 45°
+
+    def __post_init__(self):
+        super().__post_init__()
+        assert getattr(self.rewards, "w3_knee_over", None) is None
+        self.rewards.w3_knee_over = RewTerm(func=_w3.w3_stance_knee_over, weight=float(self.W_KNEE), params={"max_flex_rad": float(self.KNEE_MAX_RAD)})

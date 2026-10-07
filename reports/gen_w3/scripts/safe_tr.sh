@@ -8,6 +8,9 @@ BAD="PxgCudaDeviceMemoryAllocator failed|CUDA error|CUBLAS_STATUS_ALLOC|out of m
 BASE="--headless --task Biped12-HangStand-G11a-v0 --precheck_s 3 --after_s 22 --enc_obs v2 --contact_real --contact_ver v2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25"
 KE="--sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --ke 2026-10-02_21-23-08_g21a:model_11300.pt"
 TG=$1; shift
+# 1007: 같은 태그의 이중 실행 방지 — 다른 체인이 같은 태그를 돌리는 중이면 그 실행이 끝날 때까지 기다렸다가 그대로 돌아간다(산출물을 지우지 않는다)
+mkdir -p $S; exec 8>"$S/$TG.taglock"
+if ! flock -n 8; then echo "$(date +%H:%M) 대기 $TG (같은 태그가 다른 체인에서 실행 중 — 끝나면 건너뜀)"; flock 8; exit 0; fi
 if [[ " $* " == *" --ke_mode none "* && " $* " != *" --dir ke2w3 "* ]]; then EXTRA=""; else EXTRA="$KE"; fi     # w3ke none 팔 = W3 STAND 유지(KE 정책 없음); ke2w3 none = KE 유지(KE 필요)
 acquire_lane() {   # 레인 1 = 기존 공용 잠금(다른 도구와 직렬), 2..N = 추가 레인 — 동시 평가 최대 ${EVAL_LANES:-3} 개
   local i n=${EVAL_LANES:-3}

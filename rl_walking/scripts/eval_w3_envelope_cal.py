@@ -345,7 +345,7 @@ if "com_x" in USED or "com_y" in USED:
     robot.root_physx_view.set_coms(coms, torch.arange(N, device="cpu"))
 PX["trim"] = torch.zeros(N, device=dev)          # CAL: IMU 피치 관측 트림 [rad]
 _IAL = JN.index("left_ankle_f_joint"); _IAR = JN.index("right_ankle_f_joint")
-CAL = {k: torch.zeros(N, device=dev) for k in ("S_pre", "n_pre", "S_post", "n_post", "p_pre", "p_post", "tl_pre", "tr_pre", "S_f")}
+CAL = {k: torch.zeros(N, device=dev) for k in ("S_pre", "n_pre", "S_post", "n_post", "p_pre", "p_post", "tl_pre", "tr_pre", "S_f", "S_mid", "n_mid")}
 PX["ready"] = True
 
 
@@ -415,6 +415,8 @@ for i in range(steps):
             _af = alive.float()
             if 1.0 <= t < 1.5:
                 CAL["S_pre"] += _S * _af; CAL["n_pre"] += _af; CAL["p_pre"] += _pit0 * _af; CAL["tl_pre"] += _tq[:, 0] * _af; CAL["tr_pre"] += _tq[:, 1] * _af
+            if a.stand_first - 1.5 < t <= a.stand_first - 1.0:
+                CAL["S_mid"] += _S * _af; CAL["n_mid"] += _af
             if t > a.stand_first - 0.5:
                 CAL["S_post"] += _S * _af; CAL["n_post"] += _af; CAL["p_post"] += _pit0 * _af
             if CT is not None and t >= CT["t0"]:
@@ -538,6 +540,13 @@ J = {"task": a.task, "checkpoint": ck, "seed": a.seed, "per_group": a.per_group,
      "steps_done": steps, "completed": True, "base_delay": a.base_delay, "heading_loop": a.heading_loop, "ramp_on": (not a.ramp_off), "sweep": a.sweep, "grid": GRID, "fix": FIX, "cmds": CMDS,
      "stand_first": a.stand_first, "cop_trim": a.cop_trim, "cop_noise": a.cop_noise, "cop_sign": a.cop_sign, "events": EV_DESC, "wrapped_obs": OBS_DESC, "actuators": GAIN_LOG, "wall_s": wall, "groups": RES}
 json.dump(J, open(base + ".json", "w"), ensure_ascii=False, indent=1)
+if a.stand_first > 0:          # CAL: env 별 덤프(그룹·서기 토크 합 3 창·참 피치·트림·낙상)
+    np.savez_compressed(base + "_envs.npz", gid=gid.cpu().numpy(), warmup=a.warmup, t_fall=t_fall.cpu().numpy(), alive=alive.cpu().numpy(),
+                        S_pre=(CAL["S_pre"] / CAL["n_pre"].clamp(min=1)).cpu().numpy(), S_mid=(CAL["S_mid"] / CAL["n_mid"].clamp(min=1)).cpu().numpy(),
+                        S_post=(CAL["S_post"] / CAL["n_post"].clamp(min=1)).cpu().numpy(), n_post=CAL["n_post"].cpu().numpy(),
+                        pitch_pre=(CAL["p_pre"] / CAL["n_pre"].clamp(min=1)).cpu().numpy(), pitch_post=(CAL["p_post"] / CAL["n_post"].clamp(min=1)).cpu().numpy(),
+                        trim_deg=torch.rad2deg(PX["trim"]).cpu().numpy(), imu_pitch=AX["imu_pitch"].cpu().numpy(), com_x=AX["com_x"].cpu().numpy(),
+                        vb_x=(vb_s[:, 0] / nn_.clamp(min=1)).cpu().numpy())
 L = [f"# w3env {a.out_tag} — {a.task} {os.path.basename(os.path.dirname(ck))}/{os.path.basename(ck)} seed {a.seed} · {a.per_group} env/그룹 · 워밍업 {a.warmup} s + 채점 {a.seconds} s · 기본 지연 {a.base_delay} · 고리 {a.heading_loop} · 롤 램프 {'끔' if a.ramp_off else '켬'} · 고정 {FIX}",
      "| 명령 | " + " | ".join(k for k, _ in GRID) + " | 과도 낙상 | 채점 낙상 (95 % CI) | 교대 | 스텝/s | 이득 진행 x/y/요 · 본체 x/y · 직선 x/y | 요 누적 평균·|p95| ° | 피치/롤 평균 | 피치/롤 RMS | 붕괴 |",
      "|---|" + "---|" * len(GRID) + "---|---|---|---|---|---|---|---|---|"]

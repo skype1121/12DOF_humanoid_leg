@@ -27,7 +27,7 @@ _SL, _SR = (float(x) for x in a.cop_sign.split(","))''')
 rep('    g = _rot_g(out, PX["imu_th"], PX["imu_ph"])', '    g = _rot_g(out, PX["imu_th"] + PX["trim"], PX["imu_ph"])')
 rep('PX["ready"] = True', '''PX["trim"] = torch.zeros(N, device=dev)          # CAL: IMU 피치 관측 트림 [rad]
 _IAL = JN.index("left_ankle_f_joint"); _IAR = JN.index("right_ankle_f_joint")
-CAL = {k: torch.zeros(N, device=dev) for k in ("S_pre", "n_pre", "S_post", "n_post", "p_pre", "p_post", "tl_pre", "tr_pre", "S_f")}
+CAL = {k: torch.zeros(N, device=dev) for k in ("S_pre", "n_pre", "S_post", "n_post", "p_pre", "p_post", "tl_pre", "tr_pre", "S_f", "S_mid", "n_mid")}
 PX["ready"] = True''')
 rep('''    cmd_term.vel_command_b[:] = CMD3
     if a.heading_loop > 0:''', '''    cmd_term.vel_command_b[:] = CMD3 if t > a.stand_first else torch.zeros_like(CMD3)
@@ -52,6 +52,8 @@ rep('    newly = alive & d; t_fall[newly] = t; alive &= ~d', '''    newly = aliv
             _af = alive.float()
             if 1.0 <= t < 1.5:
                 CAL["S_pre"] += _S * _af; CAL["n_pre"] += _af; CAL["p_pre"] += _pit0 * _af; CAL["tl_pre"] += _tq[:, 0] * _af; CAL["tr_pre"] += _tq[:, 1] * _af
+            if a.stand_first - 1.5 < t <= a.stand_first - 1.0:
+                CAL["S_mid"] += _S * _af; CAL["n_mid"] += _af
             if t > a.stand_first - 0.5:
                 CAL["S_post"] += _S * _af; CAL["n_post"] += _af; CAL["p_post"] += _pit0 * _af
             if CT is not None and t >= CT["t0"]:
@@ -65,5 +67,13 @@ rep('    r["collapse"] = bool(fr > 0.03 or', '''    if a.stand_first > 0:
                     "tauL_pre": _mm(CAL["tl_pre"] / _np_), "tauR_pre": _mm(CAL["tr_pre"] / _np_), "trim_mean_deg": _mm(_tr_), "trim_sd_deg": float(_tr_[surv].std()) if int(surv.sum()) > 1 else 0.0,
                     "S_pre_sd": float((CAL["S_pre"] / _np_)[surv].std()) if int(surv.sum()) > 1 else 0.0, "S_post_sd": float((CAL["S_post"] / _nq_)[surv].std()) if int(surv.sum()) > 1 else 0.0}
     r["collapse"] = bool(fr > 0.03 or''')
+rep('json.dump(J, open(base + ".json", "w"), ensure_ascii=False, indent=1)', '''json.dump(J, open(base + ".json", "w"), ensure_ascii=False, indent=1)
+if a.stand_first > 0:          # CAL: env 별 덤프(그룹·서기 토크 합 3 창·참 피치·트림·낙상)
+    np.savez_compressed(base + "_envs.npz", gid=gid.cpu().numpy(), warmup=a.warmup, t_fall=t_fall.cpu().numpy(), alive=alive.cpu().numpy(),
+                        S_pre=(CAL["S_pre"] / CAL["n_pre"].clamp(min=1)).cpu().numpy(), S_mid=(CAL["S_mid"] / CAL["n_mid"].clamp(min=1)).cpu().numpy(),
+                        S_post=(CAL["S_post"] / CAL["n_post"].clamp(min=1)).cpu().numpy(), n_post=CAL["n_post"].cpu().numpy(),
+                        pitch_pre=(CAL["p_pre"] / CAL["n_pre"].clamp(min=1)).cpu().numpy(), pitch_post=(CAL["p_post"] / CAL["n_post"].clamp(min=1)).cpu().numpy(),
+                        trim_deg=torch.rad2deg(PX["trim"]).cpu().numpy(), imu_pitch=AX["imu_pitch"].cpu().numpy(), com_x=AX["com_x"].cpu().numpy(),
+                        vb_x=(vb_s[:, 0] / nn_.clamp(min=1)).cpu().numpy())''')
 rep('"events": EV_DESC, "wrapped_obs": OBS_DESC,', '"stand_first": a.stand_first, "cop_trim": a.cop_trim, "cop_noise": a.cop_noise, "cop_sign": a.cop_sign, "events": EV_DESC, "wrapped_obs": OBS_DESC,')
 open(DST + ".tmp", "w", encoding="utf-8").write(src); os.replace(DST + ".tmp", DST); print("written", DST, len(src.splitlines()))

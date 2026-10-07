@@ -178,9 +178,18 @@ class SwitchDetector:
         # 기준 자세를 현재 자세로 다시 잡고 모드를 끈다. 배경: 밀린 뒤 서는 자세가 기준과 off_tilt 넘게 달라지면 평온 경로가 영영 안 채워지고
         # (모드 중 기준 미갱신), 가벼운 활성화는 조기 복귀 자격(early_gate)도 없어 조용히 서 있는 채로 회복 모드에 갇힌다
         # (reports/gen_w3/TRANSITION_W3KE.md §5.6f–§5.6h). 시뮬 eval_transition_dev.py --sw_requiet 와 같은 정의·순서.
-        self.requiet = None if requiet is None else tuple(float(x) for x in requiet)
-        if self.requiet is not None and (len(self.requiet) != 2 or self.requiet[0] <= 0.0 or self.requiet[1] <= 0.0):
-            raise ValueError(f"requiet 는 (T_s > 0, w > 0) (받음 {requiet!r})")
+        # 세 번째 값(선택) = 접촉 요구: "both"(기본, 양발) | "off"(이 감지기의 끄기 접촉 요구 off_contact 를 그대로 — KE 는 '한 발 이상').
+        # 실물에서 한쪽 패드가 0 을 내는 고장(1004 시험 4)에서는 "both" 가 발동하지 않는다(reports/gen_w3/TRANSITION_W3KE.md §5.13).
+        self.requiet = None; self.requiet_contact = "both"
+        if requiet is not None:
+            rq = tuple(requiet)
+            if len(rq) == 3:
+                if rq[2] not in ("both", "off"):
+                    raise ValueError(f"requiet 접촉 요구는 'both' | 'off' (받음 {rq[2]!r})")
+                self.requiet_contact = str(rq[2]); rq = rq[:2]
+            if len(rq) != 2 or float(rq[0]) <= 0.0 or float(rq[1]) <= 0.0:
+                raise ValueError(f"requiet 는 (T_s > 0, w > 0[, 'both'|'off']) (받음 {requiet!r})")
+            self.requiet = (float(rq[0]), float(rq[1]))
         self.imu_f32 = bool(imu_f32)
         if self.imu_f32:
             if self.settle is not None:
@@ -270,7 +279,8 @@ class SwitchDetector:
         if on and self.refrac is not None and self.t_since_early < self.refrac[0]:
             on = (tilt > self.refrac[1]) or (w > self.refrac[2])
         if self.requiet is not None:          # 갇힘 해소: 조용한 양발 서기 T s → 기준 := 현재 자세, 모드 끔(다른 꺼짐이 없을 때만 집계)
-            self.rq_run = self.rq_run + self.dt if (self.mode == 1 and w < self.requiet[1] and bool(c[0] and c[1])) else 0.0
+            _rqc = cq if self.requiet_contact == "off" else bool(c[0] and c[1])
+            self.rq_run = self.rq_run + self.dt if (self.mode == 1 and w < self.requiet[1] and _rqc) else 0.0
             if self.mode == 1 and self.rq_run >= self.requiet[0] - 1e-9 and not off:
                 if self.ref_tau_s > 0.0:
                     self.ref = rp.copy()
@@ -340,7 +350,8 @@ class SwitchDetector:
             in_ref = bool(f32(f32(t_rel) - S["refr_t"]) < f32(self.refrac[0]))
             on = on and ((not in_ref) or bool(tilt > f32(self.refrac[1])) or bool(w > f32(self.refrac[2])))
         if self.requiet is not None:          # 갇힘 해소(시뮬 --sw_requiet 와 같은 순서: 모든 꺼짐 판정 뒤, 켜기 반영 전)
-            self.rq_run = float(f32(f32(self.rq_run) + dt)) if (m and w < f32(self.requiet[1]) and bool(c[0] and c[1])) else 0.0
+            _rqc = cq if self.requiet_contact == "off" else bool(c[0] and c[1])
+            self.rq_run = float(f32(f32(self.rq_run) + dt)) if (m and w < f32(self.requiet[1]) and _rqc) else 0.0
             if m and f32(self.rq_run) >= f32(self.requiet[0] - 1e-6) and not off:
                 self.ref = rp.copy()
                 off = True; self.n_requiet += 1
@@ -705,6 +716,14 @@ def _selftest_requiet() -> str:
     for bad in ([(2.2, 0.35, both)] * 300, [(2.2, 0.02, one)] * 300):
         d2 = SwitchDetector(requiet=(2.0, 0.3), **kw); run(d2, [(0.0, 0.0, both)] * 100 + [(1.5, 0.6, both)] * 15 + bad)
         assert d2.n_requiet == 0 and d2.mode == 1, "조용한 양발 서기가 아닌데 재기준 발동"
+    # 접촉 요구 "off"(= off_contact any): 한쪽 접촉 비트가 0 인 채 조용히 서도(패드 무응답 모사) 발동 — "both" 는 위에서 본 대로 미발동
+    d4 = SwitchDetector(requiet=(2.0, 0.3, "off"), **kw); f_ = run(d4, [(0.0, 0.0, both)] * 100 + [(1.5, 0.6, both)] * 15 + [(2.2, 0.02, one)] * 300)
+    assert d4.n_requiet == 1 and f_[-1] == 0, "접촉 요구 off(any)인데 한발 비트에서 미발동"
+    d5 = SwitchDetector(requiet=(2.0, 0.3, "off"), **kw); assert run(d5, seq) == c_, "양발 접촉 입력에서는 both 와 off 가 같아야 함"
+    try:
+        SwitchDetector(requiet=(2.0, 0.3, "any"), **kw); raise AssertionError("잘못된 접촉 요구를 받아들임")
+    except ValueError:
+        pass
     # float32 경로(imu_f32) — 같은 규칙, 꺼짐 틱 ±1
     d3 = SwitchDetector(requiet=(2.0, 0.3), imu_f32=True, **kw); e_ = run(d3, seq)
     k3 = next(i for i in range(115, len(e_)) if e_[i] == 0)
@@ -713,7 +732,7 @@ def _selftest_requiet() -> str:
         SwitchDetector(requiet=(0.0, 0.3), **kw); raise AssertionError("잘못된 requiet 를 받아들임")
     except ValueError:
         pass
-    return f"갇힘 해소 OK (기본 None = 종전 동일 · 종전은 갇힘 · 옵션은 조용해진 뒤 {t_off:.2f} s 에 재기준·꺼짐 · 흔들림/한발에서는 미발동 · float32 경로 ±1 틱)"
+    return f"갇힘 해소 OK (기본 None = 종전 동일 · 종전은 갇힘 · 옵션은 조용해진 뒤 {t_off:.2f} s 에 재기준·꺼짐 · 흔들림/한발에서는 미발동 · 접촉 요구 off 는 한발 비트에서도 발동 · float32 경로 ±1 틱)"
 
 
 if __name__ == "__main__":

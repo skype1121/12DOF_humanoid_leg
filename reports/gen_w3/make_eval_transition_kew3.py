@@ -55,7 +55,7 @@ if KWL:
     sw_mode = torch.zeros(N, dtype=torch.bool, device=dev)
     kw_des = torch.zeros(N, dtype=torch.bool, device=dev); kw_cmd = torch.zeros(N, 3, device=dev)
     kw_cur = [(0.0, 0.0, 0.0)] * N; kw_seq = [1] * N; kw_events = [[] for _ in range(N)]; kw_rej = [None] * N; kw_req_t = [None] * N
-    kw_kind_tl = []; kw_want_tl = []; kw_ge_tl = []; kw_t_tl = []; kw_lastq = [0] * N
+    kw_kind_tl = []; kw_want_tl = []; kw_ge_tl = []; kw_t_tl = []; kw_lastq = [0] * N; kw_yaw_tl = []; kw_xy_tl = []
 
     def _kw_parse(s):
         ev = []
@@ -165,6 +165,9 @@ if KWL:
         tr_first_foot = torch.where(_first, torch.where(_to[:, 0], torch.zeros_like(tr_first_foot), torch.ones_like(tr_first_foot)), tr_first_foot)
         ge_prev = ge_t
         kw_kind_tl.append(kind.copy()); kw_want_tl.append(want_v.copy()); kw_ge_tl.append(ge_top.copy()); kw_t_tl.append(now)
+        _qw = robot.data.root_quat_w                               # 기록 전용: 참 요(쿼터니언 wxyz)·골반 수평 위치(env 원점 기준) — 구간별 방향 변화·이동 집계용
+        kw_yaw_tl.append(torch.atan2(2 * (_qw[:, 0] * _qw[:, 3] + _qw[:, 1] * _qw[:, 2]), 1 - 2 * (_qw[:, 2] ** 2 + _qw[:, 3] ** 2)).half().cpu().numpy())
+        kw_xy_tl.append((robot.data.root_pos_w[:, :2] - uenv.scene.env_origins[:, :2]).half().cpu().numpy())
         return torch.as_tensor(act, device=dev)
 
 for i in range(STEPS):
@@ -190,7 +193,8 @@ rep('''if C2MODE and _C2TR is not None:''', '''if KWL:
                           pre_pass=pre_pass.cpu().numpy(), fell=fell.cpu().numpy(), t_fall_post=t_fall_post.cpu().numpy(), events=json.dumps(kw_events), rej=json.dumps(kw_rej),
                           script=json.dumps(_KW_SCRIPT), ev_t=torch.stack(_KW_EVT).cpu().numpy(), n_to_w3=_npk.asarray([R.n_to_w3 for R in KWR]), n_to_ke=_npk.asarray([R.n_to_ke for R in KWR]),
                           handoff=args_cli.kw_handoff, settle=float(args_cli.kw_settle), dist=args_cli.dist, args=" ".join(sys.argv[1:]),
-                          requiet=args_cli.kw_requiet)
+                          requiet=args_cli.kw_requiet, yaw=_npk.stack(kw_yaw_tl, 0) if kw_yaw_tl else _npk.zeros((0, N), _npk.float16),
+                          xy=_npk.stack(kw_xy_tl, 0) if kw_xy_tl else _npk.zeros((0, N, 2), _npk.float16))
     _pp_ = pre_pass.cpu().numpy()
     _rj_ = _colk.Counter((r[1][:40] if r is not None else "거부 없음") for r, p in zip(kw_rej, _pp_) if p)
     print(f"[runner_loop] log_picture/kwloop_{args_cli.out_tag}.npz · 통과 env {int(_pp_.sum())} · KE→W3 전환 합 {int(sum(R.n_to_w3 for R, p in zip(KWR, _pp_) if p))} · W3→KE 전환 합 {int(sum(R.n_to_ke for R, p in zip(KWR, _pp_) if p))}"

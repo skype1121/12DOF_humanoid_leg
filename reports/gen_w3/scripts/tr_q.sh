@@ -134,4 +134,11 @@ if [ $ST = x7 ]; then   # X7: 배포 코드 합성 러너 왕복 대본(48 s) �
   done
   unset TR_SCRIPT EVAL_TIMEOUT
 fi
+if [ $ST = x9 ]; then   # X9: 준정적 롤 토크 램프 끔 대조 — X6 nd(러너 루프)·X4 C/Pb(사본 평가기)
+  for SD in 1 2 3; do
+    TR_SCRIPT=rl_walking/scripts/eval_transition_kw.py $S/safe_tr.sh tr_kew3r0_nd_d2_s${SD} --ke_mode direct --runner_loop --ramp_off --delay_steps 2,2 --seed $SD --trace_all 128
+    TR_SCRIPT=rl_walking/scripts/eval_transition_dev.py $S/safe_tr.sh tr_x9Pb_sf15_d2_s${SD} --ke_mode reset --w3_stop 4 --ramp_off --delay_steps 2,2 --seed $SD --dist "push:b:9:12:0.3;ramp:f:16:15:0.5:1.0" --trace_all 128
+    TR_SCRIPT=rl_walking/scripts/eval_transition_dev.py $S/safe_tr.sh tr_x9C_sf15_d2_s${SD} --ke_mode reset --w3_stop 4 --ramp_off --delay_steps 2,2 --seed $SD --dist "ramp:f:16:15:0.5:1.0" --trace_all 128
+  done
+fi
 echo "$(date +%H:%M) TRQ_DONE $ST"

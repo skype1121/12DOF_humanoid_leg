@@ -524,6 +524,31 @@ def _yaw_box(env, period_s: float = 1.0 / 1.1):
     return st["w"]
 
 
+def _gy_box(env, period_s: float = 1.0 / 1.1):
+    """한 보행 주기 평균 옆 기울기 = 몸통 좌표 투영 중력 y 의 이동 평균(K 틱) — 걸음마다의 좌우 흔들림은 소거, 한쪽으로 쏠린 걸음(lean)만 남김.
+    1007 claude2(TRANSITION_W3KE.md §5.19): 왕복에서 걷는 중 평균 롤과 요 속도가 매 걷기 r 0.67–0.93·기울기 ≈ 2 (°/s)/° 로 묶여 있고, 멈췄다 다시 걸을 때마다 커진다."""
+    asset = env.scene[H._base_cfg().name]
+    gy = asset.data.projected_gravity_b[:, 1]
+    tick = int(env.common_step_counter)
+    K = max(2, int(round(period_s / env.step_dt)))
+    st = getattr(env, "_w3_gybox", None)
+    if st is None or st["buf"].shape[0] != env.num_envs or st["buf"].shape[1] != K:
+        st = {"buf": gy.unsqueeze(1).repeat(1, K).clone(), "i": 0, "tick": -1, "m": gy.clone()}; env._w3_gybox = st
+    if st["tick"] != tick:
+        fresh = env.episode_length_buf <= 1
+        if bool(fresh.any()):
+            st["buf"][fresh] = gy[fresh].unsqueeze(1)
+        i = st["i"]
+        st["buf"][:, i] = gy; st["i"] = (i + 1) % K
+        st["m"] = st["buf"].mean(dim=1); st["tick"] = tick
+    return st["m"]
+
+
+def w3_lean_net(env) -> torch.Tensor:
+    """W3S3g: 한 주기 평균 옆 기울기 |ḡ_y|(≈ 평균 롤 rad) — 벌점 크기(양수), STEP 에서만. 제곱형(w3_orient)은 1–2° 쏠림에 기울기가 거의 없어 선형으로 둔다."""
+    return _gy_box(env).abs() * _ge(env).float()
+
+
 def w3_yaw_net(env) -> torch.Tensor:
     """W3-A3: 한 주기 순 요 속도 오차 |ψ̇_T − wz_cmd| — 벌점 크기. 순간 |ω_z|(w3_yaw_drift)는 걸음 요 흔들림이 지배해 표류를 못 잡음(W3-A2 69 → 65°)."""
     c = env.command_manager.get_command("base_velocity")

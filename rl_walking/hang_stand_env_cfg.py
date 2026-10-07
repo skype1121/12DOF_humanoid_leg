@@ -3644,6 +3644,19 @@ class Biped12HangStandW3S3fEnvCfg(Biped12HangStandW3S3dEnvCfg):
 
 
 @configclass
+class Biped12HangStandW3S3gEnvCfg(Biped12HangStandW3S3eEnvCfg):
+    """W3S3 g (1007 claude2, reports/gen_w3/TRANSITION_W3KE.md §5.19·S3G 사전 등록): W3S3e(명령 리샘플 4–6 s = 재출발 포함)와 전부 같고 **보상 항 하나만 추가** —
+    `w3_lean`: 걷는 중 한 주기 평균 옆 기울기 |ḡ_y| 선형 벌점(가중 −8, 1° 쏠림 ≈ −0.14/틱 — 요 벌점 −4·|ω| 의 2°/s 와 같은 크기).
+    근거(배포 코드 폐루프 왕복 기록): 연속 걷기에서는 요 속도가 커지지 않고(4 s 구간 표준편차 4–6°), 멈췄다 다시 걸을 때마다 커진다(6 → 21°).
+    걷는 중 평균 롤과 요 속도는 매 걷기 r 0.67–0.93·기울기 ≈ 2 (°/s)/° — 한쪽으로 쏠린 걸음이 그대로 유지되는 무조절 모드. 관측·행동 계약 불변.
+    대조 = W3S3e 같은 반복 수(리샘플은 같고 이 항만 다름). 시작 = W3S3d-15800 이어 학습."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.w3_lean = RewTerm(func=_w3.w3_lean_net, weight=-8.0)
+
+
+@configclass
 class Biped12HangStandW3S3dC2EnvCfg(Biped12HangStandW3S3dEnvCfg):
     """W3S3d-c2 (1007, c2 GO 학습 설정 — 실행은 승인 뒤): W3S3d(회전·옆·앞뒤·지연 1–5) 끝에서 이어 학습 + c2 묶음(W3C2k2h 와 같은 내용):
     고정 2 보 정지(stop_td_k 2) · 상대 기울기 감지(τ 10 s) · 차분형 v2 포획 착지 · 회복 중 서기 보상 유지 5 항. 관측 actor 320·critic 335 불변 → --resume."""

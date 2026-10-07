@@ -182,7 +182,7 @@ parser.add_argument("--ke2w3_at", type=float, default=4.0, help="ke2w3: KE→W3 
 parser.add_argument("--walk_s", type=float, default=5.0, help="ke2w3: 켜기 뒤 걷기 시간 [s]")
 parser.add_argument("--pre_both_s", type=float, default=1.0); parser.add_argument("--pre_tilt", type=float, default=7.0)
 parser.add_argument("--pre_w", type=float, default=0.25); parser.add_argument("--pre_w_s", type=float, default=1.0)
-parser.add_argument("--sw_requiet", type=str, default="", help="1007 X5: 'T,w' — 회복 모드 중 감지 |ω_xy| < w ∧ 양발 접촉이 T s 이어지면 기준 자세를 현재 자세로 다시 잡고 모드 끔(갇힘 해소). '' = 끔")
+parser.add_argument("--sw_requiet", type=str, default="", help="1007 X5: 'T,w[,both|off]' — 회복 모드 중 감지 |ω_xy| < w ∧ 접촉(기본 양발, off = 감지기 끄기 접촉 조건)이 T s 이어지면 기준 자세를 현재 자세로 다시 잡고 모드 끔(갇힘 해소). '' = 끔")
 parser.add_argument("--w3_fresh", action="store_true", help="ke2w3 즉시 켜기를 배포 러너 fresh 시작(게이트 즉시 1·위상 2 틱 고정)으로 모사(기본 = 에피소드 중 0→1 램프)")
 parser.add_argument("--trace_all", type=int, default=0, help="앞 N env 의 인계 뒤 전 구간 틱 추적 → log_picture/transall_<tag>.npz (기록 전용)")
 parser.add_argument("--video", action="store_true", help="측면 카메라 프레임(10 Hz)·mp4 저장 + 힘 화살표 주석 (env --video_env)")
@@ -1325,12 +1325,18 @@ for i in range(STEPS):
             if args_cli.sw_oracle and dists:
                 _on = _on | torch.full_like(_on, any(d.t0 <= t_rel < d.t0 + 0.02 for d in dists))
             if args_cli.sw_requiet:      # 1007 X5: 갇힘 해소 — 모드 중 조용한 양발 서기 T s → 기준 := 현재 자세, 모드 끔
-                _rqT, _rqW = [float(x) for x in args_cli.sw_requiet.split(",")]
+                _rqp = args_cli.sw_requiet.split(","); _rqT, _rqW = float(_rqp[0]), float(_rqp[1])
+                _rqoff = len(_rqp) > 2 and _rqp[2] == "off"          # 접촉 요구: 기본 양발 / 'off' = 감지기 끄기 접촉 조건(_cq, KE 는 한 발 이상) — 배포 SwitchDetector requiet 3 번째 값과 같음
+                if len(_rqp) > 2 and _rqp[2] not in ("both", "off"):
+                    raise SystemExit(f"--sw_requiet 접촉 요구는 both | off (받음 {_rqp[2]!r})")
                 if "rq_run" not in dir():
-                    rq_run = torch.zeros(N, device=dev); rq_n = torch.zeros(N, device=dev)
+                    rq_run = torch.zeros(N, device=dev); rq_n = torch.zeros(N, device=dev); _RQLOG = []
                     print(f"[sw_requiet] 회복 모드 중 |ω| < {_rqW} ∧ 양발 {_rqT} s → 기준 재설정·모드 끔", flush=True)
-                rq_run = torch.where(sw_mode & (_w < _rqW) & _cf[:, 0] & _cf[:, 1], rq_run + 0.02, torch.zeros_like(rq_run))
+                rq_run = torch.where(sw_mode & (_w < _rqW) & (_cq if _rqoff else (_cf[:, 0] & _cf[:, 1])), rq_run + 0.02, torch.zeros_like(rq_run))
                 _rq_off = sw_mode & (rq_run >= _rqT - 1e-6) & ~_swoff
+                if bool(_rq_off.any()):                      # 기록: 발동 시각·env·재기준 직전의 기준 대비 기울기[°]
+                    for _e in torch.nonzero(_rq_off & alive).squeeze(1).tolist():
+                        _RQLOG.append((round(float(t_rel), 2), int(_e), round(float(_tilt[_e]), 2)))
                 if bool(_rq_off.any()) and float(args_cli.sw_ref_tau) > 0.0:
                     sw_ref = torch.where(_rq_off.unsqueeze(1), _rp2, sw_ref)
                 _swoff = _swoff | _rq_off; rq_n += (_rq_off & alive).float()
@@ -2023,6 +2029,7 @@ if TRMODE and TRS:
     print(f"[trans] log_picture/trans_{args_cli.out_tag}.npz", flush=True)
 if args_cli.sw_requiet and "rq_n" in dir():
     print(f"[sw_requiet] 재기준 발동: env {int((rq_n > 0).sum())} / {N} · 총 {int(rq_n.sum())} 회", flush=True)
+    json.dump({"fires": _RQLOG, "arg": args_cli.sw_requiet}, open(os.path.join(DATA, "log_picture", f"rqlog_{args_cli.out_tag}.json"), "w"))
 if args_cli.trace_all > 0 and "_TALL" in dir():
     import numpy as _npa
     _npa.savez_compressed(os.path.join(DATA, "log_picture", f"transall_{args_cli.out_tag}.npz"),

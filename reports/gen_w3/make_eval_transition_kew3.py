@@ -35,10 +35,11 @@ if KWL:
     KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle)) for _ in range(N)]
     KWS = [_W3D.W3Supervisor(_BR.W3_SAFETY, cmd_limits=_BR.W3_CMD_LIMITS[_KW_KEYS[0]]) for _ in range(N)]
     if args_cli.kw_requiet:                               # 배포 감지기(c5_switch.SwitchDetector)의 갇힘 해소 옵션 — 생성자 인자와 같은 검증을 거쳐 설정
-        _rq_ = tuple(float(x) for x in args_cli.kw_requiet.split(","))
-        assert len(_rq_) == 2 and _rq_[0] > 0.0 and _rq_[1] > 0.0, f"--kw_requiet 'T,w' (받음 {args_cli.kw_requiet!r})"
+        _rqs_ = args_cli.kw_requiet.split(","); _rq_ = (float(_rqs_[0]), float(_rqs_[1])) + ((_rqs_[2],) if len(_rqs_) > 2 else ())
+        from rl_walking.deploy.c5_switch import SwitchDetector as _SDk
+        _probe = _SDk(requiet=_rq_, ref_tau_s=10.0)          # 생성자 검증을 그대로 거친다(값·접촉 요구)
         for R in KWR:
-            R.ke.det.requiet = _rq_; R.ke.det.reset()
+            R.ke.det.requiet = _probe.requiet; R.ke.det.requiet_contact = _probe.requiet_contact; R.ke.det.reset()
         print(f"[runner_loop] 배포 감지기 requiet = {_rq_}", flush=True)
     _KW_POSE = _npk.asarray(_BR.CKPT_DEFAULT_POSE[_KW_KEYS[1]], dtype=_npk.float32)
     assert list(_BR.JOINT_ORDER) == list(robot.data.joint_names), f"관절 순서 불일치: {robot.data.joint_names}"

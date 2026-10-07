@@ -408,3 +408,17 @@ R1 은 구현 확인일 뿐 독립 근거가 아니다. → §12 의 '인과' �
 - 시뮬 이득이 b18(뒤 밀기)에 집중, 지연 3 P4 여유 작음(imuH 8.4 %·odicw 8.3 % vs 문턱 8.6 %) — 실효 지연 ≥ 3 틱이면 장기 체류 증가.
 - 3.3 Hz 원 피크 < 0.56 rad/s 지속 진동은 '정착' 처리, 회전 없는 병진은 calm 경로가 1 s 뒤 끔.
 - 미완: xMIN·xV 지연 3, 후보 지연 3, imuH 독립 seed. 실물 폐루프 미검증(재생은 계약 검증). 젯슨·실물 반영 없음.
+
+## 16. imuH 후보 재등록 — 독립 seed 7–12 확인 (1007 15:20, claude2, **실행 전 등록**)
+- 배경: §15c 권장(imuH = 현행 imu 조기 복귀의 유지 시간 0.2 → 0.7 s)은 §13e–f 에서 **대조군**으로 등록된 팔이다. 승격 절차(§13 사전 기준)상 후보로 재등록하고
+  독립 평가 seed 로 다시 확인한다(승윤님 1007 15:00 지시 3: 낙상·premature settle·recovery dwell·정상 자세 복귀).
+- 팔: imu(현행, 기준) vs **imuH**(`--sw_early_imu 0.6,6,0.4,0.7`). 그 밖 KE 인자는 sab_* 실행 헤더와 동일(kabs: `--sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu
+  --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --contact_ver v2`, G21a 계약 `--last_action_ema 0.27 --obs_ema joint_vel:0.25 --enc_obs v2 --contact_real`).
+  평가 seed **7–12**(학습 seed 아님), 지연 2(`sab_*`)·3(`sabd3_*`), 조건 nd·sf15·fi40·b18, 128 env, 분모 = 홀드 사전검사 통과 env. `--trace_npz` 로 틱별 모드·참 |ω| 기록.
+- 판정(사전 고정, seed 7–12 만으로 — seed 1–6 은 참고 표):
+  - P1 외란 3 조건 짝 낙상: imu만 > imuH만, 지연 2 McNemar p < 0.05, 지연 3 은 방향 일치(imuH만 ≤ imu만).
+  - P2 엄격 성공(OK 분류) 비열화 · P3 끝 정상 자세(S4 아님) 비열화 · P4 회복 모드 > 4 s 장기 체류 ≤ imu + 3 %p(지연 2·3) · P5 nd 낙상·오탐 불변(±2 %p).
+  - 추가 P6 premature settle: 조기 복귀 뒤 1 s 안 참 |ω_xy| ≥ 1.0 또는 재켜짐(refrac 안 재진입) env 비율 — imuH ≤ imu + 2 %p.
+  - 보고 전용: recovery dwell(회복 모드 시간 중앙·p90), 정상 자세 복귀 nrm_t 중앙, 지연 3 P4 여유(§15e: 8.4 vs 8.6 %).
+- 결론 규칙: P1–P6 전부 통과 → **imuH 를 KE 기본 종료 판정기로 승격 제안**(배포 반영·젯슨은 승인 사항). 하나라도 실패 → §15c 권장 철회, 현행 imu 유지(odicw 는 대안 지위 유지).
+- 실행: claude2 scratchpad `imuh_q.sh`(공용 GPU 잠금, PhysX/CUDA 실패·산출물 누락 = 무효 재시도 3), 산출 `log_picture/ground_recovery_{sab,sabd3}_{imu,imuH}_{cond}_s{7..12}*`. 판정 `settle_promote.py`(seed 인자화) + P6 스크립트.

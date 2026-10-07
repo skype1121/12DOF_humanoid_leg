@@ -20,6 +20,7 @@ def main():
             print(f"(없음 {tag})"); continue
         z = np.load(pz, allow_pickle=True); ev = json.loads(str(z["events"])); rej = json.loads(str(z["rej"])); script = json.loads(str(z["script"])); evt = z["ev_t"]
         t = z["t"]; kind = z["kind"]; pp = z["pre_pass"].astype(bool); fell = z["fell"].astype(bool); tf = z["t_fall_post"]
+        ge_arr = z["ge"].astype(bool)
         rows = {int(r["env"]): r for r in csv.DictReader(open(pc))}
         walks = [k for k, (tt, w, c) in enumerate(script) if w]; nwalk_script = len(walks)
         for e in np.nonzero(pp)[0]:
@@ -45,7 +46,12 @@ def main():
             for j, s_ in enumerate(st):
                 nxt = [x for x in tk if x >= s_]
                 if nxt:
-                    s2k[j].append(nxt[0] - s_); cap[j] += (nxt[0] - s_) >= 3.4
+                    s2k[j].append(nxt[0] - s_)
+                    # 상한 도달 = 래치(ge 꺼짐) 뒤 정착 상한 3.0 s 를 다 쓴 인계. (1007 정정: 종전 식 '요청 → 인계 ≥ 3.4 s' 는 요청 → 래치가 0.1–0.5 s 라 상한 도달을 못 잡았다 — 독립 검토 지적)
+                    k_s = int(np.searchsorted(t, s_ - 1e-6)); k_k = int(np.searchsorted(t, nxt[0] - 1e-6)); g = ge_arr[k_s:k_k + 1, e]
+                    off = np.nonzero(~g)[0]
+                    if len(off):
+                        cap[j] += (nxt[0] - float(t[k_s + off[0]])) >= 3.0 - 0.05
             for j, k_ in enumerate(tk):                        # KE 서기 구간 j(전환 뒤): 다음 enable 전까지 회복 켜짐 수
                 nx = min([x for x in en if x > k_] + [t_end]); rec_ke[j] += any(k_ <= x < nx for x in rons)
             if dead:

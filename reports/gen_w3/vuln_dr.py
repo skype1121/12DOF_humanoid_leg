@@ -5,7 +5,8 @@
 import csv, os
 import numpy as np
 LP = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), "log_picture")
-RUNS = {1: ["tr_kwscq_nd_d2_s1", "tr_kwsc_nd_d2_s1", "tr_x7b_ff_d2_s1", "tr_x7b_orig_d2_s1", "tr_x7b_bf_d2_s1"], 2: ["tr_kwscq_nd_d2_s2", "tr_kwsc_nd_d2_s2", "tr_x7b_ff_d2_s2", "tr_x7b_orig_d2_s2", "tr_x7b_bf_d2_s2"]}
+# 서로 다른 궤적만(1007 정정: X7·X7 현행 감지기·S_orig·HD1 끔은 nd 에서 같은 궤적이라 하나만 센다). HD1 켬은 고리 때문에 궤적이 다르다.
+RUNS = {1: ["tr_kwscq_nd_d2_s1", "tr_x7b_ff_d2_s1", "tr_x7b_bf_d2_s1", "tr_hd1on_d2_s1"], 2: ["tr_kwscq_nd_d2_s2", "tr_x7b_ff_d2_s2", "tr_x7b_bf_d2_s2", "tr_hd1on_d2_s2"]}
 PAIRS = [("hip_f", -1), ("hip_a", -1), ("hip_r", +1), ("knee", -1), ("ankle_f", -1), ("ankle_r", +1)]   # 둘째 값: 좌우가 거울 부호(−1)면 '좌 + 우'가 비대칭, 같은 부호(+1)면 '좌 − 우'가 비대칭 — 아래에서 둘 다 계산해 보고
 
 

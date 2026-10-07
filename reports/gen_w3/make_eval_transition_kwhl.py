@@ -118,4 +118,14 @@ rep('''        po = obs["policy"]
             except Exception as _e_:
                 print(f"[runner_loop] drdump 실패(기록 전용 — 평가는 계속): {_e_}", flush=True)
 ''')
+# 1007 S3E 평가: 합성 러너의 W3 쪽 정책 파일만 다른 내보내기 폴더로 바꾼다(브리지 키·계약·설정은 그대로) — 새 W3 체크포인트를 배포 코드 폐루프로 평가.
+rep('''parser.add_argument("--kw_hl", type=str, default="",''', '''parser.add_argument("--kw_w3_export", type=str, default="", help="S3E: W3 하위 키의 exported 폴더 경로 덮어쓰기('' = 등록된 W3S3d-15800)")
+parser.add_argument("--kw_hl", type=str, default="",''')
+rep('''    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]),''', '''    if args_cli.kw_w3_export:
+        _kwx_ = os.path.abspath(args_cli.kw_w3_export)
+        if not (os.path.exists(os.path.join(_kwx_, "policy.pt")) or os.path.exists(os.path.join(_kwx_, "policy.onnx"))):
+            raise SystemExit(f"--kw_w3_export: {_kwx_} 에 policy.pt/onnx 없음")
+        print(f"[runner_loop] W3 하위 키 {_KW_KEYS[0]} 의 정책 폴더 덮어쓰기: {_BR.CHECKPOINTS[_KW_KEYS[0]]} → {_kwx_} · SOURCE_CHECKPOINT {open(os.path.join(_kwx_, 'SOURCE_CHECKPOINT')).read().strip()[:120] if os.path.exists(os.path.join(_kwx_, 'SOURCE_CHECKPOINT')) else '(없음)'}", flush=True)
+        _BR.CHECKPOINTS[_KW_KEYS[0]] = _kwx_
+    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]),''')
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

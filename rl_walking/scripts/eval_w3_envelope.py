@@ -20,7 +20,8 @@
   com_x / com_y  base CoM 오프셋 [m] (base_com DR 의 그 성분을 0 으로 고정하고 이 값)
   play / coul    발목 유격·쿨롱 배수(기본 자산 값 × v; 이 축을 고르면 그 DR 대신 고정)
 지표(채점 = 워밍업 뒤, 시작 과도 낙상 분리): 채점 낙상률(워밍업 생존 대비, Wilson 95 % CI), 교대율, 유효 스텝률, 명령 추종 이득 두 가지(본체 프레임 평균 속도/명령 ·
-  채점 시작 요 프레임 직선 변위/(명령×시간) — 후자는 요 표류의 cos 로 작아질 수 있어 함께 보고,
+  채점 시작 요 프레임 직선 변위/(명령×시간) · 진행 방향 프레임(요 1 주기 EMA) 평균 속도/명령 — 판정은 진행 방향 프레임(본체 프레임은 걸음 흔들림과 요 흔들림의
+  상관으로 편향, 직선 변위는 요 표류 cos 로 편향),
   회전은 감싸지 않은 누적 요/명령), 요 표류(누적 감싸기 없음, 비회전), 헤딩 고리 참 요 오차, 피치·롤 평균·RMS·최대.
 붕괴 판정(그룹): 채점 낙상 > 3 % 또는 추종 이득 < 0.6(명령 축만).
 사용: isaaclab.sh -p rl_walking/scripts/eval_w3_envelope.py --headless --task <T> --load_run <run> --checkpoint model_N.pt \\
@@ -369,7 +370,7 @@ in_air = torch.zeros(N, 2, dtype=torch.bool, device=dev); air_t = fz(N, 2); z0 =
 pend = torch.zeros(N, 2, dtype=torch.bool, device=dev); pend_t = fz(N, 2); pend_load = fz(N, 2); pend_swing = torch.zeros(N, 2, dtype=torch.bool, device=dev)
 n_valid = fz(N, 2); last_valid = torch.full((N,), -1, dtype=torch.long, device=dev); alt_pairs, alt_ok = fz(N), fz(N)
 vb_s = fz(N, 2); nn_ = fz(N); pit_s, pit_ss, rol_s, rol_ss = fz(N), fz(N), fz(N), fz(N); tilt_max = fz(N)
-yaw_acc = fz(N); yaw_prev = None; pos_w0 = None; yaw_w0 = None; disp_end = fz(N, 2); hl_err_max = fz(N); hl_err_end = fz(N); wzc_s = fz(N); wzc_ss = fz(N)
+yaw_acc = fz(N); yaw_prev = None; yaw_un = fz(N); yaw_f = None; vp_s = fz(N, 2); pos_w0 = None; yaw_w0 = None; disp_end = fz(N, 2); hl_err_max = fz(N); hl_err_end = fz(N); wzc_s = fz(N); wzc_ss = fz(N)
 t0w = time.time()
 for i in range(steps):
     t = (i + 1) * dt
@@ -420,7 +421,10 @@ for i in range(steps):
             yaw_prev = yaw.clone(); pos_w0 = robot.data.root_pos_w[:, :2].clone(); yaw_w0 = yaw.clone()
         _dp = robot.data.root_pos_w[:, :2] - pos_w0; _c0, _s0 = torch.cos(yaw_w0), torch.sin(yaw_w0)
         disp_end = torch.where(alive.unsqueeze(1), torch.stack([_dp[:, 0] * _c0 + _dp[:, 1] * _s0, -_dp[:, 0] * _s0 + _dp[:, 1] * _c0], -1), disp_end)   # 시작 요 프레임 직선 변위
-        yaw_acc = torch.where(alive, yaw_acc + _wrap(yaw - yaw_prev), yaw_acc); yaw_prev = yaw.clone()
+        _dyw = _wrap(yaw - yaw_prev); yaw_acc = torch.where(alive, yaw_acc + _dyw, yaw_acc); yaw_un = yaw_un + _dyw; yaw_prev = yaw.clone()
+        yaw_f = yaw_un.clone() if yaw_f is None else yaw_f + (dt / 0.91) * (yaw_un - yaw_f)        # 보행 한 주기(1.1 Hz) 시정수 EMA = 진행 방향
+        _vw = robot.data.root_lin_vel_w[:, :2]; _yf = yaw_f + yaw_w0
+        vp_s += torch.stack([_vw[:, 0] * torch.cos(_yf) + _vw[:, 1] * torch.sin(_yf), -_vw[:, 0] * torch.sin(_yf) + _vw[:, 1] * torch.cos(_yf)], -1) * af.unsqueeze(1)
         vb_s += robot.data.root_lin_vel_b[:, :2] * af.unsqueeze(1); nn_ += af
         pg = robot.data.projected_gravity_b
         pit = torch.rad2deg(torch.atan2(pg[:, 0], -pg[:, 2])); rol = torch.rad2deg(torch.atan2(-pg[:, 1], -pg[:, 2]))
@@ -462,7 +466,8 @@ for g_ in range(G):
     gz = (mean(yaw_acc) / (cmv[2] * T_SC)) if abs(cmv[2]) > 1e-6 else None
     dx_ = mean(disp_end[:, 0]) / T_SC; dy_ = mean(disp_end[:, 1]) / T_SC
     gdx = dx_ / cmv[0] if abs(cmv[0]) > 1e-6 else None; gdy = dy_ / cmv[1] if abs(cmv[1]) > 1e-6 else None
-    gains = [x for x in (gx, gy, gz) if x is not None]
+    vp = vp_s / nn_c.unsqueeze(1); gpx = mean(vp[:, 0]) / cmv[0] if abs(cmv[0]) > 1e-6 else None; gpy = mean(vp[:, 1]) / cmv[1] if abs(cmv[1]) > 1e-6 else None
+    gains = [x for x in (gpx, gpy, gz) if x is not None]          # 판정 = 진행 방향 프레임(본체 프레임은 흔들림-요 상관 편향, 직선 변위는 요 표류 cos 편향)
     pm = pit_s / nn_c; rm = rol_s / nn_c
     prms = (pit_ss / nn_c - pm ** 2).clamp(min=0).sqrt(); rrms = (rol_ss / nn_c - rm ** 2).clamp(min=0).sqrt()
     yd = yaw_deg[surv].cpu().numpy() if bool(surv.any()) else np.array([float("nan")])
@@ -471,7 +476,7 @@ for g_ in range(G):
     fr = fs / max(1, n_st); ci = wilson(fs, n_st)
     r = {"g": g_, "cmd": GROUPS[g_][0], "cmd_v": cmv, "ax": {k: GROUPS[g_][2][k] for k in [kk for kk, _ in GRID]}, "n": int(m.sum()), "fall_warm": fw,
          "fall_score": fs, "n_score": n_st, "fall_rate": fr, "fall_ci": ci, "alt": altr, "step_rate": rate,
-         "gain_x": gx, "gain_y": gy, "gain_yaw": gz, "gain_disp_x": gdx, "gain_disp_y": gdy, "disp_v": [dx_, dy_], "gain_min": (min(gains) if gains else None),
+         "gain_x": gx, "gain_y": gy, "gain_yaw": gz, "gain_disp_x": gdx, "gain_disp_y": gdy, "gain_path_x": gpx, "gain_path_y": gpy, "disp_v": [dx_, dy_], "gain_min": (min(gains) if gains else None),
          "vb": [mean(vb[:, 0]), mean(vb[:, 1])], "yaw_mean_deg": float(np.nanmean(yd)), "yaw_absp50_deg": float(np.nanmedian(np.abs(yd))),
          "yaw_absp95_deg": float(np.nanpercentile(np.abs(yd), 95)),
          "pitch_mean": mean(pm), "roll_mean": mean(rm), "pitch_rms": mean(prms), "roll_rms": mean(rrms),
@@ -492,12 +497,12 @@ J = {"task": a.task, "checkpoint": ck, "seed": a.seed, "per_group": a.per_group,
      "events": EV_DESC, "wrapped_obs": OBS_DESC, "actuators": GAIN_LOG, "wall_s": wall, "groups": RES}
 json.dump(J, open(base + ".json", "w"), ensure_ascii=False, indent=1)
 L = [f"# w3env {a.out_tag} — {a.task} {os.path.basename(os.path.dirname(ck))}/{os.path.basename(ck)} seed {a.seed} · {a.per_group} env/그룹 · 워밍업 {a.warmup} s + 채점 {a.seconds} s · 기본 지연 {a.base_delay} · 고리 {a.heading_loop} · 롤 램프 {'끔' if a.ramp_off else '켬'} · 고정 {FIX}",
-     "| 명령 | " + " | ".join(k for k, _ in GRID) + " | 과도 낙상 | 채점 낙상 (95 % CI) | 교대 | 스텝/s | 이득 본체 x/y/요 · 직선변위 x/y | 요 누적 평균·|p95| ° | 피치/롤 평균 | 피치/롤 RMS | 붕괴 |",
+     "| 명령 | " + " | ".join(k for k, _ in GRID) + " | 과도 낙상 | 채점 낙상 (95 % CI) | 교대 | 스텝/s | 이득 진행 x/y/요 · 본체 x/y · 직선 x/y | 요 누적 평균·|p95| ° | 피치/롤 평균 | 피치/롤 RMS | 붕괴 |",
      "|---|" + "---|" * len(GRID) + "---|---|---|---|---|---|---|---|---|"]
 fmt = lambda x: "—" if x is None else f"{x:.2f}"
 for r in RES:
     L.append(f"| {r['cmd']} | " + " | ".join(f"{r['ax'][k]:g}" for k, _ in GRID) + f" | {r['fall_warm']} | {r['fall_score']}/{r['n_score']} {100 * r['fall_rate']:.1f} % ({100 * r['fall_ci'][0]:.1f}–{100 * r['fall_ci'][1]:.1f}) | {r['alt']:.3f} | {r['step_rate']:.2f} | "
-             f"{fmt(r['gain_x'])}/{fmt(r['gain_y'])}/{fmt(r['gain_yaw'])} · {fmt(r['gain_disp_x'])}/{fmt(r['gain_disp_y'])} | {r['yaw_mean_deg']:+.1f}·{r['yaw_absp95_deg']:.1f} | {r['pitch_mean']:+.1f}/{r['roll_mean']:+.1f} | {r['pitch_rms']:.2f}/{r['roll_rms']:.2f} | "
+             f"{fmt(r['gain_path_x'])}/{fmt(r['gain_path_y'])}/{fmt(r['gain_yaw'])} · {fmt(r['gain_x'])}/{fmt(r['gain_y'])} · {fmt(r['gain_disp_x'])}/{fmt(r['gain_disp_y'])} | {r['yaw_mean_deg']:+.1f}·{r['yaw_absp95_deg']:.1f} | {r['pitch_mean']:+.1f}/{r['roll_mean']:+.1f} | {r['pitch_rms']:.2f}/{r['roll_rms']:.2f} | "
              + ("**붕괴**" if r["collapse"] else "") + (f" 고리 끝오차 p95 {r['hl_err_end_p95']:.1f}° 15°초과 {100 * r['hl_fault15_frac']:.0f} %" if "hl_err_end_p95" in r else "") + " |")
 open(base + ".txt", "w").write("\n".join(L) + "\n")
 print("\n".join(L), flush=True)

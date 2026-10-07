@@ -60,6 +60,10 @@ class KeW3Runner:
             raise ValueError("관측 필터 β 다름")
         if getattr(cw, "jvel_ema_mode", None) != getattr(ck, "jvel_ema_mode", None):
             raise ValueError("jvel_ema_mode 다름")
+        # carry 는 KE 코어의 틱을 0 으로 되돌린다(클록 위상 0 — 시뮬 direct 팔의 클록 패치와 같음). ema_fresh_ticks 2(parity 옵션)는 틱 < 2 에서
+        # gyro_ema·joint_vel_ema 를 순간값으로 재시작하므로, 그 조합은 '이어받기'가 조용히 '재시작'이 된다(X2 폭주 경로) → 기동 거부.
+        if handoff == "carry" and (int(getattr(cw, "ema_fresh_ticks", 1)) != 1 or int(getattr(ck, "ema_fresh_ticks", 1)) != 1):
+            raise ValueError("handoff 'carry' 는 ema_fresh_ticks 1 에서만 — 2 는 전환 틱에 저역 필터가 순간값으로 재시작된다(TRANSITION_W3KE.md §5.6)")
         self.w3r, self.ke = w3_runner, ke_runner
         self.mode = MODE_KE
         self._want = False
@@ -242,7 +246,7 @@ def _mk(seed=0):
     det_kw = dict(on_tilt_deg=3.0, on_w=0.5, off_tilt_deg=1.5, off_w=0.3, calm_s=1.0, dwell_s=0.4, ref_tau_s=10.0, ref_init_s=1.5, off_contact="any",
                   early=(0.6, 6.0, 0.4, 0.2), refrac=(1.5, 6.0, 1.0), in_filt=0.33, early_gate=(5.0, 1.0))
     mk_w3 = lambda: PolicyRunnerStage4(model_path=f(Ww), w3=W3.W3S3D_CONFIG, **kw)
-    mk_ke = lambda: C5Runner(f(Ws), f(Wr), detector=SwitchDetector(**det_kw), cue_vx=0.03, cue_s=1.0, cue_dir_imu=True, **kw)
+    mk_ke = lambda **extra: C5Runner(f(Ws), f(Wr), detector=SwitchDetector(**det_kw), cue_vx=0.03, cue_s=1.0, cue_dir_imu=True, **kw, **extra)
     return mk_w3, mk_ke, pose, kw
 
 
@@ -367,9 +371,16 @@ def selftest() -> int:
         S.step(cmd=cmd0, **_inp(k, pose)); k += 1; n_q += 1
         assert n_q <= 30
     assert 24 <= n_q <= 26, f"정착 0.5 s(25 틱) 뒤 인계여야 함: {n_q}"
+    # [9] carry + ema_fresh_ticks 2 는 기동 거부(전환 틱 필터 재시작 경로 차단), fresh 는 허용
+    try:
+        KeW3Runner(mk_w3(), mk_ke(ema_fresh_ticks=2), handoff="carry")
+        raise AssertionError("carry + ema_fresh 2 를 받아들임")
+    except ValueError:
+        pass
+    KeW3Runner(mk_w3(), mk_ke(ema_fresh_ticks=2), handoff="fresh")
     print(f"[selftest] kew3_runner: KE 모드 = 단독 KE(60 틱 비트 동일) · 켜기 틱 W3 fresh(ge·게이트 즉시, 이력 백필) = 단독 W3(80 틱) · "
           f"슬루 기준 이어받기(qpos 28.6° 떨어져도 전환 틱 |Δ목표| ≤ {np.degrees(SLEW_RAD):.0f}°) · 끄기 = 반주기 래치({n_wait} 틱) 다음 틱 KE fresh · "
-          f"회복 모드 켜기 차단 · force_ke · 계약 불일치 거부 · carry(이력·EMA·last_action 연속, 클록만 교체, 감지기 새로) · 정착 대기({n_q} 틱) — ALL PASS")
+          f"회복 모드 켜기 차단 · force_ke · 계약 불일치 거부 · carry(이력·EMA·last_action 연속, 클록만 교체, 감지기 새로) · 정착 대기({n_q} 틱) · carry + ema_fresh 2 거부 — ALL PASS")
     return 0
 
 

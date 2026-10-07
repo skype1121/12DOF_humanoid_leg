@@ -1,6 +1,7 @@
 """eval_ground_recovery.py → eval_transition.py (1007 claude2): W3→KE 전환 평가 로직을 정확한 앵커 치환으로 삽입. 앵커가 정확히 1번이 아니면 실패."""
 import sys
-SRC = "rl_walking/scripts/eval_ground_recovery.py"; DST = "rl_walking/scripts/eval_transition.py"
+import os
+SRC = "rl_walking/scripts/eval_ground_recovery.py"; DST = os.environ.get("TR_DST", "rl_walking/scripts/eval_transition.py")
 src = open(SRC, encoding="utf-8").read()
 def rep(old, new, count=1):
     global src
@@ -366,5 +367,5 @@ rep('''if C2MODE and _C2TR is not None:''', '''if TRMODE and TRS:
     print(f"[trans] log_picture/trans_{args_cli.out_tag}.npz", flush=True)
 if C2MODE and _C2TR is not None:''')
 
-open(DST, "w", encoding="utf-8").write(src)
+open(DST + ".tmp", "w", encoding="utf-8").write(src); os.replace(DST + ".tmp", DST)
 print("written", DST, len(src.splitlines()), "lines")

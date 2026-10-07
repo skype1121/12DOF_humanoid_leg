@@ -14,7 +14,7 @@ for k in 1 2 3; do
   until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)" -le $MEM_MAX ]; do sleep 30; done
   rm -f log_picture/ground_recovery_$TG.txt log_picture/ground_recovery_${TG}_envs.csv log_picture/trans_$TG.npz
   echo "$(date +%H:%M) 시작 $TG (시도 $k): $BASE --num_envs $ENVS $EXTRA $* --out_tag $TG"
-  setsid timeout $TMO /home/ryu/IsaacLab/isaaclab.sh -p rl_walking/scripts/eval_transition.py $BASE --num_envs $ENVS $EXTRA "$@" --out_tag $TG > $S/$TG.l 2>&1 &
+  setsid timeout $TMO /home/ryu/IsaacLab/isaaclab.sh -p ${TR_SCRIPT:-rl_walking/scripts/eval_transition.py} $BASE --num_envs $ENVS $EXTRA "$@" --out_tag $TG > $S/$TG.l 2>&1 &
   pg=$!; wait $pg; kill -KILL -- -$pg 2>/dev/null
   if grep -q '사전 검사(무개입 자립 [0-9.]*s) 통과: [1-9]' log_picture/ground_recovery_$TG.txt 2>/dev/null && ! grep -aqE "$BAD" $S/$TG.l; then
     echo "$(date +%H:%M) 유효 $TG"; flock -u 9; exit 0; fi

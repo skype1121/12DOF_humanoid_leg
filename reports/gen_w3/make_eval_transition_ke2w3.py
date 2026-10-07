@@ -1,6 +1,7 @@
 """2 단계 패치: eval_transition.py 에 --dir ke2w3 (KE 서기 → W3 전환 → 선행조건 → 켜기 → 걷기 → 정지) 추가. 기본 --dir w3ke 경로는 ke_t0 분리 외 불변."""
 import sys
-P = "rl_walking/scripts/eval_transition.py"
+import os
+P = os.environ.get("TR_DST", "rl_walking/scripts/eval_transition.py")
 src = open(P, encoding="utf-8").read()
 def rep(old, new, count=1):
     global src
@@ -119,4 +120,4 @@ if args_cli.dir == "ke2w3" and (policy_ke is None or policy2 is None):
 ''')
 rep('''                _follow = (~ke_act) | ((t_rel - tr_sw) < float(args_cli.sw_ref_init_s))   # 1007 전환: KE 시작 뒤 init_s 동안 기준 추종''',
     '''                _follow = (~ke_act) | ((t_rel - ke_t0) < float(args_cli.sw_ref_init_s))   # 1007 전환: KE 시작(ke_t0) 뒤 init_s 동안 기준 추종(ke2w3 = 인계 0 s)''')
-open(P, "w", encoding="utf-8").write(src); print("ke2w3 patch applied", len(src.splitlines()))
+open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("ke2w3 patch applied", len(src.splitlines()))

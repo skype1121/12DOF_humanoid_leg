@@ -9,8 +9,9 @@ ST=${1:-all}
 if [ $ST = a ] || [ $ST = an ] || [ $ST = all ]; then
   for SD in 1 2 3; do for M in restart none reset direct; do run k2w_${M}_nd_d2_s${SD} --dir ke2w3 --ke_mode $M --delay_steps 2,2 --seed $SD; done; done
 fi
-if [ $ST = a ] || [ $ST = ab ] || [ $ST = all ]; then
-  for SD in 1 2 3; do for C in b18s sf15s b18w sf15w; do for M in restart none reset direct; do run k2w_${M}_${C}_d2_s${SD} --dir ke2w3 --ke_mode $M --delay_steps 2,2 --seed $SD --pre_both_s 2.5 --pre_w_s 2.5 $(dist $M $C); done; done; done
+if [ $ST = ab3 ]; then SDS="3"; else SDS="1 2"; fi
+if [ $ST = a ] || [ $ST = ab ] || [ $ST = ab3 ] || [ $ST = all ]; then
+  for SD in $SDS; do for C in b18s sf15s b18w sf15w; do for M in restart none reset direct; do run k2w_${M}_${C}_d2_s${SD} --dir ke2w3 --ke_mode $M --delay_steps 2,2 --seed $SD --pre_both_s 2.5 --pre_w_s 2.5 $(dist $M $C); done; done; done
 fi
 if [ $ST = c ] || [ $ST = all ]; then
   for D in 3 4; do for SD in 1 2; do for C in nd b18s sf15s; do for M in restart none; do W=""; [ $C != nd ] && W="--pre_both_s 2.5 --pre_w_s 2.5"; run k2w_${M}_${C}_d${D}_s${SD} --dir ke2w3 --ke_mode $M --delay_steps $D,$D --seed $SD $W $(dist $M $C); done; done; done; done

@@ -17,13 +17,7 @@ fi
 if [ $ST = c ] || [ $ST = all ]; then
   for D in 3 4; do for SD in 1 2; do for C in nd b18 sf15; do for M in restart none; do run tr_${M}_${C}_d${D}_s${SD} --ke_mode $M --delay_steps $D,$D --seed $SD ${X[$C]}; done; done; done; done
 fi
-if [ $ST = d ] || [ $ST = all ]; then
-  for SD in 1 2; do
-    run tr_restart_q4_d2_s${SD} --ke_mode restart --delay_steps 2,2 --seed $SD --dist push:f:5:12:0.3 --w3_stop 5.3 --stop_phases 1
-    run tr_none_q4_d2_s${SD} --ke_mode none --delay_steps 2,2 --seed $SD --dist push:f:5:12:0.3 --w3_stop 5.3 --stop_phases 1
-    run tr_walk_q4_d2_s${SD} --ke_mode none --w3_walk_only --delay_steps 2,2 --seed $SD --dist push:f:5:12:0.3 --w3_stop 5.3 --stop_phases 1
-  done
-fi
+if [ $ST = d ]; then echo "Q4 생략: Q5(같은 팔 + 위상 분산 + keKE)로 대체 — TRANSITION_W3KE.md"; fi
 if [ $ST = e ]; then   # Q5: 걷는 중 외란 직후 KE 즉시 인계 vs 계속 걷기 vs stop→W3 vs stop→KE (on_phases 8)
   for SD in 1 2; do for DD in f12 b18; do
     [ $DD = f12 ] && DS="push:f:5:12:0.3" || DS="push:b:5:18:0.3"
@@ -35,5 +29,27 @@ if [ $ST = e ]; then   # Q5: 걷는 중 외란 직후 KE 즉시 인계 vs 계속
 fi
 if [ $ST = f ]; then   # 창 외란: 재기동 동결(수동 홀드) 중 뒤 18 N(9 s) — restart(동결 중) vs none(W3 STAND) vs reset(KE 즉시)
   for SD in 1 2; do for M in restart none reset; do run tr_${M}_hb18_d2_s${SD} --ke_mode $M --delay_steps 2,2 --seed $SD --dist push:b:9:18:0.3; done; done
+fi
+if [ $ST = g ]; then   # 창 외란 보강: 홀드 10 s 무외란 / 홀드 중 뒤 8 N·앞 12 N
+  for SD in 1 2; do run tr_restart_h10nd_d2_s${SD} --ke_mode restart --hold_s 10 --after_s 30 --delay_steps 2,2 --seed $SD; done
+  for SD in 1 2; do for M in restart none reset; do
+    run tr_${M}_hb8_d2_s${SD} --ke_mode $M --delay_steps 2,2 --seed $SD --dist push:b:9:8:0.3
+    run tr_${M}_hf12_d2_s${SD} --ke_mode $M --delay_steps 2,2 --seed $SD --dist push:f:9:12:0.3
+  done; done
+fi
+if [ $ST = q6a ]; then   # Q6a: 뒤 18 N 뒤 KE 인계 지연 스윕(오라클 방향) +0.4/+0.6/+1.0 s
+  for SD in 1 2; do for LT in 04:5.4 06:5.6 10:6.0; do
+    run tr_keKE${LT%%:*}_q6b18_d2_s${SD} --ke_mode nostop --on_phases 8 --w3_stop ${LT##*:} --stop_phases 1 --delay_steps 2,2 --seed $SD --dist push:b:5:18:0.3
+  done; done
+fi
+if [ $ST = q6b ]; then   # Q6b: 걷기 추적 수집(개입 없음, trace_all) — 감지기 오프라인 분석용
+  export TR_SCRIPT=rl_walking/scripts/eval_transition_dev.py
+  for SD in 1 2; do
+    run tr_walk_q6nd_d2_s${SD} --ke_mode none --w3_walk_only --on_phases 8 --delay_steps 2,2 --seed $SD --trace_all 128
+    for DD in b18:push:b:5:18:0.3 b12:push:b:5:12:0.3 f12:push:f:5:12:0.3 f18:push:f:5:18:0.3; do
+      run tr_walk_q6${DD%%:*}_d2_s${SD} --ke_mode none --w3_walk_only --on_phases 8 --delay_steps 2,2 --seed $SD --dist ${DD#*:} --after_s 12 --trace_all 128
+    done
+  done
+  unset TR_SCRIPT
 fi
 echo "$(date +%H:%M) TRQ_DONE $ST"

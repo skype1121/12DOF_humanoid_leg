@@ -14,7 +14,7 @@ if ! flock -n 8; then echo "$(date +%H:%M) 대기 $TG (같은 태그가 다른 �
 if [[ " $* " == *" --ke_mode none "* && " $* " != *" --dir ke2w3 "* ]]; then EXTRA=""; else EXTRA="$KE"; fi     # w3ke none 팔 = W3 STAND 유지(KE 정책 없음); ke2w3 none = KE 유지(KE 필요)
 acquire_lane() {   # 레인 1 = 기존 공용 잠금(다른 도구와 직렬), 2..N = 추가 레인 — 동시 평가 최대 ${EVAL_LANES:-3} 개
   local i n=${EVAL_LANES:-3}
-  [ -z "${EVAL_POLL:-}" ] && sleep $((3 + RANDOM % 4))   # 일반 실행은 양보 뒤 시도(방금 끝난 체인이 레인을 곧바로 되잡아 대기자가 굶는 것 방지)
+  if [ -z "${EVAL_POLL:-}" ]; then sleep $((3 + RANDOM % 4)); else sleep ${EVAL_YIELD:-3}; fi   # 양보 뒤 시도 — 우선 체인도 3 s 양보(1007: 방금 끝난 우선 체인이 레인을 즉시 되잡아 다른 우선 체인이 굶던 것 방지)
   while true; do
     for i in $(seq 1 $n); do
       if [ $i = 1 ]; then exec 9>"$LOCK"; else exec 9>"$LOCK.lane$i"; fi

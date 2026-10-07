@@ -1,7 +1,7 @@
 """X17 판정(TRANSITION_W3KE.md §5.20) — 전 관절 소프트 한계 클램프(실물 stage8 과 같은 자리) 대조.
 사용: python3 reports/gen_w3/x17_judge.py [--seeds 1,2]
 C1 회복(KE, 한계 1.0 배 그룹): 조건마다 전체 낙상이 대조(X15) + 3 %p 이하 ∧ env 짝 McNemar p ≥ 0.05. C2 걷기 왕복: s3g_judge 의 표(대조 X7c C0)로 본다.
-보고: 관절별 클램프 발동 비율(추적 env 의 목표각이 soft 한계에 붙은 틱) — 서기(kind 0)·회복 모드(kind 1)·걷기(kind 2)별."""
+보고: 관절별 클램프 발동 비율(추적 env 에서 러너 목표각이 soft 한계 밖인 틱 = 클램프가 자른 틱) — 서기(kind 0)·회복 모드(kind 1)·걷기(kind 2)별."""
 import argparse, csv, json, math, os, sys
 import numpy as np
 from math import comb
@@ -37,7 +37,7 @@ def clamp_activity(tag, lim, names):
     zt = np.load(pt, allow_pickle=True); zk = np.load(pk, allow_pickle=True); cmd = zt["cmd"].astype(float); n = cmd.shape[1]
     kind = zk["kind"][:, :n]; alive = zt["alive"].astype(bool) if "alive" in zt.files else np.ones(cmd.shape[:2], bool)
     lo = np.array([math.radians(lim[x]["soft_min"]) for x in names]); hi = np.array([math.radians(lim[x]["soft_max"]) for x in names])
-    at = (np.abs(cmd - lo[None, None]) < 2e-3) | (np.abs(cmd - hi[None, None]) < 2e-3)
+    at = (cmd > hi[None, None] + 1e-4) | (cmd < lo[None, None] - 1e-4)      # 추적의 cmd 는 러너가 낸 목표각(클램프 전) — 한계 밖이면 그 틱에 클램프가 자른다
     out = {}
     for kd, nm in ((0, "서기"), (1, "회복"), (2, "걷기")):
         m = (kind == kd) & alive
@@ -69,7 +69,7 @@ def main():
                 good = dd <= 3.0 + 1e-9 and p >= 0.05; ok1 = ok1 and good; mark = " ← " + ("무해" if good else "**유해**")
             print(f"| {LAB[c]} | {g:g} | {n} | {fa} ({100 * fa / max(n, 1):.1f} %) | {fb} ({100 * fb / max(n, 1):.1f} %) | {dd:+.1f} %p | {oa} / {ob} · {p:.3f}{mark} |")
     print(f"- **C1**: {'자료 부족 ' + ','.join(miss) if miss else ('무해' if ok1 else '유해')}")
-    print("### 클램프 발동 비율 — 목표각이 soft 한계에 붙은 틱의 비율 [%] (추적 env, 클램프 팔)")
+    print("### 클램프 발동 비율 — 러너 목표각이 soft 한계 밖이라 잘린 틱의 비율 [%] (추적 env, 클램프 팔)")
     print("| 실행 | 구간(틱 수) | " + " | ".join(x.replace("_joint", "").replace("left_", "L ").replace("right_", "R ") for x in names) + " |"); print("|---|---|" + "---|" * len(names))
     for tag in [f"tr_x17_{c}_d2_s{s}" for c in ("b18", "sf15", "nd") for s in seeds] + [f"tr_x17_ff_d2_s{s}" for s in seeds]:
         ca = clamp_activity(tag, lim, names)

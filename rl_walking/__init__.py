@@ -590,3 +590,16 @@ for _stage in ("W3S3t", "W3S3tH", "W3S3tD", "W3S3tK"):   # W3S3t: 걷기에도 �
             "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
         },
     )
+
+
+# 1007 KE 회복의 토크 한계 무작위화(범위 확인, reports/gen_w3/TORQUE_BUDGET_1007.md §13) — 별도 블록. G24Ra 상속·계약 불변.
+for _stage in ("G24RaF",):
+    gym.register(
+        id=f"Biped12-HangStand-{_stage}-v0",
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"rl_walking.hang_stand_env_cfg:Biped12HangStand{_stage}EnvCfg",
+            "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+        },
+    )

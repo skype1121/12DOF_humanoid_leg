@@ -2462,6 +2462,20 @@ class Biped12HangStandG24RaEnvCfg(Biped12HangStandW2eEnvCfg):
 
 
 @configclass
+class Biped12HangStandG24RaFEnvCfg(Biped12HangStandG24RaEnvCfg):
+    """G24Ra-F (1007 claude2, reports/gen_w3/TORQUE_BUDGET_1007.md §13 — 범위 확인용): G24R-a 와 보상·관측·외란·커리큘럼 전부 같고 **토크 한계 무작위화만 추가** —
+    리셋마다 전 관절 토크 한계 0.7–1.0 배(mdp_stage4.resample_effort_scale). 관측·행동 계약 불변 → G24Ra-21793 에서 이어 학습.
+    근거(X15): KE 의 서기는 한계 0.6 배에서도 버티지만 회복은 한계에 비례해 무너진다(뒤 밀기 18 N 낙상 5.5 → 19.8 → 42.2 → 93.1 %). 걷기에서는 같은 무작위화(W3S3f)가
+    낮은 한계 내성을 만들었다(0.8 배 14 → 0–1 %). 이 이벤트는 0920 G6 에서 서기 정합을 위해 뺀 것이고 회복·걷기에서는 다시 따져 본 적이 없다."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        from . import mdp_stage4 as _m4
+        assert getattr(self.events, "effort_scale", None) is None
+        self.events.effort_scale = EventTerm(func=_m4.resample_effort_scale, mode="reset", params={"scale_range": (0.7, 1.0)})
+
+
+@configclass
 class Biped12HangStandG24RaR4EnvCfg(Biped12HangStandG24RaEnvCfg):
     """G24R-a-R4 (1006, RH2): G24R-a + **외란 단계 R3 → R4 고정**(앞 램프 12–15 N, 충격 ×1.5 = 18–22.5 N × 0.2–0.4 s ≈ 3.6–9 N·s, 뒤 18 N) 단일 변경.
     근거(검토자): 평가 sf15(15 N)·fi40/fs80(8 N·s)이 R3 학습 분포(앞 10–12 N, 3–7.2 N·s) 밖 — 이어학습 표류가 '분포 밖 영역 미구속'(H2) 탓인지 가른다."""

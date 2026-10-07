@@ -174,4 +174,15 @@ rep('''        if KWH is not None:
             kw_des = kw_des & ~torch.as_tensor(_burst_end_now, device=dev)
         if KWH is not None:
             kw_hlerr_tl.append(_hlerr.astype(_npk.float16)); kw_wzc_tl.append(_wzc.astype(_npk.float16))''')
+# 1007 X16: 합성 러너의 KE 회복 정책 파일만 다른 내보내기 폴더로 바꾼다(서기 정책·감지기·키·계약은 그대로) — 새 회복 체크포인트를 배포 코드 폐루프로 평가.
+rep("""parser.add_argument("--kw_hl", type=str, default="",""", """parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
+parser.add_argument("--kw_hl", type=str, default="",""")
+rep("""    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]),""", """    if args_cli.kw_rec_export:
+        _krx_ = os.path.abspath(args_cli.kw_rec_export)
+        if not (os.path.exists(os.path.join(_krx_, "policy.pt")) or os.path.exists(os.path.join(_krx_, "policy.onnx"))):
+            raise SystemExit(f"--kw_rec_export: {_krx_} 에 policy.pt/onnx 없음")
+        _st_, _old_ = _BR.C5_PAIRS[_KW_KEYS[1]]
+        print(f"[runner_loop] KE 키 {_KW_KEYS[1]} 의 회복 정책 폴더 덮어쓰기: {_old_} → {_krx_} · SOURCE_CHECKPOINT {open(os.path.join(_krx_, 'SOURCE_CHECKPOINT')).read().strip()[:120] if os.path.exists(os.path.join(_krx_, 'SOURCE_CHECKPOINT')) else '(없음)'}", flush=True)
+        _BR.C5_PAIRS[_KW_KEYS[1]] = (_st_, _krx_)
+    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]),""")
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

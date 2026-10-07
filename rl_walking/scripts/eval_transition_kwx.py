@@ -191,6 +191,7 @@ parser.add_argument("--kw_restore_at", type=str, default="", help="X7d: 자세 �
 parser.add_argument("--kw_restore_snap", type=float, default=1.5, help="X7d: 되돌릴 기준 상태를 찍는 시각 [s]")
 parser.add_argument("--kw_w3_export", type=str, default="", help="S3E: W3 하위 키의 exported 폴더 경로 덮어쓰기('' = 등록된 W3S3d-15800)")
 parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토크 한계 배율 목록 '1.0,0.8,0.7,0.6'(env i → i % len). '' = 끔")
+parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
 parser.add_argument("--kw_hl", type=str, default="", help="1007 HD: 헤딩 고리 — '' 끔 | 'on' 브리지 기본 | JSON")
 parser.add_argument("--kw_hl_e0", type=str, default="", help="HD2: 래치 직후 ψ* 초기 오차[°] 목록(env i → i % len)")
 parser.add_argument("--kw_yaw_drift", type=float, default=0.0, help="HD3: 고리에 주는 요 측정에 더할 표류[°/min](env 짝수 +, 홀수 −)")
@@ -1009,6 +1010,13 @@ if KWL:
             raise SystemExit(f"--kw_w3_export: {_kwx_} 에 policy.pt/onnx 없음")
         print(f"[runner_loop] W3 하위 키 {_KW_KEYS[0]} 의 정책 폴더 덮어쓰기: {_BR.CHECKPOINTS[_KW_KEYS[0]]} → {_kwx_} · SOURCE_CHECKPOINT {open(os.path.join(_kwx_, 'SOURCE_CHECKPOINT')).read().strip()[:120] if os.path.exists(os.path.join(_kwx_, 'SOURCE_CHECKPOINT')) else '(없음)'}", flush=True)
         _BR.CHECKPOINTS[_KW_KEYS[0]] = _kwx_
+    if args_cli.kw_rec_export:
+        _krx_ = os.path.abspath(args_cli.kw_rec_export)
+        if not (os.path.exists(os.path.join(_krx_, "policy.pt")) or os.path.exists(os.path.join(_krx_, "policy.onnx"))):
+            raise SystemExit(f"--kw_rec_export: {_krx_} 에 policy.pt/onnx 없음")
+        _st_, _old_ = _BR.C5_PAIRS[_KW_KEYS[1]]
+        print(f"[runner_loop] KE 키 {_KW_KEYS[1]} 의 회복 정책 폴더 덮어쓰기: {_old_} → {_krx_} · SOURCE_CHECKPOINT {open(os.path.join(_krx_, 'SOURCE_CHECKPOINT')).read().strip()[:120] if os.path.exists(os.path.join(_krx_, 'SOURCE_CHECKPOINT')) else '(없음)'}", flush=True)
+        _BR.C5_PAIRS[_KW_KEYS[1]] = (_st_, _krx_)
     KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max)) for _ in range(N)]
     KWS = [_W3D.W3Supervisor(_BR.W3_SAFETY, cmd_limits=_BR.W3_CMD_LIMITS[_KW_KEYS[0]]) for _ in range(N)]
     if args_cli.kw_requiet:                               # 배포 감지기(c5_switch.SwitchDetector)의 갇힘 해소 옵션 — 생성자 인자와 같은 검증을 거쳐 설정

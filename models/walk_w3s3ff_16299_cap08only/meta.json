@@ -1,0 +1,19 @@
+{
+  "name": "walk_w3s3ff_16299_cap08only",
+  "run": "2026-10-08_00-37-31_w3S3fF_from_15800",
+  "checkpoint": "model_16299.pt",
+  "checkpoint_md5": "ae02b0b538dd5d8e66d50058a7549ba7",
+  "task": "Biped12-HangStand-W3S3fF-v0",
+  "usd": "rl_walking/assets/usd_final3/biped12.usd",
+  "warm_start": "w3s3d model_15800",
+  "summary": "걷기·회전 — **토크 상한 0.8 배를 걸 때만의 후보(승격 아님·젯슨 미배포·브리지 키 없음)**. 상한 0.8 배 왕복 낙상 15.1 %(현 배포 걷기 49.6 %), 상한 없이는 현 배포보다 약함(왕복 9.2 % 대 4.9 %, 버튼 대본 15.8 % 대 4.5 %). reports/gen_w3/W3_FINAL_SELECT.md §11c–§12b",
+  "legacy": false,
+  "files": {
+    "policy.pt": "4de89925a79f101592f616eabef1f59e",
+    "policy.onnx": "5fbe317f0dbbce5f50ddc52dd152e155",
+    "env.yaml": "4d4cf5a59012862aea507934f2a94b46",
+    "agent.yaml": "3cef6de166a246b02ce5026d8b047c8e"
+  },
+  "source_dir": "logs/rsl_rl/biped12_stepb0/2026-10-08_00-37-31_w3S3fF_from_15800",
+  "deployed": false
+}

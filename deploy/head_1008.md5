@@ -1,4 +1,4 @@
-d1db6dee0639716aa6a91e62b53e6811  deploy/cand/head_1008/OPERATOR_COMMANDS.md
+81ab09d3b9a451d4db74ee4edc7cfc9a  deploy/cand/head_1008/OPERATOR_COMMANDS.md
 2ddfc1e75480add425ea213663c49670  deploy/cand/head_1008/ref_bridge/rl_bridge_node.68493c11.ref
 621cb77f26014ed7a7469d0666768064  deploy/cand/head_1008/ref_bridge/rl_bridge_node.95946e41.ref
 9d78084d26824d1e3d043811d9c7eeb9  deploy/cand/head_1008/ref_bridge/rl_bridge_node.b79370ca.ref
@@ -15,9 +15,9 @@ cf24508e46fc65b88cd7ab3287f4273d  jetson/scripts/boot_pose_check.py
 2e7816b1ad8b17b531a07d5b40671d61  jetson/scripts/can_channel.py
 42f27f3a996011dbedb95122067846af  jetson/scripts/can_up.sh
 0b5c54ccfe798f055d6b2d5894b7973c  jetson/scripts/collect_trial_logs.sh
-98d57de35d607fbbf0d53f881ccbe525  jetson/scripts/console_demo.py
-ab94d98629ede99f32de6a5f3829ea24  jetson/scripts/console_state.py
-8fecdf7cf66fa2e0bb8486d8a527cba2  jetson/scripts/console_ui.html
+8bcd50e639020e2073685b24dc787328  jetson/scripts/console_demo.py
+22c7f9e01b5ff2f87c496c33813da3bb  jetson/scripts/console_state.py
+ece403f13bfa73823137ab6b5a1a1391  jetson/scripts/console_ui.html
 c16ae314f533e6b542433a71c8a72708  jetson/scripts/cop_from_pads.py
 9b13d6980c6af7f1e41f03c4d6ea82ea  jetson/scripts/foot_force_adapter_node.py
 32b32fbda75012f71eb590ac756731e9  jetson/scripts/ground_stand.py
@@ -28,7 +28,7 @@ c16ae314f533e6b542433a71c8a72708  jetson/scripts/cop_from_pads.py
 35a134e91c6e8126d216d27be73c6d20  jetson/scripts/latency_check.py
 e71d340b73aa8cb248cc0722dcf91086  jetson/scripts/level_pose_retarget.py
 abc2c00951449016d4352456c0270ae8  jetson/scripts/obs_dryrun.py
-c6350af75fceb8bb6b4568618de4a629  jetson/scripts/operator_console.py
+2078b4634e0d4c2002ef63390c9ae6cd  jetson/scripts/operator_console.py
 18c4b94ae43cd9f7e2624e7137a32b06  jetson/scripts/ping_all.py
 79d0dac532d49afdf7257e648b954000  jetson/scripts/pitch_sweep.py
 6b06ae5e1cac641c17f27b187968a3f4  jetson/scripts/play_probe.py
@@ -77,6 +77,8 @@ d908cd92ba0916e790f9e3e28ff1d882  logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12
 3820717ce5c7b02b864108ca81604e25  protocols/__init__.py
 52543d3db24888770e348d59a82279e2  protocols/ak_mit_command.py
 23d9de662e9899087db7276adea8d4fb  protocols/ak_mit_decoder.py
+50b3330889bca7ab4c7c73b8415b64bc  reports/night_1007/jetson/parity_ref.npz
+8e378318f50be826d61c13197b06e254  reports/night_1007/jetson_parity.py
 840dd764226caa00c95a089f4bcdf12f  rl_walking/__init__.py
 01666387d44695c71b8048ad63f0714d  rl_walking/deploy/__init__.py
 fe1f7e821cc0def4b468c9419e714fc1  rl_walking/deploy/bench_stage8_mock.py
@@ -106,6 +108,8 @@ f1b3db6c9cff4c22030aefc626fcc5c0  robot_runtime/dof12_mapping.py
 63d466c99d7144d4032655ab1201aa1a  robot_runtime/joint_limits.py
 d77ae8dd548ea1f3937f35b10a8a51ff  robot_runtime/mode_types.py
 3002c11c30bd75d0bb21bbcc885db6c3  robot_runtime/robot_model.py
+8dda5fdb085083857b7b614e6c01ba9b  tests/test_console_walk.py
+64c9078de587a5a345a7922361e64bd7  tests/test_console_walk_bridge.py
 b486903a87dec4fabb1dd98784837449  tests/test_dof12_mapping_cache.py
 db1ba370d0a39b1834bafde8d933febf  tests/test_latency_check.py
 906bdcda83703b65053f24f3cc540e59  tests/test_operator_console.py

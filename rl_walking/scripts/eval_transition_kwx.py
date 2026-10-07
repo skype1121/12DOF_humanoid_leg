@@ -192,6 +192,7 @@ parser.add_argument("--kw_restore_snap", type=float, default=1.5, help="X7d: 되
 parser.add_argument("--kw_w3_export", type=str, default="", help="S3E: W3 하위 키의 exported 폴더 경로 덮어쓰기('' = 등록된 W3S3d-15800)")
 parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토크 한계 배율 목록 '1.0,0.8,0.7,0.6'(env i → i % len). '' = 끔")
 parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
+parser.add_argument("--kw_soft_clamp_all", action="store_true", help="X17: 실물 stage8 처럼 전 관절 목표각을 config soft 한계로 자른다(기본 = 학습과 같이 발목 앞뒤만)")
 parser.add_argument("--kw_hl", type=str, default="", help="1007 HD: 헤딩 고리 — '' 끔 | 'on' 브리지 기본 | JSON")
 parser.add_argument("--kw_hl_e0", type=str, default="", help="HD2: 래치 직후 ψ* 초기 오차[°] 목록(env i → i % len)")
 parser.add_argument("--kw_yaw_drift", type=float, default=0.0, help="HD3: 고리에 주는 요 측정에 더할 표류[°/min](env 짝수 +, 홀수 −)")
@@ -1093,6 +1094,17 @@ if KWL:
         if i == STEPS_PRE:
             for R in KWR:
                 R.reset()
+            if args_cli.kw_soft_clamp_all:
+                import json as _jsc
+                _lim_ = _jsc.load(open(os.path.join(REPO, "config", "joint_limits_12dof.json"), encoding="utf-8"))["limits_deg"]
+                _nm_ = list(robot.data.joint_names); assert all(n in _lim_ for n in _nm_), [n for n in _nm_ if n not in _lim_]
+                _sl_ = torch.tensor([[math.radians(_lim_[n]["soft_min"]), math.radians(_lim_[n]["soft_max"])] for n in _nm_], device=dev, dtype=torch.float32)
+                _term_ = uenv.action_manager.get_term("joint_pos")
+                assert bool(getattr(_term_, "_clamp_soft", False)), "액션 항의 clamp_to_soft_limits 가 꺼져 있다 — 이 옵션은 그 경로를 쓴다"
+                _before_ = int(getattr(uenv, "_soft_clamp_mask", torch.zeros(len(_nm_), dtype=torch.bool)).sum())
+                robot.data.soft_joint_pos_limits[:, :, :] = _sl_.unsqueeze(0)
+                uenv._soft_clamp_mask = torch.ones(len(_nm_), dtype=torch.bool, device=dev)
+                print(f"[runner_loop] X17 전 관절 소프트 한계 클램프 켬(마스크 {_before_} → {len(_nm_)} 관절) · 한계[deg] " + " ".join(f"{n.replace('_joint', '')}[{_lim_[n]['soft_min']:g},{_lim_[n]['soft_max']:g}]" for n in _nm_), flush=True)
             if args_cli.kw_effort_scales:
                 _es_ = [float(x) for x in args_cli.kw_effort_scales.split(",")]
                 _sc_ = torch.tensor([_es_[e_ % len(_es_)] for e_ in range(N)], device=dev, dtype=torch.float32).unsqueeze(1)

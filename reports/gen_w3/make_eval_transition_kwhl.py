@@ -185,4 +185,23 @@ rep("""    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[
         print(f"[runner_loop] KE 키 {_KW_KEYS[1]} 의 회복 정책 폴더 덮어쓰기: {_old_} → {_krx_} · SOURCE_CHECKPOINT {open(os.path.join(_krx_, 'SOURCE_CHECKPOINT')).read().strip()[:120] if os.path.exists(os.path.join(_krx_, 'SOURCE_CHECKPOINT')) else '(없음)'}", flush=True)
         _BR.C5_PAIRS[_KW_KEYS[1]] = (_st_, _krx_)
     KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]),""")
+# 1008 X17: 실물 stage8 의 전 관절 소프트 한계 클램프를 시뮬에 넣는다 — 학습·종전 평가는 발목 앞뒤만 자른다(계약 감사 CONTRACT_AUDIT.md #5).
+#   인계 시점에 config/joint_limits_12dof.json 의 soft 한계를 전 관절의 soft_joint_pos_limits 에 쓰고, 액션 항의 클램프 마스크를 전 관절로 넓힌다.
+#   (액션 항 SlewJointPositionAction 의 clamp_to_soft_limits 경로 그대로 — 슬루·LPF·블렌딩 뒤 최종 목표각을 자른다 = stage8 이 받은 목표를 자르는 것과 같은 자리.)
+rep("""parser.add_argument("--kw_hl", type=str, default="",""", """parser.add_argument("--kw_soft_clamp_all", action="store_true", help="X17: 실물 stage8 처럼 전 관절 목표각을 config soft 한계로 자른다(기본 = 학습과 같이 발목 앞뒤만)")
+parser.add_argument("--kw_hl", type=str, default="",""")
+rep("""            if args_cli.kw_effort_scales:
+                _es_ = [float(x) for x in args_cli.kw_effort_scales.split(",")]""", """            if args_cli.kw_soft_clamp_all:
+                import json as _jsc
+                _lim_ = _jsc.load(open(os.path.join(REPO, "config", "joint_limits_12dof.json"), encoding="utf-8"))["limits_deg"]
+                _nm_ = list(robot.data.joint_names); assert all(n in _lim_ for n in _nm_), [n for n in _nm_ if n not in _lim_]
+                _sl_ = torch.tensor([[math.radians(_lim_[n]["soft_min"]), math.radians(_lim_[n]["soft_max"])] for n in _nm_], device=dev, dtype=torch.float32)
+                _term_ = uenv.action_manager.get_term("joint_pos")
+                assert bool(getattr(_term_, "_clamp_soft", False)), "액션 항의 clamp_to_soft_limits 가 꺼져 있다 — 이 옵션은 그 경로를 쓴다"
+                _before_ = int(getattr(uenv, "_soft_clamp_mask", torch.zeros(len(_nm_), dtype=torch.bool)).sum())
+                robot.data.soft_joint_pos_limits[:, :, :] = _sl_.unsqueeze(0)
+                uenv._soft_clamp_mask = torch.ones(len(_nm_), dtype=torch.bool, device=dev)
+                print(f"[runner_loop] X17 전 관절 소프트 한계 클램프 켬(마스크 {_before_} → {len(_nm_)} 관절) · 한계[deg] " + " ".join(f"{n.replace('_joint', '')}[{_lim_[n]['soft_min']:g},{_lim_[n]['soft_max']:g}]" for n in _nm_), flush=True)
+            if args_cli.kw_effort_scales:
+                _es_ = [float(x) for x in args_cli.kw_effort_scales.split(",")]""")
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

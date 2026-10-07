@@ -593,7 +593,7 @@ for _stage in ("W3S3t", "W3S3tH", "W3S3tD", "W3S3tK", "W3S3tF"):   # W3S3t: 걷�
 
 
 # 1007 KE 회복의 토크 한계 무작위화(범위 확인, reports/gen_w3/TORQUE_BUDGET_1007.md §13) — 별도 블록. G24Ra 상속·계약 불변.
-for _stage in ("G24RaF", "W3S3fF"):
+for _stage in ("G24RaF", "W3S3fF", "W3S3tK4"):
     gym.register(
         id=f"Biped12-HangStand-{_stage}-v0",
         entry_point="isaaclab.envs:ManagerBasedRLEnv",

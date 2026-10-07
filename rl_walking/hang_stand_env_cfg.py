@@ -3900,3 +3900,11 @@ class Biped12HangStandW3S3fFEnvCfg(Biped12HangStandW3S3fEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         _w3t_progress(self)
+
+
+@configclass
+class Biped12HangStandW3S3tK4EnvCfg(Biped12HangStandW3S3tKEnvCfg):
+    """W3S3 tK4 (1008 claude2, reports/gen_w3/TORQUE_BUDGET_1007.md §17 — 용량 반응 한 점): W3S3tK 와 같은 항 `w3_knee_over`, **가중만 4 배(−4.0)**.
+    물음: 계약(기본자세)을 안 바꾸고 보상만으로 걷는 자세(지지 무릎 64°)가 움직이는가. −1.0 은 +500 반복에 2° 만 폈다."""
+
+    W_KNEE = -4.0

@@ -577,3 +577,16 @@ for _stage in ("W3S2", "W3S1d", "W3S1e", "W3S3", "W3S3h", "W3S3s2", "W3S2d", "W3
             "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
         },
     )
+
+
+# 1007 걷기 토크 예산(reports/gen_w3/TORQUE_W3T_DESIGN.md) — 별도 블록(위 W3 튜플 줄은 건드리지 않음: 병합 충돌 회피). 전부 W3S3d 상속·계약 불변.
+for _stage in ("W3S3t", "W3S3tH", "W3S3tD"):   # W3S3t: 걷기에도 토크 포화 벌점(−40) · W3S3tH: 같은 항 −80 · W3S3tD: 예정 스윙 창 (0.25, 0.75)
+    gym.register(
+        id=f"Biped12-HangStand-{_stage}-v0",
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"rl_walking.hang_stand_env_cfg:Biped12HangStand{_stage}EnvCfg",
+            "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+        },
+    )

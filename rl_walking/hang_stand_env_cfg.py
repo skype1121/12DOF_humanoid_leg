@@ -3750,3 +3750,61 @@ class Biped12HangStandW3S4dD0EnvCfg(Biped12HangStandW3S4dDEnvCfg):
     """W3S4dD0: 외란 비율 0 — W3S4d 와 비트 동일 대조."""
 
     WD_P = 0.0
+
+
+# ================================================================ W3S3t* (1007) — 걷기 토크 예산: 계약(관측·행동·클록·기본자세) 불변 단일 변경 후보. 기본 꺼짐(이 클래스들을 고를 때만) ================================================================
+# 사전 등록 초안·근거 수치: reports/gen_w3/TORQUE_W3T_DESIGN.md · 분석 도구 reports/gen_w3/torque_phase.py · CPU 단위시험 rl_walking/scripts/unit_w3t.py.
+# 배경(측정, TORQUE_BUDGET_1007.md §1·§6 + 위 도구): W3S3d-15800 걷기는 지지 힙 외전을 반주기의 21 % 동안 25 N·m 에 붙이고(스윙발 이륙 구간 v .1–.4),
+# 지지 무릎을 65° 굽힌 채 평균 18.6 N·m 로 버틴다(그 자세의 한발 지지 정적 요구 23.5 N·m). 한계 0.8 배에서는 지지 무릎이 반주기의 61 % 동안 한계에 붙는다.
+# 학습 보상에서 토크 항(torque_saturation −2·dof_torques_l2)은 w3_stand_gated 로 감싸져 걷는 동안 0 이다(env.yaml 확인) → 걷는 동안 토크가 공짜.
+# 토크 한계 무작위화(W3S3f, TORQUE_BUDGET_1007.md §7)는 이 묶음이 아니다 — 같은 것을 다시 만들지 않는다.
+@configclass
+class Biped12HangStandW3S3tEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3 t (1007, TORQUE_W3T_DESIGN.md §T2): W3S3d 와 관측·행동·명령·DR·커리큘럼·학습 지연 1–5·기존 보상 전부 같고 **보상 항 하나만 추가** —
+    `w3_torque_sat` = 걷는 동안(ge 1)의 토크 포화 벌점: w3_step_gated(mdp_stage4.torque_saturation, thresh 0.6) × W_TSAT.
+    함수·문턱은 서기에 이미 걸려 있는 항(가중 −2, w3_stand_gated)과 같다: 관절 평균 clamp(|τ_적용|/τ_한계 − 0.6, 0)²(15 N·m 초과분만).
+    가중 근거(학습 전 계산): W3S3d-15800 걷기에서 이 값 평균 0.0076(명령별 0.0067–0.0088, 힙 외전 48 %·무릎 48 %) → 가중 −40 = 걷기 초당 −0.30
+    (걷기 순 보상 +1.28/s 의 24 %, 기존 걷기 벌점 w3_arate −0.46·w3_yaw −0.39 와 같은 급). 서기 가중 −2 를 그대로 쓰면 −0.015/s 로 사실상 0.
+    문턱 0.6 근거: 한발 지지 비율이 같은 한 힙 외전 보폭 평균(≈ 8 N·m)은 각운동량 균형으로 고정이라 0.33(연속 정격) 문턱은 어떤 걸음도 벌점 0 이 될 수 없다.
+    0.6(15 N·m)은 벌점 0 인 해가 물리적으로 있다(힙 외전을 접지 내내 고르게 ≈ 12.4 N·m, 지지 무릎 ≤ 43° 굽힘). X13 의 0.7 배(17.5 N·m)보다 낮은 목표.
+    시작 = W3S3d-15800 이어 학습(--resume). 기준은 문서(학습 전 고정)."""
+
+    W_TSAT = -40.0          # 비주석 클래스 상수(설정 필드 아님 — env.yaml 에는 기록됨): w3_torque_sat 가중
+    TSAT_THRESH = 0.6       # |τ|/τ_한계 문턱(서기 항과 같은 값)
+
+    def __post_init__(self):
+        super().__post_init__()
+        from . import mdp_stage4 as _m4
+        assert getattr(self.rewards, "w3_torque_sat", None) is None
+        self.rewards.w3_torque_sat = RewTerm(func=_w3.w3_step_gated, weight=float(self.W_TSAT),
+                                             params={"func": _m4.torque_saturation, "params": {"thresh": float(self.TSAT_THRESH)}})
+
+
+@configclass
+class Biped12HangStandW3S3tHEnvCfg(Biped12HangStandW3S3tEnvCfg):
+    """W3S3 tH: W3S3t 와 같은 항, **가중만 2 배(−80 = 걷기 초당 −0.61, 걷기 순 보상의 47 %)** — 용량–반응의 둘째 팔(사전 등록 문서 §T2 의 조건에서만 돌린다).
+    가만히 서는 STEP(순 −0.51/s)이 걷기보다 나아지는 가중은 약 −235 라 −80 도 그 아래다."""
+
+    W_TSAT = -80.0
+
+
+@configclass
+class Biped12HangStandW3S3tDEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3 tD (1007, TORQUE_W3T_DESIGN.md §T3): W3S3d 와 관측·행동·명령·DR·커리큘럼·학습 지연·보상 항·가중 전부 같고 **예정 스윙 창만** 좁힌다 —
+    반주기 위상 v 의 (0.12, 0.88) → SWING_WIN (0.25, 0.75): 예정 한발 지지 76 % → 50 %(0.345 → 0.227 s), 예정 양발 지지 24 → 50 %.
+    바뀌는 것은 두 보상 항의 `win` 인자뿐이다: w3_periodic(스윙 창 안 스윙발 하중 벌점)·w3_height(스윙 창 안 발 높이 5 cm 반사인 추종).
+    걸음 주파수 1.1 Hz·클록 관측·리드 발 규칙·유효 스텝 판정(공중 ≥ 0.12 s·정점 ≥ 3 cm)·모방 창 (0.25, 0.75)은 그대로 → 배포 러너·합성 러너 변경 없음.
+    물리 근거(reports/gen_w3/torque_phase.py bounds (C)): 한발 지지 0.76 → 0.50 이면 힙 외전 보폭 평균 8.7 → 5.7 N·m, 정적 요구의 절반 토크로 버틸 때 필요한
+    몸통 롤 흔들림 8.5 → 3.7°(시간의 제곱), 무릎이 몸무게를 받치는 데 필요한 최소 한계 18.9 → 15.7 N·m(25 의 0.76 → 0.63 배 — X13 의 0.7 배가 물리적으로 가능해짐).
+    알려진 위험(사전 명시, 추정): 스윙 0.227 s 안에 5 cm 를 들려면 무릎 명령 속도가 슬루 한계(4°/틱)에 닿을 수 있다 → 유효 스텝률·스윙 높이 회귀를 본다.
+    시작 = W3S3d-15800 이어 학습(--resume). 기준은 문서(학습 전 고정)."""
+
+    SWING_WIN = (0.25, 0.75)   # 비주석 클래스 상수: 반주기 위상 v 의 예정 스윙 창(w3_imit 창과 같은 값)
+
+    def __post_init__(self):
+        super().__post_init__()
+        rw = self.rewards
+        assert rw.w3_periodic.func is _w3.w3_periodic_contact and rw.w3_height.func is _w3.w3_swing_height
+        _win = (float(self.SWING_WIN[0]), float(self.SWING_WIN[1]))
+        rw.w3_periodic.params = dict(rw.w3_periodic.params or {}, win=_win)
+        rw.w3_height.params = dict(rw.w3_height.params or {}, win=_win)

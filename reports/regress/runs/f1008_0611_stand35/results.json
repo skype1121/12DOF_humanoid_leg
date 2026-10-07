@@ -1,0 +1,183 @@
+{
+ "rid": "f1008_0611",
+ "mode": "full",
+ "profile": "s3d",
+ "started": "2026-10-08 06:11:22",
+ "overall": "PASS",
+ "counts": {
+  "PASS": 6,
+  "미실행": 91
+ },
+ "verdicts": {
+  "S-nd.pre": "PASS",
+  "S-nd.fall": "PASS",
+  "S-nd.quiet": "PASS",
+  "S-nd.pose": "PASS",
+  "S-b18.fall": "PASS",
+  "S-b18.pose": "PASS",
+  "W-st.warm": "미실행",
+  "W-st.fall": "미실행",
+  "W-st.steps": "미실행",
+  "W-st.prms": "미실행",
+  "W-st.vx": "미실행",
+  "W-z.fall": "미실행",
+  "W-z.warm": "미실행",
+  "W-z.vx": "미실행",
+  "W-z.vy": "미실행",
+  "W-z.alt": "미실행",
+  "W-z.cad": "미실행",
+  "W-f.vx": "미실행",
+  "W-f.fall": "미실행",
+  "W-b.vx": "미실행",
+  "W-b.fall": "미실행",
+  "W-l.vy": "미실행",
+  "W-l.fall": "미실행",
+  "W-r.vy": "미실행",
+  "W-r.fall": "미실행",
+  "W-tl.yg": "미실행",
+  "W-tl.fall": "미실행",
+  "W-tr.yg": "미실행",
+  "W-tr.fall": "미실행",
+  "W-mix.gx": "미실행",
+  "W-mix.gy": "미실행",
+  "W-mix.yg": "미실행",
+  "W-mix.fall": "미실행",
+  "W-hl.yaw": "미실행",
+  "W-hl.fall": "미실행",
+  "W-hl.vx": "미실행",
+  "W-hl.vy": "미실행",
+  "W-d4.fall": "미실행",
+  "W-d4.vx": "미실행",
+  "W-d4hl.yaw": "미실행",
+  "W-d4hl.fall": "미실행",
+  "W-stop.settle": "미실행",
+  "W-stop.foot": "미실행",
+  "W-stop.sfall": "미실행",
+  "W-dist.f0.fall": "미실행",
+  "W-dist.l0.fall": "미실행",
+  "W-dist.f12.fall": "미실행",
+  "W-dist.f12.rec": "미실행",
+  "W-dist.b18.fall": "미실행",
+  "W-dist.b18.rec": "미실행",
+  "W-dist.l30.fall": "미실행",
+  "W-dist.l30.rec": "미실행",
+  "K-pair.fall": "미실행",
+  "K-ref-odicw.fall": "미실행",
+  "K-ref-imu.fall": "미실행",
+  "K-odicw-nd.fall": "미실행",
+  "K-odicw-nd.chain": "미실행",
+  "K-odicw-nd.pose": "미실행",
+  "K-odicw-nd.quiet": "미실행",
+  "K-odicw-nd.false": "미실행",
+  "K-odicw-nd.long": "미실행",
+  "K-odicw-sf15.fall": "미실행",
+  "K-odicw-sf15.chain": "미실행",
+  "K-odicw-sf15.pose": "미실행",
+  "K-odicw-sf15.quiet": "미실행",
+  "K-odicw-sf15.long": "미실행",
+  "K-odicw-fi40.fall": "미실행",
+  "K-odicw-fi40.chain": "미실행",
+  "K-odicw-fi40.pose": "미실행",
+  "K-odicw-fi40.quiet": "미실행",
+  "K-odicw-fi40.long": "미실행",
+  "K-odicw-b18.fall": "미실행",
+  "K-odicw-b18.chain": "미실행",
+  "K-odicw-b18.pose": "미실행",
+  "K-odicw-b18.quiet": "미실행",
+  "K-odicw-b18.long": "미실행",
+  "K-imu-nd.fall": "미실행",
+  "K-imu-nd.chain": "미실행",
+  "K-imu-nd.pose": "미실행",
+  "K-imu-nd.quiet": "미실행",
+  "K-imu-nd.false": "미실행",
+  "K-imu-nd.long": "미실행",
+  "K-imu-sf15.fall": "미실행",
+  "K-imu-sf15.chain": "미실행",
+  "K-imu-sf15.pose": "미실행",
+  "K-imu-sf15.quiet": "미실행",
+  "K-imu-sf15.long": "미실행",
+  "K-imu-fi40.fall": "미실행",
+  "K-imu-fi40.chain": "미실행",
+  "K-imu-fi40.pose": "미실행",
+  "K-imu-fi40.quiet": "미실행",
+  "K-imu-fi40.long": "미실행",
+  "K-imu-b18.fall": "미실행",
+  "K-imu-b18.chain": "미실행",
+  "K-imu-b18.pose": "미실행",
+  "K-imu-b18.quiet": "미실행",
+  "K-imu-b18.long": "미실행"
+ },
+ "values": {
+  "S-nd.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 306
+  },
+  "S-nd.quiet": {
+   "kind": "rate",
+   "k": 290,
+   "n": 306
+  },
+  "S-nd.pose": {
+   "kind": "rate",
+   "k": 296,
+   "n": 306
+  },
+  "S-nd.chain": {
+   "kind": "rate",
+   "k": 296,
+   "n": 306
+  },
+  "S-nd.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 306
+  },
+  "S-nd.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 306
+  },
+  "S-nd.pre": {
+   "kind": "rate",
+   "k": 306,
+   "n": 384
+  },
+  "S-b18.fall": {
+   "kind": "rate",
+   "k": 70,
+   "n": 307
+  },
+  "S-b18.quiet": {
+   "kind": "rate",
+   "k": 208,
+   "n": 307
+  },
+  "S-b18.pose": {
+   "kind": "rate",
+   "k": 224,
+   "n": 307
+  },
+  "S-b18.chain": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "S-b18.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "S-b18.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "S-b18.pre": {
+   "kind": "rate",
+   "k": 307,
+   "n": 384
+  }
+ },
+ "prev": "f1007_0852_d2base_s3d15800"
+}

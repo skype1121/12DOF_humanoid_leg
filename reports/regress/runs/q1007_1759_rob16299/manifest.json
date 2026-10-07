@@ -1,0 +1,306 @@
+{
+ "rid": "q1007_1759",
+ "cfg": {
+  "mode": "quick",
+  "rid": "q1007_1759",
+  "w3": "2026-10-07_16-49-39_w3S3dR_from_s3d:model_16299.pt",
+  "w3_task": "Biped12-HangStand-W3S3d-v0",
+  "profile": "s3d",
+  "stand": "2026-10-02_21-23-08_g21a:model_11300.pt",
+  "rec": "2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt",
+  "ke_arms": null,
+  "w3_extra": "",
+  "stand_extra": "",
+  "ke_extra": "",
+  "only": "w3,st,dist",
+  "tag": "rob16299"
+ },
+ "mode_params": {
+  "w3_envs": 128,
+  "w3_sec": 15,
+  "hl_envs": 96,
+  "stop": [
+   8,
+   14
+  ],
+  "dist_envs": 160,
+  "dist_sec": 14,
+  "w3_seeds": [
+   1
+  ],
+  "dist_seeds": [
+   1
+  ],
+  "stand_seeds": [
+   1
+  ],
+  "ke_seeds": [
+   1
+  ],
+  "ke_arms": [
+   "odicw"
+  ],
+  "d4hl": false
+ },
+ "started": "2026-10-07 17:59:22",
+ "code": {
+  "worktree": "/home/ryu/humanoid_leg_test1",
+  "head": "fa0cd415876b8fdfabb7577ab6d04d389c87dfeb",
+  "branch": "hang2stand-prep-0911",
+  "dirty": [
+   "?? reports/regress/runs/q1007_1759_rob16299/"
+  ],
+  "diff_md5": "d41d8cd98f00b204e9800998ecf8427e"
+ },
+ "scripts": {
+  "rl_walking/scripts/eval_w3.py": "195fdcd17c0cd903dbbd22f854a2a785",
+  "rl_walking/scripts/eval_ground_recovery.py": "5dccb6d6fc79b28273352ba4e4266d2a",
+  "reports/regress/THRESHOLDS.md": "2463c5de347e581028a657c22355f8ea",
+  "reports/regress/summarize.py": "86510e4ec4f6a65a12117bdbd31b3bee",
+  "reports/regress/regress_lib.py": "76a58330d69c5d2cac80c2a94c5a8d8f",
+  "reports/regress/run_regress.sh": "0e33f6fa1970f5e0d30b1572ba9d35cc"
+ },
+ "checkpoints": {
+  "w3": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-10-07_16-49-39_w3S3dR_from_s3d/model_16299.pt",
+   "md5": "01d1f30a058ec2b01347fc8d8791adbe"
+  },
+  "stand": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_g22r/2026-10-02_21-23-08_g21a/model_11300.pt",
+   "md5": "599c47d3c3f190ad91a80a1ab7ff9fa7"
+  },
+  "rec": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/model_21793.pt",
+   "md5": "05e6b8ee4109ef40fd24bd8437bdfcba"
+  }
+ },
+ "gpu": "NVIDIA GeForce RTX 5080, 580.159.04, 16303 MiB",
+ "data_repo": "/home/ryu/humanoid_leg_test1",
+ "jobs": {
+  "W-z-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_z_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0,0,0",
+   "item": "W-z",
+   "seed": 1,
+   "cmd": "0,0,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-f-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_f_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0.06,0,0",
+   "item": "W-f",
+   "seed": 1,
+   "cmd": "0.06,0,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-b-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_b_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=-0.04,0,0",
+   "item": "W-b",
+   "seed": 1,
+   "cmd": "-0.04,0,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-l-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_l_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0,0.05,0",
+   "item": "W-l",
+   "seed": 1,
+   "cmd": "0,0.05,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-r-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_r_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0,-0.05,0",
+   "item": "W-r",
+   "seed": 1,
+   "cmd": "0,-0.05,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-tl-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_tl_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0,0,0.2 --turn_metrics",
+   "item": "W-tl",
+   "seed": 1,
+   "cmd": "0,0,0.2",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-tr-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_tr_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0,0,-0.2 --turn_metrics",
+   "item": "W-tr",
+   "seed": 1,
+   "cmd": "0,0,-0.2",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-mix-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_mix_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0.05,0.04,0.2 --turn_metrics",
+   "item": "W-mix",
+   "seed": 1,
+   "cmd": "0.05,0.04,0.2",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-hl-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_hl_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 96 --long --ramp_off --delay 2 --seed 1 --cmd=0,0,0 --heading_loop 0.5 --turn_metrics",
+   "item": "W-hl",
+   "seed": 1,
+   "cmd": "0,0,0",
+   "delay": 2,
+   "num_envs": 96,
+   "seconds": 120.0
+  },
+  "W-d4-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_d4_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 128 --seconds 15 --delay 4 --seed 1 --cmd=0.06,0,0",
+   "item": "W-d4",
+   "seed": 1,
+   "cmd": "0.06,0,0",
+   "delay": 4,
+   "num_envs": 128,
+   "seconds": 15
+  },
+  "W-stop-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_stop_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 128 --seconds 14 --delay 2 --seed 1 --cmd=0.06,0,0 --stop_at 8",
+   "item": "W-stop",
+   "seed": 1,
+   "cmd": "0.06,0,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 14
+  },
+  "W-st-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_st_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 128 --seconds 15 --delay 2 --seed 1 --cmd=0,0,0 --gait_enable 0",
+   "item": "W-st",
+   "seed": 1,
+   "cmd": "0,0,0",
+   "delay": 2,
+   "num_envs": 128,
+   "seconds": 15,
+   "gait": 0
+  },
+  "W-dist-s1": {
+   "kind": "w3",
+   "tag": "rg_q1007_1759_w_dist_s1",
+   "args": "--headless --task Biped12-HangStand-W3S3d-v0 --load_run 2026-10-07_16-49-39_w3S3dR_from_s3d --checkpoint model_16299.pt --warmup 2 --num_envs 160 --seconds 14 --delay 2 --seed 1 --cmd=0.06,0,0 --ramp_off --dist_jitter 0.91 --dist \"push:f:6:0:0.3|push:f:6:12:0.3|push:b:6:18:0.3|cmd=0,0.05,0;push:l:6:0:0.2|cmd=0,0.05,0;push:l:6:30:0.2\"",
+   "item": "W-dist",
+   "seed": 1,
+   "cmd": "0.06,0,0",
+   "delay": 2,
+   "num_envs": 160,
+   "seconds": 14
+  }
+ },
+ "finished": "2026-10-07 18:22:01",
+ "status": {
+  "W-z-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "81"
+  },
+  "W-f-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "72"
+  },
+  "W-b-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "78"
+  },
+  "W-l-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "78"
+  },
+  "W-r-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "87"
+  },
+  "W-tl-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "72"
+  },
+  "W-tr-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "75"
+  },
+  "W-mix-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "69"
+  },
+  "W-hl-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "453"
+  },
+  "W-d4-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "63"
+  },
+  "W-stop-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "78"
+  },
+  "W-st-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "60"
+  },
+  "W-dist-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "84"
+  }
+ }
+}

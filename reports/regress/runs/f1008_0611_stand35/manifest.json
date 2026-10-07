@@ -1,0 +1,185 @@
+{
+ "rid": "f1008_0611",
+ "cfg": {
+  "mode": "full",
+  "rid": "f1008_0611",
+  "w3": "2026-10-07_00-11-12_w3S3d_from_s2d:model_15800.pt",
+  "w3_task": "Biped12-HangStand-W3S3d-v0",
+  "profile": "s3d",
+  "stand": "2026-10-02_21-23-08_g21a:model_11300.pt",
+  "rec": "2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt",
+  "ke_arms": null,
+  "w3_extra": "",
+  "stand_extra": "--after_s 35",
+  "ke_extra": "",
+  "only": "stand",
+  "tag": "stand35"
+ },
+ "mode_params": {
+  "w3_envs": 256,
+  "w3_sec": 30,
+  "hl_envs": 256,
+  "stop": [
+   12,
+   20
+  ],
+  "dist_envs": 320,
+  "dist_sec": 16,
+  "w3_seeds": [
+   1,
+   2
+  ],
+  "dist_seeds": [
+   1,
+   2
+  ],
+  "stand_seeds": [
+   1,
+   2,
+   3
+  ],
+  "ke_seeds": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ],
+  "ke_arms": [
+   "imu",
+   "odicw"
+  ],
+  "d4hl": true
+ },
+ "started": "2026-10-08 06:11:22",
+ "code": {
+  "worktree": "/home/ryu/humanoid_leg_test1",
+  "head": "696df191e5b40cf815952b9c905a74e3affc80c6",
+  "branch": "hang2stand-prep-0911",
+  "dirty": [
+   "?? reports/regress/runs/f1008_0611_stand35/",
+   "?? reports/regress/runs/q1007_1759_rob16299/"
+  ],
+  "diff_md5": "d41d8cd98f00b204e9800998ecf8427e"
+ },
+ "scripts": {
+  "rl_walking/scripts/eval_w3.py": "195fdcd17c0cd903dbbd22f854a2a785",
+  "rl_walking/scripts/eval_ground_recovery.py": "5dccb6d6fc79b28273352ba4e4266d2a",
+  "reports/regress/THRESHOLDS.md": "2463c5de347e581028a657c22355f8ea",
+  "reports/regress/summarize.py": "86510e4ec4f6a65a12117bdbd31b3bee",
+  "reports/regress/regress_lib.py": "76a58330d69c5d2cac80c2a94c5a8d8f",
+  "reports/regress/run_regress.sh": "0e33f6fa1970f5e0d30b1572ba9d35cc"
+ },
+ "checkpoints": {
+  "w3": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-10-07_00-11-12_w3S3d_from_s2d/model_15800.pt",
+   "md5": "3da9f2e5b6c435d6b6df220e3a7969b2"
+  },
+  "stand": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_g22r/2026-10-02_21-23-08_g21a/model_11300.pt",
+   "md5": "599c47d3c3f190ad91a80a1ab7ff9fa7"
+  },
+  "rec": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/model_21793.pt",
+   "md5": "05e6b8ee4109ef40fd24bd8437bdfcba"
+  }
+ },
+ "gpu": "NVIDIA GeForce RTX 5080, 580.159.04, 16303 MiB",
+ "data_repo": "/home/ryu/humanoid_leg_test1",
+ "jobs": {
+  "S-nd-s1": {
+   "kind": "gr",
+   "tag": "rg_f1008_0611_s_nd_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1 --after_s 35",
+   "item": "S-nd",
+   "seed": 1,
+   "cond": "nd",
+   "num_envs": 128
+  },
+  "S-b18-s1": {
+   "kind": "gr",
+   "tag": "rg_f1008_0611_s_b18_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1 --dist push:b:2:18:0.3 --after_s 35",
+   "item": "S-b18",
+   "seed": 1,
+   "cond": "b18",
+   "num_envs": 128
+  },
+  "S-nd-s2": {
+   "kind": "gr",
+   "tag": "rg_f1008_0611_s_nd_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 2 --after_s 35",
+   "item": "S-nd",
+   "seed": 2,
+   "cond": "nd",
+   "num_envs": 128
+  },
+  "S-b18-s2": {
+   "kind": "gr",
+   "tag": "rg_f1008_0611_s_b18_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 2 --dist push:b:2:18:0.3 --after_s 35",
+   "item": "S-b18",
+   "seed": 2,
+   "cond": "b18",
+   "num_envs": 128
+  },
+  "S-nd-s3": {
+   "kind": "gr",
+   "tag": "rg_f1008_0611_s_nd_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 3 --after_s 35",
+   "item": "S-nd",
+   "seed": 3,
+   "cond": "nd",
+   "num_envs": 128
+  },
+  "S-b18-s3": {
+   "kind": "gr",
+   "tag": "rg_f1008_0611_s_b18_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 3 --dist push:b:2:18:0.3 --after_s 35",
+   "item": "S-b18",
+   "seed": 3,
+   "cond": "b18",
+   "num_envs": 128
+  }
+ },
+ "finished": "2026-10-08 06:24:02",
+ "status": {
+  "S-nd-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "165"
+  },
+  "S-b18-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "111"
+  },
+  "S-nd-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "111"
+  },
+  "S-b18-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "111"
+  },
+  "S-nd-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "111"
+  },
+  "S-b18-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "111"
+  }
+ }
+}

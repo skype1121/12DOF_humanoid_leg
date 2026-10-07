@@ -204,4 +204,9 @@ rep("""            if args_cli.kw_effort_scales:
                 print(f"[runner_loop] X17 전 관절 소프트 한계 클램프 켬(마스크 {_before_} → {len(_nm_)} 관절) · 한계[deg] " + " ".join(f"{n.replace('_joint', '')}[{_lim_[n]['soft_min']:g},{_lim_[n]['soft_max']:g}]" for n in _nm_), flush=True)
             if args_cli.kw_effort_scales:
                 _es_ = [float(x) for x in args_cli.kw_effort_scales.split(",")]""")
+# 1008 X14b: 버튼 표에 없는 값의 시간 제한 걷기 — 대본 사건 'mv@t:vx,vy,wz,dur_s'(move@ 와 같은 경로: 감독기의 dur_s 검증·burst_arm/burst_due 그대로).
+rep("""            if kind == "move":""", """            if kind == "mv":
+                _v4 = [float(x) for x in arg.split(",")]; assert len(_v4) == 4, arg
+                _KW_DURS[round(float(tt), 4)] = float(_v4[3]); ev.append((float(tt), True, _v4[:3])); continue
+            if kind == "move":""")
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

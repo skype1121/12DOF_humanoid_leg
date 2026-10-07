@@ -1072,6 +1072,9 @@ if KWL:
             if not tok:
                 continue
             head, _, arg = tok.partition(":"); kind, _, tt = head.partition("@")
+            if kind == "mv":
+                _v4 = [float(x) for x in arg.split(",")]; assert len(_v4) == 4, arg
+                _KW_DURS[round(float(tt), 4)] = float(_v4[3]); ev.append((float(tt), True, _v4[:3])); continue
             if kind == "move":
                 _mc = _W3D.w3_move_cmd(arg.strip(), allow_disabled=True); _KW_DURS[round(float(tt), 4)] = float(_mc["dur_s"])
                 ev.append((float(tt), True, [_mc["vx"], _mc["vy"], _mc["wz"]])); continue

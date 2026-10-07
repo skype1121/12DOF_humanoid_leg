@@ -20,6 +20,13 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--tags", default="tr_x14_d2_s1,tr_x14_d2_s2"); ap.add_argument("--name", default="")
     ap.add_argument("--moves", default="fwd1,turn_l,turn_r,left1,right1,back1,fwd3,inplace,fwd1,fwd1")
     a = ap.parse_args(); mv = a.moves.split(","); B = len(mv)
+    # 1008 X14b: 버튼 표에 없는 값은 '=라벨|vx|vy|wz|dur_s' 로 준다(대본의 mv@ 사건과 같은 값)
+    MV = []
+    for x in mv:
+        if x.startswith("="):
+            lab, vx, vy, wz, du = x[1:].split("|"); MV.append({"label": lab, "vx": float(vx), "vy": float(vy), "wz": float(wz), "dur_s": float(du)})
+        else:
+            MV.append(dict(W3D.W3_MOVES[x]))
     st = [dict(n=0, acc=0, dly=[], off_late=0, off_n=0, off_dly=[], ke=[], ke_none=0, fall=0, sign_ok=0, sign_n=0, mag=[], yawabs=[], lat=[], fwd=[], rec=0) for _ in range(B)]
     N = 0; F = 0; got = []; end_s = None
     for tag in a.tags.split(","):
@@ -35,7 +42,7 @@ def main():
             N += 1; F += bool(fell[e] and tf[e] <= end_s + 1); E = ev[e]
             en = [x for x, nm in E if nm == "enable"]; be = [x for x, nm in E if nm == "burst_end"]; tk = [x for x, nm in E if nm == "to_ke"]
             for b in range(B):
-                s = st[b]; t0 = treq[b]; t1 = treq[b + 1] if b + 1 < B else end_s; m = W3D.W3_MOVES[mv[b]]; dur = float(m["dur_s"])
+                s = st[b]; t0 = treq[b]; t1 = treq[b + 1] if b + 1 < B else end_s; m = MV[b]; dur = float(m["dur_s"])
                 if tf[e] <= t0:
                     continue                                              # 요청 전에 넘어짐 — 분모 제외
                 s["n"] += 1; s["fall"] += bool(t0 < tf[e] <= t1); s["rec"] += bool(kind[K(t0), e] == 1)
@@ -73,7 +80,7 @@ def main():
     print("| # | 버튼 | 명령·기한 | 요청 때 생존 | 수락(2 s 안) | 켜짐 지연 중앙 / p95 [s] | 기한 + 0.5 s 안 꺼짐 | 기한 → 꺼짐 중앙 [s] | 기한 → KE 인계 중앙 / p95 [s] | 구간 낙상 | 방향 부호 일치 | 크기 중앙 (p10–p90) | 요 틀어짐 \\|Δψ\\| 중앙 [°] |"); print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     tot = dict(n=0, acc=0, off_n=0, off_late=0, ke=[], sign_n=0, sign_ok=0); worst_sign = 1.0; per_b_fail = []
     for b, s in enumerate(st):
-        m = W3D.W3_MOVES[mv[b]]; unit = "m" if (abs(m["vx"]) > 0 or abs(m["vy"]) > 0) else ("°" if abs(m["wz"]) > 0 else "")
+        m = MV[b]; unit = "m" if (abs(m["vx"]) > 0 or abs(m["vy"]) > 0) else ("°" if abs(m["wz"]) > 0 else "")
         mag = f"{q(s['mag'], 50):+.3f} ({q(s['mag'], 10):+.3f}–{q(s['mag'], 90):+.3f}) {unit}" if s["mag"] else (f"앞 {q(s['fwd'], 50):+.3f} m · 옆 {q(s['lat'], 50):+.3f} m" if s["fwd"] else "—")
         sg = f"{s['sign_ok']} / {s['sign_n']} ({100 * s['sign_ok'] / max(s['sign_n'], 1):.1f} %)" if s["sign_n"] else "—"
         print(f"| {b + 1} | {m['label']} | {m['vx']:+.3f}, {m['vy']:+.3f}, {m['wz']:+.2f} · {m['dur_s']} s | {s['n']} | {s['acc']} ({100 * s['acc'] / max(s['n'], 1):.1f} %) | {q(s['dly'], 50):.2f} / {q(s['dly'], 95):.2f} | {s['off_n'] - s['off_late']} / {s['off_n']} | {q(s['off_dly'], 50):.2f} | {q(s['ke'], 50):.2f} / {q(s['ke'], 95):.2f}"

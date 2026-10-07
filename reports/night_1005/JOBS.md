@@ -146,3 +146,6 @@
 - 1007 19:45 claude2 실행 중 체인(scratchpad f0e5…/tr/*.pid, 평가 3 레인): X6b 배포 코드 폐루프 + 감지기 갇힘 해소(x6b_chain.pid 668453) → X7 왕복 대본(x7_chain.pid 671082, X6b 뒤) ·
   X2f 창 외란 잔여(x2f_chain.pid 650811) · X9 롤 램프 끔 대조(x9_chain.pid 701932) → KE-q 확증 배터리(keq_chain.pid 709224, X9 뒤, keq_q.sh main → aux) ·
   주 체인 492530(tr2_q ab 613791 → tr_q c → tr2_q c → GRID_DONE) → imuH v2 체인 485643(GRID_DONE 뒤 ab3 → imuh2_q.sh). 서브에이전트 5(브리지 연결[워크트리]·코드 리뷰 진행 중, 검산·실물 로그·헤딩 완료).
+- 1007 20:58 claude2: imuH v2(seed 13–18) 체인을 GRID_DONE 대기에서 떼어 바로 시작(imuh2_q.sh, tr/imuh2_chain.pid 825993, 우선 폴링). 종전 대기 셸 485643 은 명시 PID 로 종료하고 ab3 만 기다리는 대기 셸(826925)로 교체 — 같은 태그 이중 실행 방지.
+  실행 중: KE-q 배터리(keq_chain 709224, 13/72) · X10 발목 슬루(x10_chain 761550, 19/24) · X7b 왕복 원인 분리(x7b_chain 816087) · 주 체인(grid 492530). 완료: X7·X10b·X10c·x11(W3 걷기 부하).
+  병합: 합성 러너 브리지 연결(9574679f)·krh 키 본 코드 반영(809f9e9f)·W3 명령 경계 여유(6af73c31). 실물: 1007 20:04 krh 첫 실행 분석(reports/real_1007/README.md).

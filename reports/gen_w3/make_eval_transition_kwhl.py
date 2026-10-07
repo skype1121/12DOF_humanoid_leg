@@ -58,4 +58,37 @@ rep('''        kind_t = torch.as_tensor(kind, device=dev); ge_t = torch.as_tenso
 rep('''                          pg=_npk.stack(kw_pg_tl, 0)''', '''                          hl=str(args_cli.kw_hl), hl_e0=_npk.asarray([_KW_E0[e_ % len(_KW_E0)] for e_ in range(N)], _npk.float32), hl_nfault=_npk.asarray(kw_hl_nfault, _npk.int16), yaw_drift=float(args_cli.kw_yaw_drift),
                           hlerr=_npk.stack(kw_hlerr_tl, 0) if kw_hlerr_tl else _npk.zeros((0, N), _npk.float16), wzc=_npk.stack(kw_wzc_tl, 0) if kw_wzc_tl else _npk.zeros((0, N), _npk.float16),
                           pg=_npk.stack(kw_pg_tl, 0)''')
+# 1007 X7d: 자세 되돌리기 개입(시뮬 전용 진단) — 지정 시각에 로봇의 물리 상태(몸통 위치·자세·관절각, 속도 0)와 출력 체인의 목표 기억을 스냅샷 시각(--kw_restore_snap) 상태로 되돌린다.
+#   러너(이력·필터·직전 행동)·감지기·감독기는 건드리지 않는다. 출력 체인(슬루·저역 필터 기억)을 함께 되돌리는 이유: 그대로 두면 PD 가 곧바로 이전 자세의 목표로 끌어당겨 개입이 무효가 된다.
+rep('''parser.add_argument("--kw_hl", type=str, default="",''', '''parser.add_argument("--kw_restore_at", type=str, default="", help="X7d: 자세 되돌리기 시각 목록 't1,t2,...'(인계 기준 s). '' = 끔")
+parser.add_argument("--kw_restore_snap", type=float, default=1.5, help="X7d: 되돌릴 기준 상태를 찍는 시각 [s]")
+parser.add_argument("--kw_hl", type=str, default="",''')
+rep('''        po = obs["policy"]
+        if i == STEPS_PRE:
+            for R in KWR:
+                R.reset()
+''', '''        po = obs["policy"]
+        if i == STEPS_PRE:
+            for R in KWR:
+                R.reset()
+        if _KW_RST:      # X7d 자세 되돌리기(시뮬 전용)
+            if _KW_SNAP[0] is None and t_rel >= float(args_cli.kw_restore_snap) - 1e-9:
+                _KW_SNAP[0] = (torch.cat([robot.data.root_pos_w, robot.data.root_quat_w], -1).clone(), robot.data.joint_pos.clone(),
+                               (_LAST_CMD[0].clone() if _LAST_CMD[0] is not None else None))
+            for k_, tr_ in enumerate(_KW_RST):
+                if (not _KW_RST_DONE[k_]) and _KW_SNAP[0] is not None and t_rel >= tr_ - 1e-9:
+                    _KW_RST_DONE[k_] = True
+                    ids_ = torch.nonzero(alive, as_tuple=False).flatten()
+                    if len(ids_):
+                        robot.write_root_pose_to_sim(_KW_SNAP[0][0][ids_], ids_); robot.write_root_velocity_to_sim(torch.zeros(len(ids_), 6, device=dev), ids_)
+                        robot.write_joint_state_to_sim(_KW_SNAP[0][1][ids_], torch.zeros_like(_KW_SNAP[0][1][ids_]), env_ids=ids_)
+                        if _chain is not None and _KW_SNAP[0][2] is not None:
+                            _chain.prev[ids_] = _KW_SNAP[0][2][ids_]; _chain.filt[ids_] = _KW_SNAP[0][2][ids_]
+                    kw_rst_log.append((round(float(t_rel), 2), int(len(ids_))))
+                    print(f"[runner_loop] X7d 자세 되돌리기 t {float(t_rel):.2f}s · env {int(len(ids_))} 개", flush=True)
+''')
+rep('''    kw_cur = [(0.0, 0.0, 0.0)] * N; kw_seq = [1] * N;''', '''    _KW_RST = [float(x) for x in args_cli.kw_restore_at.split(",")] if args_cli.kw_restore_at else []
+    _KW_RST_DONE = [False] * len(_KW_RST); _KW_SNAP = [None]; kw_rst_log = []
+    kw_cur = [(0.0, 0.0, 0.0)] * N; kw_seq = [1] * N;''')
+rep('''                          hl=str(args_cli.kw_hl),''', '''                          restore=json.dumps(kw_rst_log), hl=str(args_cli.kw_hl),''')
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

@@ -104,4 +104,9 @@ if [ $ST = x5 ]; then   # X5: 회복 모드 갇힘 해소 변형(--sw_requiet 2.
   for SD in 1 2 3; do for C in sf15 b18 nd; do run tr_directq_${C}_d2_s${SD} --ke_mode direct --delay_steps 2,2 --seed $SD ${X[$C]} --sw_requiet 2.0,0.3; done; done
   unset TR_SCRIPT
 fi
+if [ $ST = x6 ]; then   # X6: 배포 코드 합성 러너 폐루프(--runner_loop) — direct 팔과 동등성
+  export TR_SCRIPT=rl_walking/scripts/eval_transition_kw.py
+  for SD in 1 2 3; do for C in nd sf15 b18; do run tr_kew3_${C}_d2_s${SD} --ke_mode direct --runner_loop --delay_steps 2,2 --seed $SD ${X[$C]} --trace_all 128; done; done
+  unset TR_SCRIPT
+fi
 echo "$(date +%H:%M) TRQ_DONE $ST"

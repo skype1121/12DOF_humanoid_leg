@@ -72,6 +72,8 @@ class KeW3Runner:
         self.n_to_ke = 0
         self.last_event = ""          # 이번 틱 전환 사건: "" | "to_w3" | "to_ke" | "force_ke"
         self.ticks_in_mode = 0
+        self.last_step_action = None  # 이번 틱에 실제로 실행한 원시 행동(전환이 같은 틱에 일어나도 '행동한 러너'의 값) — 시뮬 폐루프·기록용
+        self.last_step_kind = 0       # 이번 틱 행동 주체: 0 KE 서기 · 1 KE 회복 · 2 W3
 
     # ---------- 브리지가 읽는 속성 ----------
     @property
@@ -202,6 +204,7 @@ class KeW3Runner:
         if self.mode == MODE_W3:
             out = self.w3r.step(gyro_rad_s, gravity_unit, cmd, qpos_rad, qvel_rad_s, contact2)
             self.ticks_in_mode += 1
+            self.last_step_action = np.array(_core(self.w3r).last_action, dtype=np.float32, copy=True); self.last_step_kind = 2
             if self._w3_arm_want:                       # carry: 첫 W3 틱(STAND) 뒤에 켠다 — 시뮬 direct 즉시 켜기와 같은 수열
                 self._w3_arm_want = False
                 if self._want:
@@ -228,6 +231,7 @@ class KeW3Runner:
         else:
             out = self.ke.step(gyro_rad_s, gravity_unit, zero, qpos_rad, qvel_rad_s, contact2)
         self.ticks_in_mode += 1
+        self.last_step_action = np.array(_core(self.ke).last_action, dtype=np.float32, copy=True); self.last_step_kind = int(self.ke.last_mode)
         return out
 
 
@@ -371,6 +375,15 @@ def selftest() -> int:
         S.step(cmd=cmd0, **_inp(k, pose)); k += 1; n_q += 1
         assert n_q <= 30
     assert 24 <= n_q <= 26, f"정착 0.5 s(25 틱) 뒤 인계여야 함: {n_q}"
+    # [8b] last_step_action/kind: 전환 틱에도 '행동한 러너'의 원시 행동
+    T = KeW3Runner(mk_w3(), mk_ke(), handoff="fresh"); T.reset()
+    T.step(cmd=cmd0, **_inp(0, pose)); assert T.last_step_kind == 0 and np.array_equal(T.last_step_action, _core(T.ke).last_action)
+    T.set_gait_enable(True); T.step(cmd=cmdf, **_inp(1, pose)); assert T.last_step_kind == 2 and np.array_equal(T.last_step_action, _core(T.w3r).last_action)
+    T.set_gait_enable(False); k = 2
+    while T.mode == MODE_W3:
+        T.step(cmd=cmd0, **_inp(k, pose)); k += 1
+        assert k < 40
+    assert T.last_step_kind == 2 and T.last_event == "to_ke" and float(np.abs(T.last_step_action).max()) > 0.0 and float(np.abs(_core(T.ke).last_action).max()) == 0.0, "전환 틱 행동 = W3 의 것(KE fresh 는 0)"
     # [9] carry + ema_fresh_ticks 2 는 기동 거부(전환 틱 필터 재시작 경로 차단), fresh 는 허용
     try:
         KeW3Runner(mk_w3(), mk_ke(ema_fresh_ticks=2), handoff="carry")

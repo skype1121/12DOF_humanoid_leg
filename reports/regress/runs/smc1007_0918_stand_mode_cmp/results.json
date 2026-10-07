@@ -1,0 +1,847 @@
+{
+ "rid": "smc1007_0918",
+ "mode": "smc",
+ "profile": "s3d",
+ "started": "2026-10-07 09:18:31",
+ "overall": "PASS",
+ "counts": {
+  "미실행": 97
+ },
+ "verdicts": {
+  "S-nd.pre": "미실행",
+  "S-nd.fall": "미실행",
+  "S-nd.quiet": "미실행",
+  "S-nd.pose": "미실행",
+  "S-b18.fall": "미실행",
+  "S-b18.pose": "미실행",
+  "W-st.warm": "미실행",
+  "W-st.fall": "미실행",
+  "W-st.steps": "미실행",
+  "W-st.prms": "미실행",
+  "W-st.vx": "미실행",
+  "W-z.fall": "미실행",
+  "W-z.warm": "미실행",
+  "W-z.vx": "미실행",
+  "W-z.vy": "미실행",
+  "W-z.alt": "미실행",
+  "W-z.cad": "미실행",
+  "W-f.vx": "미실행",
+  "W-f.fall": "미실행",
+  "W-b.vx": "미실행",
+  "W-b.fall": "미실행",
+  "W-l.vy": "미실행",
+  "W-l.fall": "미실행",
+  "W-r.vy": "미실행",
+  "W-r.fall": "미실행",
+  "W-tl.yg": "미실행",
+  "W-tl.fall": "미실행",
+  "W-tr.yg": "미실행",
+  "W-tr.fall": "미실행",
+  "W-mix.gx": "미실행",
+  "W-mix.gy": "미실행",
+  "W-mix.yg": "미실행",
+  "W-mix.fall": "미실행",
+  "W-hl.yaw": "미실행",
+  "W-hl.fall": "미실행",
+  "W-hl.vx": "미실행",
+  "W-hl.vy": "미실행",
+  "W-d4.fall": "미실행",
+  "W-d4.vx": "미실행",
+  "W-d4hl.yaw": "미실행",
+  "W-d4hl.fall": "미실행",
+  "W-stop.settle": "미실행",
+  "W-stop.foot": "미실행",
+  "W-stop.sfall": "미실행",
+  "W-dist.f0.fall": "미실행",
+  "W-dist.l0.fall": "미실행",
+  "W-dist.f12.fall": "미실행",
+  "W-dist.f12.rec": "미실행",
+  "W-dist.b18.fall": "미실행",
+  "W-dist.b18.rec": "미실행",
+  "W-dist.l30.fall": "미실행",
+  "W-dist.l30.rec": "미실행",
+  "K-pair.fall": "미실행",
+  "K-ref-odicw.fall": "미실행",
+  "K-ref-imu.fall": "미실행",
+  "K-odicw-nd.fall": "미실행",
+  "K-odicw-nd.chain": "미실행",
+  "K-odicw-nd.pose": "미실행",
+  "K-odicw-nd.quiet": "미실행",
+  "K-odicw-nd.false": "미실행",
+  "K-odicw-nd.long": "미실행",
+  "K-odicw-sf15.fall": "미실행",
+  "K-odicw-sf15.chain": "미실행",
+  "K-odicw-sf15.pose": "미실행",
+  "K-odicw-sf15.quiet": "미실행",
+  "K-odicw-sf15.long": "미실행",
+  "K-odicw-fi40.fall": "미실행",
+  "K-odicw-fi40.chain": "미실행",
+  "K-odicw-fi40.pose": "미실행",
+  "K-odicw-fi40.quiet": "미실행",
+  "K-odicw-fi40.long": "미실행",
+  "K-odicw-b18.fall": "미실행",
+  "K-odicw-b18.chain": "미실행",
+  "K-odicw-b18.pose": "미실행",
+  "K-odicw-b18.quiet": "미실행",
+  "K-odicw-b18.long": "미실행",
+  "K-imu-nd.fall": "미실행",
+  "K-imu-nd.chain": "미실행",
+  "K-imu-nd.pose": "미실행",
+  "K-imu-nd.quiet": "미실행",
+  "K-imu-nd.false": "미실행",
+  "K-imu-nd.long": "미실행",
+  "K-imu-sf15.fall": "미실행",
+  "K-imu-sf15.chain": "미실행",
+  "K-imu-sf15.pose": "미실행",
+  "K-imu-sf15.quiet": "미실행",
+  "K-imu-sf15.long": "미실행",
+  "K-imu-fi40.fall": "미실행",
+  "K-imu-fi40.chain": "미실행",
+  "K-imu-fi40.pose": "미실행",
+  "K-imu-fi40.quiet": "미실행",
+  "K-imu-fi40.long": "미실행",
+  "K-imu-b18.fall": "미실행",
+  "K-imu-b18.chain": "미실행",
+  "K-imu-b18.pose": "미실행",
+  "K-imu-b18.quiet": "미실행",
+  "K-imu-b18.long": "미실행"
+ },
+ "values": {
+  "SMC-w3-nd-d2.fall": {
+   "kind": "rate",
+   "k": 1,
+   "n": 316
+  },
+  "SMC-w3-nd-d2.quiet": {
+   "kind": "rate",
+   "k": 311,
+   "n": 316
+  },
+  "SMC-w3-nd-d2.pose": {
+   "kind": "rate",
+   "k": 300,
+   "n": 316
+  },
+  "SMC-w3-nd-d2.chain": {
+   "kind": "rate",
+   "k": 300,
+   "n": 316
+  },
+  "SMC-w3-nd-d2.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-nd-d2.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-nd-d2.pre": {
+   "kind": "rate",
+   "k": 316,
+   "n": 384
+  },
+  "SMC-g21-nd-d2.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 306
+  },
+  "SMC-g21-nd-d2.quiet": {
+   "kind": "rate",
+   "k": 295,
+   "n": 306
+  },
+  "SMC-g21-nd-d2.pose": {
+   "kind": "rate",
+   "k": 295,
+   "n": 306
+  },
+  "SMC-g21-nd-d2.chain": {
+   "kind": "rate",
+   "k": 295,
+   "n": 306
+  },
+  "SMC-g21-nd-d2.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 306
+  },
+  "SMC-g21-nd-d2.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 306
+  },
+  "SMC-g21-nd-d2.pre": {
+   "kind": "rate",
+   "k": 306,
+   "n": 384
+  },
+  "SMC-ke-nd-d2.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 306
+  },
+  "SMC-ke-nd-d2.quiet": {
+   "kind": "rate",
+   "k": 295,
+   "n": 306
+  },
+  "SMC-ke-nd-d2.pose": {
+   "kind": "rate",
+   "k": 292,
+   "n": 306
+  },
+  "SMC-ke-nd-d2.chain": {
+   "kind": "rate",
+   "k": 292,
+   "n": 306
+  },
+  "SMC-ke-nd-d2.false": {
+   "kind": "rate",
+   "k": 13,
+   "n": 306
+  },
+  "SMC-ke-nd-d2.long": {
+   "kind": "rate",
+   "k": 10,
+   "n": 306
+  },
+  "SMC-ke-nd-d2.pre": {
+   "kind": "rate",
+   "k": 306,
+   "n": 384
+  },
+  "SMC-w3-f12-d2.fall": {
+   "kind": "rate",
+   "k": 4,
+   "n": 316
+  },
+  "SMC-w3-f12-d2.quiet": {
+   "kind": "rate",
+   "k": 283,
+   "n": 316
+  },
+  "SMC-w3-f12-d2.pose": {
+   "kind": "rate",
+   "k": 263,
+   "n": 316
+  },
+  "SMC-w3-f12-d2.chain": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-f12-d2.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-f12-d2.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-f12-d2.pre": {
+   "kind": "rate",
+   "k": 316,
+   "n": 384
+  },
+  "SMC-g21-f12-d2.fall": {
+   "kind": "rate",
+   "k": 1,
+   "n": 307
+  },
+  "SMC-g21-f12-d2.quiet": {
+   "kind": "rate",
+   "k": 276,
+   "n": 307
+  },
+  "SMC-g21-f12-d2.pose": {
+   "kind": "rate",
+   "k": 279,
+   "n": 307
+  },
+  "SMC-g21-f12-d2.chain": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-g21-f12-d2.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-g21-f12-d2.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-g21-f12-d2.pre": {
+   "kind": "rate",
+   "k": 307,
+   "n": 384
+  },
+  "SMC-ke-f12-d2.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-ke-f12-d2.quiet": {
+   "kind": "rate",
+   "k": 249,
+   "n": 307
+  },
+  "SMC-ke-f12-d2.pose": {
+   "kind": "rate",
+   "k": 281,
+   "n": 307
+  },
+  "SMC-ke-f12-d2.chain": {
+   "kind": "rate",
+   "k": 24,
+   "n": 307
+  },
+  "SMC-ke-f12-d2.false": {
+   "kind": "rate",
+   "k": 205,
+   "n": 307
+  },
+  "SMC-ke-f12-d2.long": {
+   "kind": "rate",
+   "k": 71,
+   "n": 307
+  },
+  "SMC-ke-f12-d2.pre": {
+   "kind": "rate",
+   "k": 307,
+   "n": 384
+  },
+  "SMC-w3-b18-d2.fall": {
+   "kind": "rate",
+   "k": 117,
+   "n": 316
+  },
+  "SMC-w3-b18-d2.quiet": {
+   "kind": "rate",
+   "k": 185,
+   "n": 316
+  },
+  "SMC-w3-b18-d2.pose": {
+   "kind": "rate",
+   "k": 144,
+   "n": 316
+  },
+  "SMC-w3-b18-d2.chain": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-b18-d2.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-b18-d2.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-b18-d2.pre": {
+   "kind": "rate",
+   "k": 316,
+   "n": 384
+  },
+  "SMC-g21-b18-d2.fall": {
+   "kind": "rate",
+   "k": 70,
+   "n": 307
+  },
+  "SMC-g21-b18-d2.quiet": {
+   "kind": "rate",
+   "k": 206,
+   "n": 307
+  },
+  "SMC-g21-b18-d2.pose": {
+   "kind": "rate",
+   "k": 216,
+   "n": 307
+  },
+  "SMC-g21-b18-d2.chain": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-g21-b18-d2.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-g21-b18-d2.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-g21-b18-d2.pre": {
+   "kind": "rate",
+   "k": 307,
+   "n": 384
+  },
+  "SMC-ke-b18-d2.fall": {
+   "kind": "rate",
+   "k": 13,
+   "n": 307
+  },
+  "SMC-ke-b18-d2.quiet": {
+   "kind": "rate",
+   "k": 262,
+   "n": 307
+  },
+  "SMC-ke-b18-d2.pose": {
+   "kind": "rate",
+   "k": 238,
+   "n": 307
+  },
+  "SMC-ke-b18-d2.chain": {
+   "kind": "rate",
+   "k": 236,
+   "n": 307
+  },
+  "SMC-ke-b18-d2.false": {
+   "kind": "rate",
+   "k": 307,
+   "n": 307
+  },
+  "SMC-ke-b18-d2.long": {
+   "kind": "rate",
+   "k": 12,
+   "n": 307
+  },
+  "SMC-ke-b18-d2.pre": {
+   "kind": "rate",
+   "k": 307,
+   "n": 384
+  },
+  "SMC-w3-sf15-d2.fall": {
+   "kind": "rate",
+   "k": 314,
+   "n": 316
+  },
+  "SMC-w3-sf15-d2.quiet": {
+   "kind": "rate",
+   "k": 2,
+   "n": 316
+  },
+  "SMC-w3-sf15-d2.pose": {
+   "kind": "rate",
+   "k": 1,
+   "n": 316
+  },
+  "SMC-w3-sf15-d2.chain": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-sf15-d2.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-sf15-d2.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-sf15-d2.pre": {
+   "kind": "rate",
+   "k": 316,
+   "n": 384
+  },
+  "SMC-g21-sf15-d2.fall": {
+   "kind": "rate",
+   "k": 283,
+   "n": 307
+  },
+  "SMC-g21-sf15-d2.quiet": {
+   "kind": "rate",
+   "k": 22,
+   "n": 307
+  },
+  "SMC-g21-sf15-d2.pose": {
+   "kind": "rate",
+   "k": 10,
+   "n": 307
+  },
+  "SMC-g21-sf15-d2.chain": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-g21-sf15-d2.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-g21-sf15-d2.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-g21-sf15-d2.pre": {
+   "kind": "rate",
+   "k": 307,
+   "n": 384
+  },
+  "SMC-ke-sf15-d2.fall": {
+   "kind": "rate",
+   "k": 56,
+   "n": 307
+  },
+  "SMC-ke-sf15-d2.quiet": {
+   "kind": "rate",
+   "k": 226,
+   "n": 307
+  },
+  "SMC-ke-sf15-d2.pose": {
+   "kind": "rate",
+   "k": 159,
+   "n": 307
+  },
+  "SMC-ke-sf15-d2.chain": {
+   "kind": "rate",
+   "k": 116,
+   "n": 307
+  },
+  "SMC-ke-sf15-d2.false": {
+   "kind": "rate",
+   "k": 305,
+   "n": 307
+  },
+  "SMC-ke-sf15-d2.long": {
+   "kind": "rate",
+   "k": 11,
+   "n": 307
+  },
+  "SMC-ke-sf15-d2.pre": {
+   "kind": "rate",
+   "k": 307,
+   "n": 384
+  },
+  "SMC-w3-fi40-d2.fall": {
+   "kind": "rate",
+   "k": 316,
+   "n": 316
+  },
+  "SMC-w3-fi40-d2.quiet": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-fi40-d2.pose": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-fi40-d2.chain": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-fi40-d2.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-fi40-d2.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 316
+  },
+  "SMC-w3-fi40-d2.pre": {
+   "kind": "rate",
+   "k": 316,
+   "n": 384
+  },
+  "SMC-g21-fi40-d2.fall": {
+   "kind": "rate",
+   "k": 306,
+   "n": 307
+  },
+  "SMC-g21-fi40-d2.quiet": {
+   "kind": "rate",
+   "k": 1,
+   "n": 307
+  },
+  "SMC-g21-fi40-d2.pose": {
+   "kind": "rate",
+   "k": 1,
+   "n": 307
+  },
+  "SMC-g21-fi40-d2.chain": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-g21-fi40-d2.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-g21-fi40-d2.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 307
+  },
+  "SMC-g21-fi40-d2.pre": {
+   "kind": "rate",
+   "k": 307,
+   "n": 384
+  },
+  "SMC-ke-fi40-d2.fall": {
+   "kind": "rate",
+   "k": 78,
+   "n": 307
+  },
+  "SMC-ke-fi40-d2.quiet": {
+   "kind": "rate",
+   "k": 204,
+   "n": 307
+  },
+  "SMC-ke-fi40-d2.pose": {
+   "kind": "rate",
+   "k": 185,
+   "n": 307
+  },
+  "SMC-ke-fi40-d2.chain": {
+   "kind": "rate",
+   "k": 113,
+   "n": 307
+  },
+  "SMC-ke-fi40-d2.false": {
+   "kind": "rate",
+   "k": 307,
+   "n": 307
+  },
+  "SMC-ke-fi40-d2.long": {
+   "kind": "rate",
+   "k": 14,
+   "n": 307
+  },
+  "SMC-ke-fi40-d2.pre": {
+   "kind": "rate",
+   "k": 307,
+   "n": 384
+  },
+  "SMC-w3-nd-d3.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 203
+  },
+  "SMC-w3-nd-d3.quiet": {
+   "kind": "rate",
+   "k": 193,
+   "n": 203
+  },
+  "SMC-w3-nd-d3.pose": {
+   "kind": "rate",
+   "k": 193,
+   "n": 203
+  },
+  "SMC-w3-nd-d3.chain": {
+   "kind": "rate",
+   "k": 193,
+   "n": 203
+  },
+  "SMC-w3-nd-d3.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 203
+  },
+  "SMC-w3-nd-d3.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 203
+  },
+  "SMC-w3-nd-d3.pre": {
+   "kind": "rate",
+   "k": 203,
+   "n": 256
+  },
+  "SMC-g21-nd-d3.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 209
+  },
+  "SMC-g21-nd-d3.quiet": {
+   "kind": "rate",
+   "k": 200,
+   "n": 209
+  },
+  "SMC-g21-nd-d3.pose": {
+   "kind": "rate",
+   "k": 201,
+   "n": 209
+  },
+  "SMC-g21-nd-d3.chain": {
+   "kind": "rate",
+   "k": 201,
+   "n": 209
+  },
+  "SMC-g21-nd-d3.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 209
+  },
+  "SMC-g21-nd-d3.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 209
+  },
+  "SMC-g21-nd-d3.pre": {
+   "kind": "rate",
+   "k": 209,
+   "n": 256
+  },
+  "SMC-ke-nd-d3.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 209
+  },
+  "SMC-ke-nd-d3.quiet": {
+   "kind": "rate",
+   "k": 196,
+   "n": 209
+  },
+  "SMC-ke-nd-d3.pose": {
+   "kind": "rate",
+   "k": 199,
+   "n": 209
+  },
+  "SMC-ke-nd-d3.chain": {
+   "kind": "rate",
+   "k": 199,
+   "n": 209
+  },
+  "SMC-ke-nd-d3.false": {
+   "kind": "rate",
+   "k": 13,
+   "n": 209
+  },
+  "SMC-ke-nd-d3.long": {
+   "kind": "rate",
+   "k": 10,
+   "n": 209
+  },
+  "SMC-ke-nd-d3.pre": {
+   "kind": "rate",
+   "k": 209,
+   "n": 256
+  },
+  "SMC-w3-nd-d4.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 203
+  },
+  "SMC-w3-nd-d4.quiet": {
+   "kind": "rate",
+   "k": 188,
+   "n": 203
+  },
+  "SMC-w3-nd-d4.pose": {
+   "kind": "rate",
+   "k": 186,
+   "n": 203
+  },
+  "SMC-w3-nd-d4.chain": {
+   "kind": "rate",
+   "k": 186,
+   "n": 203
+  },
+  "SMC-w3-nd-d4.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 203
+  },
+  "SMC-w3-nd-d4.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 203
+  },
+  "SMC-w3-nd-d4.pre": {
+   "kind": "rate",
+   "k": 203,
+   "n": 256
+  },
+  "SMC-g21-nd-d4.fall": {
+   "kind": "rate",
+   "k": 1,
+   "n": 208
+  },
+  "SMC-g21-nd-d4.quiet": {
+   "kind": "rate",
+   "k": 193,
+   "n": 208
+  },
+  "SMC-g21-nd-d4.pose": {
+   "kind": "rate",
+   "k": 200,
+   "n": 208
+  },
+  "SMC-g21-nd-d4.chain": {
+   "kind": "rate",
+   "k": 200,
+   "n": 208
+  },
+  "SMC-g21-nd-d4.false": {
+   "kind": "rate",
+   "k": 0,
+   "n": 208
+  },
+  "SMC-g21-nd-d4.long": {
+   "kind": "rate",
+   "k": 0,
+   "n": 208
+  },
+  "SMC-g21-nd-d4.pre": {
+   "kind": "rate",
+   "k": 208,
+   "n": 256
+  },
+  "SMC-ke-nd-d4.fall": {
+   "kind": "rate",
+   "k": 0,
+   "n": 208
+  },
+  "SMC-ke-nd-d4.quiet": {
+   "kind": "rate",
+   "k": 194,
+   "n": 208
+  },
+  "SMC-ke-nd-d4.pose": {
+   "kind": "rate",
+   "k": 199,
+   "n": 208
+  },
+  "SMC-ke-nd-d4.chain": {
+   "kind": "rate",
+   "k": 199,
+   "n": 208
+  },
+  "SMC-ke-nd-d4.false": {
+   "kind": "rate",
+   "k": 14,
+   "n": 208
+  },
+  "SMC-ke-nd-d4.long": {
+   "kind": "rate",
+   "k": 5,
+   "n": 208
+  },
+  "SMC-ke-nd-d4.pre": {
+   "kind": "rate",
+   "k": 208,
+   "n": 256
+  }
+ },
+ "prev": null
+}

@@ -1,0 +1,1017 @@
+{
+ "rid": "smc1007_0918",
+ "cfg": {
+  "mode": "smc",
+  "rid": "smc1007_0918",
+  "profile": "s3d",
+  "w3": "2026-10-07_00-11-12_w3S3d_from_s2d:model_15800.pt",
+  "w3_task": "(G11a 하네스, --c2 ge0)",
+  "stand": "2026-10-02_21-23-08_g21a:model_11300.pt",
+  "rec": "2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt"
+ },
+ "mode_params": {},
+ "started": "2026-10-07 09:18:31",
+ "code": {
+  "worktree": "/home/ryu/humanoid_leg_test1/.claude/worktrees/agent-aadaeed1e0a42a88a",
+  "head": "9ae5d610a1835aa4b1f4740165df530c25761309",
+  "branch": "worktree-agent-aadaeed1e0a42a88a",
+  "dirty": [
+   "?? reports/regress/runs/smc1007_0918_stand_mode_cmp/"
+  ]
+ },
+ "scripts": {
+  "rl_walking/scripts/eval_ground_recovery.py": "88113392958a7725143fa981588786c2",
+  "rl_walking/w3_c2.py": "9f1fe0cdd608ab846ba5e141c671546c",
+  "reports/regress/STAND_MODE_CMP.md": "431d01a106ea120b9d87d8e81ac70145",
+  "reports/regress/stand_mode_cmp.py": "728a7062ecdc977657fe6dc620c9fcdd"
+ },
+ "checkpoints": {
+  "w3": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-10-07_00-11-12_w3S3d_from_s2d/model_15800.pt",
+   "md5": "3da9f2e5b6c435d6b6df220e3a7969b2"
+  },
+  "g21a": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_g22r/2026-10-02_21-23-08_g21a/model_11300.pt",
+   "md5": "599c47d3c3f190ad91a80a1ab7ff9fa7"
+  },
+  "rec": {
+   "path": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/model_21793.pt",
+   "md5": "05e6b8ee4109ef40fd24bd8437bdfcba"
+  }
+ },
+ "data_repo": "/home/ryu/humanoid_leg_test1",
+ "jobs": {
+  "w3-nd-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_nd_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 1",
+   "item": "SMC-w3-nd-d2",
+   "seed": 1,
+   "cond": "nd",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-nd-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_nd_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1",
+   "item": "SMC-g21-nd-d2",
+   "seed": 1,
+   "cond": "nd",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-nd-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_nd_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 1",
+   "item": "SMC-ke-nd-d2",
+   "seed": 1,
+   "cond": "nd",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-f12-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_f12_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 1 --dist push:f:2:12:0.3",
+   "item": "SMC-w3-f12-d2",
+   "seed": 1,
+   "cond": "f12",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-f12-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_f12_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1 --dist push:f:2:12:0.3",
+   "item": "SMC-g21-f12-d2",
+   "seed": 1,
+   "cond": "f12",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-f12-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_f12_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 1 --dist push:f:2:12:0.3",
+   "item": "SMC-ke-f12-d2",
+   "seed": 1,
+   "cond": "f12",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-b18-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_b18_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 1 --dist push:b:2:18:0.3",
+   "item": "SMC-w3-b18-d2",
+   "seed": 1,
+   "cond": "b18",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-b18-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_b18_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1 --dist push:b:2:18:0.3",
+   "item": "SMC-g21-b18-d2",
+   "seed": 1,
+   "cond": "b18",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-b18-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_b18_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 1 --dist push:b:2:18:0.3",
+   "item": "SMC-ke-b18-d2",
+   "seed": 1,
+   "cond": "b18",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-sf15-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_sf15_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 1 --dist ramp:f:2:15:0.5:1.0",
+   "item": "SMC-w3-sf15-d2",
+   "seed": 1,
+   "cond": "sf15",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-sf15-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_sf15_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1 --dist ramp:f:2:15:0.5:1.0",
+   "item": "SMC-g21-sf15-d2",
+   "seed": 1,
+   "cond": "sf15",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-sf15-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_sf15_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 1 --dist ramp:f:2:15:0.5:1.0",
+   "item": "SMC-ke-sf15-d2",
+   "seed": 1,
+   "cond": "sf15",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-fi40-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_fi40_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 1 --dist push:f:2:40:0.2",
+   "item": "SMC-w3-fi40-d2",
+   "seed": 1,
+   "cond": "fi40",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-fi40-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_fi40_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1 --dist push:f:2:40:0.2",
+   "item": "SMC-g21-fi40-d2",
+   "seed": 1,
+   "cond": "fi40",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-fi40-d2-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_fi40_d2_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 1 --dist push:f:2:40:0.2",
+   "item": "SMC-ke-fi40-d2",
+   "seed": 1,
+   "cond": "fi40",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-nd-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_nd_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 2",
+   "item": "SMC-w3-nd-d2",
+   "seed": 2,
+   "cond": "nd",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-nd-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_nd_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 2",
+   "item": "SMC-g21-nd-d2",
+   "seed": 2,
+   "cond": "nd",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-nd-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_nd_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 2",
+   "item": "SMC-ke-nd-d2",
+   "seed": 2,
+   "cond": "nd",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-f12-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_f12_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 2 --dist push:f:2:12:0.3",
+   "item": "SMC-w3-f12-d2",
+   "seed": 2,
+   "cond": "f12",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-f12-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_f12_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 2 --dist push:f:2:12:0.3",
+   "item": "SMC-g21-f12-d2",
+   "seed": 2,
+   "cond": "f12",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-f12-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_f12_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 2 --dist push:f:2:12:0.3",
+   "item": "SMC-ke-f12-d2",
+   "seed": 2,
+   "cond": "f12",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-b18-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_b18_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 2 --dist push:b:2:18:0.3",
+   "item": "SMC-w3-b18-d2",
+   "seed": 2,
+   "cond": "b18",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-b18-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_b18_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 2 --dist push:b:2:18:0.3",
+   "item": "SMC-g21-b18-d2",
+   "seed": 2,
+   "cond": "b18",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-b18-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_b18_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 2 --dist push:b:2:18:0.3",
+   "item": "SMC-ke-b18-d2",
+   "seed": 2,
+   "cond": "b18",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-sf15-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_sf15_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 2 --dist ramp:f:2:15:0.5:1.0",
+   "item": "SMC-w3-sf15-d2",
+   "seed": 2,
+   "cond": "sf15",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-sf15-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_sf15_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 2 --dist ramp:f:2:15:0.5:1.0",
+   "item": "SMC-g21-sf15-d2",
+   "seed": 2,
+   "cond": "sf15",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-sf15-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_sf15_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 2 --dist ramp:f:2:15:0.5:1.0",
+   "item": "SMC-ke-sf15-d2",
+   "seed": 2,
+   "cond": "sf15",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-fi40-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_fi40_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 2 --dist push:f:2:40:0.2",
+   "item": "SMC-w3-fi40-d2",
+   "seed": 2,
+   "cond": "fi40",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-fi40-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_fi40_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 2 --dist push:f:2:40:0.2",
+   "item": "SMC-g21-fi40-d2",
+   "seed": 2,
+   "cond": "fi40",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-fi40-d2-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_fi40_d2_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 2 --dist push:f:2:40:0.2",
+   "item": "SMC-ke-fi40-d2",
+   "seed": 2,
+   "cond": "fi40",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-nd-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_nd_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 3",
+   "item": "SMC-w3-nd-d2",
+   "seed": 3,
+   "cond": "nd",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-nd-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_nd_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 3",
+   "item": "SMC-g21-nd-d2",
+   "seed": 3,
+   "cond": "nd",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-nd-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_nd_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 3",
+   "item": "SMC-ke-nd-d2",
+   "seed": 3,
+   "cond": "nd",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-f12-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_f12_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 3 --dist push:f:2:12:0.3",
+   "item": "SMC-w3-f12-d2",
+   "seed": 3,
+   "cond": "f12",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-f12-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_f12_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 3 --dist push:f:2:12:0.3",
+   "item": "SMC-g21-f12-d2",
+   "seed": 3,
+   "cond": "f12",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-f12-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_f12_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 3 --dist push:f:2:12:0.3",
+   "item": "SMC-ke-f12-d2",
+   "seed": 3,
+   "cond": "f12",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-b18-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_b18_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 3 --dist push:b:2:18:0.3",
+   "item": "SMC-w3-b18-d2",
+   "seed": 3,
+   "cond": "b18",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-b18-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_b18_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 3 --dist push:b:2:18:0.3",
+   "item": "SMC-g21-b18-d2",
+   "seed": 3,
+   "cond": "b18",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-b18-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_b18_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 3 --dist push:b:2:18:0.3",
+   "item": "SMC-ke-b18-d2",
+   "seed": 3,
+   "cond": "b18",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-sf15-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_sf15_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 3 --dist ramp:f:2:15:0.5:1.0",
+   "item": "SMC-w3-sf15-d2",
+   "seed": 3,
+   "cond": "sf15",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-sf15-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_sf15_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 3 --dist ramp:f:2:15:0.5:1.0",
+   "item": "SMC-g21-sf15-d2",
+   "seed": 3,
+   "cond": "sf15",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-sf15-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_sf15_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 3 --dist ramp:f:2:15:0.5:1.0",
+   "item": "SMC-ke-sf15-d2",
+   "seed": 3,
+   "cond": "sf15",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-fi40-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_fi40_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 3 --dist push:f:2:40:0.2",
+   "item": "SMC-w3-fi40-d2",
+   "seed": 3,
+   "cond": "fi40",
+   "arm": "w3",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "g21-fi40-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_fi40_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 3 --dist push:f:2:40:0.2",
+   "item": "SMC-g21-fi40-d2",
+   "seed": 3,
+   "cond": "fi40",
+   "arm": "g21",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "ke-fi40-d2-s3": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_fi40_d2_s3",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 2,2 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 3 --dist push:f:2:40:0.2",
+   "item": "SMC-ke-fi40-d2",
+   "seed": 3,
+   "cond": "fi40",
+   "arm": "ke",
+   "delay": 2,
+   "num_envs": 128
+  },
+  "w3-nd-d3-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_nd_d3_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 3,3 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 1",
+   "item": "SMC-w3-nd-d3",
+   "seed": 1,
+   "cond": "nd",
+   "arm": "w3",
+   "delay": 3,
+   "num_envs": 128
+  },
+  "g21-nd-d3-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_nd_d3_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 3,3 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1",
+   "item": "SMC-g21-nd-d3",
+   "seed": 1,
+   "cond": "nd",
+   "arm": "g21",
+   "delay": 3,
+   "num_envs": 128
+  },
+  "ke-nd-d3-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_nd_d3_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 3,3 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 1",
+   "item": "SMC-ke-nd-d3",
+   "seed": 1,
+   "cond": "nd",
+   "arm": "ke",
+   "delay": 3,
+   "num_envs": 128
+  },
+  "w3-nd-d3-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_nd_d3_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 3,3 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 2",
+   "item": "SMC-w3-nd-d3",
+   "seed": 2,
+   "cond": "nd",
+   "arm": "w3",
+   "delay": 3,
+   "num_envs": 128
+  },
+  "g21-nd-d3-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_nd_d3_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 3,3 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 2",
+   "item": "SMC-g21-nd-d3",
+   "seed": 2,
+   "cond": "nd",
+   "arm": "g21",
+   "delay": 3,
+   "num_envs": 128
+  },
+  "ke-nd-d3-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_nd_d3_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 3,3 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 2",
+   "item": "SMC-ke-nd-d3",
+   "seed": 2,
+   "cond": "nd",
+   "arm": "ke",
+   "delay": 3,
+   "num_envs": 128
+  },
+  "w3-nd-d4-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_nd_d4_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 4,4 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 1",
+   "item": "SMC-w3-nd-d4",
+   "seed": 1,
+   "cond": "nd",
+   "arm": "w3",
+   "delay": 4,
+   "num_envs": 128
+  },
+  "g21-nd-d4-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_nd_d4_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 4,4 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 1",
+   "item": "SMC-g21-nd-d4",
+   "seed": 1,
+   "cond": "nd",
+   "arm": "g21",
+   "delay": 4,
+   "num_envs": 128
+  },
+  "ke-nd-d4-s1": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_nd_d4_s1",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 4,4 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 1",
+   "item": "SMC-ke-nd-d4",
+   "seed": 1,
+   "cond": "nd",
+   "arm": "ke",
+   "delay": 4,
+   "num_envs": 128
+  },
+  "w3-nd-d4-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_w3_nd_d4_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 4,4 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --c2 --c2_arm ge0 --seed 2",
+   "item": "SMC-w3-nd-d4",
+   "seed": 2,
+   "cond": "nd",
+   "arm": "w3",
+   "delay": 4,
+   "num_envs": 128
+  },
+  "g21-nd-d4-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_g21_nd_d4_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 4,4 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --seed 2",
+   "item": "SMC-g21-nd-d4",
+   "seed": 2,
+   "cond": "nd",
+   "arm": "g21",
+   "delay": 4,
+   "num_envs": 128
+  },
+  "ke-nd-d4-s2": {
+   "kind": "gr",
+   "tag": "rg_smc1007_0918_ke_nd_d4_s2",
+   "args": "--headless --task Biped12-HangStand-G11a-v0 --num_envs 128 --precheck_s 3 --after_s 8 --enc_obs v2 --contact_real --contact_ver v2 --delay_steps 4,4 --load_run 2026-10-02_21-23-08_g21a --checkpoint model_11300.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --settle_judge odo --settle_v 0.07 --settle_knee_inject 42 --settle_knee_comp 42 --settle_w 0.4 --seed 2",
+   "item": "SMC-ke-nd-d4",
+   "seed": 2,
+   "cond": "nd",
+   "arm": "ke",
+   "delay": 4,
+   "num_envs": 128
+  }
+ },
+ "finished": "2026-10-07 12:22:33",
+ "status": {
+  "w3-nd-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "54"
+  },
+  "g21-nd-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "48"
+  },
+  "ke-nd-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "51"
+  },
+  "w3-f12-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "57"
+  },
+  "g21-f12-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "51"
+  },
+  "ke-f12-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "48"
+  },
+  "w3-b18-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "85"
+  },
+  "g21-b18-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "63"
+  },
+  "ke-b18-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "57"
+  },
+  "w3-sf15-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "66"
+  },
+  "g21-sf15-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "72"
+  },
+  "ke-sf15-d2-s1": {
+   "status": "유효",
+   "tries": "5",
+   "note": "유효",
+   "t_s": "72"
+  },
+  "w3-fi40-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "57"
+  },
+  "g21-fi40-d2-s1": {
+   "status": "유효",
+   "tries": "2",
+   "note": "유효",
+   "t_s": "72"
+  },
+  "ke-fi40-d2-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "78"
+  },
+  "w3-nd-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "72"
+  },
+  "g21-nd-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "84"
+  },
+  "ke-nd-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "63"
+  },
+  "w3-f12-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "66"
+  },
+  "g21-f12-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "75"
+  },
+  "ke-f12-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "w3-b18-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "54"
+  },
+  "g21-b18-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "48"
+  },
+  "ke-b18-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "30"
+  },
+  "w3-sf15-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "30"
+  },
+  "g21-sf15-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "30"
+  },
+  "ke-sf15-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "30"
+  },
+  "w3-fi40-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "30"
+  },
+  "g21-fi40-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "30"
+  },
+  "ke-fi40-d2-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "30"
+  },
+  "w3-nd-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "30"
+  },
+  "g21-nd-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "ke-nd-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "w3-f12-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "g21-f12-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "ke-f12-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "w3-b18-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "30"
+  },
+  "g21-b18-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "ke-b18-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "w3-sf15-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "30"
+  },
+  "g21-sf15-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "ke-sf15-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "31"
+  },
+  "w3-fi40-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "g21-fi40-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "ke-fi40-d2-s3": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "w3-nd-d3-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "g21-nd-d3-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "ke-nd-d3-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "w3-nd-d3-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "g21-nd-d3-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "ke-nd-d3-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "w3-nd-d4-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "g21-nd-d4-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "ke-nd-d4-s1": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "w3-nd-d4-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "g21-nd-d4-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  },
+  "ke-nd-d4-s2": {
+   "status": "유효",
+   "tries": "1",
+   "note": "유효",
+   "t_s": "27"
+  }
+ }
+}

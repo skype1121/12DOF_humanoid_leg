@@ -3619,6 +3619,18 @@ def _c2_apply(cfg, c2_extra: str, keep_on_rec: tuple = (), cap_mode: str = "diff
 
 
 @configclass
+class Biped12HangStandW3S3eEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3 e (1007 claude2, reports/gen_w3/S3E_DESIGN.md): W3S3d 와 보상·관측·DR·커리큘럼·학습 지연 1–5 동일, **명령 리샘플 간격만 8–12 s → 4–6 s**.
+    근거(전환 §5.11e·f): 20 s 에피소드에 명령 구간이 2 개뿐이라 '걷고 선 뒤 다시 걷기'(자기 정지 자세에서의 재출발)가 학습 분포에 없었다.
+    배포 코드 폐루프의 왕복 대본에서 첫 걷기 낙상 0, 둘째 이후 1–3 %·걷기 한 번의 요 변화가 왕복마다 증가. 구간을 3–5 개로 늘려 재출발을 겪게 한다.
+    시작 = W3S3d-15800 이어 학습. 평가·승격 기준은 설계 문서(학습 전 고정)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.base_velocity.resampling_time_range = (4.0, 6.0)
+
+
+@configclass
 class Biped12HangStandW3S3dC2EnvCfg(Biped12HangStandW3S3dEnvCfg):
     """W3S3d-c2 (1007, c2 GO 학습 설정 — 실행은 승인 뒤): W3S3d(회전·옆·앞뒤·지연 1–5) 끝에서 이어 학습 + c2 묶음(W3C2k2h 와 같은 내용):
     고정 2 보 정지(stop_td_k 2) · 상대 기울기 감지(τ 10 s) · 차분형 v2 포획 착지 · 회복 중 서기 보상 유지 5 항. 관측 actor 320·critic 335 불변 → --resume."""

@@ -50,7 +50,7 @@ def arm(prefix, seeds):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--cand", required=True); ap.add_argument("--ctl", default=""); ap.add_argument("--base", default="tr_x7c_c0"); ap.add_argument("--seeds", default="1,2"); ap.add_argument("--name", default="")
+    ap = argparse.ArgumentParser(); ap.add_argument("--cand", required=True); ap.add_argument("--ctl", default=""); ap.add_argument("--base", default="tr_x7c_c0"); ap.add_argument("--seeds", default="1,2"); ap.add_argument("--name", default=""); ap.add_argument("--mode", default="g", choices=["g", "k1"], help="g = W3S3g 의 G1–G4 · k1 = W3_FINAL_SELECT.md §6 의 재현 기준 K1(기준선은 --base, 같은 seed)")
     a = ap.parse_args(); seeds = [int(x) for x in a.seeds.split(",")]
     C = arm(a.cand, seeds); B = arm(a.base, seeds); T = arm(a.ctl, seeds) if a.ctl else None
     if C is None or B is None:
@@ -62,6 +62,16 @@ def main():
         if A is None:
             continue
         print(f"| {nm} | {A['n']} | {A['f1']} / {A['n1']} | {A['f2']} / {A['n2']} ({100 * A['f2'] / max(A['n2'], 1):.2f} %) | {f5(A['dpsi'])} | {f5(A['wstd'])} | {f5(A['rstd']) if A['rstd'] is not None else '—'} (n {A['nR']}) | {A['fwd']:+.3f} |")
+    if a.mode == "k1":
+        r2 = C["dpsi"][4] / C["dpsi"][0]; rw = C["wstd"][4] / B["wstd"][4]; rc = C["f2"] / max(C["n2"], 1); rb = B["f2"] / max(B["n2"], 1)
+        k = [("다섯째 / 첫 걷기 |Δψ| 중앙 ≤ 1.5", r2 <= 1.5, f"{r2:.2f} 배(기준선 {B['dpsi'][4] / B['dpsi'][0]:.2f} 배)"),
+             ("다섯째 걷기 요 속도 표준편차 ≤ 기준선의 0.6 배", rw <= 0.6, f"{C['wstd'][4]:.1f} 대 {B['wstd'][4]:.1f} °/s = {rw:.2f} 배"),
+             ("주기 2–5 낙상 ≤ 기준선 + 1 %p", 100 * (rc - rb) <= 1.0 + 1e-9, f"{C['f2']} / {C['n2']} ({100 * rc:.2f} %) 대 {B['f2']} / {B['n2']} ({100 * rb:.2f} %), 차 {100 * (rc - rb):+.2f} %p"),
+             ("첫 주기 낙상 ≤ 1", C["f1"] <= 1, f"{C['f1']} 건(기준선 {B['f1']})")]
+        for nm, okk, val in k:
+            print(f"- K1 · {nm}: {val} → {'충족' if okk else '미달'}")
+        print("- **K1 종합**: " + ("충족" if all(x[1] for x in k) else "미달") + f" · 참고: 첫 걷기 4 s 전진 {C['fwd']:+.3f} m(기준선 {B['fwd']:+.3f}, 명령 0.24 m)")
+        return 0
     res = []
     if T is not None and C["rstd"] is not None and T["rstd"] is not None:
         r_roll = C["rstd"][4] / T["rstd"][4]; r_w = C["wstd"][4] / T["wstd"][4]; g1 = r_roll <= 0.6 and r_w <= 0.6

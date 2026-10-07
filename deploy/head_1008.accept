@@ -1,0 +1,4 @@
+# head_1008 재적용 허용 목록 — 젯슨에 있는 직전 배포본(커밋 a783d177 의 파일, 1008 00:15 적용)의 md5. 이 값이면 덮어써도 된다(주 작업자 확인 1008 00:2x).
+d1db6dee0639716aa6a91e62b53e6811  deploy/cand/head_1008/OPERATOR_COMMANDS.md
+3ad40a89fa208fec0fccb34cb131ed6a  deploy/head_1008.md5
+23de8d7f7da84c675692ddcc6200f0cf  deploy/head_1008.VERSION

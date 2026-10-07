@@ -111,6 +111,8 @@ parser.add_argument("--switch_to", type=str, default="",
                     help="진단(1004, C4 근거): '<run>:<model_N.pt>' 두 번째(회복) 정책. 감지기(IMU 관측만: 기울기·|ω_xy|, 히스테리시스)가 켜면 회복 정책, 꺼지면 주(서기) 정책. 두 정책 모두 같은 관측·명령 계약")
 parser.add_argument("--min_height", type=float, default=None, help="진단(1004): base_too_low 종료 높이 덮어쓰기 [m] (거짓 낙상 대조, 기본 cfg 0.45)")
 parser.add_argument("--ramp_off", action="store_true", help="진단(1004): hang_support 준정적 롤 토크 램프 DR 끔(학습 DR 의 가정 외란 — 평가 교란 대조)")
+parser.add_argument("--sw_ref_contact", type=str, default="both", choices=["both", "any"],
+                    help="1008 X19e(시뮬 전용 수정안 평가): 기준 자세 EMA 갱신의 접촉 요구 — both(기본, 종전 그대로) | any(한 발 이상). 배포 감지기는 both")
 parser.add_argument("--sw_ref_tau", type=float, default=0.0, help="1004: 감지기 기울기를 기준 자세 대비 편차로(기준 = 인계 시점 롤·피치, 서기·조용·양발일 때 EMA τ[s] 갱신, |ref|≤8°). 0 = 절대 기울기(종전)")
 parser.add_argument("--sw_ref_init_s", type=float, default=0.0, help="1004: 인계 뒤 이 시간 동안은 기준 자세가 현재 자세를 그대로 따라감(편차 0 → ω 로만 켜짐) — 인계 블렌딩 과도 오탐 방지")
 parser.add_argument("--sw_off_contact", type=str, default="both", choices=("both", "any", "none"), help="1004 밤: 감지기 끄기 조건의 접촉 요구 — both(종전)/any(한 발 이상)/none(IMU 정숙만). 실물 패드 0 고착 대응")
@@ -1211,7 +1213,7 @@ for i in range(STEPS):
                     sw_ref = _rp2.clone()
                 _follow = (~ke_act) | ((t_rel - ke_t0) < float(args_cli.sw_ref_init_s))   # 1007 전환: KE 시작(ke_t0) 뒤 init_s 동안 기준 추종(ke2w3 = 인계 0 s)
                 sw_ref = torch.where(_follow.unsqueeze(1), _rp2, sw_ref)
-                _upd = (~sw_mode) & (_w < 0.1) & _cf[:, 0] & _cf[:, 1]
+                _upd = (~sw_mode) & (_w < 0.1) & ((_cf[:, 0] & _cf[:, 1]) if args_cli.sw_ref_contact == "both" else (_cf[:, 0] | _cf[:, 1]))
                 sw_ref = torch.where(_upd.unsqueeze(1), sw_ref + (_rp2 - sw_ref) * (0.02 / float(args_cli.sw_ref_tau)), sw_ref).clamp(-8.0, 8.0)
                 _tilt = (_rp2 - sw_ref).norm(dim=-1)
             if args_cli.settle_judge == "odo":      # 1006 병목 2: 오도메트리 상시 갱신(감독기 전용 신호, 정책·RNG 경로 불변)

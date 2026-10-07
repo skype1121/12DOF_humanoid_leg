@@ -194,6 +194,7 @@ parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토�
 parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
 parser.add_argument("--kw_unload", type=float, default=0.0, help="X18: 인계 뒤 링크마다 자기 무게의 이 비율(0–0.9)을 위로 받친다(부분지지의 이상화, 1 s 램프). --dist 와 함께 쓰지 않는다")
 parser.add_argument("--contact_pert", type=str, default="", help="X19: 접촉 관측 교란 'delay:N;flip:p;t0:x'(관측 비트만, 물리·채점 불변). '' = 끔")
+parser.add_argument("--kw_safety", type=str, default="", help="X19b: W3 감독기 문턱 JSON(브리지 --w3-safety 와 같은 형식·범위 검증). '' = 기본값")
 parser.add_argument("--kw_soft_clamp_all", action="store_true", help="X17: 실물 stage8 처럼 전 관절 목표각을 config soft 한계로 자른다(기본 = 학습과 같이 발목 앞뒤만)")
 parser.add_argument("--kw_soft_clamp_json", type=str, default="", help="X17b: --kw_soft_clamp_all 이 읽을 한계 표(기본 = config/joint_limits_12dof.json). 넓힌 soft 한계 제안의 대조 평가용")
 parser.add_argument("--kw_hl", type=str, default="", help="1007 HD: 헤딩 고리 — '' 끔 | 'on' 브리지 기본 | JSON")
@@ -1054,7 +1055,10 @@ if KWL:
         print(f"[runner_loop] KE 키 {_KW_KEYS[1]} 의 회복 정책 폴더 덮어쓰기: {_old_} → {_krx_} · SOURCE_CHECKPOINT {open(os.path.join(_krx_, 'SOURCE_CHECKPOINT')).read().strip()[:120] if os.path.exists(os.path.join(_krx_, 'SOURCE_CHECKPOINT')) else '(없음)'}", flush=True)
         _BR.C5_PAIRS[_KW_KEYS[1]] = (_st_, _krx_)
     KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max)) for _ in range(N)]
-    KWS = [_W3D.W3Supervisor(_BR.W3_SAFETY, cmd_limits=_BR.W3_CMD_LIMITS[_KW_KEYS[0]]) for _ in range(N)]
+    _KW_SAFETY = _W3D.parse_w3_safety(args_cli.kw_safety) if args_cli.kw_safety else _BR.W3_SAFETY
+    if args_cli.kw_safety:
+        print(f"[runner_loop] X19b 감독기 문턱 덮어쓰기: {args_cli.kw_safety} → {_KW_SAFETY}", flush=True)
+    KWS = [_W3D.W3Supervisor(_KW_SAFETY, cmd_limits=_BR.W3_CMD_LIMITS[_KW_KEYS[0]]) for _ in range(N)]
     if args_cli.kw_requiet:                               # 배포 감지기(c5_switch.SwitchDetector)의 갇힘 해소 옵션 — 생성자 인자와 같은 검증을 거쳐 설정
         _rqs_ = args_cli.kw_requiet.split(","); _rq_ = (float(_rqs_[0]), float(_rqs_[1])) + ((_rqs_[2],) if len(_rqs_) > 2 else ())
         from rl_walking.deploy.c5_switch import SwitchDetector as _SDk
@@ -1122,7 +1126,7 @@ if KWL:
     _kw_off_st = (_eidx % max(1, args_cli.stop_phases)).float() / max(1, args_cli.stop_phases) * float(args_cli.stop_period)
     _KW_EVT = [(tt + (_kw_off_on if w else _kw_off_st)) for (tt, w, c) in _KW_SCRIPT]
     _KW_APPLIED = [torch.zeros(N, dtype=torch.bool, device=dev) for _ in _KW_SCRIPT]
-    print(f"[runner_loop] 합성 러너 {N} 개(브리지 _make_runner {_KW_KEYS}, handoff {args_cli.kw_handoff}, 정착 {args_cli.kw_settle}s) · 감독기 {_BR.W3_SAFETY} · 대본 {_KW_SCRIPT}", flush=True)
+    print(f"[runner_loop] 합성 러너 {N} 개(브리지 _make_runner {_KW_KEYS}, handoff {args_cli.kw_handoff}, 정착 {args_cli.kw_settle}s) · 감독기 {_KW_SAFETY} · 대본 {_KW_SCRIPT}", flush=True)
 
     def _kw_tick(obs, i, t_rel):
         """합성 러너 폐루프 한 틱 — 평가기 지표가 읽는 상태 변수(tr_*·ke_act·sw_mode·ge_prev)를 러너 상태로 채운다."""

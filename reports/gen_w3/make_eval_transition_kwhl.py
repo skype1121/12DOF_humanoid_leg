@@ -264,4 +264,12 @@ if args_cli.contact_pert:
     _fcp.func = _fc_pert
     print(f"[contact_pert] 접촉 관측 교란 {_CP} (관측 비트만 — 물리·채점 불변, --contact_drop 뒤에 적용)", flush=True)
 """)
+# 1008 X19b: 감독기 문턱 덮어쓰기 — 브리지의 --w3-safety 와 같은 파서(w3_deploy.parse_w3_safety, 범위 검증 그대로). '' = 브리지 기본값.
+rep("""parser.add_argument("--kw_soft_clamp_all", action="store_true",""", """parser.add_argument("--kw_safety", type=str, default="", help="X19b: W3 감독기 문턱 JSON(브리지 --w3-safety 와 같은 형식·범위 검증). '' = 기본값")
+parser.add_argument("--kw_soft_clamp_all", action="store_true",""")
+rep("""    KWS = [_W3D.W3Supervisor(_BR.W3_SAFETY, cmd_limits=_BR.W3_CMD_LIMITS[_KW_KEYS[0]]) for _ in range(N)]""", """    _KW_SAFETY = _W3D.parse_w3_safety(args_cli.kw_safety) if args_cli.kw_safety else _BR.W3_SAFETY
+    if args_cli.kw_safety:
+        print(f"[runner_loop] X19b 감독기 문턱 덮어쓰기: {args_cli.kw_safety} → {_KW_SAFETY}", flush=True)
+    KWS = [_W3D.W3Supervisor(_KW_SAFETY, cmd_limits=_BR.W3_CMD_LIMITS[_KW_KEYS[0]]) for _ in range(N)]""")
+rep("""감독기 {_BR.W3_SAFETY}""", """감독기 {_KW_SAFETY}""")
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

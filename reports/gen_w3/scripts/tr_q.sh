@@ -109,4 +109,12 @@ if [ $ST = x6 ]; then   # X6: 배포 코드 합성 러너 폐루프(--runner_loo
   for SD in 1 2 3; do for C in nd sf15 b18; do run tr_kew3_${C}_d2_s${SD} --ke_mode direct --runner_loop --delay_steps 2,2 --seed $SD ${X[$C]} --trace_all 128; done; done
   unset TR_SCRIPT
 fi
+if [ $ST = x2f ]; then   # X2f: 래치 직후 상태 이어받기 + 갇힘 해소 변형(--sw_requiet) — 표준 조건 + 창 외란
+  export TR_SCRIPT=rl_walking/scripts/eval_transition_dev.py
+  LD="--ke_mode direct --settle fixed --settle_s 0.02 --delay_steps 2,2 --sw_requiet 2.0,0.3"
+  declare -A XW=( [b18x]="--dist push:b:7.3:18:0.3" [sf15x]="--dist ramp:f:7.3:15:0.5:1.0" [f12x]="--dist push:f:7.3:12:0.3" )
+  for SD in 1 2 3; do for C in sf15 nd b18; do run tr_latchdq_${C}_d2_s${SD} $LD --seed $SD ${X[$C]}; done; done
+  for SD in 1 2; do for C in f12x sf15x b18x; do run tr_latchdq_${C}_d2_s${SD} $LD --seed $SD ${XW[$C]}; done; done
+  unset TR_SCRIPT
+fi
 echo "$(date +%H:%M) TRQ_DONE $ST"

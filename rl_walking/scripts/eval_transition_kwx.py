@@ -192,6 +192,7 @@ parser.add_argument("--kw_restore_snap", type=float, default=1.5, help="X7d: 되
 parser.add_argument("--kw_w3_export", type=str, default="", help="S3E: W3 하위 키의 exported 폴더 경로 덮어쓰기('' = 등록된 W3S3d-15800)")
 parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토크 한계 배율 목록 '1.0,0.8,0.7,0.6'(env i → i % len). '' = 끔")
 parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
+parser.add_argument("--kw_unload", type=float, default=0.0, help="X18: 인계 뒤 링크마다 자기 무게의 이 비율(0–0.9)을 위로 받친다(부분지지의 이상화, 1 s 램프). --dist 와 함께 쓰지 않는다")
 parser.add_argument("--kw_soft_clamp_all", action="store_true", help="X17: 실물 stage8 처럼 전 관절 목표각을 config soft 한계로 자른다(기본 = 학습과 같이 발목 앞뒤만)")
 parser.add_argument("--kw_hl", type=str, default="", help="1007 HD: 헤딩 고리 — '' 끔 | 'on' 브리지 기본 | JSON")
 parser.add_argument("--kw_hl_e0", type=str, default="", help="HD2: 래치 직후 ψ* 초기 오차[°] 목록(env i → i % len)")
@@ -1429,6 +1430,16 @@ for i in range(STEPS):
     elif float(args_cli.land_s) > 0.0 and i == int(round(float(args_cli.land_s) * 50)) + 1:
         _z = torch.zeros(N, robot.num_bodies, 3, device=dev)
         robot.set_external_force_and_torque(_z, _z)
+    if float(args_cli.kw_unload) > 0.0 and i >= STEPS_PRE:
+        assert 0.0 < float(args_cli.kw_unload) <= 0.9 and not dists and not args_cli.osc_inj, "--kw_unload 는 0–0.9, --dist·--osc_inj 없이"
+        if "_UNL_M" not in globals():
+            globals()["_UNL_M"] = robot.root_physx_view.get_masses().to(dev)          # (N, B)
+            print(f"[kw_unload] 부분지지 {100 * float(args_cli.kw_unload):.0f} % (인계 뒤 1 s 램프) · 전체 질량 {float(_UNL_M[0].sum()):.2f} kg → 받치는 힘 {float(_UNL_M[0].sum()) * 9.81 * float(args_cli.kw_unload):.1f} N", flush=True)
+        _ufr = float(args_cli.kw_unload) * min(1.0, max(0.0, float(t_rel)) / 1.0)
+        _uB = _UNL_M.shape[1]
+        _ufw = torch.zeros(N, _uB, 3, device=dev); _ufw[..., 2] = _UNL_M * 9.81 * _ufr
+        _ufb = quat_apply_inverse(robot.data.body_quat_w.reshape(-1, 4), _ufw.reshape(-1, 3)).reshape(N, _uB, 3)
+        robot.set_external_force_and_torque(_ufb, torch.zeros_like(_ufb))
     if args_cli.osc_inj:      # 1007 §13b: 몸통 피치 토크 버스트(몸통 로컬 y 축 — 몸통 +x = 앞). 힘 외란과 한 번에 건다.
         if "_OSC" not in dir():
             import numpy as _np_osc

@@ -209,4 +209,19 @@ rep("""            if kind == "move":""", """            if kind == "mv":
                 _v4 = [float(x) for x in arg.split(",")]; assert len(_v4) == 4, arg
                 _KW_DURS[round(float(tt), 4)] = float(_v4[3]); ev.append((float(tt), True, _v4[:3])); continue
             if kind == "move":""")
+# 1008 X18: 부분지지(줄이 체중 일부를 받침)의 이상화 — 링크마다 자기 무게의 일정 비율을 위로 준다(= 중력 감소, 회전력 없음. --land_s 와 같은 방식).
+#   인계 뒤 1 s 에 걸쳐 0 → 비율로 올리고 끝까지 유지. 줄의 진자 복원력·탄성·느슨해짐은 없다(가정). 외란(--dist)·--osc_inj 와 함께 쓰지 않는다(외력 버퍼를 덮어쓴다).
+rep("""parser.add_argument("--kw_soft_clamp_all", action="store_true",""", """parser.add_argument("--kw_unload", type=float, default=0.0, help="X18: 인계 뒤 링크마다 자기 무게의 이 비율(0–0.9)을 위로 받친다(부분지지의 이상화, 1 s 램프). --dist 와 함께 쓰지 않는다")
+parser.add_argument("--kw_soft_clamp_all", action="store_true",""")
+rep("""    if args_cli.osc_inj:      # 1007 §13b""", """    if float(args_cli.kw_unload) > 0.0 and i >= STEPS_PRE:
+        assert 0.0 < float(args_cli.kw_unload) <= 0.9 and not dists and not args_cli.osc_inj, "--kw_unload 는 0–0.9, --dist·--osc_inj 없이"
+        if "_UNL_M" not in globals():
+            globals()["_UNL_M"] = robot.root_physx_view.get_masses().to(dev)          # (N, B)
+            print(f"[kw_unload] 부분지지 {100 * float(args_cli.kw_unload):.0f} % (인계 뒤 1 s 램프) · 전체 질량 {float(_UNL_M[0].sum()):.2f} kg → 받치는 힘 {float(_UNL_M[0].sum()) * 9.81 * float(args_cli.kw_unload):.1f} N", flush=True)
+        _ufr = float(args_cli.kw_unload) * min(1.0, max(0.0, float(t_rel)) / 1.0)
+        _uB = _UNL_M.shape[1]
+        _ufw = torch.zeros(N, _uB, 3, device=dev); _ufw[..., 2] = _UNL_M * 9.81 * _ufr
+        _ufb = quat_apply_inverse(robot.data.body_quat_w.reshape(-1, 4), _ufw.reshape(-1, 3)).reshape(N, _uB, 3)
+        robot.set_external_force_and_torque(_ufb, torch.zeros_like(_ufb))
+    if args_cli.osc_inj:      # 1007 §13b""")
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

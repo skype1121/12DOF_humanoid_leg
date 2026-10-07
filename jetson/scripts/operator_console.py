@@ -22,6 +22,7 @@
 """
 import argparse
 import collections
+import html
 import json
 import math
 import os
@@ -39,8 +40,27 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 try:
     from .console_state import TrialState, LABELS, EVENTS, CONTROL, POLICY_ON_STEPS, finite
+    from .console_state import WALK_KEYS, WALK_KIND, WALK_SAFE, WALK_ACK_TIMEOUT_S
 except ImportError:
     from console_state import TrialState, LABELS, EVENTS, CONTROL, POLICY_ON_STEPS, finite
+    from console_state import WALK_KEYS, WALK_KIND, WALK_SAFE, WALK_ACK_TIMEOUT_S
+
+# --- 1007 걷기 조작(시간 제한 걷기 버튼) 모듈 ---
+# 버튼 값의 단일 원본 = rl_walking/deploy/w3_deploy.W3_MOVES·w3_move_cmd, 명령 순번 = w3_cmd.next_seq(파일 잠금 단조 seq, CLI 와 같은 파일).
+# 이 파일들이 배포에 없거나 옛 판(W3_MOVES 없음)이면 걷기 패널만 '사용 불가'로 두고 콘솔의 나머지는 종전대로 뜬다.
+try:
+    try:
+        from . import w3_cmd as _W3CMD
+    except ImportError:
+        import w3_cmd as _W3CMD
+    _W3 = _W3CMD._W3
+    for _name in ("W3_MOVES", "w3_move_cmd", "W3S3D_CKPT_KEY"):
+        getattr(_W3, _name)
+    getattr(_W3CMD, "next_seq")
+    WALK_IMPORT_ERROR = None
+except Exception as _exc:      # ImportError(파일·numpy 없음)·AttributeError(옛 판) 모두 — 콘솔 기동을 막지 않는다
+    _W3CMD = _W3 = None
+    WALK_IMPORT_ERROR = f"{type(_exc).__name__}: {_exc}"
 
 # --- 경로: 젯슨은 스크립트가 두 디렉토리로 갈려 있다 (0808 실측 확인) ---
 CALIB = os.path.expanduser("~/rl_calib")
@@ -54,6 +74,7 @@ IMU_TOPIC = "/humanoid/imu"
 FOOT_TOPIC = "/humanoid/foot_force"
 BRIDGE_CMD_TOPIC = "/humanoid/rl_bridge_command"
 BRIDGE_DEBUG_TOPIC = "/humanoid/rl_bridge_debug"
+BRIDGE_ACK_TOPIC = "/humanoid/rl_bridge_ack"     # 1007: W3 세션 브리지만 발행하는 명령 응답(rl_bridge_node.BRIDGE_ACK_TOPIC) — 걷기 버튼 수락/거부/기한 종료
 
 # 0922: BODY_WEIGHT_N 제거 — 감압 패드는 접지 판단용이며, 카운트를 체중으로 나눈 '발력 %' 는 만들지 않는다.
 BRIDGE_JOINT_FRESH_SEC = 0.2  # rl_bridge_node.SENSOR_STALE_SEC 와 동일 — '12/12 신선' 판정 기준 (0911 R3)
@@ -75,11 +96,119 @@ BRIDGE_JOINT_FRESH_SEC = 0.2  # rl_bridge_node.SENSOR_STALE_SEC 와 동일 — '
 CKPT_CHOICES = ["stand_crouch_g12", "stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra", "stand_crouch_g12_ema0", "stand_crouch_g11a"]   # 1004: C5(G21a+G24R-a 전환) 구조 진단 선택지
 CKPT_DEFAULT = CKPT_CHOICES[0]
 
+# 1007 걷기 실험 키(콘솔 걷기 조작 패널) — 기본 선택지(CKPT_CHOICES)·기본값은 그대로 두고 **뒤에** 덧붙인다.
+#   키 목록 = console_state.WALK_KEYS(selftest 가 w3_deploy·브리지 원본과 대조). 브리지는 아래 실험 플래그를 붙여야만 이 키를 등록한다
+#   (정책 로드와 셀프테스트 게이트 양쪽). 기존 키의 브리지 기동 인자는 한 글자도 바뀌지 않는다(bridge_extra_args 가 빈 목록 — selftest 고정).
+WALK_BRIDGE_ARGS = {
+    "stand_w3s3d_15800": ["--experimental-w3"],
+    "stand_kew3_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
+}
+#: 정책 로드(--live)에만 더 붙는 인자. 헤딩 고리는 기본 off — 시뮬 판정: 왕복에서 기준 미달(reports/gen_w3/HEADING_SESSION_1007.md §7).
+#: 셀프테스트 게이트에는 붙이지 않는다: 브리지 --selftest 의 'W3 감시 2 차 대비책'·'헤딩 고리 고장 판별 분리' 항목은 고리 설정이 켜진 채로만
+#: 통과한다(1007 실행 대조: 두 걷기 키 모두 off 를 붙이면 2 FAILED, 빼면 30/30 ALL PASS — 원인은 이 플래그 하나). 게이트가 보는 것은
+#: 정책 파일·계약이라 고리 설정과 무관하다. 브리지 selftest 가 off 를 견디게 되면 게이트에도 붙일 수 있다.
+WALK_LIVE_ARGS = ["--w3-heading-loop", "off"]
+#: 걷기 모듈을 못 불러왔으면 걷기 키를 선택지에 올리지 않는다(패널 없이 걷기 세션만 뜨는 상태를 만들지 않는다).
+WALK_CKPTS = [k for k in WALK_KEYS if WALK_IMPORT_ERROR is None and k in WALK_BRIDGE_ARGS]
+CKPT_ALL = CKPT_CHOICES + WALK_CKPTS
+#: 화면 방향 패드 배치(이름만) — 값(vx·vy·wz·dur_s)과 표시 이름은 w3_deploy.W3_MOVES 가 유일한 원본이다. 콘솔에 값을 다시 적지 않는다.
+WALK_PAD = (("turn_l", "fwd1", "turn_r"), ("left1", "inplace", "right1"), ("fwd3", "back1"))
+WALK_REQ_MAX_AGE_S = 5.0     # 걷기 버튼·재무장 요청의 허용 나이 [s](화면이 본 서버 시각 기준) — 끊겼다 뒤늦게 도착한 요청으로 걷지 않게
+
+
+def _walk_ready_cfg():
+    """브리지 감독기의 켜기 문턱(기본값 — 콘솔은 브리지에 --w3-safety 를 넘기지 않는다): 양발 접촉·조용한 서기의 연속 시간 [s]과 |ω_xy| 문턱 [rad/s].
+    원본 = w3_deploy.W3_SAFETY_DEFAULT. 콘솔은 이 값으로 '서기 정착 대기'를 표시할 뿐이고 켜기의 최종 판정은 브리지가 한다."""
+    cfg = getattr(_W3, "W3_SAFETY_DEFAULT", None) if _W3 is not None else None
+    try:
+        return {"contact_s": float(cfg.enable_contact_s), "quiet_s": float(cfg.enable_quiet_s), "quiet_w": float(cfg.enable_quiet_w)}
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+WALK_READY = _walk_ready_cfg()
+W3_SEQ_FILE = _W3CMD.SEQ_FILE if _W3CMD is not None else None   # 명령 순번 파일(~/.w3_cmd_seq, CLI w3_cmd.py 와 공유). DEMO·selftest 는 임시 폴더로 바꾼다
+
+
+def bridge_extra_args(ckpt, live):
+    """체크포인트별 브리지 추가 기동 인자. 걷기 실험 키에만 붙고(실험 플래그 + 정책 로드면 헤딩 고리 off), 그 밖의 키는 빈 목록(종전 인자 그대로)."""
+    if ckpt not in WALK_CKPTS:
+        return []
+    return list(WALK_BRIDGE_ARGS[ckpt]) + (list(WALK_LIVE_ARGS) if live else [])
+
+
+def bridge_live_argv(ckpt):
+    return [sys.executable, os.path.join(SCRIPTS, "rl_bridge_node.py"), "--live", "--checkpoint", ckpt] + bridge_extra_args(ckpt, live=True)
+
+
+def bridge_selftest_argv(ckpt):
+    return [sys.executable, os.path.join(SCRIPTS, "rl_bridge_node.py"), "--selftest", "--checkpoint", ckpt] + bridge_extra_args(ckpt, live=False)
+
+
+#: X14(1007 시뮬 평가 — 합성 키 배포 코드 폐루프, reports/gen_w3/TRANSITION_W3KE.md §5.18·§5.18b)에서 잰 '버튼 한 번'의 이동량.
+#: **시뮬 중앙값이고 실물에서는 확인하지 않았다.** 화면의 참고 표시일 뿐 명령 값이 아니다(명령 값의 원본은 W3_MOVES).
+#: 버튼 값(vx·vy·wz·기한)이나 정책이 바뀌면 이 숫자는 낡는다 — 다시 재서 고치거나 지운다. 비활성 버튼에는 보이지 않는다.
+WALK_SIM_REF = {"fwd1": "+4.8 cm", "fwd3": "+16 cm", "turn_l": "+17.6°", "turn_r": "−13.8°", "left1": "+4.4 cm"}
+WALK_SIM_REF_NOTE = "X14 시뮬 중앙값 · 실물 미확인"
+
+
+def walk_moves():
+    """걷기 버튼 목록(원본 정의 순서) — [{name, label, vx, vy, wz, dur_s, enabled, why_disabled}].
+    원본의 공개 목록(w3_deploy.w3_moves_public — 시뮬 평가 X14 의 enabled·why_disabled 포함)을 그대로 쓴다.
+    그 함수가 없는 판(1007 초판)이면 W3_MOVES 에서 같은 모양으로 만든다(enabled 필드가 없으면 활성 — 원본과 같은 규칙)."""
+    if _W3 is None:
+        return []
+    public = getattr(_W3, "w3_moves_public", None)
+    rows = list(public()) if callable(public) else [dict(m, name=k) for k, m in _W3.W3_MOVES.items()]
+    return [{"name": m["name"], "label": str(m["label"]), "vx": m["vx"], "vy": m["vy"], "wz": m["wz"], "dur_s": m["dur_s"],
+             "enabled": bool(m.get("enabled", True)), "why_disabled": m.get("why_disabled")} for m in rows]
+
+
+def walk_move_block(name):
+    """걷기 버튼 이름 하나를 서버가 막는 이유 → (HTTP 코드, 문구) 또는 None. 화면을 우회한 API 호출도 여기서 걸린다.
+    모르는 이름 400 · 시뮬 평가에서 비활성(원본 enabled False) 409 + 사유. 원본 w3_move_cmd 가 비활성을 거부하지 않는 옛 판이어도
+    콘솔이 먼저 거른다(원본이 거부하는 판에서는 두 겹). 평가 전용 우회 인자(allow_disabled)는 콘솔이 넘기지 않는다."""
+    entry = next((m for m in walk_moves() if m["name"] == name), None) if isinstance(name, str) else None
+    if entry is None:
+        return 400, f"모르는 걷기 버튼입니다: {name!r}"
+    if not entry["enabled"]:
+        return 409, f"{entry['label']}: 비활성 걷기 버튼 — {entry['why_disabled'] or '사유 미기록'}"
+    return None
+
+
+def walk_pad_rows():
+    """방향 패드 행(이름). 원본 목록에 없는 이름은 빼고, 패드에 자리가 없는 원본 항목은 마지막 줄에 덧붙인다(조용히 버리지 않는다)."""
+    moves = [m["name"] for m in walk_moves()]
+    rows = [[n for n in row if n in moves] for row in WALK_PAD]
+    extra = [n for n in moves if not any(n in row for row in WALK_PAD)]
+    return [r for r in rows + [extra] if r]
+
+
+def render_walk_pad():
+    """방향 패드 HTML — 원본 목록으로 그린다. 비활성 버튼은 표시(class walkOff·툴팁에 사유)를 달고, 활성 버튼에는 시뮬 참고 이동량을 적는다.
+    누를 수 있는지(disabled)·툴팁·작은 글씨는 화면이 /api/state 의 walk.buttons 로 계속 맞춘다(여기는 첫 그림)."""
+    if _W3 is None:
+        return f'<p class="note">걷기 모듈을 불러오지 못했습니다 — {html.escape(str(WALK_IMPORT_ERROR))}</p>'
+    moves = {m["name"]: m for m in walk_moves()}
+
+    def button(n):
+        m = moves[n]
+        if m["enabled"]:
+            attrs, small = "", (f"시뮬 {WALK_SIM_REF[n]}" if n in WALK_SIM_REF else "")
+        else:
+            attrs = ' class="walkOff" title="{}"'.format(html.escape("비활성 — " + str(m["why_disabled"] or "사유 미기록"), quote=True))
+            small = "비활성(시뮬 평가 미달)"
+        return (f'<button data-walk="{html.escape(n, quote=True)}"{attrs} disabled>'
+                f'<span>{html.escape(m["label"])}</span><small>{html.escape(small)}</small></button>')
+    return "".join('<div class="walkRow">' + "".join(button(n) for n in row) + "</div>" for row in walk_pad_rows())
+
 
 def render_page():
-    """PAGE 의 정책 드롭다운을 CKPT_CHOICES 로 채운다 (구판은 정적 목록 stand_v8~ 로 기본값이 legacy stand_v7 였음)."""
-    return PAGE.replace("<!--CKPT_OPTIONS-->",
-                        "".join(f"<option>{c}</option>" for c in CKPT_CHOICES))
+    """PAGE 의 정책 드롭다운을 CKPT_CHOICES 로 채운다 (구판은 정적 목록 stand_v8~ 로 기본값이 legacy stand_v7 였음).
+    1007: 걷기 실험 키는 표시를 붙여 뒤에 덧붙이고, 걷기 방향 패드는 W3_MOVES 의 표시 이름으로 채운다."""
+    options = "".join(f"<option>{c}</option>" for c in CKPT_CHOICES)
+    options += "".join(f'<option value="{k}">{k} — {html.escape(WALK_KEYS[k]["label"])}</option>' for k in WALK_CKPTS)
+    return PAGE.replace("<!--CKPT_OPTIONS-->", options).replace("<!--WALK_PAD-->", render_walk_pad())
 STALE_SEC = 1.5              # 이보다 오래된 텔레메트리는 '끊김'으로 표시
 #: can_up.sh 는 sudo가 필요하다. 젯슨 계정 암호(공개본에서 기본값 제거)를 환경변수로
 #: 덮어쓸 수 있게 둔다 — 소스에 상수로 박아두지 않기 위함.
@@ -638,6 +767,8 @@ class Telemetry:
         self._pub_stage8 = None
         self._pub_bridge = None
         self.bridge_fault = None
+        #: 1007 W3 세션 브리지의 명령 응답(수신 순서대로). 상태 스냅샷이 아니라 사건이라 d/t 에 넣지 않고, 걷기 상태기가 console_snapshot 에서 비운다.
+        self.acks = collections.deque(maxlen=64)
 
     def start(self):
         try:
@@ -663,6 +794,7 @@ class Telemetry:
         node.create_subscription(String, IMU_TOPIC, mk("imu"), 20)
         node.create_subscription(String, FOOT_TOPIC, mk("foot"), 20)
         node.create_subscription(String, BRIDGE_DEBUG_TOPIC, mk("bridge"), 20)
+        node.create_subscription(String, BRIDGE_ACK_TOPIC, mk("ack"), 20)   # 1007 걷기 버튼 응답(W3 세션 브리지만 발행 — 그 밖 세션에서는 조용하다)
         self._pub_stage8 = node.create_publisher(String, COMMAND_TOPIC, 10)
         self._pub_bridge = node.create_publisher(String, BRIDGE_CMD_TOPIC, 10)
         self.node = node
@@ -682,6 +814,9 @@ class Telemetry:
         if key == "status":
             ERRLATCH.feed(obj)   # 1007 모터 오류 기록(기록 전용·예외 없음): 행(20 Hz) 사이에 지나가는 값을 놓치지 않게 메시지마다 본다
         with self.lock:
+            if key == "ack":      # 1007: 응답은 수신 시각과 함께 쌓기만 한다(판정은 걷기 상태기 — req_id 가 다르면 표시만 하고 무시)
+                self.acks.append({"t": now(), "ack": obj})
+                return
             if key == "bridge" and "event" in obj:
                 reason = obj.get("reason") or obj.get("why") or obj["event"]
                 self.events.append(f"{time.strftime('%H:%M:%S')} {obj['event']} {reason}")
@@ -700,6 +835,13 @@ class Telemetry:
         from std_msgs.msg import String
         pub.publish(String(data=json.dumps(obj)))
         return True
+
+    def drain_acks(self):
+        """쌓인 브리지 응답을 수신 순서대로 꺼낸다(1007 걷기 상태기 전용)."""
+        with self.lock:
+            items = list(self.acks)
+            self.acks.clear()
+        return items
 
     def view(self):
         """Normalize observed status; missing/invalid data is never a healthy zero."""
@@ -840,6 +982,17 @@ class Telemetry:
             # 아예 안 보내므로 None = 보정기 OFF. 판정·자동 진행에는 쓰지 않는다(읽기 전용 표시).
             "roll_comp": br.get("roll_comp_deg"),
             "roll_comp_gate": br.get("roll_comp_gate"),
+            # 1007 걷기 조작: W3 세션 브리지만 싣는 필드를 그대로 옮긴다(없으면 None — 0·False 로 위장하지 않는다).
+            #   w3 = 래치 클록(want·ge·ge_obs·u·f), w3_sup = 감독기(last_seq·stop_latched·latch_reason·freeze·burst·last_burst_end…),
+            #   kew3 = 합성 러너(mode ke/w3·block…), w3_cmd = 리드 발·헤딩 고리, guard_mode 는 safe 가 아닐 때만 실린다,
+            #   ts = 프레임의 브리지 timestamp(응답 timestamp 와 같은 시계 — '응답 뒤의 프레임인가' 판정용), cmd = 정책 명령(vx, vy, wz).
+            "w3": br.get("w3") if isinstance(br.get("w3"), dict) else None,
+            "w3_sup": br.get("w3_sup") if isinstance(br.get("w3_sup"), dict) else None,
+            "kew3": br.get("kew3") if isinstance(br.get("kew3"), dict) else None,
+            "w3_cmd": br.get("w3_cmd") if isinstance(br.get("w3_cmd"), dict) else None,
+            "guard_mode": br.get("guard_mode") if isinstance(br.get("guard_mode"), str) else None,
+            "ts": br.get("timestamp") if finite(br.get("timestamp")) else None,
+            "cmd": br.get("cmd") if isinstance(br.get("cmd"), list) else None,
         }
         return out
 
@@ -1342,10 +1495,157 @@ def act_trim(payload):
 
 def act_bridge_live(payload):
     ckpt = str(payload.get("checkpoint", CKPT_DEFAULT))
-    _need(ckpt in CKPT_CHOICES, "허용되지 않은 체크포인트입니다")
-    return RUN.start("bridge",
-                     [sys.executable, os.path.join(SCRIPTS, "rl_bridge_node.py"),
-                      "--live", "--checkpoint", ckpt])
+    _need(ckpt in CKPT_ALL, "허용되지 않은 체크포인트입니다")
+    # 1007: 걷기 실험 키면 실험 플래그 + 헤딩 고리 off 가 붙는다(bridge_extra_args). 그 밖의 키는 종전 인자 그대로.
+    return RUN.start("bridge", bridge_live_argv(ckpt))
+
+
+# ---------------------------------------------------------------------------
+# 1007 걷기 조작 — 시간 제한 걷기 버튼 (W3 세션 전용, 기본 선택지에는 영향 없음)
+# ---------------------------------------------------------------------------
+#: 버튼 하나 = "잠깐 걷고 스스로 서는" 걷기 한 번. **끄기 기한은 브리지가 책임진다**(step 켜기의 dur_s — 콘솔·통신이 죽어도 선다).
+#: 콘솔은 켜기 명령을 **한 번** 발행하고, 응답 토픽(수락/거부/기한 종료)과 디버그 토픽(서기 복귀)으로 상태를 보여 줄 뿐이다.
+#: 응답이 없어도 같은 명령을 다시 보내지 않는다(브리지는 형식이 맞는 새 seq 를 거부해도 소비하고, 같은/오래된 seq 는 거부한다).
+def walk_cmd_payload(kind, req_id, seq, move=None):
+    """브리지 명령 JSON(고정 프로토콜). move 의 vx·vy·wz·dur_s 는 w3_deploy.w3_move_cmd(name) 가 돌려준 검증된 값 그대로다."""
+    base = {"req_id": req_id, "seq": int(seq)}
+    if kind == "move":
+        return dict({"cmd": "step", "enable": True}, **base, heading_loop=False, **_W3.w3_move_cmd(move))
+    if kind == "off":
+        return dict({"cmd": "step", "enable": False}, **base)
+    if kind in ("stop", "rearm"):
+        return dict({"cmd": kind}, **base)
+    raise ValueError(f"모르는 걷기 명령 {kind!r}")
+
+
+def walk_req_id(tag, seq):
+    """req_id = 콘솔·세션·동작·seq (1~64자). seq 가 단조라 콘솔을 다시 띄워도 겹치지 않는다(seq 자리는 잘리지 않는다)."""
+    sid = re.sub(r"[^A-Za-z0-9_]", "", str(SESSION.name or "nosession").replace("session_", ""))[:26]
+    return f"con-{sid}-{str(tag)[:10]}-{int(seq)}"
+
+
+def walk_next_seq():
+    """파일 잠금 단조 seq = max(마지막 + 1, 현재 ms) — 콘솔·브리지 재시작에도 증가한다(w3_cmd.next_seq 그대로)."""
+    return _W3CMD.next_seq(W3_SEQ_FILE)
+
+
+def walk_publish(cmd):
+    """브리지 명령 토픽에 **1 회** 발행(DEMO 는 합성 브리지로). 반환 = 발행 여부."""
+    if DEMO:
+        return bool(DEMO_SOURCE.bridge_cmd(cmd))
+    return bool(TEL.publish("bridge", cmd))
+
+
+def dispatch_walk(action, payload, note=""):
+    """걷기 명령 하나를 한 번만 발행한다(STATE_LOCK 안, 선행조건 통과 뒤). 응답은 여기서 기다리지 않는다 —
+    수락·기한 종료·서기 복귀는 TrialState.walk 가 응답 토픽·디버그 토픽으로 따로 확인한다."""
+    try:
+        return _dispatch_walk(action, payload, note)
+    except Exception as exc:          # 예상 못 한 내부 오류 — 요청 처리 스레드를 죽이지 않고 알린다(다시 보내지 않는다)
+        return 500, {"ok": False, "message": f"걷기 명령 처리 오류({type(exc).__name__}: {exc}) — 전송 여부는 걷기 상태 줄·브리지 상태로 확인하세요. 재전송하지 않습니다"}
+
+
+def _dispatch_walk(action, payload, note=""):
+    kind = WALK_KIND[action]
+    walk = TRIAL.walk
+    name, label = None, LABELS[action]
+    if kind == "move":
+        name = payload.get("move")
+        block = walk_move_block(name)                   # 모르는 이름·비활성 버튼(dispatch_action 이 먼저 거르지만 여기만 불러도 나가지 않게)
+        if block is not None:
+            return block[0], {"ok": False, "message": block[1]}
+        try:
+            _W3.w3_move_cmd(name)                       # 이름·비활성·학습 범위·단일 축·기한 범위 검사(원본 함수 — 평가 전용 우회 인자는 넘기지 않는다)
+            label = str(_W3.W3_MOVES[name]["label"])
+        except Exception as exc:
+            return 400, {"ok": False, "message": f"걷기 버튼 거부: {exc}"}
+    try:
+        seq = walk_next_seq()
+    except Exception as exc:
+        if action not in WALK_SAFE:
+            return 503, {"ok": False, "message": f"명령 순번(seq)을 발급하지 못해 보내지 않았습니다: {exc}"}
+        seq = int(now() * 1000)     # 끄기·정지 래치는 브리지가 순번과 무관하게 적용한다(안전 방향) — 순번 파일 고장이 막지 않게
+    req_id = walk_req_id(name or kind, seq)
+    cmd = walk_cmd_payload(kind, req_id, seq, name)
+    rec = walk.begin(TRIAL, kind, req_id, seq, cmd, name=name, label=label)
+    try:
+        sent = walk_publish(cmd)
+    except Exception as exc:
+        # 전송 여부를 알 수 없다 — 기록은 '발행함'으로 두고(응답 대기 → 없으면 '응답 없음'), 다시 보내지 않는다
+        return 200, {"ok": False, "message": f"{label} 발행 중 오류({exc}) — 전송 여부 불명. 재전송하지 않습니다. 걷기 상태 줄 확인" + note}
+    if not sent:
+        walk.not_sent(TRIAL, rec, "발행 실패(ROS 미연결) — 명령이 나가지 않았습니다")
+        return 200, {"ok": False, "message": f"{label} 발행 실패 (ROS 미연결) — 명령이 나가지 않았습니다" + note}
+    return 200, {"ok": True, "message": f"{label} 발행(1 회) — 브리지 응답 대기 · 수락·서기 복귀는 걷기 상태 줄에서 확인" + note}
+
+
+def dispatch_walk_safe(action, payload):
+    """걷기 끄기·정지 래치 = 안전 방향. boot_id·revision·앞 요청(BUSY)·진행 중 단계·고장 래치·기록 실패가 막지 않는다.
+    같은 request_id 의 재전송만 한 번으로 묶는다(끄기·정지 래치는 여러 번 가도 해가 없지만 순번·기록을 어지럽히지 않게)."""
+    with STATE_LOCK:
+        console_snapshot()
+        request_id = payload.get("request_id")
+        key = request_id if isinstance(request_id, str) and 8 <= len(request_id) <= 100 else None
+        fingerprint = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+        if key is not None and key in REQUESTS:
+            old, response = REQUESTS[key]
+            if old != fingerprint:
+                return 409, {"ok": False, "message": "같은 요청 식별자를 다른 동작에 사용할 수 없습니다"}
+            return response
+        reason = TRIAL.reason(action)
+        if reason:
+            return 409, {"ok": False, "message": reason}
+        try:
+            SESSION.ensure(LABELS[action], manual=True)
+            SESSION.event("action_request", action=action, trial=TRIAL.number, request_id=request_id)
+        except OSError:
+            pass                     # 기록 실패가 안전 방향 명령을 막지 않는다(기록 중단 자체는 TrialState.update 가 따로 래치한다)
+        result = dispatch_walk(action, payload)
+        if key is not None:
+            REQUESTS[key] = (fingerprint, result)
+            while len(REQUESTS) > 256:
+                REQUESTS.popitem(last=False)
+        console_snapshot()
+        return result
+
+
+def walk_view(st):
+    """/api/state 의 walk 항목 — 상태기 스냅샷 + 버튼 표(이름·표시 이름·값은 W3_MOVES 에서, 사용 가능 여부는 서버 선행조건에서).
+    걷기 패널은 실험 기능이다: 여기서 난 예외는 가둬서(걷기 버튼 잠금 + 오류 표시) 기립 시험의 상태·기록 주기로 번지지 않게 한다."""
+    try:
+        return _walk_view(st)
+    except Exception as exc:
+        first = TRIAL.walk.broken is None
+        TRIAL.walk.fail(TRIAL, exc)
+        if first:                                   # 로그에는 한 번만(상태 주기마다 되풀이하지 않는다)
+            print(f"[걷기 패널] 내부 오류 — 걷기 버튼 잠금: {TRIAL.walk.broken}", flush=True)
+        allowed = st["trial"]["allowed"]
+        return {"available": False, "reason": f"걷기 패널 내부 오류 — 걷기 버튼을 잠갔습니다({TRIAL.walk.broken}). 콘솔 로그 확인",
+                "internal_error": TRIAL.walk.broken, "module_error": WALK_IMPORT_ERROR, "session": False, "profile": None,
+                "current": None, "command": None, "bridge": {}, "buttons": [], "pad": [], "recent_acks": [], "guard_mode": None,
+                "mode": None, "composite": False,
+                "controls": {k: {"enabled": bool(allowed[k]["enabled"]), "reason": allowed[k]["reason"], "label": allowed[k]["label"]}
+                             for k in ("w3_off", "w3_stop", "w3_rearm")}}
+
+
+def _walk_view(st):
+    allowed = st["trial"]["allowed"]
+    move = allowed["w3_move"]
+    moves = {m["name"]: m for m in walk_moves()}
+    out = TRIAL.walk.snapshot(TRIAL)
+    out.update(
+        available=bool(move["enabled"]), reason=move["reason"], module_error=WALK_IMPORT_ERROR,
+        pad=walk_pad_rows(),
+        # 버튼마다: allowed = 원본 표의 enabled(시뮬 평가에서 비활성이면 False + why_disabled), enabled = 지금 누를 수 있는가(= 패널 사용 가능 ∧ allowed),
+        # sim_ref = 한 번 눌렀을 때의 이동량 참고값(시뮬 중앙값 · 실물 미확인 — 활성 버튼에만).
+        buttons=[dict(moves[n], allowed=moves[n]["enabled"], enabled=bool(move["enabled"]) and moves[n]["enabled"],
+                      sim_ref=WALK_SIM_REF.get(n) if moves[n]["enabled"] else None)
+                 for row in walk_pad_rows() for n in row],
+        controls={k: {"enabled": bool(allowed[k]["enabled"]), "reason": allowed[k]["reason"], "label": allowed[k]["label"]}
+                  for k in ("w3_off", "w3_stop", "w3_rearm")},
+        ack_timeout_s=WALK_ACK_TIMEOUT_S, sim_ref_note=WALK_SIM_REF_NOTE, internal_error=TRIAL.walk.broken,
+        sign_note="시뮬 규약: +vx 앞 · +vy 왼쪽 · +wz 왼쪽(반시계) 회전")
+    return out
 
 
 def act_analyze():
@@ -1367,11 +1667,9 @@ ACTIONS = {
         "bash", os.path.join(CALIB, "sensors_up.sh")]), "센서 기동"),
     # 0907: 체크포인트를 넘기지 않으면 브리지가 기본값(구 walk)을 **필수**로 로드해
     # 실패한다 — 젯슨 구 자산 정리로 walk 는 더 이상 배포되지 않는다. 드롭다운 기본값을 넘긴다.
-    "selftest":   (lambda p: act_gate("selftest", [
-        sys.executable, os.path.join(SCRIPTS, "rl_bridge_node.py"),
-        "--selftest", "--checkpoint",
-        (p.get("checkpoint") if p.get("checkpoint") in CKPT_CHOICES
-         else CKPT_DEFAULT)]), "브리지 셀프테스트"),
+    # 1007: 걷기 실험 키면 실험 플래그가 붙는다(헤딩 고리 off 는 빼고 — WALK_LIVE_ARGS 주석). 그 밖의 키는 종전 인자 그대로.
+    "selftest":   (lambda p: act_gate("selftest", bridge_selftest_argv(
+        p.get("checkpoint") if p.get("checkpoint") in CKPT_ALL else CKPT_DEFAULT)), "브리지 셀프테스트"),
     # 영점 재앵커 — 미리보기는 읽기 전용, 적용은 zero_anchor.py 가 자체 차단
     "zero_preview": (lambda p: RUN.start("zero", [
         sys.executable, os.path.join(SCRIPTS, "zero_anchor.py"),
@@ -1457,7 +1755,8 @@ STOPPABLE = {"stage8", "hang_stand", "bridge"}
 PAGE = Path(__file__).with_name("console_ui.html").read_text(encoding="utf-8")
 DEMO_SOURCE = None
 CONFIRM_ACTIONS = {"hang_stand", "gain_ramp", "ground", "handoff", "arm", "stand", "policy_on",
-                   "release", "support_confirm", "op_slack_done", "new_trial", "zero_multiple", "zero_recapture", "air_gait_on"}
+                   "release", "support_confirm", "op_slack_done", "new_trial", "zero_multiple", "zero_recapture", "air_gait_on",
+                   "w3_move", "w3_rearm"}   # 1007: 걷기 버튼(로봇이 실제로 걷는다)·재무장(정지 래치 해제). 걷기 끄기·정지 래치는 확인 없이 즉시
 
 
 def json_safe(value):
@@ -1489,12 +1788,20 @@ def console_snapshot():
         st["air_gait_req"] = None if DEMO else _read_air_gait()
         st["auto_level"] = dict(AUTO_LEVEL)
         st["level_pose_ref"] = None if DEMO else _level_pose_file_ref()   # 1005 정책 ON 선행조건(수평 자세 적용 확인)용
+        # 1007 걷기 조작: 걷기 모듈 적재 오류(선행조건용)와 그동안 받은 브리지 응답을 상태기에 넘긴다. 응답 원문은 타임라인에만 남긴다.
+        st["walk_error"] = WALK_IMPORT_ERROR
+        st["walk_ready"] = WALK_READY          # 브리지 켜기 문턱(양발 접촉·조용한 서기 연속 시간) — '서기 정착 대기' 표시용
+        acks = DEMO_SOURCE.drain_acks() if DEMO else TEL.drain_acks()
+        for item in acks:
+            SESSION.event("bridge_ack", recv=item.get("t"), ack=item.get("ack"))
+        TRIAL.walk.feed(acks)
         TRIAL.update(st)
         st["trial"] = TRIAL.snapshot()
         if BUSY:
             for key, item in st["trial"]["allowed"].items():
-                if key not in EVENTS | {"estop", "support_confirm"}:
+                if key not in EVENTS | {"estop", "support_confirm"} | WALK_SAFE:
                     item.update(enabled=False, reason="서버에서 앞 요청을 처리 중입니다")
+        st["walk"] = walk_view(st)
         for event in TRIAL.drain_events():
             SESSION.event("trial_event", **event)
         return json_safe(st)
@@ -1525,10 +1832,14 @@ def dispatch_action(payload):
             TRIAL.stop_delivery = {"ok": bool(ok), "message": msg}
             TRIAL.emit("stop_delivery", ok=bool(ok), message=msg)
         return 200, {"ok": bool(ok), "message": msg, "confirmed": False}
+    if action in WALK_SAFE:
+        # 1007 걷기 끄기·정지 래치: 안전 방향 — 아래의 boot_id·revision·BUSY·기록 게이트를 거치지 않는다(걷기 세션·브리지 실행만 확인).
+        return dispatch_walk_safe(action, payload)
 
     immediate = action in EVENTS | {"support_confirm", "configure", "new_trial", "force_reset", "session_start", "session_end",
                                     "joint_trim", "joint_trim_zero", "joint_trim_preset", "hold_kd", "air_gait_on", "air_gait_off", "auto_level_on", "auto_level_off"}
-    if not DEMO and not immediate:
+    walk_action = action in ("w3_move", "w3_rearm")     # 1007: 발행 전에 pgrep(최대 3 s)을 기다리지 않는다 — 프로세스 점검은 1 Hz 감시가 따로 한다
+    if not DEMO and not immediate and not walk_action:
         poll_processes()
     with STATE_LOCK:
         console_snapshot()
@@ -1545,16 +1856,31 @@ def dispatch_action(payload):
             return response
         if payload.get("revision") != TRIAL.revision:
             return 409, {"ok": False, "message": "다른 조작으로 단계가 바뀌었습니다. 현재 상태를 확인하고 다시 선택하세요"}
+        if action == "w3_move" and WALK_IMPORT_ERROR is None:
+            # 1007: 버튼 자체가 막힌 경우(모르는 이름·시뮬 평가에서 비활성)는 지금 상태와 무관한 이유라 먼저 알린다 — 화면을 우회한 호출도 여기서 거부
+            block = walk_move_block(payload.get("move"))
+            if block is not None:
+                return block[0], {"ok": False, "message": block[1]}
         reason = TRIAL.reason(action)
         if reason or (BUSY and action not in EVENTS | {"support_confirm"}):
             return 409, {"ok": False, "message": reason or "앞 요청 처리 중"}
         if action in CONFIRM_ACTIONS and payload.get("confirmed") is not True:
             return 400, {"ok": False, "message": "운영자의 명시 확인이 필요합니다"}
         if action == "configure":
-            if payload.get("mode") not in ("ground", "air") or payload.get("checkpoint") not in CKPT_CHOICES:
+            if payload.get("mode") not in ("ground", "air") or payload.get("checkpoint") not in CKPT_ALL:
                 return 400, {"ok": False, "message": "허용된 시험 방식·정책을 선택하세요"}
             if not payload["checkpoint"].startswith("stand"):
                 return 400, {"ok": False, "message": "이 콘솔은 기립 시험용입니다. 보행 정책은 별도 절차가 필요합니다"}
+            if payload["checkpoint"] in WALK_KEYS and payload["mode"] == "air":
+                # 1007: W3 키는 지면 시작 학습뿐이라 브리지가 hang_arm(공중 정책 시작)을 거부한다 — 시작이 조용히 막히기 전에 여기서 알린다
+                return 400, {"ok": False, "message": "걷기 실험 키는 '접지 후 정책 인계' 방식만 됩니다 — 브리지가 공중 정책 시작(hang_arm)을 거부합니다"}
+        if walk_action:
+            # 1007: 화면이 본 서버 시각(seen)이 오래됐으면 보내지 않는다 — 연결이 끊겼다 뒤늦게 도착한 요청으로 로봇이 걷지 않게.
+            seen = payload.get("seen")
+            age = now() - seen if finite(seen) else None
+            if age is None or not -1.0 <= age <= WALK_REQ_MAX_AGE_S:
+                return 409, {"ok": False, "message": "요청이 오래됐습니다" + (f"({age:.1f} s)" if age is not None else "(화면 시각 없음)")
+                             + " — 걷기 명령을 보내지 않았습니다. 현재 상태를 확인하고 다시 누르세요"}
         record_warning = ""
         try:
             if action != "session_end":
@@ -1572,6 +1898,12 @@ def dispatch_action(payload):
             REQUESTS.popitem(last=False)
         if action == "policy_on":
             result = start_policy_on(record_warning)
+            REQUESTS[request_id] = (fingerprint, result)
+            console_snapshot()
+            return result
+        if walk_action:
+            # 1007 걷기 버튼·재무장: 한 번만 발행하고 돌아온다. 같은 request_id 재전송은 위 REQUESTS 가 같은 응답으로 묶는다(재발행 없음).
+            result = dispatch_walk(action, payload, record_warning)
             REQUESTS[request_id] = (fingerprint, result)
             console_snapshot()
             return result
@@ -1602,6 +1934,7 @@ def dispatch_action(payload):
                     TEL.bridge_fault = None
                     TEL.d["bridge"] = None
                     TEL.t["bridge"] = 0
+                    TEL.acks.clear()      # 1007: 지난 시험의 걷기 응답을 새 시험으로 넘기지 않는다(걷기 상태기는 TrialState 와 함께 새로 생긴다)
                 # Preserve old process log objects; don't reuse their faults/readiness.
                 if not DEMO:
                     with RUN.lock:
@@ -1786,6 +2119,533 @@ def _policy_on_worker(trial):
         trial.emit("policy_on_armed", message="착지 대기 — 양발 착지 확인 뒤 정책 자동 시작")
         SESSION.event("policy_on_armed", trial=trial.number)
         console_snapshot()
+
+
+class WalkBench:
+    """걷기 패널 오프라인 시험대(콘솔 --selftest 와 tests/ 가 같이 쓴다). 콘솔을 DEMO 합성 브리지에 붙이고 가짜 시계로 돌린다.
+
+    합성 브리지(console_demo.DemoW3Bridge)의 판정은 실제 감독기·래치 클록(w3_deploy)이 한다. 요청은 전부 dispatch_action 을 지난다.
+    ROS·서브프로세스·실제 로그·실제 순번 파일(~/.w3_cmd_seq)을 쓰지 않는다. **계약·순서 검증이지 폐루프 성능 증명이 아니다.**
+    """
+    TICK = 0.05                 # 콘솔 샘플러와 같은 20 Hz
+
+    def __init__(self, directory, checkpoint):
+        from unittest.mock import patch
+        try:
+            from .console_demo import Demo
+        except ImportError:
+            from console_demo import Demo
+        self.t = 1_800_000_000.0
+        self.checkpoint = checkpoint
+        self.sent = []          # 콘솔이 브리지 명령 토픽에 발행한 것(순서대로) — '한 번만 발행' 확인용
+        self.demo = Demo(clock=lambda: self.t)
+        real = self.demo.bridge_cmd
+        self.demo.bridge_cmd = lambda cmd: (self.sent.append(json.loads(json.dumps(cmd))), real(cmd))[1]
+        self._patch = patch.dict(globals(), DEMO=True, DEMO_SOURCE=self.demo, TRIAL=TrialState(CKPT_DEFAULT, clock=lambda: self.t),
+                                 SESSION=SessionLog(), SESSION_DIR=os.path.join(directory, f"sessions-{uuid.uuid4().hex[:8]}"),
+                                 TEL=Telemetry(), RUN=Runner(), BUSY=False, REQUESTS=collections.OrderedDict(),
+                                 PROCESS_HEALTH={"ts": self.t, "external": [], "error": None}, now=lambda: self.t,
+                                 W3_SEQ_FILE=os.path.join(directory, "w3_seq"))
+
+    def __enter__(self):
+        self._patch.start()
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            SESSION.close("walk bench")
+        finally:
+            self._patch.stop()
+
+    def state(self):
+        return console_snapshot()
+
+    def walk(self):
+        return console_snapshot()["walk"]
+
+    def payload(self, action, **extra):
+        st = console_snapshot()
+        return {"action": action, "boot_id": st["trial"]["boot_id"], "revision": st["trial"]["revision"],
+                "request_id": uuid.uuid4().hex, "confirmed": True, "seen": st["server_time"], **extra}
+
+    def req(self, action, **extra):
+        return dispatch_action(self.payload(action, **extra))
+
+    def tick(self, seconds=None):
+        for _ in range(max(1, int(round((self.TICK if seconds is None else seconds) / self.TICK)))):
+            self.t += self.TICK
+            console_snapshot()
+
+    def until(self, pred, limit_s, what):
+        t0 = self.t
+        while not pred(console_snapshot()["walk"]):
+            assert self.t - t0 <= limit_s, f"{what}: {limit_s:g} s 안에 일어나지 않음 — {console_snapshot()['walk']['current']}"
+            self.tick()
+        return round(self.t - t0, 2)
+
+    def prepare(self, settle_s=1.5):
+        """설정 → 기존 단계별 절차를 정책 제어 시작까지 → 합성 감독기의 켜기 선행조건(양발 접촉·정착 연속 1.0 s)이 차도록 대기."""
+        code, res = self.req("configure", mode="ground", checkpoint=self.checkpoint)
+        assert code == 200 and res["ok"], (code, res)
+        for action in TRIAL.flow():
+            if action == "ground":
+                assert self.req("op_touchdown")[0] == 200
+            code, res = self.req(action)
+            self.tick()
+            assert code == 200 and res["ok"] and action in TRIAL.completed, (action, code, res, TRIAL.pending, TRIAL.fault)
+        self.tick(settle_s)
+
+    def timeline(self):
+        with open(os.path.join(SESSION.dir, "timeline.jsonl"), encoding="utf-8") as f:
+            return [json.loads(line) for line in f]
+
+    def walk_events(self):
+        return [r["event"] for r in self.timeline() if r.get("kind") == "trial_event" and str(r.get("event", "")).startswith("walk")]
+
+
+def selftest_walk(directory):
+    """1007 걷기 패널 오프라인 시험 → 결과 요약 줄 목록(실패는 AssertionError). 가짜 응답·디버그 입력으로 상태기의 전 경로를 지난다."""
+    from unittest.mock import patch
+    assert WALK_IMPORT_ERROR is None, f"걷기 모듈 적재 실패: {WALK_IMPORT_ERROR}"
+    W, out = _W3, []
+    stage = lambda bn: (bn.walk()["current"] or {}).get("stage")     # noqa: E731
+    VAL = ("label", "vx", "vy", "wz", "dur_s")
+
+    # ① 버튼 표 = 원본(W3_MOVES·공개 목록) · 비활성 버튼 = 원본의 enabled False(사유 포함) · 명령 JSON = 고정 프로토콜 · 실제 감독기 통과 · seq 단조
+    moves = walk_moves()
+    names = [n for row in walk_pad_rows() for n in row]
+    assert [m["name"] for m in moves] == list(W.W3_MOVES) and sorted(names) == sorted(W.W3_MOVES) and len(names) == len(set(names)), (names, list(W.W3_MOVES))
+    assert sorted(n for row in WALK_PAD for n in row) == sorted(W.W3_MOVES), "방향 패드 배치(WALK_PAD)와 원본 버튼 표의 이름이 어긋남"
+    assert walk_pad_rows() == [list(r) for r in WALK_PAD] and set(WALK_SIM_REF) <= set(W.W3_MOVES)
+    for m in moves:
+        src_m = W.W3_MOVES[m["name"]]
+        assert {k: m[k] for k in VAL} == {k: src_m[k] for k in VAL}, m
+        assert m["enabled"] is bool(src_m.get("enabled", True)) and m["why_disabled"] == src_m.get("why_disabled"), m
+        assert m["enabled"] or m["why_disabled"], f"비활성 버튼 {m['name']} 에 사유가 없음"
+    if callable(getattr(W, "w3_moves_public", None)):       # 원본에 공개 목록이 있으면 그것과 같은 내용이어야 한다(없는 판은 위 대체 경로)
+        assert moves == [{k: p.get(k) for k in ("name",) + VAL + ("enabled", "why_disabled")} for p in W.w3_moves_public()]
+    on, off = [m["name"] for m in moves if m["enabled"]], [m["name"] for m in moves if not m["enabled"]]
+    by_dur = sorted((m for m in moves if m["enabled"]), key=lambda m: m["dur_s"])
+    mv, mv_long = by_dur[0]["name"], by_dur[-1]["name"]         # 가장 짧은·가장 긴 활성 버튼(시나리오용 — 이름을 박아 두지 않는다)
+    mv_b, mv_c = [n for n in on if n not in (mv, mv_long)][:2]
+    assert by_dur[-1]["dur_s"] > WALK_ACK_TIMEOUT_S + 0.2, "응답 대기보다 긴 활성 버튼이 없어 '걷는 중 응답 없음' 시나리오를 만들 수 없음"
+    page = render_page()
+    assert "<!--WALK_PAD-->" not in page and page.count('data-walk="') == len(W.W3_MOVES)
+    for m in moves:
+        if m["enabled"]:
+            small = f"시뮬 {WALK_SIM_REF[m['name']]}" if m["name"] in WALK_SIM_REF else ""
+            assert f'<button data-walk="{m["name"]}" disabled><span>{html.escape(m["label"])}</span><small>{html.escape(small)}</small></button>' in page, m
+        else:
+            tip = html.escape("비활성 — " + str(m["why_disabled"]), quote=True)
+            assert f'<button data-walk="{m["name"]}" class="walkOff" title="{tip}" disabled><span>{html.escape(m["label"])}</span>' in page, m
+            blocked = walk_move_block(m["name"])
+            assert blocked and blocked[0] == 409 and "비활성" in blocked[1] and str(m["why_disabled"]) in blocked[1], blocked
+    assert walk_move_block("moonwalk")[0] == 400 and walk_move_block(None)[0] == 400 and all(walk_move_block(n) is None for n in on)
+    sup = W.W3Supervisor(cmd_limits=W.W3S3D_CMD_LIMITS)
+    for i in range(120):
+        sup.observe(100.0 + i * 0.02, (1.0, 1.0), (0.0, 0.0, 0.0), (0.0, 0.0, -1.0))
+    for i, n in enumerate(on):
+        cmd = walk_cmd_payload("move", f"rid-{i}", 1000 + i, n)
+        assert list(cmd) == ["cmd", "enable", "req_id", "seq", "heading_loop", "vx", "vy", "wz", "dur_s"], list(cmd)
+        assert cmd == dict({"cmd": "step", "enable": True, "req_id": f"rid-{i}", "seq": 1000 + i, "heading_loop": False},
+                           **{k: W.W3_MOVES[n][k] for k in ("vx", "vy", "wz", "dur_s")}), cmd
+        dec = sup.handle(json.loads(json.dumps(cmd)), 102.38, active=True, warmed=True, blend_done=True,
+                         ge_now=False, want_now=False, cmd_now=(0.0, 0.0, 0.0))
+        assert dec["accepted"] and dec["action"] == "set_want" and dec["dur_s"] == W.W3_MOVES[n]["dur_s"] and dec["hl"] is False, (n, dec)
+    for kind in ("off", "stop", "rearm"):            # 보조 명령은 참고 구현(w3_cmd.build)과 같은 JSON
+        ref, rid = _W3CMD.build(kind, 77)
+        assert walk_cmd_payload(kind, rid, 77) == ref, (kind, ref)
+    ref, rid = _W3CMD.build("on", 78, heading_loop=False, **{k: W.W3_MOVES[mv][k] for k in ("vx", "vy", "wz")})
+    mine = walk_cmd_payload("move", rid, 78, mv)
+    assert mine.pop("dur_s") == W.W3_MOVES[mv]["dur_s"] and mine == ref, (mine, ref)
+    with patch.dict(globals(), W3_SEQ_FILE=os.path.join(directory, "w3_seq_unit")):
+        s1, s2 = walk_next_seq(), walk_next_seq()
+        s3 = _W3CMD.next_seq(W3_SEQ_FILE, now_ms=1)      # 프로세스를 다시 띄우고 시계가 뒤로 가도 파일이 단조를 지킨다
+        assert s1 < s2 < s3, (s1, s2, s3)
+    rid = walk_req_id("turn_l", 2 ** 62)
+    assert 1 <= len(rid) <= 64 and rid.endswith(f"-turn_l-{2 ** 62}"), rid
+    out.append(f"① 버튼 표 = 원본 {len(names)} 항목(값·표시 이름 그대로, 활성 {len(on)}·비활성 {len(off)}"
+               + (f" [{', '.join(off)}] 서버 거부·사유 표시" if off else "") + f") · 공개 목록 {'있음' if callable(getattr(W, 'w3_moves_public', None)) else '없음(대체 경로)'}"
+               " · 켜기 JSON = 고정 프로토콜·실제 감독기 통과 · 끄기/정지/재무장 = w3_cmd.build · seq 단조 · req_id ≤ 64자")
+
+    # ② 브리지 기동 인자: 기존 키는 종전과 같다(live·selftest 게이트) · 걷기 키에만 실험 플래그 · 키·토픽 = 원본
+    script = os.path.join(SCRIPTS, "rl_bridge_node.py")
+    assert CKPT_CHOICES == ["stand_crouch_g12", "stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr_g21a_g24ra",
+                            "stand_c5krh_g21a_g24ra", "stand_crouch_g12_ema0", "stand_crouch_g11a"] and CKPT_DEFAULT == "stand_crouch_g12"
+    started = []
+    with patch.object(RUN, "start", side_effect=lambda key, argv, cwd=None: (started.append((key, list(argv))), (True, "mock"))[1]):
+        for k in CKPT_CHOICES:
+            assert bridge_extra_args(k, live=True) == [] == bridge_extra_args(k, live=False)
+            act_bridge_live({"checkpoint": k})
+            ACTIONS["selftest"][0]({"checkpoint": k})
+            assert started[-2:] == [("bridge", [sys.executable, script, "--live", "--checkpoint", k]),
+                                    ("selftest", [sys.executable, script, "--selftest", "--checkpoint", k])], (k, started[-2:])
+        for bad in ({}, {"checkpoint": "stand_v7"}):     # 선택지 밖 → 셀프테스트는 기본값(종전과 같음), 정책 로드는 거부
+            ACTIONS["selftest"][0](bad)
+            assert started[-1] == ("selftest", [sys.executable, script, "--selftest", "--checkpoint", CKPT_DEFAULT]), started[-1]
+        try:
+            act_bridge_live({"checkpoint": "stand_v7"})
+            raise AssertionError("선택지 밖 체크포인트로 브리지를 띄움")
+        except ValueError:
+            pass
+        # 걷기 키: 실험 플래그는 정책 로드·셀프테스트 게이트 양쪽, 헤딩 고리 off 는 정책 로드에만(브리지 selftest 의 고리 항목은 off 에서 실패한다)
+        expect = {W.W3S3D_CKPT_KEY: ["--experimental-w3"],
+                  "stand_kew3_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"]}
+        for k, flags in expect.items():
+            act_bridge_live({"checkpoint": k})
+            ACTIONS["selftest"][0]({"checkpoint": k})
+            assert started[-2:] == [("bridge", [sys.executable, script, "--live", "--checkpoint", k] + flags + ["--w3-heading-loop", "off"]),
+                                    ("selftest", [sys.executable, script, "--selftest", "--checkpoint", k] + flags)], (k, started[-2:])
+    src = Path(__file__).with_name("rl_bridge_node.py").read_text(encoding="utf-8")
+    kew3 = re.search(r'^KEW3_CKPT_KEY = "([A-Za-z0-9_]+)"', src, re.M)
+    assert kew3 and set(WALK_KEYS) == {W.W3S3D_CKPT_KEY, kew3[1]} == set(WALK_BRIDGE_ARGS) == set(expect) and WALK_CKPTS == list(WALK_KEYS)
+    assert WALK_KEYS[W.W3S3D_CKPT_KEY]["composite"] is False and WALK_KEYS[kew3[1]]["composite"] is True
+    assert all(k.startswith("stand") for k in WALK_KEYS) and not set(WALK_KEYS) & set(CKPT_CHOICES) and CKPT_ALL[:len(CKPT_CHOICES)] == CKPT_CHOICES
+    for flag in ("--experimental-w3", "--experimental-kew3", "--w3-heading-loop"):
+        assert f'ap.add_argument("{flag}"' in src, flag
+    for name, value in (("BRIDGE_ACK_TOPIC", BRIDGE_ACK_TOPIC), ("BRIDGE_CMD_TOPIC", BRIDGE_CMD_TOPIC), ("BRIDGE_DEBUG_TOPIC", BRIDGE_DEBUG_TOPIC)):
+        assert re.search(rf'^{name} = "([^"]+)"', src, re.M)[1] == value, name
+    for k in WALK_CKPTS:
+        assert f'<option value="{k}">{k} — {html.escape(WALK_KEYS[k]["label"])}</option>' in page and "걷기 실험" in WALK_KEYS[k]["label"], k
+    out.append(f"② 브리지 기동 인자: 기존 {len(CKPT_CHOICES)} 키 live·selftest 종전과 같음 · 걷기 키 {len(expect)} 개에만 실험 플래그(정책 로드에는 헤딩 고리 off 추가, 셀프테스트 게이트에는 없음) · 키·토픽 = w3_deploy·브리지 원본")
+
+    # ③ 텔레메트리(실제 경로): 응답은 순서대로 쌓였다가 한 번만 꺼내지고, 디버그의 w3·w3_sup·kew3 는 그대로 실린다(없으면 None)
+    tel = Telemetry()
+    with patch.dict(globals(), now=lambda: 5000.0):
+        tel.receive("bridge", {"timestamp": 5000.0, "live": True, "armed": True, "checkpoint": kew3[1], "cmd": [0.0, 0.0, 0.0],
+                               "w3": {"want": False, "ge": False, "ge_obs": 0.0, "u": 0.0, "f": 0.0},
+                               "w3_sup": {"last_seq": 7, "stop_latched": False, "latch_reason": None, "freeze": None},
+                               "kew3": {"mode": "ke", "block": None}, "guard_mode": "data"})
+        tel.receive("ack", {"req_id": "a", "accepted": True})
+        tel.receive("ack", {"req_id": "b", "accepted": False})
+        tel.receive("ack", "not a dict")
+        b = tel.view()["bridge"]
+        assert tel.view()["fresh"]["bridge"] and "ack" not in tel.view()["fresh"]
+    assert b["w3"]["want"] is False and b["w3_sup"]["last_seq"] == 7 and b["kew3"]["mode"] == "ke" and b["guard_mode"] == "data" and b["ts"] == 5000.0
+    assert [a["ack"]["req_id"] for a in tel.drain_acks()] == ["a", "b"] and tel.drain_acks() == []
+    plain = Telemetry()
+    with patch.dict(globals(), now=lambda: 5000.0):
+        plain.receive("bridge", {"timestamp": 5000.0, "live": True, "armed": True, "checkpoint": CKPT_DEFAULT})
+        pb = plain.view()["bridge"]
+    assert pb["w3"] is None and pb["w3_sup"] is None and pb["kew3"] is None and pb["guard_mode"] is None
+    with patch.dict(globals(), DEMO=False), patch.object(TEL, "publish", return_value=True) as publish:
+        assert walk_publish({"cmd": "stop", "req_id": "x", "seq": 1}) is True
+        publish.assert_called_once_with("bridge", {"cmd": "stop", "req_id": "x", "seq": 1})
+    # 끊긴(오래된) 디버그 프레임의 want 0·ge 0 은 '서 있음'의 근거가 아니다 — 신선할 때만 읽는다
+    probe = TrialState(kew3[1])
+    probe.view = {"fresh": {"bridge": False}, "bridge": dict(b), "received": {"bridge": 5000.0}}
+    assert probe.walk.bridge_status(probe)["standing"] is False and probe.walk.bridge_status(probe)["w3"] is None
+    probe.view = dict(probe.view, fresh={"bridge": True})
+    assert probe.walk.bridge_status(probe)["standing"] is True
+    probe.view = dict(probe.view, bridge=dict(b, kew3={"mode": "w3", "block": None}))
+    assert probe.walk.bridge_status(probe)["standing"] is False and probe.walk.bridge_status(probe)["walking"] is True
+    out.append("③ 텔레메트리: 응답 순서대로 1 회만 전달·비객체 무시 · 디버그 w3/w3_sup/kew3/guard_mode 그대로(걷기 세션이 아니면 None) · 끊긴 프레임은 서기 근거 아님 · 발행은 브리지 명령 토픽 1 회")
+
+    for key in WALK_CKPTS:
+        composite = WALK_KEYS[key]["composite"]
+        # ④ 수락 → 기한 종료(burst_end) → 서기 복귀. '수락됨'과 '서기 복귀 확인됨'은 다른 단계.
+        cmd_calls, real_move_cmd = [], W.w3_move_cmd
+        with WalkBench(directory, key) as bn, patch.object(
+                W, "w3_move_cmd", side_effect=lambda *a, **k: (cmd_calls.append((a, k)), real_move_cmd(*a, **k))[1]):
+            bn.prepare()
+            w = bn.walk()
+            assert w["available"] and w["session"] and w["guard_mode"] == "data" and w["profile"]["checkpoint"] == key, w
+            assert [x["name"] for x in w["buttons"]] == names and all(x["enabled"] is x["allowed"] is (x["name"] in on) for x in w["buttons"])
+            assert all({k: x[k] for k in VAL} == {k: W.W3_MOVES[x["name"]][k] for k in VAL} for x in w["buttons"])
+            assert all(x["sim_ref"] == (WALK_SIM_REF.get(x["name"]) if x["allowed"] else None) for x in w["buttons"]) and "실물 미확인" in w["sim_ref_note"]
+            code, res = bn.req("w3_move", move=mv)
+            assert code == 200 and res["ok"] and len(bn.sent) == 1, (code, res, bn.sent)
+            assert bn.sent[0] == walk_cmd_payload("move", bn.sent[0]["req_id"], bn.sent[0]["seq"], mv)
+            cur = bn.walk()["current"]
+            assert cur["stage"] == "walking" and cur["deadline"] is True and cur["stand_seen"] is None and not bn.walk()["available"], cur
+            walked = bn.until(lambda w: w["current"]["stage"] != "walking", 3.0, "기한 종료")
+            w = bn.walk()
+            assert w["current"]["stage"] == "ending" and w["current"]["end_by"] == "burst" and not w["available"], w["current"]
+            if composite:                             # 래치가 꺼져도(ge 0) 합성 러너가 KE 로 넘기기 전에는 '서기 복귀'가 아니다
+                bn.until(lambda w: w["bridge"]["ge"] is False, 2.0, "반주기 래치 해제")
+                w = bn.walk()
+                assert w["mode"] == "w3" and w["current"]["stage"] == "ending" and not w["bridge"]["standing"], w
+            settled = bn.until(lambda w: w["current"]["stage"] == "done", 5.0, "서기 복귀")
+            w = bn.walk()
+            assert w["bridge"]["standing"] and w["current"]["stand_seen"] and (w["mode"] == "ke") is composite and len(bn.sent) == 1, w
+            assert bn.walk_events() == ["walk_request", "walk_ack", "walk_burst_end", "walk_done"], bn.walk_events()
+            acks = [r["ack"] for r in bn.timeline() if r.get("kind") == "bridge_ack"]
+            assert [a.get("event") for a in acks] == [None, "burst_end"] and {a["req_id"] for a in acks} == {bn.sent[0]["req_id"]}
+            json.dumps(bn.state(), ensure_ascii=False, allow_nan=False)
+            # 서기 복귀 직후에는 브리지 켜기 조건(조용한 양발 서기 연속)이 차기 전이라 콘솔이 '정착 대기'로 잠가 둔다 → 차면 다시 열리고,
+            # 열린 직후의 켜기는 브리지(합성 감독기)도 수락한다 — 걷기 직후 연타가 브리지 거부로 끝나지 않는다
+            assert not w["available"] and ("정착 대기" in w["reason"] or "양발 접촉" in w["reason"]), w["reason"]
+            reopen = bn.until(lambda w: w["available"], 2.5, "서기 정착 뒤 버튼 다시 열림")
+            code, res = bn.req("w3_move", move=mv)
+            assert code == 200 and stage(bn) == "walking" and len(bn.sent) == 2, (code, res, bn.walk()["current"])
+            bn.until(lambda w: w["current"]["stage"] == "done", 6.0, "둘째 걷기의 서기 복귀")
+            assert bn.walk_events() == ["walk_request", "walk_ack", "walk_burst_end", "walk_done"] * 2 and len(bn.sent) == 2
+            # 콘솔은 원본 함수에 버튼 이름만 넘긴다 — 범위(limits)도, 평가 전용 우회 인자도 넘기지 않는다
+            assert cmd_calls and all(a == (mv,) and not k for a, k in cmd_calls), cmd_calls
+        out.append(f"④ {key}: {W.W3_MOVES[mv]['label']} 발행 1 회 → 수락(기한 확인) → {walked:.2f} s 뒤 브리지 기한 종료 → {settled:.2f} s 뒤 서기 복귀"
+                   + ("(ge 0 뒤에도 mode ke 전에는 미완료)" if composite else "") + f" · 타임라인 4 사건 · 정착 대기 {reopen:.2f} s 뒤 다시 열려 둘째 걷기도 수락")
+
+        # ⑤ 중복 클릭·진행 중 다른 버튼·새로고침
+        with WalkBench(directory, key) as bn:
+            bn.prepare()
+            p = bn.payload("w3_move", move=mv_long)
+            first, again = dispatch_action(p), dispatch_action(json.loads(json.dumps(p)))
+            assert first == again and first[0] == 200 and len(bn.sent) == 1, (first, again, bn.sent)
+            for move in (mv_long, mv_b):               # 새 요청 식별자로 같은 버튼·다른 버튼
+                code, res = bn.req("w3_move", move=move)
+                assert code == 409 and "진행 중" in res["message"] and len(bn.sent) == 1, (move, code, res)
+            code, res = bn.req("w3_rearm")
+            assert code == 409 and len(bn.sent) == 1, (code, res)
+            before = bn.walk()["current"]
+            fresh_page = json.loads(json.dumps(console_snapshot(), ensure_ascii=False, allow_nan=False))["walk"]   # 새로고침 = 새 /api/state
+            assert fresh_page["current"]["req_id"] == before["req_id"] and fresh_page["current"]["stage"] == "walking"
+            assert not fresh_page["available"] and not any(x["enabled"] for x in fresh_page["buttons"]) and fresh_page["controls"]["w3_off"]["enabled"]
+            bn.until(lambda w: w["current"]["stage"] == "done", 8.0, "서기 복귀")
+            assert len(bn.sent) == 1 and bn.walk()["current"]["req_id"] == before["req_id"]
+        # ⑥ 브리지 거부(이유 표시) → 다음 클릭은 새 seq
+        with WalkBench(directory, key) as bn:
+            bn.prepare(settle_s=0.2)                      # 정책 시작 직후: 콘솔이 먼저 '서기 정착 대기'로 거른다(브리지까지 가지 않는다)
+            code, res = bn.req("w3_move", move=mv)
+            assert code == 409 and "정착 대기" in res["message"] and bn.sent == [], (code, res)
+            bn.tick(1.5)
+            bn.demo.w3.gyro = (0.6, 0.0, 0.0)             # 콘솔이 볼 수 없는 이유로 브리지가 거부(합성 감독기에 넣는 각속도만 크게)
+            bn.tick(0.2)
+            code, res = bn.req("w3_move", move=mv)
+            cur = bn.walk()["current"]
+            assert code == 200 and cur["stage"] == "rejected" and cur["by"] == "bridge" and "정착 미달" in cur["why"], (code, cur)
+            assert bn.walk()["bridge"]["want"] is False and bn.walk_events() == ["walk_request", "walk_ack"]
+            bn.demo.w3.gyro = (0.02, 0.01, 0.0)
+            bn.tick(1.5)
+            code, res = bn.req("w3_move", move=mv)        # 거부된 순번은 소비됐다 — 다시 누르면 새 seq·새 req_id
+            assert stage(bn) == "walking" and bn.sent[1]["seq"] > bn.sent[0]["seq"] and bn.sent[1]["req_id"] != bn.sent[0]["req_id"]
+        # ⑦ 응답 없음: 재전송 없음 · 오래된/남의 응답 무시 · 디버그가 서기를 보일 때까지 차단
+        with WalkBench(directory, key) as bn:             # (a) 명령이 브리지에 닿지 않음
+            bn.prepare()
+            bn.demo.w3.deaf = True
+            code, res = bn.req("w3_move", move=mv)
+            assert code == 200 and stage(bn) == "sent"
+            TRIAL.walk.feed([{"t": bn.t, "ack": {"req_id": "con-old-fwd1-1", "cmd": "step", "accepted": True, "why": "지난 요청", "timestamp": bn.t}},
+                             {"t": bn.t, "ack": {"req_id": None, "cmd": "stand", "accepted": True, "why": "남의 응답", "timestamp": bn.t}}])
+            bn.tick(1.8)
+            assert stage(bn) == "sent" and not bn.walk()["available"]
+            bn.tick(0.3)
+            w = bn.walk()
+            assert w["current"]["stage"] == "no_ack" and "응답 없음" in w["current"]["stage_label"] and len(bn.sent) == 1, w["current"]
+            bn.tick(0.1)                                  # 시간 초과 '뒤'의 프레임이 서기를 보임 → 차단 해제(단계는 응답 없음 그대로)
+            w = bn.walk()
+            assert w["current"]["stage"] == "no_ack" and w["current"]["stand_seen"] and w["available"], w
+            bn.tick(5.0)
+            assert len(bn.sent) == 1 and "walk_no_ack" in bn.walk_events() and "walk_standing_confirmed" in bn.walk_events()
+        with WalkBench(directory, key) as bn:             # (b) 수락·기한 종료 응답이 둘 다 유실(로봇은 실제로 걷는다)
+            bn.prepare()
+            bn.demo.w3.drop_acks = 2
+            bn.req("w3_move", move=mv_long)
+            bn.tick(2.1)
+            w = bn.walk()
+            assert w["current"]["stage"] == "no_ack" and w["current"]["seen_walking"] and not w["current"]["stand_seen"], w["current"]
+            assert w["bridge"]["walking"] and not w["available"] and "응답 없음" in w["reason"], w
+            code, res = bn.req("w3_move", move=mv)
+            assert code == 409 and len(bn.sent) == 1, (code, res)
+            bn.until(lambda w: w["current"]["stand_seen"], 5.0, "서기 확인")
+            bn.until(lambda w: w["available"], 2.5, "서기 확인·정착 뒤 버튼 다시 열림")
+            w = bn.walk()
+            assert w["current"]["stage"] == "no_ack" and w["bridge"]["standing"] and len(bn.sent) == 1, w
+        with WalkBench(directory, key) as bn:             # (c) 수락 응답만 유실 → 같은 req_id 의 기한 종료 응답으로 수락을 확인
+            bn.prepare()
+            bn.demo.w3.drop_acks = 1
+            bn.req("w3_move", move=mv_long)
+            bn.tick(2.1)
+            assert stage(bn) == "no_ack"
+            bn.until(lambda w: w["current"]["stage"] == "ending", 1.5, "기한 종료 응답")
+            cur = bn.walk()["current"]
+            assert cur["late_ack"] and cur["accepted"] is True and cur["end_by"] == "burst" and "burst_end" in cur["note"], cur
+            bn.until(lambda w: w["current"]["stage"] == "done", 5.0, "서기 복귀")
+        with WalkBench(directory, key) as bn:             # (d) 기한 종료 응답만 유실 → 디버그의 last_burst_end 로 끝을 확인
+            bn.prepare()
+            bn.req("w3_move", move=mv)
+            bn.demo.w3.drop_acks = 1
+            bn.until(lambda w: w["current"]["stage"] == "ending", 2.0, "기한 종료(디버그)")
+            assert "디버그" in bn.walk()["current"]["note"] and bn.walk()["current"]["end_by"] == "burst"
+            bn.until(lambda w: w["current"]["stage"] == "done", 5.0, "서기 복귀")
+        with WalkBench(directory, key) as bn:             # (e) 수락됐는데 응답에 이 요청의 기한(burst)이 없다 → 경고, 끄기 응답 없이도 디버그로 끝을 본다
+            bn.prepare()
+            bn.demo.w3.deaf = True
+            bn.req("w3_move", move=mv)
+            TRIAL.walk.feed([{"t": bn.t, "ack": {"req_id": bn.sent[0]["req_id"], "seq": bn.sent[0]["seq"], "cmd": "step", "accepted": True,
+                                                "why": "켜기", "action": "set_want", "timestamp": bn.t, "sup": {"last_seq": bn.sent[0]["seq"]}}}])
+            bn.tick()
+            cur = bn.walk()["current"]
+            assert cur["stage"] in ("walking", "ending") and cur["deadline"] is False, cur
+            warned = [r["message"] for r in bn.timeline() if r.get("event") == "walk_ack"]
+            assert len(warned) == 1 and "기한(burst)을 걸지 않았습니다" in warned[0], warned
+            bn.until(lambda w: w["current"]["stage"] == "done", 2.0, "디버그로 본 걷기 끝·서기")
+            assert bn.walk()["current"]["end_by"] == "observed"
+        # ⑧ 정지 래치·재무장·걷기 끄기
+        with WalkBench(directory, key) as bn:
+            bn.prepare()
+            code, res = bn.req("w3_rearm")
+            assert code == 409 and "정지 래치가 없습니다" in res["message"] and bn.sent == [], (code, res)
+            code, res = bn.req("w3_stop")
+            assert code == 200 and res["ok"] and bn.sent[-1]["cmd"] == "stop", (code, res)
+            bn.tick(0.1)
+            w = bn.walk()
+            assert w["command"]["kind"] == "stop" and w["command"]["stage"] == "accepted" and w["bridge"]["stop_latched"] is True, w
+            assert not w["available"] and "정지 래치" in w["reason"] and not any(x["enabled"] for x in w["buttons"]) and w["controls"]["w3_rearm"]["enabled"]
+            n = len(bn.sent)
+            code, res = bn.req("w3_move", move=mv)
+            assert code == 409 and "정지 래치" in res["message"] and len(bn.sent) == n, (code, res)
+            assert bn.req("w3_rearm", confirmed=False)[0] == 400 and len(bn.sent) == n
+            code, res = bn.req("w3_rearm")
+            assert code == 200 and res["ok"] and bn.sent[-1]["cmd"] == "rearm", (code, res)
+            bn.tick(0.1)
+            w = bn.walk()
+            assert w["command"]["kind"] == "rearm" and w["command"]["stage"] == "accepted" and w["bridge"]["stop_latched"] is False and w["available"], w
+            bn.req("w3_move", move=mv_b)
+            bn.tick(0.3)
+            assert stage(bn) == "walking"
+            code, res = bn.req("w3_stop")                 # 걷는 중 정지 래치 → 이 걷기 버튼은 '중단'
+            bn.tick(0.1)
+            cur = bn.walk()["current"]
+            assert code == 200 and cur["stage"] == "interrupted" and "정지 래치" in cur["why"], cur
+            bn.until(lambda w: w["bridge"]["standing"], 5.0, "서기")
+            bn.tick(0.1)
+            assert bn.walk()["current"]["stand_seen"] and not bn.walk()["available"]
+        with WalkBench(directory, key) as bn:             # 기한 전 운영자 끄기 → 걷기 끝 요청됨 → 서기 복귀(뒤늦은 burst_end 없음)
+            bn.prepare()
+            bn.req("w3_move", move=mv_c)
+            bn.tick(0.5)
+            p = bn.payload("w3_off")
+            (code, res), again = dispatch_action(p), dispatch_action(json.loads(json.dumps(p)))
+            assert again == (code, res) and sum(1 for s in bn.sent if s.get("enable") is False) == 1, (code, res, again)   # 같은 요청의 재전송 = 한 번만 발행
+            bn.tick()
+            w = bn.walk()
+            assert code == 200 and w["command"]["kind"] == "off" and w["command"]["stage"] == "accepted", (code, w["command"])
+            assert w["current"]["stage"] == "ending" and w["current"]["end_by"] == "off", w["current"]
+            bn.until(lambda w: w["current"]["stage"] == "done", 5.0, "서기 복귀")
+            bn.tick(3.0)
+            assert not any(r["ack"].get("event") == "burst_end" for r in bn.timeline() if r.get("kind") == "bridge_ack")
+        # ⑨ 정지 요청(estop) → 중단 · 고장 래치 뒤에는 걷기·재무장 불가, 끄기는 여전히 가능
+        with WalkBench(directory, key) as bn:
+            bn.prepare()
+            bn.req("w3_move", move=mv_long)
+            bn.tick(0.5)
+            assert stage(bn) == "walking"
+            dispatch_action({"action": "estop"})
+            bn.tick()
+            cur = bn.walk()["current"]
+            assert cur["stage"] == "interrupted" and "정지" in cur["why"] and "walk_interrupted" in bn.walk_events(), cur
+            for action, extra in (("w3_move", {"move": mv}), ("w3_rearm", {})):
+                code, res = bn.req(action, **extra)
+                assert code == 409 and len(bn.sent) == 1, (action, code, res)
+            code, res = bn.req("w3_off")
+            assert code == 200 and res["ok"] and bn.sent[-1] == walk_cmd_payload("off", bn.sent[-1]["req_id"], bn.sent[-1]["seq"]), (code, res)
+        with WalkBench(directory, key) as bn:             # 브리지는 모르는 콘솔 쪽 고장 래치(센서 신선도 등)도 진행 중인 걷기 버튼을 '중단'으로 닫는다
+            bn.prepare()
+            bn.req("w3_move", move=mv_long)
+            bn.tick(0.3)
+            assert stage(bn) == "walking"
+            TRIAL.latch("sensor_stale(자가시험)")
+            cur = bn.walk()["current"]
+            assert cur["stage"] == "interrupted" and "sensor_stale(자가시험)" in cur["why"], cur
+            assert bn.walk()["bridge"]["walking"] and bn.req("w3_move", move=mv)[0] == 409 and len(bn.sent) == 1
+        # ⑩ 서버가 거르는 요청: 오래된 요청·확인 없음·모르는 버튼·공중 방식 — 아무것도 발행하지 않는다
+        with WalkBench(directory, key) as bn:
+            bn.prepare()
+            for mutate, want in ((lambda p: p.update(seen=bn.t - 30.0), 409), (lambda p: p.pop("seen"), 409),
+                                 (lambda p: p.update(confirmed=False), 400), (lambda p: p.update(move="moonwalk"), 400),
+                                 (lambda p: p.pop("move"), 400), (lambda p: p.update(boot_id="old"), 409)):
+                p = bn.payload("w3_move", move=mv)
+                mutate(p)
+                code, res = dispatch_action(p)
+                assert code == want and not res["ok"], (code, res)
+            assert bn.sent == [] and bn.walk()["current"] is None
+            assert bn.req("op_slack_done")[0] == 200       # 서기(무보조) 관찰 중 걷기 → 관찰 구간을 '걷기' 사유로 끝낸다
+            bn.tick(1.0)
+            assert TRIAL.measurement["state"] == "measuring"
+            bn.req("w3_move", move=mv)
+            m = TRIAL.measurement
+            assert m["state"] == "interrupted" and m.get("ended_by") == "walk" and "걷기" in m["reason"], m
+            assert "회수 필요" not in bn.state()["trial"]["phase"]
+        with WalkBench(directory, key) as bn:
+            code, res = bn.req("configure", mode="air", checkpoint=key)
+            assert code == 400 and "접지" in res["message"], (code, res)
+    out.append(f"⑤–⑩ 걷기 키 {len(WALK_CKPTS)} 개 각각: 중복 클릭·재전송 1 회 발행 · 진행 중 같은/다른 버튼 거부 · 새로고침 뒤 상태 유지 · 브리지 거부 사유 표시 뒤 새 seq · "
+               "응답 없음(재전송 없음·서기 확인까지 차단·남의 응답 무시·늦은 기한 종료 응답 수용·디버그로 끝 확인·기한 미확인 경고) · "
+               "정지 래치 중 거부·재무장·걷는 중 정지 래치 중단 · 걷기 끄기 · estop 중단 · 오래된 요청·확인 없음·모르는 버튼·공중 방식 거부 · 서기 관찰 종료 사유")
+
+    # ⑪ 걷기 키가 아닌 시험: 걷기 버튼·끄기·정지 래치·재무장 모두 거부, 발행 0
+    with WalkBench(directory, CKPT_DEFAULT) as bn:
+        bn.prepare()
+        w = bn.walk()
+        assert not w["session"] and not w["available"] and "걷기 실험 키가 아닙니다" in w["reason"] and w["profile"] is None, w
+        code, res = bn.req("w3_move", move=mv)
+        assert code == 409 and "걷기 실험 키" in res["message"], (code, res)
+        for action in ("w3_off", "w3_stop"):
+            code, res = bn.req(action)
+            assert code == 409 and "걷기 세션이 아닙니다" in res["message"], (action, code, res)
+        assert bn.req("w3_rearm")[0] == 409 and bn.sent == [] and bn.walk()["current"] is None
+        assert "walk" not in "".join(bn.walk_events())
+    out.append(f"⑪ 걷기 키가 아닌 시험({CKPT_DEFAULT}): 걷기 버튼·끄기·정지 래치·재무장 전부 거부(이유 표시) · 발행 0")
+
+    # ⑫ 비활성 버튼(원본 표의 enabled False): 화면에는 비활성 + 사유, 화면을 우회한 API 호출도 서버가 사유와 함께 거부, 다른 버튼은 그대로.
+    #    원본 표에 이미 비활성 버튼이 있으면 그것도 보고, 없어도 경로를 지나도록 활성 버튼 하나를 시험 동안만 비활성으로 바꿔 본다.
+    target, why = on[-1], "selftest 비활성 사유(시험 전용)"
+    with patch.dict(W.W3_MOVES[target], {"enabled": False, "why_disabled": why}):
+        with WalkBench(directory, WALK_CKPTS[-1]) as bn:
+            bn.prepare()
+            w = bn.walk()
+            btn = {x["name"]: x for x in w["buttons"]}
+            assert w["available"] and btn[target]["allowed"] is False and btn[target]["enabled"] is False, btn[target]
+            assert btn[target]["why_disabled"] == why and btn[target]["sim_ref"] is None
+            assert all(btn[n]["enabled"] and btn[n]["allowed"] for n in on if n != target)
+            for n, reason in [(target, why)] + [(n, str(W.W3_MOVES[n]["why_disabled"])) for n in off]:
+                code, res = bn.req("w3_move", move=n)
+                assert code == 409 and "비활성" in res["message"] and reason in res["message"], (n, code, res)
+                assert dispatch_walk("w3_move", {"move": n})[0] == 409         # 안쪽 함수만 불러도 나가지 않는다
+            assert bn.sent == [] and bn.walk()["current"] is None
+            tip = html.escape("비활성 — " + why, quote=True)
+            assert f'<button data-walk="{target}" class="walkOff" title="{tip}" disabled>' in render_page()
+            code, res = bn.req("w3_move", move=mv)                               # 활성 버튼은 그대로 나간다
+            assert code == 200 and res["ok"] and len(bn.sent) == 1 and stage(bn) == "walking", (code, res)
+    assert walk_move_block(target) is None                                      # 시험용 비활성은 되돌려졌다
+    out.append("⑫ 비활성 버튼: 화면 목록에 allowed false + 사유(참고 이동량 없음) · API 직접 호출 409 + 사유 · 발행 0 · 다른 버튼은 정상"
+               + (f" (원본 비활성 {', '.join(off)} 포함)" if off else " (원본에 비활성 버튼 없음 — 시험용으로 하나를 꺼서 확인)"))
+
+    # ⑬ 걷기 패널(실험 기능) 안의 예외는 가둔다: 걷기 버튼만 잠기고, 기립 시험의 상태 주기·고장 래치·다른 조작·걷기 끄기는 그대로다
+    with WalkBench(directory, WALK_CKPTS[0]) as bn:
+        bn.prepare()
+        with patch.object(type(TRIAL.walk), "update", side_effect=RuntimeError("자가시험용 상태기 오류")):
+            bn.tick(0.2)
+        w = bn.walk()
+        assert TRIAL.fault is None and not w["available"] and "내부 오류" in w["reason"] and "자가시험용 상태기 오류" in w["internal_error"], w
+        assert bn.req("w3_move", move=mv)[0] == 409 and bn.sent == [] and "walk_internal_error" in bn.walk_events()
+        assert bn.req("op_push")[0] == 200 and TRIAL.fault is None           # 기립 시험 쪽 조작·기록은 그대로
+        code, res = bn.req("w3_off")
+        assert code == 200 and res["ok"] and len(bn.sent) == 1, (code, res)  # 안전 방향 명령은 남는다
+        with patch.object(type(TRIAL.walk), "snapshot", side_effect=RuntimeError("자가시험용 표시 오류")):
+            state = console_snapshot()
+        assert state["walk"]["available"] is False and "내부 오류" in state["walk"]["reason"] and state["trial"]["fault"] is None
+        with patch.object(type(TRIAL.walk), "begin", side_effect=RuntimeError("자가시험용 발행 준비 오류")):
+            code, res = bn.req("w3_stop")
+        assert code == 500 and not res["ok"] and "재전송하지 않습니다" in res["message"] and len(bn.sent) == 1, (code, res)
+    out.append("⑬ 걷기 패널 내부 오류 가두기: 걷기 버튼만 잠금 + 오류 표시 · 시험 고장 래치 없음 · 다른 조작·걷기 끄기 정상 · 명령 처리 오류는 500 으로 알림(재전송 없음)")
+    return out
+
+
+def selftest_walk_report():
+    """콘솔 --selftest 가 부르는 걷기 패널 시험: 자기 임시 폴더에서 selftest_walk 를 돌리고 [PASS] 줄을 찍는다.
+    걷기 모듈을 못 불러온 배포에서는 시험을 건너뛰고 그 사실을 찍는다(걷기 조작만 사용 불가, 그 밖의 기능은 종전과 같다)."""
+    import contextlib
+    import io
+    if WALK_IMPORT_ERROR is not None:
+        print(f"[경고] 걷기 패널 시험 생략 — 걷기 모듈을 불러오지 못했습니다({WALK_IMPORT_ERROR}). 걷기 조작은 사용 불가, 그 밖의 기능은 종전과 같음")
+        return None
+    with tempfile.TemporaryDirectory(prefix="console-selftest-walk-") as directory:
+        with contextlib.redirect_stdout(io.StringIO()):      # 시험대가 여닫는 임시 세션의 안내 줄은 삼킨다(실패는 예외로 그대로 나온다)
+            lines = selftest_walk(directory)
+    for line in lines:
+        print(f"[PASS] 걷기 패널 {line}")
+    return lines
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -2018,6 +2878,7 @@ def _selftest_errlog():
 def selftest():
     """Small deployment smoke test. No ROS, subprocesses, markers or real logs."""
     from unittest.mock import patch
+    selftest_walk_report()       # 1007 걷기 패널(걷기 실험 키) 시험을 먼저 돌려 결과 줄을 찍는다 — 실패는 예외로 그대로 나온다
     with tempfile.TemporaryDirectory(prefix="console-selftest-") as directory:
         with patch.dict(globals(), SESSION_DIR=directory):
             recorder = SessionLog()
@@ -2115,7 +2976,7 @@ def selftest():
 
 
 def main():
-    global DEMO, DEMO_SOURCE, SESSION_DIR
+    global DEMO, DEMO_SOURCE, SESSION_DIR, W3_SEQ_FILE
     ap = argparse.ArgumentParser(description="실기 운영 콘솔 — 로컬 모의 확인은 --demo")
     ap.add_argument("--port", type=int, default=8800)
     ap.add_argument("--host", default="0.0.0.0")
@@ -2133,6 +2994,7 @@ def main():
         DEMO_SOURCE = Demo()
         a.host = "127.0.0.1"
         SESSION_DIR = tempfile.mkdtemp(prefix="humanoid-console-demo-")
+        W3_SEQ_FILE = os.path.join(SESSION_DIR, "w3_cmd_seq")     # 1007: 데모는 실제 순번 파일(~/.w3_cmd_seq)을 건드리지 않는다
         print(f"[DEMO] 실제 장비 연결 없음. 합성 시험 기록: {SESSION_DIR}", flush=True)
     else:
         TEL.start()

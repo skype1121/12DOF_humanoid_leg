@@ -194,6 +194,7 @@ parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토�
 parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
 parser.add_argument("--kw_unload", type=float, default=0.0, help="X18: 인계 뒤 링크마다 자기 무게의 이 비율(0–0.9)을 위로 받친다(부분지지의 이상화, 1 s 램프). --dist 와 함께 쓰지 않는다")
 parser.add_argument("--contact_pert", type=str, default="", help="X19: 접촉 관측 교란 'delay:N;flip:p;t0:x'(관측 비트만, 물리·채점 불변). '' = 끔")
+parser.add_argument("--kw_stand_exported", type=str, default="", help="G21h 평가 전용: 합성 러너의 서기 정책 폴더(exported_N — policy.pt/onnx 가 있는 곳). '' = 브리지 등록 그대로(G21a)")
 parser.add_argument("--air_det_hold", action="store_true", help="AIR1: 접지 확인(양발 접촉 0.3 s) 전에는 KE 회복 감지기 정지(서기 정책만) — C5Runner.det_hold")
 parser.add_argument("--air_contact_one", action="store_true", help="AIR1c 진단: --air_det_hold 와 함께 — 접지 확인 전에는 러너에 주는 접촉 비트를 (1, 1) 로 고정(정책 관측만, 물리·채점·접지 확인 판정 불변)")
 parser.add_argument("--air_start", type=str, default="", help="AIR1: 'clear:lo,hi;hold:T;rel:T' — 지지비 1.0·스폰 높이 +clear[m] 로 시작, 에피소드 시각 hold[s] 부터 rel[s] 에 걸쳐 지지 0. '' = 종전(지면 시작)")
@@ -1065,6 +1066,15 @@ if KWL:
     from rl_walking.deploy.kew3_runner import KeW3Runner as _KWR, MODE_W3 as _KW_MW3
     from rl_walking.deploy import w3_deploy as _W3D
     _BR.enable_experimental_w3()
+    if args_cli.kw_stand_exported:
+        _sx_new = os.path.abspath(args_cli.kw_stand_exported); _sx_old = _BR.CHECKPOINTS["stand_crouch_g21a"]
+        assert os.path.exists(os.path.join(_sx_new, "policy.pt")) or os.path.exists(os.path.join(_sx_new, "policy.onnx")), f"--kw_stand_exported: 정책 파일 없음 {_sx_new}"
+        assert os.path.exists(os.path.join(os.path.dirname(_sx_new), "params", "env.yaml")), f"--kw_stand_exported: 학습 env.yaml 없음(관측 필터 계약) {_sx_new}"
+        _sx_n = 0
+        for _sx_k, _sx_v in list(_BR.CHECKPOINTS.items()):
+            if _sx_v == _sx_old:
+                _BR.CHECKPOINTS[_sx_k] = _sx_new; _sx_n += 1
+        print(f"[runner_loop] ★ 서기 정책 덮어쓰기(평가 전용): {_sx_n} 키의 경로 {_sx_old} → {_sx_new} (키 이름은 G21a 그대로 — 실제 정책은 새 폴더)", flush=True)
     _KW_KEYS = ("stand_w3s3d_15800", "stand_c5kr_g21a_g24ra")
     if args_cli.kw_w3_export:
         _kwx_ = os.path.abspath(args_cli.kw_w3_export)

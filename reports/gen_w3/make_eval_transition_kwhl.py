@@ -319,4 +319,21 @@ rep("""            R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], ct[e])
                 R.ke.det_hold = not _AIR_DH["acq"][e]
             R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], (_npk.ones(2, dtype=_npk.float32) if (args_cli.air_contact_one and args_cli.air_det_hold and not _AIR_DH["acq"][e]) else ct[e]))
 """)
+# 1008 G21h 평가: 합성 러너의 **서기 정책 파일만** 바꿔 끼운다 — 브리지 키를 새로 만들기 전에 후보 체크포인트를 같은 러너 코드로 평가하려는 평가 전용 덮어쓰기.
+#   브리지 CHECKPOINTS 에서 G21a exported 경로를 가리키는 항목(서기·C5·합성 키가 같은 경로를 쓴다)을 전부 새 폴더로 바꾼다. 키 이름은 그대로라 기록에 덮어쓴 사실을 적는다.
+rep("""parser.add_argument("--air_det_hold", action="store_true",""", """parser.add_argument("--kw_stand_exported", type=str, default="", help="G21h 평가 전용: 합성 러너의 서기 정책 폴더(exported_N — policy.pt/onnx 가 있는 곳). '' = 브리지 등록 그대로(G21a)")
+parser.add_argument("--air_det_hold", action="store_true",""")
+rep("""    _KW_KEYS = ("stand_w3s3d_15800", "stand_c5kr_g21a_g24ra")""", """    if args_cli.kw_stand_exported:
+        _sx_new = os.path.abspath(args_cli.kw_stand_exported); _sx_old = _BR.CHECKPOINTS["stand_crouch_g21a"]
+        assert os.path.exists(os.path.join(_sx_new, "policy.pt")) or os.path.exists(os.path.join(_sx_new, "policy.onnx")), f"--kw_stand_exported: 정책 파일 없음 {_sx_new}"
+        assert os.path.exists(os.path.join(os.path.dirname(_sx_new), "params", "env.yaml")), f"--kw_stand_exported: 학습 env.yaml 없음(관측 필터 계약) {_sx_new}"
+        _sx_n = 0
+        for _sx_k, _sx_v in list(_BR.CHECKPOINTS.items()):
+            if _sx_v == _sx_old:
+                _BR.CHECKPOINTS[_sx_k] = _sx_new; _sx_n += 1
+        print(f"[runner_loop] ★ 서기 정책 덮어쓰기(평가 전용): {_sx_n} 키의 경로 {_sx_old} → {_sx_new} (키 이름은 G21a 그대로 — 실제 정책은 새 폴더)", flush=True)
+    _KW_KEYS = ("stand_w3s3d_15800", args_cli.kw_ke_key or "stand_c5kr_g21a_g24ra")
+    assert _KW_KEYS[1] in _BR.C5_PAIRS, f"--kw_ke_key: 브리지에 없는 KE 키 {_KW_KEYS[1]!r} (있는 것 {sorted(_BR.C5_PAIRS)})""")
+rep("""parser.add_argument("--kw_stand_exported", type=str, default="",""", """parser.add_argument("--kw_ke_key", type=str, default="", help="합성 러너의 KE 키(브리지 C5_PAIRS 에 등록된 것). '' = stand_c5kr_g21a_g24ra(종전). 새 서기 정책을 브리지에 등록한 뒤의 확인 실행용 — 덮어쓰기 없이 등록 그대로 쓴다")
+parser.add_argument("--kw_stand_exported", type=str, default="",""")
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 """robotctl — ssh 터미널에서 운영 콘솔(8800) API 로 로봇을 조작한다 (0915, 사진 촬영·무테더 운용용).
 
+표준 절차(1008 — 공중에서 인계):  robotctl prep  →  robotctl level  →  robotctl policy-on  →  (화면 '착지 대기' 뒤 지그 내림)  →  걷기는 콘솔 패널
+
 모든 명령은 콘솔 서버의 선행조건·허용 규칙을 그대로 통과한다(우회 없음). 버튼 대신 타이핑일 뿐이다.
 
   robotctl status            현재 상태 한 줄
-  robotctl config air|ground [CKPT]   시험 방식·정책 설정 (제어 시작 전; air = 접촉 게이트 대신 HangGuard — 왼발 패드 탈락 상태 권장)
+  robotctl config air|ground [CKPT]   시험 방식·정책 설정 (제어 시작 전). 1008: 고를 수 있는 정책은 합성 키 하나(기본값) — 그 밖의 키는 서버가 거부.
+                             air(공중 정책 시작 = hang_arm)는 남긴 정책에서 거부된다(지면 시작 학습 · 시뮬 AIR1 착지 실패 다수) → ground 만
   robotctl watch             1초마다 상태 (Ctrl-C 로 종료)
   robotctl motors            12모터 CAN 응답 일괄 점검(0토크 폴링, ~/rl_calib/ping_all.py) — 제어 스택이 살아 있으면 거부
   robotctl joints            12관절 실제각·명령·오차·신선도 표 (읽기 전용)
-  robotctl prep              CAN 준비 → 센서 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 (완료된 단계는 건너뜀)
+  robotctl prep [-y] [--no-hang]   CAN 준비 → 센서 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 → 공중 자세 유지 → 운용 게인(kp150)
+                             (완료된 단계는 건너뜀. 1008: hang 을 흡수 — 모터가 움직이기 직전에 한 번 묻는다 ※ 줄이 로봇을 지지해야 함.
+                              -y = 묻지 않음 · --no-hang = 모터를 움직이지 않는 준비 단계까지만)
   robotctl zero-fix          영점 배수 보정(전원 재투입 뒤 영점 확인이 '창 어긋남' 이면) → 다시 prep
   robotctl sensors           센서 기동/재기동(IMU·발 어댑터; 데이터가 신선하면 그대로, 멈췄으면 PID파일 소유 노드 정리 후 재기동)
   robotctl codes             프로세스 종료 코드 표(뜻·할 일)
   robotctl reset             강제 초기화: 가드 릴리즈·모터 전원 OFF 로 토크 해제 단계가 안 끝날 때(무토크 확인 뒤). 제어 프로세스 살아 있으면 거부
   robotctl zero-recap        영점 재캡처(지그 기준 자세에서, 시프트 0인데 잔차만 남았을 때; 12관절 앵커를 지금 읽기값으로 — 맵 자동 백업) → 다시 prep
-  robotctl hang [-y]         공중 자세 유지 시작 → 운용 게인(kp150)  ※ 줄이 로봇을 지지해야 함
+  robotctl hang [-y]         (1008: prep 에 흡수됨) 공중 자세 유지 → 운용 게인(kp150) 단계만 따로 실행  ※ 줄이 로봇을 지지해야 함
   robotctl level             수평 기준 자세(어제 캡처: 힙앞뒤 ±20.5·무릎 ±30·발목앞뒤 ±19)
   robotctl zero              에어 보행 정지 + 개별 조정 전부 0 = 매달림 기준(제로) 자세
   robotctl walk [-y] [--f 0.5 --hip 30 --hipext 12 --knee 30 --ankle 8]   공중 걷기(힙 앞뒤 스윙) 시작 (공중·kp150 에서만)
@@ -181,7 +186,13 @@ def cmd_prep(a):
             if action == "boot_pose":
                 print("   → 영점이 '창 어긋남'이면:  robotctl zero-fix   후 다시  robotctl prep  (지그로 기준 자세 정렬 확인)", flush=True)
             raise
-    print("✓ 준비 완료 → robotctl hang", flush=True)
+    if getattr(a, "no_hang", False):
+        print("✓ 준비 완료 (--no-hang: 공중 자세 유지는 시작하지 않음) → 이어서 하려면 robotctl prep", flush=True)
+        return
+    if not hang_phase(getattr(a, "yes", False)):
+        print("· 준비 단계까지만 완료 — 공중 자세 유지는 시작하지 않았습니다. 이어서 하려면 다시 robotctl prep", flush=True)
+        sys.exit(1)
+    print("✓ 준비 + 공중 자세 유지 완료(운용 게인) → robotctl level → robotctl policy-on", flush=True)
 
 
 def cmd_zero_fix(a):
@@ -232,16 +243,33 @@ def cmd_zero_recap(a):
         print("✓ 재캡처 완료 → robotctl prep (영점 확인 잔차 0 근처인지 확인)", flush=True)
 
 
-def cmd_hang(a):
-    if not confirm("줄이 로봇을 지지하고 다리 주변에 사람이 없나요? 모터가 공중 기준 자세로 움직입니다.", a.yes):
-        die("취소")
-    if not act("hang_stand"):
-        sys.exit(1)
-    wait_until(lambda st: (st.get("hang_hold") or {}).get("phase") == "에어유지", 60, "에어램프")
+def hang_phase(yes):
+    """공중 자세 유지 시작 → 운용 게인(kp150). prep 의 마지막 단계이자 hang 명령의 본문(1008: hang 을 prep 에 흡수).
+
+    콘솔 서버의 게이트·완료 판정을 그대로 쓴다(우회 없음). 이미 끝난 단계는 건너뛰고, 모터가 움직이기 전에 한 번 묻는다(-y 면 생략).
+    반환: True = 운용 게인 도달(또는 이미 완료), False = 운영자가 확인에서 취소(아무것도 보내지 않음)."""
+    done = state()["trial"].get("completed", [])
+    if "hang_stand" in done and "gain_ramp" in done:
+        print("· 공중 자세 유지·운용 게인: 이미 완료", flush=True)
+        return True
+    if not confirm("줄이 로봇을 지지하고 다리 주변에 사람이 없나요? 모터가 공중 기준 자세로 움직입니다.", yes):
+        return False
+    if "hang_stand" not in done:
+        print("▶ 공중 자세 유지 시작", flush=True)
+        if not act("hang_stand"):
+            sys.exit(1)
+        wait_until(lambda st: (st.get("hang_hold") or {}).get("phase") == "에어유지", 60, "에어램프")
     print("▶ 운용 게인 kp150", flush=True)
     if not act("gain_ramp"):
         sys.exit(1)
     wait_until(lambda st: (st.get("hang_hold") or {}).get("kp", 0) >= 150, 30, "게인램프")
+    return True
+
+
+def cmd_hang(a):
+    """1008: prep 에 흡수됨 — 남겨 둔 것은 준비 단계가 이미 끝난 상태에서 공중 자세 유지만 다시 걸 때를 위해서다(prep 도 같은 일을 한다)."""
+    if not hang_phase(a.yes):
+        die("취소")
     print("✓ 운용 게인 도달 → level / walk / zero / kd / trim 가능", flush=True)
 
 
@@ -461,7 +489,9 @@ def main():
     sub.add_parser("watch").set_defaults(fn=cmd_watch)
     sub.add_parser("motors").set_defaults(fn=cmd_motors)
     sub.add_parser("joints").set_defaults(fn=cmd_joints)
-    sub.add_parser("prep").set_defaults(fn=cmd_prep)
+    s = sub.add_parser("prep"); s.add_argument("-y", dest="yes", action="store_true")
+    s.add_argument("--no-hang", dest="no_hang", action="store_true", help="모터를 움직이지 않는 준비 단계까지만(공중 자세 유지 생략)")
+    s.set_defaults(fn=cmd_prep)
     s = sub.add_parser("zero-fix"); s.add_argument("-y", dest="yes", action="store_true"); s.set_defaults(fn=cmd_zero_fix)
     sub.add_parser("sensors").set_defaults(fn=cmd_sensors)
     sub.add_parser("codes").set_defaults(fn=cmd_codes)

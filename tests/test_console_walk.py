@@ -156,13 +156,41 @@ def test_walk_keys_are_the_1007_pair_plus_the_requiet_composite_key():
         assert c.bridge_selftest_argv(key)[2:] == ["--selftest", "--checkpoint", key] + flags
     for key in c.CKPT_CHOICES:                                  # 기존 선택지의 기동 인자는 그대로(실험 플래그 없음)
         assert c.bridge_live_argv(key)[2:] == ["--live", "--checkpoint", key] and c.bridge_selftest_argv(key)[2:] == ["--selftest", "--checkpoint", key]
-    assert c.CKPT_ALL == c.CKPT_CHOICES + list(old) + list(new) and c.CKPT_DEFAULT == "stand_crouch_g12"
-    # 드롭다운: 기존 선택지(값 속성 없는 option) 뒤에 걷기 키 3 개가 이 순서로 — 새 키는 맨 뒤
+    assert c.CKPT_ALL == c.CKPT_CHOICES + list(old) + list(new)      # 콘솔이 기동 인자를 아는 키(고를 수 있는 키가 아니다 — 아래 메뉴 시험)
+
+
+def test_policy_menu_is_the_single_composite_key():
+    """1008 승윤님 지시(안 쓰는 정책 정리): 고를 수 있는 정책 = 합성 키 하나. 드롭다운·기본값·시험 설정·정책 로드·계약 검사가 모두 그 키만 받는다."""
+    keep = "stand_kew3q_g21a_g24ra_w3s3d15800"
+    assert c.CKPT_MENU_KEYS == (keep,) and c.CKPT_MENU == [keep] and c.CKPT_DEFAULT == keep and c.TRIAL.checkpoint == keep
     page = c.render_page()
-    assert re.findall(r'<option value="(stand[A-Za-z0-9_]*)">', page) == list(old) + list(new)
-    for key in {**old, **new}:
-        assert f'<option value="{key}">{key} — {html.escape(cs.WALK_KEYS[key]["label"])}</option>' in page
-    assert page.index("".join(f"<option>{k}</option>" for k in c.CKPT_CHOICES)) < page.index('<option value="stand_w3s3d_15800">')
+    assert re.findall(r'<option value="(stand[A-Za-z0-9_]*)">', page) == [keep]
+    assert f'<option value="{keep}">{keep} — {html.escape(cs.WALK_KEYS[keep]["label"])}</option>' in page
+    assert not any(f"<option>{k}</option>" in page or f'<option value="{k}">' in page for k in c.CKPT_ALL if k != keep)
+    assert c.ckpt_menu_reason(keep) is None
+    for k in c.CKPT_ALL:
+        if k != keep:
+            assert "정리된 정책" in c.ckpt_menu_reason(k), k
+            with pytest.raises(ValueError, match="정리된 정책"):
+                c.act_bridge_live({"checkpoint": k})
+    assert c.ckpt_menu_reason("stand_v7") == "허용되지 않은 체크포인트입니다" and c.ckpt_menu_reason(None) == "허용되지 않은 체크포인트입니다"
+    started = []
+    with patch.object(c.RUN, "start", side_effect=lambda key, argv, cwd=None: (started.append((key, list(argv))), (True, "mock"))[1]):
+        c.act_bridge_live({})                                            # 키를 안 주면 남긴 정책
+        c.ACTIONS["selftest"][0]({"checkpoint": "stand_crouch_g12"})     # 정리된 키를 줘도 계약 검사는 남긴 정책으로
+    flags = ["--experimental-w3", "--experimental-kew3"]
+    assert [a[1][2:] for a in started] == [["--live", "--checkpoint", keep] + flags + ["--w3-heading-loop", "off"], ["--selftest", "--checkpoint", keep] + flags]
+
+
+def test_policy_menu_never_falls_back_to_an_old_policy_when_walk_module_is_missing():
+    """걷기 모듈을 못 불러오면 메뉴가 빈다 — 옛 서기 정책으로 조용히 넘어가지 않고 정책 로드·계약 검사가 사유를 대며 거부한다."""
+    with patch.object(c, "WALK_IMPORT_ERROR", "ImportError: 시험"), patch.object(c, "CKPT_MENU", []):
+        assert "걷기 모듈" in c.ckpt_menu_reason(c.CKPT_DEFAULT)
+        with patch.object(c.RUN, "start", side_effect=AssertionError("띄우면 안 됨")):
+            for call in (lambda: c.act_bridge_live({}), lambda: c.ACTIONS["selftest"][0]({})):
+                with pytest.raises(ValueError, match="걷기 모듈"):
+                    call()
+        assert not re.findall(r'<option value="(stand[A-Za-z0-9_]*)">', c.render_page())      # 드롭다운은 비고, 페이지는 만들어진다
 
 
 def test_sim_reference_of_the_requiet_key_equals_what_the_first_composite_key_shows(tmp_path):

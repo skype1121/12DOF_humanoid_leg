@@ -68,7 +68,7 @@ ENTRY_TOOL = ["jetson/scripts/robotctl.py", "jetson/scripts/w3_cmd.py", "jetson/
 #: 오프라인 단위 시험 — 글로브(추적 파일만). 새 시험 파일이 이 무늬에 맞으면 자동으로 들어간다(예: tests/test_console_walk*.py).
 #: 젯슨 게이트가 실제로 돌리는 것은 배포 스크립트의 selftest 목록에 적힌 것뿐이다 — 여기는 "파일을 싣는다"까지.
 TEST_GLOBS = ["tests/test_stage8_*.py", "tests/test_latency_check.py", "tests/test_dof12_mapping_cache.py",
-              "tests/test_operator_console.py", "tests/test_console_*.py", "tests/test_startup_simplify_bridge.py"]
+              "tests/test_operator_console.py", "tests/test_console_*.py", "tests/test_startup_simplify_bridge.py", "tests/test_robotctl.py"]
 #: 배포 뒤 젯슨에서 돌릴 러너 동치 확인(로컬 torch 기준 ↔ 젯슨 onnxruntime) — 허용 폴더 밖이라 이 두 경로만 명시로 허용한다. 있으면 싣는다.
 PARITY_FILES = ["reports/night_1007/jetson_parity.py", "reports/night_1007/jetson/parity_ref.npz"]
 SYNC_GLOBS = ["jetson/scripts/*.py", "jetson/scripts/*.sh", "jetson/scripts/*.html", "rl_walking/__init__.py", "rl_walking/deploy/*.py",

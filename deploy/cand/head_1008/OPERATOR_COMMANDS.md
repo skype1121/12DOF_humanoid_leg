@@ -5,6 +5,20 @@
 > `reports/gen_w3/REAL_TEST1_PLAN.md`(v1.1), `reports/gen_w3/ANOMALY_CARD.md`, `reports/W3_BRIDGE_FLAG_1006.md` §3·§9·§10, `reports/gen_w3/KEW3_DESIGN.md` §8.
 > 표기: **[실물 미검증]** = 시뮬·오프라인 검증만 있음 · **[결정]** = 사용자 결정 항목 · **[추가 예정]** = 다른 작업에서 구현 중.
 
+## 0-1. 1008 오전 변경(승윤님 지시) — 아래 본문보다 이 절이 우선한다
+
+- **고를 수 있는 정책은 하나다**: `stand_kew3q_g21a_g24ra_w3s3d15800`(서기 KE + 걷기 W3 합성 + 갇힘 해소 = 시뮬에서 평가한 구성 · 실물 미검증). 콘솔 드롭다운·기본값이 이 키다.
+  그 밖의 키(§2 표의 7 개, `stand_w3s3d_15800`, `stand_kew3_…`)는 **정리됐다** — 화면에 없고, `robotctl config … <키>`·API 로 줘도 서버가 "정리된 정책입니다"로 거부한다.
+  브리지의 정책 등록과 정책 파일은 그대로 남아 있다(과거 기록 재생·selftest 용). 다시 올리려면 `operator_console.py` 의 `CKPT_MENU_KEYS` 에 키를 더한다.
+- **`robotctl prep` 이 `hang` 을 흡수했다**: `robotctl prep` 한 번 = CAN 준비 → 센서 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 → **공중 자세 유지 → 운용 게인(kp150)**.
+  모터가 움직이기 직전에 한 번 묻는다("줄이 로봇을 지지하고 다리 주변에 사람이 없나요?"). `-y` = 묻지 않음, `--no-hang` = 모터를 움직이지 않는 준비 단계까지만.
+  완료된 단계는 건너뛴다. `robotctl hang` 은 같은 일을 하는 별칭으로 남아 있다.
+- **인계는 공중에서 한다 — 절차**: `robotctl prep` → `robotctl level` → `robotctl policy-on` → 화면이 "착지 대기"를 보이면 지그를 내린다.
+  제어 인계·기준점·ARM·정책 로드는 공중에서 끝나고, **정책은 양발 착지 확인 뒤에 시작한다**(§2 의 '정책 ON').
+- **정책을 공중에서부터 돌리는 방식(`config air` = `hang_arm`)은 남긴 정책에서 거부된다.** 세 정책 모두 지면 시작으로만 학습됐고, 1008 시뮬 대조평가(AIR1 — `reports/gen_w3/AIR_START_1008.md`)에서
+  공중에서 구동한 채 내리면 착지 뒤 하중을 받는 구간에서 다수가 주저앉았다(대조인 "홀드로 착지 뒤 인계"는 거의 선다). 공중 구동을 쓰려면 매달림 시작을 넣은 새 학습이 먼저다.
+- 주의: 착지 확인은 **양발 접촉 비트**로 한다. 한쪽 패드 신호가 0 이면 정책이 시작되지 않는다(착지 대기 상한 120 s 뒤 동결) — 걷기 전 패드 점검(특히 왼발)이 필수인 이유다.
+
 ## 0. 먼저 알아 둘 것
 
 - **걷기(T2 이상)와 충격형 밀기는 선행조건 P0 가 풀리기 전에는 보류 권고**(REAL_TEST1_PLAN v1.1): 회복 동작 중 발목 롤 드라이버(모터 6·12)가 동시에
@@ -21,8 +35,8 @@
 |---|---|
 | 콘솔 | `http://<젯슨>:8800` (systemd `operator-console.service`, 상시). 터미널에서는 `python3 ~/humanoid_repo/jetson/scripts/robotctl.py status` |
 | 상태 한 줄 / 계속 보기 | `robotctl status` · `robotctl watch` |
-| 준비(완료된 단계는 건너뜀) | `robotctl prep` = CAN 준비 → 센서 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 |
-| 정책·시험 방식 설정 | 콘솔 드롭다운 또는 `robotctl config air|ground [키]` (제어 시작 전) |
+| 준비(완료된 단계는 건너뜀) | `robotctl prep [-y] [--no-hang]` = CAN 준비 → 센서 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 → 공중 자세 유지 → 운용 게인(1008: `hang` 흡수 — 모터가 움직이기 전 한 번 묻는다) |
+| 정책·시험 방식 설정 | 정책은 하나라 고를 것이 없다(§0-1). `robotctl config ground` 만 받는다 — `air` 는 남긴 정책에서 거부 |
 | 비상정지 | 콘솔 **정지 요청**(항상 눌린다 — 브리지 estop + stage8 STOP_ALL 동시) 또는 `robotctl estop` |
 | 기록 | 세션 `~/logs/sessions/session_*/timeline.jsonl`(20 Hz) · 브리지 블랙박스 `~/logs/rl_bridge_*.jsonl`(live 일 때) · 영상 2 대 |
 | 사후 판정 | `python3 jetson/scripts/analyze_fall.py <블랙박스>` |
@@ -38,7 +52,9 @@ stage8 : python3 ~/humanoid_repo/jetson/scripts/stage8_12axis_mit_control_node.p
 
 ## 2. 세션 A — 서기·회복 (콘솔에서, 종전과 같음)
 
-드롭다운 키(콘솔 `CKPT_CHOICES`, 첫 항목이 기본값):
+**1008: 아래 표의 키는 전부 정리됐다(고를 수 없음 — §0-1).** 기록을 위해 남겨 둔다. 지금의 서기·회복은 합성 키의 KE 모드가 맡는다(§4).
+
+드롭다운 키(1008 전의 콘솔 `CKPT_CHOICES`):
 
 | 키 | 내용 | 비고 |
 |---|---|---|
@@ -53,8 +69,8 @@ stage8 : python3 ~/humanoid_repo/jetson/scripts/stage8_12axis_mit_control_node.p
 
 1. 단계별(종전): CAN 준비 → 센서 기동 → 영점 확인 → 정책 계약 검사 → 인수 제어기 준비 → 공중 자세 유지 시작 → 운용 게인으로 전환 →
    접지 확인 → 제어 인계 → 기준점 확인 → 제어기 ARM → 선택 정책 로드 → 정책 제어 시작.
-   터미널: `robotctl prep` → `robotctl hang` → `robotctl level` → (착지) → `robotctl ground` → `robotctl handoff` → `robotctl stand`.
-2. **'정책 ON(착지 자동 인수)' [실물 미검증 — 이번 배포로 처음 젯슨에 올라간다]**: 운용 게인(kp150)의 **공중** 수평 자세에서 한 번 누르면 콘솔이
+   터미널: `robotctl prep`(1008: 공중 자세 유지·운용 게인까지 포함) → `robotctl level` → (착지) → `robotctl ground` → `robotctl handoff` → `robotctl stand`.
+2. **'정책 ON(착지 자동 인수)' [실물 미검증] — 1008: 이것이 표준 절차다(공중에서 인계)**: 운용 게인(kp150)의 **공중** 수평 자세에서 한 번 누르면 콘솔이
    접지 마커 → 인계 → 기준점 → ARM → 정책 로드 → `stand`(`touchdown_start`)를 기존 게이트·응답 확인으로 순서대로 실행한다(하나라도 실패하면 멈추고 고장 래치).
    브리지는 **양발 접촉 0.3 s + 정착(|ω_xy| < 0.3 rad/s 0.1 s, 상한 1.0 s) 전에는 정책을 계산하지 않고** stage8 이 내던 수평 홀드 명령을 그대로 보낸다.
    화면이 "착지 대기 · 수평 자세 홀드(정책 미구동)"를 표시한 뒤에 지그를 내린다. 터미널: `robotctl policy-on`.

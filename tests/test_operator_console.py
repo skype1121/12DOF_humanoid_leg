@@ -51,8 +51,16 @@ class ConsoleTests(unittest.TestCase):
         self.assertTrue(response["ok"], (action, response))
         c.console_snapshot()
 
-    def prepare(self, mode="ground", until="stand"):
-        self.step("configure", mode=mode, checkpoint=c.CKPT_DEFAULT)
+    #: 1008: 콘솔 메뉴에 남은 정책(합성 키)은 공중 정책 시작(hang_arm)을 받지 않는다. 공중 방식의 콘솔 경로(코드는 그대로 남아 있다)는
+    #: 메뉴를 시험용으로 바꿔 정리된 서기 키로 계속 고정한다.
+    AIR_KEY = "stand_crouch_g12"
+
+    def use_air_key(self):
+        p = patch.object(c, "CKPT_MENU", [self.AIR_KEY]); p.start(); self.addCleanup(p.stop)
+        return self.AIR_KEY
+
+    def prepare(self, mode="ground", until="stand", checkpoint=None):
+        self.step("configure", mode=mode, checkpoint=checkpoint or c.CKPT_DEFAULT)
         for action in self.trial.flow():
             if action == "ground" and mode == "ground":
                 self.step("op_touchdown")
@@ -68,8 +76,23 @@ class ConsoleTests(unittest.TestCase):
         self.assertIsNone(self.trial.slack_at)
         self.assertEqual(c.console_snapshot()["bridge"]["loaded_checkpoint"], c.CKPT_DEFAULT)
 
+    def test_kept_policy_refuses_air_policy_start(self):
+        """1008: 남긴 정책(합성 키)은 지면 시작으로만 학습·평가됐다 — 공중 정책 시작 설정은 서버가 사유를 대고 거부한다(AIR1 시뮬: 착지 낙상 다수)."""
+        code, res = self.request("configure", mode="air", checkpoint=c.CKPT_DEFAULT)
+        self.assertEqual(code, 400, res)
+        self.assertIn("공중 정책 시작", res["message"])
+        self.assertEqual(self.trial.mode, "ground")
+        self.step("configure", mode="ground", checkpoint=c.CKPT_DEFAULT)
+
+    def test_cleaned_up_policies_are_refused_by_the_server(self):
+        for key in ("stand_crouch_g12", "stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800"):
+            code, res = self.request("configure", mode="ground", checkpoint=key)
+            self.assertEqual(code, 400, (key, res))
+            self.assertIn("정리된 정책", res["message"])
+            self.assertEqual(self.trial.checkpoint, c.CKPT_DEFAULT)
+
     def test_air_flow_no_contact_until_touchdown(self):
-        self.prepare("air")
+        self.prepare("air", checkpoint=self.use_air_key())
         self.assertEqual(self.demo.contact, [False, False])
         self.assertEqual(self.request("op_slack_done")[0], 409)
         self.step("op_touchdown")
@@ -222,10 +245,11 @@ class ConsoleTests(unittest.TestCase):
         self.assertEqual(self.request("configure", mode="air", checkpoint=c.CKPT_DEFAULT)[0], 409)
 
     def test_selected_checkpoint_cannot_be_overridden_by_stand_request(self):
-        self.prepare(mode="air", until="bridge")
+        key = self.use_air_key()
+        self.prepare(mode="air", until="bridge", checkpoint=key)
         with patch.object(self.demo, "act", wraps=self.demo.act) as execute:
             self.step("stand", checkpoint="stand_v7", hang_arm=False)
-            execute.assert_called_once_with("stand", {"checkpoint": c.CKPT_DEFAULT, "hang_arm": True})
+            execute.assert_called_once_with("stand", {"checkpoint": key, "hang_arm": True})
 
     def test_command_acceptance_does_not_complete_stage(self):
         self.step("can_up")

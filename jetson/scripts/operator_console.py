@@ -94,7 +94,12 @@ BRIDGE_JOINT_FRESH_SEC = 0.2  # rl_bridge_node.SENSOR_STALE_SEC 와 동일 — '
 # 1003 승윤님 결정(배포 시): 교대 진단의 G12 = v2 그대로(1002 실물과 같은 동작) → 기본값(맨 앞) 유지. G21a = 학습 관측 필터 계약(진단 전용, 승격 아님).
 #   stand_crouch_g12_ema0(학습 관측 계약) 은 선택지로만 둔다.
 CKPT_CHOICES = ["stand_crouch_g12", "stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra", "stand_crouch_g12_ema0", "stand_crouch_g11a"]   # 1004: C5(G21a+G24R-a 전환) 구조 진단 선택지
-CKPT_DEFAULT = CKPT_CHOICES[0]
+# 1008 승윤님 지시: 안 쓰는 정책은 다 정리한다 — **고를 수 있는 정책은 합성 키 하나**(서기 KE + 걷기 W3 + 갇힘 해소 = 시뮬에서 평가한 구성).
+#   화면 드롭다운·기본값·시험 설정·정책 로드·계약 검사가 받는 키 = CKPT_MENU(아래) 뿐이다. 그 밖의 키는 서버가 거부한다.
+#   위 CKPT_CHOICES 와 걷기 키 목록은 "콘솔이 기동 인자를 아는 키"로만 남긴다(0929 와 같은 방식: 브리지 CHECKPOINTS 등록·정책 파일은 그대로 —
+#   과거 기록 재현·selftest 용. 고를 수는 없다). 다시 늘리려면 CKPT_MENU_KEYS 에 키를 더한다.
+CKPT_MENU_KEYS = ("stand_kew3q_g21a_g24ra_w3s3d15800",)
+CKPT_DEFAULT = CKPT_MENU_KEYS[0]
 
 # 1007 걷기 실험 키(콘솔 걷기 조작 패널) — 기본 선택지(CKPT_CHOICES)·기본값은 그대로 두고 **뒤에** 덧붙인다.
 #   키 목록 = console_state.WALK_KEYS(selftest 가 w3_deploy·브리지 원본과 대조). 브리지는 아래 실험 플래그를 붙여야만 이 키를 등록한다
@@ -113,6 +118,19 @@ WALK_LIVE_ARGS = ["--w3-heading-loop", "off"]
 #: 걷기 모듈을 못 불러왔으면 걷기 키를 선택지에 올리지 않는다(패널 없이 걷기 세션만 뜨는 상태를 만들지 않는다).
 WALK_CKPTS = [k for k in WALK_KEYS if WALK_IMPORT_ERROR is None and k in WALK_BRIDGE_ARGS]
 CKPT_ALL = CKPT_CHOICES + WALK_CKPTS
+#: 고를 수 있는 정책(1008: 하나). 걷기 모듈을 못 불러오면 비어 있다 — 그때는 정책 로드·계약 검사가 사유를 대고 거부한다(옛 정책으로 조용히 넘어가지 않는다).
+CKPT_MENU = [k for k in CKPT_MENU_KEYS if k in CKPT_ALL]
+
+
+def ckpt_menu_reason(ckpt):
+    """이 키를 지금 고를 수 없는 이유(없으면 None)."""
+    if ckpt in CKPT_MENU:
+        return None
+    if ckpt in CKPT_MENU_KEYS and WALK_IMPORT_ERROR is not None:
+        return f"걷기 모듈을 불러오지 못해 이 정책을 쓸 수 없습니다 — {WALK_IMPORT_ERROR}"
+    if ckpt in CKPT_ALL:
+        return f"정리된 정책입니다 — 콘솔에서 고를 수 있는 정책은 {', '.join(CKPT_MENU) or '없음'} 뿐입니다(1008)"
+    return "허용되지 않은 체크포인트입니다"
 #: 화면 방향 패드 배치(이름만) — 값(vx·vy·wz·dur_s)과 표시 이름은 w3_deploy.W3_MOVES 가 유일한 원본이다. 콘솔에 값을 다시 적지 않는다.
 WALK_PAD = (("turn_l", "fwd1", "turn_r"), ("left1", "inplace", "right1"), ("fwd3", "back1"))
 WALK_REQ_MAX_AGE_S = 5.0     # 걷기 버튼·재무장 요청의 허용 나이 [s](화면이 본 서버 시각 기준) — 끊겼다 뒤늦게 도착한 요청으로 걷지 않게
@@ -208,10 +226,9 @@ def render_walk_pad():
 
 
 def render_page():
-    """PAGE 의 정책 드롭다운을 CKPT_CHOICES 로 채운다 (구판은 정적 목록 stand_v8~ 로 기본값이 legacy stand_v7 였음).
+    """PAGE 의 정책 드롭다운을 CKPT_MENU 로 채운다 (1008: 고를 수 있는 정책만 — 지금은 합성 키 하나. 구판은 정적 목록 stand_v8~ 로 기본값이 legacy stand_v7 였음).
     1007: 걷기 실험 키는 표시를 붙여 뒤에 덧붙이고, 걷기 방향 패드는 W3_MOVES 의 표시 이름으로 채운다."""
-    options = "".join(f"<option>{c}</option>" for c in CKPT_CHOICES)
-    options += "".join(f'<option value="{k}">{k} — {html.escape(WALK_KEYS[k]["label"])}</option>' for k in WALK_CKPTS)
+    options = "".join((f'<option value="{k}">{k} — {html.escape(WALK_KEYS[k]["label"])}</option>' if k in WALK_KEYS else f"<option>{k}</option>") for k in CKPT_MENU)
     return PAGE.replace("<!--CKPT_OPTIONS-->", options).replace("<!--WALK_PAD-->", render_walk_pad())
 STALE_SEC = 1.5              # 이보다 오래된 텔레메트리는 '끊김'으로 표시
 #: can_up.sh 는 sudo가 필요하다. 젯슨 계정 암호(공개본에서 기본값 제거)를 환경변수로
@@ -1497,9 +1514,17 @@ def act_trim(payload):
     return True, "트림 " + " ".join(wrote) + " (0.5°/s 램프)"
 
 
+def act_selftest_gate(payload):
+    """정책 계약 검사(브리지 --selftest). 키가 없거나 메뉴 밖이면 기본값(= 메뉴의 정책)으로 돌린다 — 1008 전과 같은 규칙, 기본값만 바뀌었다.
+    기본값조차 못 쓰는 상태(걷기 모듈 적재 실패)면 사유를 대고 거부한다."""
+    ckpt = payload.get("checkpoint") if payload.get("checkpoint") in CKPT_MENU else CKPT_DEFAULT
+    _need(ckpt_menu_reason(ckpt) is None, ckpt_menu_reason(ckpt) or "")
+    return act_gate("selftest", bridge_selftest_argv(ckpt))
+
+
 def act_bridge_live(payload):
     ckpt = str(payload.get("checkpoint", CKPT_DEFAULT))
-    _need(ckpt in CKPT_ALL, "허용되지 않은 체크포인트입니다")
+    _need(ckpt_menu_reason(ckpt) is None, ckpt_menu_reason(ckpt) or "")
     # 1007: 걷기 실험 키면 실험 플래그 + 헤딩 고리 off 가 붙는다(bridge_extra_args). 그 밖의 키는 종전 인자 그대로.
     return RUN.start("bridge", bridge_live_argv(ckpt))
 
@@ -1672,8 +1697,7 @@ ACTIONS = {
     # 0907: 체크포인트를 넘기지 않으면 브리지가 기본값(구 walk)을 **필수**로 로드해
     # 실패한다 — 젯슨 구 자산 정리로 walk 는 더 이상 배포되지 않는다. 드롭다운 기본값을 넘긴다.
     # 1007: 걷기 실험 키면 실험 플래그가 붙는다(헤딩 고리 off 는 빼고 — WALK_LIVE_ARGS 주석). 그 밖의 키는 종전 인자 그대로.
-    "selftest":   (lambda p: act_gate("selftest", bridge_selftest_argv(
-        p.get("checkpoint") if p.get("checkpoint") in CKPT_ALL else CKPT_DEFAULT)), "브리지 셀프테스트"),
+    "selftest":   (lambda p: act_selftest_gate(p), "브리지 셀프테스트"),
     # 영점 재앵커 — 미리보기는 읽기 전용, 적용은 zero_anchor.py 가 자체 차단
     "zero_preview": (lambda p: RUN.start("zero", [
         sys.executable, os.path.join(SCRIPTS, "zero_anchor.py"),
@@ -1871,8 +1895,10 @@ def dispatch_action(payload):
         if action in CONFIRM_ACTIONS and payload.get("confirmed") is not True:
             return 400, {"ok": False, "message": "운영자의 명시 확인이 필요합니다"}
         if action == "configure":
-            if payload.get("mode") not in ("ground", "air") or payload.get("checkpoint") not in CKPT_ALL:
+            if payload.get("mode") not in ("ground", "air"):
                 return 400, {"ok": False, "message": "허용된 시험 방식·정책을 선택하세요"}
+            if ckpt_menu_reason(payload.get("checkpoint")) is not None:
+                return 400, {"ok": False, "message": ckpt_menu_reason(payload.get("checkpoint"))}
             if not payload["checkpoint"].startswith("stand"):
                 return 400, {"ok": False, "message": "이 콘솔은 기립 시험용입니다. 보행 정책은 별도 절차가 필요합니다"}
             if payload["checkpoint"] in WALK_KEYS and payload["mode"] == "air":
@@ -2145,7 +2171,9 @@ class WalkBench:
         self.demo = Demo(clock=lambda: self.t)
         real = self.demo.bridge_cmd
         self.demo.bridge_cmd = lambda cmd: (self.sent.append(json.loads(json.dumps(cmd))), real(cmd))[1]
+        # 1008: 운용 메뉴(CKPT_MENU)는 합성 키 하나뿐이다. 시험대는 자기 키를 메뉴에 올려, 콘솔이 기동 인자를 아는 키 전부의 동작을 계속 고정한다.
         self._patch = patch.dict(globals(), DEMO=True, DEMO_SOURCE=self.demo, TRIAL=TrialState(CKPT_DEFAULT, clock=lambda: self.t),
+                                 CKPT_MENU=[checkpoint] if checkpoint in CKPT_ALL else list(CKPT_MENU),
                                  SESSION=SessionLog(), SESSION_DIR=os.path.join(directory, f"sessions-{uuid.uuid4().hex[:8]}"),
                                  TEL=Telemetry(), RUN=Runner(), BUSY=False, REQUESTS=collections.OrderedDict(),
                                  PROCESS_HEALTH={"ts": self.t, "external": [], "error": None}, now=lambda: self.t,
@@ -2275,18 +2303,52 @@ def selftest_walk(directory):
     # ② 브리지 기동 인자: 기존 키는 종전과 같다(live·selftest 게이트) · 걷기 키에만 실험 플래그 · 키·토픽 = 원본
     script = os.path.join(SCRIPTS, "rl_bridge_node.py")
     assert CKPT_CHOICES == ["stand_crouch_g12", "stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr_g21a_g24ra",
-                            "stand_c5krh_g21a_g24ra", "stand_crouch_g12_ema0", "stand_crouch_g11a"] and CKPT_DEFAULT == "stand_crouch_g12"
+                            "stand_c5krh_g21a_g24ra", "stand_crouch_g12_ema0", "stand_crouch_g11a"]
+    # 1008 정리: 고를 수 있는 정책 = 합성 키 하나(기본값도 그것). 그 밖의 아는 키는 정책 로드·시험 설정에서 사유를 대고 거부된다.
+    assert CKPT_MENU_KEYS == ("stand_kew3q_g21a_g24ra_w3s3d15800",) and CKPT_MENU == list(CKPT_MENU_KEYS) and CKPT_DEFAULT == CKPT_MENU[0]
+    _flags = ["--experimental-w3", "--experimental-kew3"]
     started = []
     with patch.object(RUN, "start", side_effect=lambda key, argv, cwd=None: (started.append((key, list(argv))), (True, "mock"))[1]):
+        for k in [x for x in CKPT_ALL if x not in CKPT_MENU]:
+            assert "정리된 정책" in ckpt_menu_reason(k), k
+            try:
+                act_bridge_live({"checkpoint": k})
+                raise AssertionError(f"정리된 정책 {k} 로 브리지를 띄움")
+            except ValueError as exc:
+                assert "정리된 정책" in str(exc), exc
+            assert not started, started
+        for bad in ({}, {"checkpoint": "stand_v7"}, {"checkpoint": "stand_crouch_g12"}):     # 키 없음·선택지 밖·정리된 키 → 계약 검사는 기본값(= 남긴 정책)으로
+            ACTIONS["selftest"][0](bad)
+            assert started[-1] == ("selftest", [sys.executable, script, "--selftest", "--checkpoint", CKPT_DEFAULT] + _flags), started[-1]
+        act_bridge_live({})                                                        # 키를 안 주면 기본값 = 남긴 정책(실험 플래그 + 헤딩 고리 off)
+        assert started[-1] == ("bridge", [sys.executable, script, "--live", "--checkpoint", CKPT_DEFAULT] + _flags + ["--w3-heading-loop", "off"]), started[-1]
+        with patch.dict(globals(), WALK_IMPORT_ERROR="ImportError: 시험", CKPT_MENU=[]):   # 걷기 모듈 적재 실패 → 옛 정책으로 넘어가지 않고 사유를 대며 거부
+            n0 = len(started)
+            for fn in (lambda: act_bridge_live({}), lambda: ACTIONS["selftest"][0]({})):
+                try:
+                    fn()
+                    raise AssertionError("걷기 모듈 없이 정책을 띄움")
+                except ValueError as exc:
+                    assert "걷기 모듈" in str(exc), exc
+            assert len(started) == n0
+    with WalkBench(directory, CKPT_DEFAULT) as bn:      # 시험 설정(서버): 남긴 정책만 받는다 — 화면을 우회한 요청도 같다
+        assert CKPT_MENU == [CKPT_DEFAULT]
+        for k in [x for x in CKPT_ALL if x != CKPT_DEFAULT] + ["stand_v7", None]:
+            code, res = bn.req("configure", mode="ground", checkpoint=k)
+            assert code == 400 and not res["ok"] and TRIAL.checkpoint == CKPT_DEFAULT, (k, code, res)
+            assert ("정리된 정책" in res["message"]) == (k in CKPT_ALL), (k, res)
+        code, res = bn.req("configure", mode="ground", checkpoint=CKPT_DEFAULT)
+        assert code == 200 and res["ok"] and TRIAL.checkpoint == CKPT_DEFAULT, (code, res)
+    started = []
+    # 아래부터는 "콘솔이 기동 인자를 아는 키" 전부의 인자를 종전대로 고정한다(메뉴를 시험용으로 넓혀서) — 메뉴에 다시 올릴 때 인자가 달라져 있지 않게.
+    with patch.dict(globals(), CKPT_MENU=list(CKPT_ALL)), \
+            patch.object(RUN, "start", side_effect=lambda key, argv, cwd=None: (started.append((key, list(argv))), (True, "mock"))[1]):
         for k in CKPT_CHOICES:
             assert bridge_extra_args(k, live=True) == [] == bridge_extra_args(k, live=False)
             act_bridge_live({"checkpoint": k})
             ACTIONS["selftest"][0]({"checkpoint": k})
             assert started[-2:] == [("bridge", [sys.executable, script, "--live", "--checkpoint", k]),
                                     ("selftest", [sys.executable, script, "--selftest", "--checkpoint", k])], (k, started[-2:])
-        for bad in ({}, {"checkpoint": "stand_v7"}):     # 선택지 밖 → 셀프테스트는 기본값(종전과 같음), 정책 로드는 거부
-            ACTIONS["selftest"][0](bad)
-            assert started[-1] == ("selftest", [sys.executable, script, "--selftest", "--checkpoint", CKPT_DEFAULT]), started[-1]
         try:
             act_bridge_live({"checkpoint": "stand_v7"})
             raise AssertionError("선택지 밖 체크포인트로 브리지를 띄움")
@@ -2326,7 +2388,11 @@ def selftest_walk(directory):
     for name, value in (("BRIDGE_ACK_TOPIC", BRIDGE_ACK_TOPIC), ("BRIDGE_CMD_TOPIC", BRIDGE_CMD_TOPIC), ("BRIDGE_DEBUG_TOPIC", BRIDGE_DEBUG_TOPIC)):
         assert re.search(rf'^{name} = "([^"]+)"', src, re.M)[1] == value, name
     for k in WALK_CKPTS:
-        assert f'<option value="{k}">{k} — {html.escape(WALK_KEYS[k]["label"])}</option>' in page and "걷기 실험" in WALK_KEYS[k]["label"], k
+        assert "걷기 실험" in WALK_KEYS[k]["label"], k
+        assert (f'<option value="{k}">{k} — {html.escape(WALK_KEYS[k]["label"])}</option>' in page) == (k in CKPT_MENU), k      # 드롭다운에는 남긴 정책만
+    assert page.count("<option") - page.count("<option value=\"\"") >= 1 and not any(f"<option>{k}</option>" in page for k in CKPT_CHOICES), "정리된 정책이 드롭다운에 남아 있다"
+    out.append(f"②a 정책 메뉴(1008): 고를 수 있는 정책 {CKPT_MENU} 하나 · 그 밖의 아는 키 {len(CKPT_ALL) - len(CKPT_MENU)} 개는 정책 로드·시험 설정 거부(사유 표시) · "
+               "키 없는 요청은 남긴 정책으로 · 걷기 모듈 적재 실패 시 거부(옛 정책으로 넘어가지 않음)")
     out.append(f"② 브리지 기동 인자: 기존 {len(CKPT_CHOICES)} 키 live·selftest 종전과 같음 · 걷기 키 {len(expect)} 개에만 실험 플래그(정책 로드에는 헤딩 고리 off 추가, 셀프테스트 게이트에는 없음) · 키·토픽 = w3_deploy·브리지 원본"
                f" · 1007 두 키 불변 + 1008 추가 {kew3q[1]}(첫 합성 키와 같은 인자, 브리지 명세에 갇힘 해소)")
 
@@ -2595,7 +2661,7 @@ def selftest_walk(directory):
                "정지 래치 중 거부·재무장·걷는 중 정지 래치 중단 · 걷기 끄기 · estop 중단 · 오래된 요청·확인 없음·모르는 버튼·공중 방식 거부 · 서기 관찰 종료 사유")
 
     # ⑪ 걷기 키가 아닌 시험: 걷기 버튼·끄기·정지 래치·재무장 모두 거부, 발행 0
-    with WalkBench(directory, CKPT_DEFAULT) as bn:
+    with WalkBench(directory, CKPT_CHOICES[0]) as bn:
         bn.prepare()
         w = bn.walk()
         assert not w["session"] and not w["available"] and "걷기 실험 키가 아닙니다" in w["reason"] and w["profile"] is None, w
@@ -2606,7 +2672,7 @@ def selftest_walk(directory):
             assert code == 409 and "걷기 세션이 아닙니다" in res["message"], (action, code, res)
         assert bn.req("w3_rearm")[0] == 409 and bn.sent == [] and bn.walk()["current"] is None
         assert "walk" not in "".join(bn.walk_events())
-    out.append(f"⑪ 걷기 키가 아닌 시험({CKPT_DEFAULT}): 걷기 버튼·끄기·정지 래치·재무장 전부 거부(이유 표시) · 발행 0")
+    out.append(f"⑪ 걷기 키가 아닌 시험({CKPT_CHOICES[0]} — 시험대에서만 고를 수 있음): 걷기 버튼·끄기·정지 래치·재무장 전부 거부(이유 표시) · 발행 0")
 
     # ⑫ 비활성 버튼(원본 표의 enabled False): 화면에는 비활성 + 사유, 화면을 우회한 API 호출도 서버가 사유와 함께 거부, 다른 버튼은 그대로.
     #    원본 표에 이미 비활성 버튼이 있으면 그것도 보고, 없어도 경로를 지나도록 활성 버튼 하나를 시험 동안만 비활성으로 바꿔 본다.
@@ -2986,7 +3052,7 @@ def selftest():
             assert publish.call_count == 2
         page = render_page()
         assert "<!--CKPT_OPTIONS-->" not in page
-        assert f"<option>{CKPT_DEFAULT}</option>" in page
+        assert f'<option value="{CKPT_DEFAULT}">' in page and page.count("<option value=\"stand_") == len(CKPT_MENU) == 1
         src = Path(__file__).with_name("rl_bridge_node.py").read_text(encoding="utf-8")
         body = src.split("CHECKPOINTS = {", 1)[1].split("\n}\n", 1)[0]
         known = set(re.findall(r'^\s+"([A-Za-z0-9_]+)": os\.path\.join', body, re.M))

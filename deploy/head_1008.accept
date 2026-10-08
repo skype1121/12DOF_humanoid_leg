@@ -6,3 +6,5 @@
 5149404c4a92d64f1a5b0b87013da1ac  rl_walking/deploy/c5_switch.py
 50e64227752fd8c335270c4e9de604c5  tests/test_console_walk.py
 906bdcda83703b65053f24f3cc540e59  tests/test_operator_console.py
+8f4373d380d9e07a97408a69f3e3acdc  deploy/head_1008.md5
+5a921c923a9e77bd81cc82d8ddc99d2b  deploy/head_1008.VERSION

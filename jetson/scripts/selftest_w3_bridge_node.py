@@ -1556,6 +1556,8 @@ def main():
                 for k2, v in list(o.items()):
                     if k2 == "kew3" and isinstance(v, dict) and "n_air_to_ke" in v:
                         acc.append(v.pop("n_air_to_ke"))
+                        for k3, want3 in (("air_hold", False), ("n_air_hold", 0), ("air_dev", 0.0)):      # 1008 공중 폭주 차단 기록 필드(공중 러너가 있는 키에만) — 지면 시작이라 전부 0
+                            assert k3 in v and v.pop(k3) == want3, f"지면 시작 세션의 kew3.{k3} ≠ {want3}"
                     strip_air(v, acc)
             return o
         n_named = n_air = 0

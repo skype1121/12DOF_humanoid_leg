@@ -50,7 +50,7 @@ class KeW3Runner:
 
     def __init__(self, w3_runner, ke_runner, *, handoff: str = "carry", settle_quiet_s: float = 0.0, settle_w: float = 0.15,
                  settle_max_s: float = 3.0, dt: float = 0.02, air_runner=None, air_contact_s: float = 1.0, air_quiet_s: float = 0.5,
-                 air_w: float = 0.15, air_max_s: float = 3.0):
+                 air_w: float = 0.15, air_max_s: float = 3.0, air_guard_deg=30.0, air_guard_s: float = 0.5, air_guard_rate_deg: float = 1.0):
         """handoff: "carry" | "fresh". settle_quiet_s: 0 = 래치 다음 틱에 KE / > 0 = 래치 뒤 W3 STAND 로 (양발 접촉 ∧ |ω_xy| < settle_w)가
         이 시간 이어지면 KE(상한 settle_max_s — 시뮬 전환 평가의 정착 판정과 같은 정의: 0.5 s·0.15 rad/s·상한 3 s)."""
         if handoff not in ("carry", "fresh"):
@@ -80,6 +80,23 @@ class KeW3Runner:
         self.air_contact_s, self.air_quiet_s, self.air_w, self.air_max_s = float(air_contact_s), float(air_quiet_s), float(air_w), float(air_max_s)
         self._air_both_run = 0.0; self._air_quiet_run = 0.0
         self.n_air_to_ke = 0
+        # 1008 공중 폭주 차단(AIR 모드 전용 안전 장치 — AIR_START_1008.md §14.5). 양발 무접촉이 air_guard_s 넘게 이어진 동안(= 매달려 있음) 공중 정책이 낸
+        # **목표가 기본자세에서 air_guard_deg 넘게 벗어나면**(어느 관절이든; 행동·목표가 비유한이면 즉시) 정책을 끊고 래치한다 — 이후 이 세션은 목표를
+        # 틱당 air_guard_rate_deg 씩 **기본자세로 되돌린 뒤 그 자세를 유지**한다(KE 인계·걷기 없음, reset 으로만 풀린다). 접촉 중·무접촉 air_guard_s 전에는 안 걸린다.
+        # 왜: 서기 정책들의 last_action 자기 고리는 분포 밖 입력(큰 피치 각속도·공중의 고정 피치)에서 발산할 수 있고, 그때 목표는 슬루 한도(200°/s)로 관절 한계까지 간다
+        # (합성 대본에서 G21h-12299·지면 기준 G21a 모두). 원시 행동 |a| 가 아니라 목표 이탈각으로 잰다 — |a| 1 = 14.3° 라 |a| 문턱은 너무 느슨했다(6 = 86°).
+        # 평소 공중의 목표 이탈은 10° 안팎(시뮬 — air_dev_max 로 기록). air_guard_deg None = 끔.
+        self.air_guard_deg = None if air_guard_deg is None else float(air_guard_deg)
+        self.air_guard_s, self.air_guard_rate_deg = float(air_guard_s), float(air_guard_rate_deg)
+        if self.air_guard_deg is not None and not (self.air_guard_deg > 0.0 and self.air_guard_s >= 0.0 and self.air_guard_rate_deg > 0.0):
+            raise ValueError("air_guard_deg > 0, air_guard_s ≥ 0, air_guard_rate_deg > 0 여야 함")
+        self.air_hold = False             # 폭주 차단 래치(기본자세로 되돌려 유지 중)
+        self._air_hold_out = None
+        self._air_none_run = 0.0
+        self.n_air_hold = 0               # 래치 횟수(프로세스 수명 누계)
+        self.air_dev_max = 0.0            # 이 세션에서 매달린 동안(무접촉 air_guard_s 뒤) 목표가 기본자세에서 벗어난 최대각 [deg] — 기록용(문턱 여유 확인)
+        self.air_act_max = 0.0            # 같은 동안의 원시 행동 |a| 최대 — 기록용
+        self.air_act_max_all = 0.0        # 이 세션의 AIR 모드 전체(착지 ~ 인계 포함)에서 본 |a| 최대 — 기록용
         if air_runner is not None:
             ca = _core(air_runner)
             if ca is not air_runner or hasattr(air_runner, "det"):
@@ -157,6 +174,8 @@ class KeW3Runner:
 
     def enable_block_reason(self):
         """켜기 추가 선행조건: KE 회복 모드가 켜져 있으면 거부(사유 문자열), 아니면 None. 감독기 판정 위에 얹는다."""
+        if self.mode == MODE_AIR and self.air_hold:
+            return "공중 폭주 차단(기본자세 유지 중) — 정지한 뒤 처음부터 다시 시작할 것"
         if self.mode == MODE_AIR:
             return "공중·착지 정책 구간 — 착지가 가라앉아 KE 로 넘어간 뒤에 켤 것"
         if self.mode == MODE_KE and int(self.ke.last_mode) == 1:
@@ -169,6 +188,8 @@ class KeW3Runner:
                       "ticks": int(self.ticks_in_mode), "want": bool(self._want)}
         if self.air is not None:                        # 공중 러너가 있는 키에서만 키 추가(없는 키의 스키마는 불변)
             bb["kew3"]["n_air_to_ke"] = int(self.n_air_to_ke)
+            bb["kew3"]["air_hold"] = bool(self.air_hold); bb["kew3"]["n_air_hold"] = int(self.n_air_hold)
+            bb["kew3"]["air_dev"] = round(float(min(self.air_dev_max, 1e4)), 1)
         return bb
 
     # ---------- 상태 ----------
@@ -185,6 +206,8 @@ class KeW3Runner:
         self.ticks_in_mode = 0
         self._settle_run = 0.0; self._since_latch = None; self._w3_arm_want = False
         self._air_both_run = 0.0; self._air_quiet_run = 0.0
+        self.air_hold = False; self._air_hold_out = None; self._air_none_run = 0.0
+        self.air_dev_max = 0.0; self.air_act_max = 0.0; self.air_act_max_all = 0.0
 
     def start_air(self) -> None:
         """1008: 이 세션을 AIR(공중·착지 서기 정책)로 시작한다 — **reset() 바로 뒤, 첫 step 전에** 부른다(공중 정책 시작 = 브리지 hang_arm).
@@ -196,6 +219,8 @@ class KeW3Runner:
         self.air.reset()
         self.mode = MODE_AIR
         self._air_both_run = 0.0; self._air_quiet_run = 0.0
+        self.air_hold = False; self._air_hold_out = None; self._air_none_run = 0.0
+        self.air_dev_max = 0.0; self.air_act_max = 0.0; self.air_act_max_all = 0.0
         self.last_event = "start_air"
 
     @staticmethod
@@ -291,10 +316,36 @@ class KeW3Runner:
     def step(self, gyro_rad_s, gravity_unit, cmd, qpos_rad, qvel_rad_s, contact2, tau_knee_nm=None) -> np.ndarray:
         self.last_event = ""
         if self.mode == MODE_AIR:                       # 1008 공중·착지 구간: 공중 러너가 행동, 착지가 가라앉으면 이 틱까지 AIR·다음 틱부터 KE
+            _pose = np.asarray(_core(self.air).default_pose, dtype=np.float32)
+            if self.air_hold:                           # 폭주 차단 래치: 기본자세로 천천히 되돌린 뒤 유지(정책·인계 없음) — reset 으로만 풀린다
+                self.ticks_in_mode += 1
+                self.last_step_action = np.zeros(12, dtype=np.float32); self.last_step_kind = 3
+                _r = float(np.radians(self.air_guard_rate_deg))
+                self._air_hold_out = (self._air_hold_out + np.clip(_pose - self._air_hold_out, -_r, _r)).astype(np.float32)
+                return self._air_hold_out.copy()
+            _prev = _core(self.air)._prev_emitted
+            _prev = None if _prev is None else np.array(_prev, dtype=np.float32, copy=True)
             out = self.air.step(gyro_rad_s, gravity_unit, np.zeros(3, dtype=np.float32), qpos_rad, qvel_rad_s, contact2)
             self.ticks_in_mode += 1
             self.last_step_action = np.array(_core(self.air).last_action, dtype=np.float32, copy=True); self.last_step_kind = 3
             g = np.asarray(gyro_rad_s, dtype=np.float64).reshape(-1); c = np.asarray(contact2, dtype=np.float64).reshape(-1)
+            _fin = bool(np.isfinite(self.last_step_action).all()) and bool(np.isfinite(np.asarray(out)).all())
+            _am = float(np.abs(self.last_step_action).max()) if _fin else float("inf")
+            _dev = float(np.degrees(np.abs(np.asarray(out, dtype=np.float32) - _pose).max())) if _fin else float("inf")
+            self._air_none_run = self._air_none_run + self.dt if (c[0] <= 0.5 and c[1] <= 0.5) else 0.0
+            if _fin:
+                self.air_act_max_all = max(self.air_act_max_all, _am)
+            if self._air_none_run >= self.air_guard_s - 1e-9:      # 매달려 있는 동안
+                if _fin:
+                    self.air_act_max = max(self.air_act_max, _am); self.air_dev_max = max(self.air_dev_max, _dev)
+                if self.air_guard_deg is not None and _prev is not None and ((not _fin) or _dev > self.air_guard_deg):
+                    self.air_hold = True; self._air_hold_out = _prev      # 직전 방출값에서 출발(이번 틱의 목표는 내보내지 않는다) — 이후 기본자세로 되돌린다
+                    self.n_air_hold += 1
+                    self.last_event = "air_hold"
+                    self.last_step_action = np.zeros(12, dtype=np.float32)
+                    _r = float(np.radians(self.air_guard_rate_deg))
+                    self._air_hold_out = (self._air_hold_out + np.clip(_pose - self._air_hold_out, -_r, _r)).astype(np.float32)
+                    return self._air_hold_out.copy()
             both = bool(c[0] > 0.5 and c[1] > 0.5)
             self._air_both_run = self._air_both_run + self.dt if both else 0.0
             self._air_quiet_run = self._air_quiet_run + self.dt if (both and float(np.hypot(g[0], g[1])) < self.air_w) else 0.0
@@ -358,6 +409,7 @@ def _mk(seed=0):
     mk_w3 = lambda: PolicyRunnerStage4(model_path=f(Ww), w3=W3.W3S3D_CONFIG, **kw)
     mk_ke = lambda **extra: C5Runner(f(Ws), f(Wr), detector=SwitchDetector(**det_kw), cue_vx=0.03, cue_s=1.0, cue_dir_imu=True, **kw, **extra)
     _mk.air = lambda **extra: PolicyRunnerStage4(model_path=f(Wa), **dict(kw, **extra))     # selftest [10] 용(반환값 꼴은 종전 그대로)
+    _mk.air_with = lambda net, **extra: PolicyRunnerStage4(model_path=net, **dict(kw, **extra))     # selftest [11] 용(임의 스텁 정책)
     return mk_w3, mk_ke, pose, kw
 
 
@@ -515,7 +567,7 @@ def selftest() -> int:
         cm = cmdf if 30 <= k < 55 else cmd0
         a = A0.step(cmd=cm, **_inp(k, pose)); b = B0.step(cmd=cm, **_inp(k, pose))
         assert np.array_equal(a, b) and A0.mode == B0.mode and A0.last_event == B0.last_event, f"공중 러너가 있는데 지면 시작이 달라짐(틱 {k})"
-    assert set(B0.blackbox()["kew3"]) == old_bb_keys and set(A0.blackbox()["kew3"]) == old_bb_keys | {"n_air_to_ke"}, "블랙박스 스키마"
+    assert set(B0.blackbox()["kew3"]) == old_bb_keys and set(A0.blackbox()["kew3"]) == old_bb_keys | {"n_air_to_ke", "air_hold", "n_air_hold", "air_dev"}, "블랙박스 스키마"
     try:
         B0.reset(); B0.start_air(); raise AssertionError("공중 러너 없이 start_air 허용")
     except RuntimeError:
@@ -558,12 +610,51 @@ def selftest() -> int:
         N.step(cmd=cmd0, **inp_c(n_n, (1.0, 1.0), w=0.5)); n_n += 1
         assert n_n <= 160
     assert n_n == 150, f"시끄러운 양발 접촉은 상한 3.0 s 에 인계: {n_n}"
-    for bad, why in ((mk_air(default_pose_rad=pose + 0.01), "기본자세"), (mk_air(act_obs_ema_beta=None), "관측 필터"), (mk_air(gait_freq=1.4), "클록 주파수"),
-                     (mk_w3(), "W3 러너"), (mk_ke(), "C5Runner")):
+    assert A.n_air_hold == 0 and N.n_air_hold == 0 and not A.air_hold and 0.0 < A.air_act_max <= A.air_act_max_all <= 1.0 and 0.0 < A.air_dev_max <= 14.4, "스텁(|a| ≤ 1 = 14.3°)에서 폭주 차단이 걸림"
+    # [11] 1008 공중 폭주 차단: 매달린 동안(무접촉 0.5 s 뒤) 목표가 기본자세에서 30° 넘게 벗어나면 정책을 끊고 래치 → 틱당 1° 씩 기본자세로 되돌려 유지.
+    #      인계·걷기 없음, reset 으로만 풀림 · 무접촉 0.5 s 전·접촉 중에는 안 걸림 · 비유한이면 즉시 · 끄면(None) 단독 러너와 같은 출력 · 값 검증
+    gain = {"g": 0.3}
+    def mk_big():                                         # |a| 최대 = 20·g 인 스텁 공중 정책(g 를 틱마다 바꿔 폭주를 흉내 낸다) — 목표 이탈 = 20·g·14.3°(슬루 4°/틱으로 따라감)
+        base = _core(mk_air())._net
+        def net(o):
+            y = np.asarray(base(o), np.float32); return (20.0 * gain["g"] * y / max(float(np.abs(y).max()), 1e-9)).astype(np.float32)
+        return _mk.air_with(net)
+    def run(G, contacts, gains):
+        gain["g"] = gains[0]; G.reset(); G.start_air(); outs = []
+        for k_, (c_, g_) in enumerate(zip(contacts, gains)):
+            gain["g"] = g_; outs.append(G.step(cmd=cmd0, **inp_c(k_, c_)))
+        return outs
+    NC, BC = (0.0, 0.0), (1.0, 1.0)
+    dev = lambda o_: float(np.degrees(np.abs(np.asarray(o_) - pose).max()))
+    G = KeW3Runner(mk_w3(), mk_ke(), handoff="carry", settle_quiet_s=0.5, air_runner=mk_big())
+    o = run(G, [NC] * 120, [0.05] * 40 + [0.5] * 80)     # 40 틱째부터 |a| = 10(목표 143°) → 목표가 4°/틱으로 벌어지다 30° 를 넘는 틱에 래치
+    assert G.air_hold and G.n_air_hold == 1 and G.mode == MODE_AIR and "폭주" in G.enable_block_reason(), "매달린 채 목표가 30° 넘게 벗어나는데 래치 없음"
+    k_l = next(i for i in range(41, 120) if dev(o[i]) < dev(o[i - 1]) - 1e-6)
+    assert 22.0 <= max(dev(x) for x in o) <= 30.0 + 1e-3 and 42 <= k_l <= 46, f"래치 전 최대 이탈 {max(dev(x) for x in o):.1f}° · 래치 틱 {k_l}"
+    assert all(dev(o[i]) <= dev(o[i - 1]) + 1e-6 and float(np.degrees(np.abs(o[i] - o[i - 1]).max())) <= 1.0 + 1e-4 for i in range(k_l, 120)), "래치 뒤 되돌림이 틱당 1° 를 넘거나 다시 벌어짐"
+    assert dev(o[-1]) < 1e-3 and G.blackbox()["kew3"]["air_hold"] is True and G.blackbox()["kew3"]["n_air_hold"] == 1 and 30.0 < G.blackbox()["kew3"]["air_dev"] <= 34.1, "되돌린 뒤 기본자세 유지(air_dev 는 래치를 건 틱의 값까지 기록)"
+    for k_ in range(120, 120 + 200):                      # 래치 뒤: 양발이 닿아 4 s 가 지나도 KE 로 넘기지 않고 기본자세, 걷기 켜기도 버린다
+        G.set_gait_enable(True); a = G.step(cmd=cmdf, **inp_c(k_, BC))
+        assert dev(a) < 1e-3 and G.mode == MODE_AIR and G.n_air_to_ke == 0 and not G._want, "래치 뒤 인계·걷기"
+    G.reset(); assert not G.air_hold and G.mode == MODE_KE and G.air_dev_max == 0.0
+    o = run(G, [NC] * 20 + [BC] * 60, [0.5] * 80)         # 무접촉 0.4 s 뒤 접촉: 매달림 조건(0.5 s)이 차기 전이라 안 걸리고 정상 인계(착지 과도 보호)
+    assert not G.air_hold and G.n_air_hold == 1 and G.mode == MODE_KE and G.n_air_to_ke == 1, "접촉 중 큰 목표에 래치"
+    o = run(G, [NC] * 80, [0.05] * 40 + [0.1] * 40)       # |a| = 2(목표 28.6°) → 30° 아래라 안 걸림
+    assert not G.air_hold and 27.0 < G.air_dev_max < 30.0, f"30° 아래에서 래치 또는 기록 이상({G.air_dev_max:.1f}°)"
+    o = run(G, [NC] * 60, [0.05] * 40 + [float("nan")] * 20)         # 비유한 → 그 틱에 즉시(비유한 목표를 내보내지 않는다)
+    assert G.air_hold and all(np.isfinite(x).all() for x in o) and dev(o[40]) <= dev(o[39]) + 1e-6, "비유한 행동이 목표로 나감"
+    Goff = KeW3Runner(mk_w3(), mk_ke(), handoff="carry", settle_quiet_s=0.5, air_runner=mk_big(), air_guard_deg=None)
+    ref_b = mk_big()
+    gain["g"] = 0.5; Goff.reset(); Goff.start_air(); ref_b.reset()
+    for k_ in range(60):
+        dd = inp_c(k_, NC); assert np.array_equal(Goff.step(cmd=cmd0, **dd), ref_b.step(cmd=cmd0, **dd)) and not Goff.air_hold, "끈 차단이 출력을 바꿈"
+    for bad in (dict(air_guard_deg=0.0), dict(air_guard_s=-1.0), dict(air_guard_rate_deg=0.0)):
         try:
-            KeW3Runner(mk_w3(), mk_ke(), handoff="carry", air_runner=bad); raise AssertionError(f"공중 러너 {why} 불일치 허용")
+            KeW3Runner(mk_w3(), mk_ke(), handoff="carry", air_runner=mk_air(), **bad); raise AssertionError(f"잘못된 차단 값 수락 {bad}")
         except ValueError:
             pass
+    print("[selftest] kew3_runner 공중 폭주 차단: 매달린 채(무접촉 0.5 s 뒤) 목표가 기본자세에서 30° 넘게 벗어나면 래치(최대 이탈 ≤ 30°) → 틱당 1° 씩 기본자세로 되돌려 유지"
+          "(양발이 닿아 4 s 가 지나도 인계·걷기 없음, reset 으로 풀림) · 무접촉 0.4 s 뒤 접촉이면 안 걸리고 정상 인계 · 28.6° 는 안 걸림 · 비유한은 그 틱에 · 끄면 단독 러너와 비트 동일 · 잘못된 값 거부 · 스텁 무발동")
     print(f"[selftest] kew3_runner AIR: start_air 없으면 종전과 비트 동일(80 틱·걷기 포함)·블랙박스 스키마 불변 · AIR = 단독 공중 러너(100 틱, 큰 흔들림에도 유지) · "
           f"걷기 켜기 거부 · 한 발 접촉 미인계 · 조용한 양발 {n_c} 틱에 KE(이력·클록 틱 이어받기·목표 점프 ≤ 슬루) · 재들림에도 AIR 로 안 돌아감 · 시끄러우면 {n_n} 틱 상한 · 계약 불일치 5 종 거부")
     print(f"[selftest] kew3_runner: KE 모드 = 단독 KE(60 틱 비트 동일) · 켜기 틱 W3 fresh(ge·게이트 즉시, 이력 백필) = 단독 W3(80 틱) · "

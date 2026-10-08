@@ -467,6 +467,9 @@ class WalkState:
             return f"정지 래치({sup.get('latch_reason')}) — 재무장 뒤에만 걷기 가능"
         if want or ge:
             return "지금 걷는 중입니다(want/ge 1) — 서기 복귀 뒤에"
+        if WALK_KEYS[ck]["composite"] and kew3.get("mode") == "air" and kew3.get("air_hold"):
+            # 1008: 공중 폭주 차단 래치(러너가 목표를 고정했다) — 이 세션은 자세 고정만 한다. 정지·회수 뒤 새로 시작해야 풀린다
+            return "공중 폭주 차단(기본자세 유지 중) — 정지한 뒤 처음부터 다시 시작하세요"
         if WALK_KEYS[ck]["composite"] and kew3.get("mode") == "air":
             # 1008: 공중 정책 시작 세션의 공중·착지 구간 — 착지가 가라앉아 브리지 러너가 KE 로 넘길 때까지 걷기 불가(브리지도 러너 게이트·감독기로 거부한다)
             return "공중·착지 정책 구간(착지 정착 뒤 KE 인계 대기) — 서기(KE) 인계 뒤에"

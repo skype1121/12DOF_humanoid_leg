@@ -66,7 +66,7 @@ for a, r in D.items():
     if r["air_n"] == 0: print(f"| {a} | 0 | — | — | — | — | — | {pc(r['td_rec'], r['td_n'])} |"); continue
     print(f"| {a} | {r['air_n']} | {np.median(r['air']):.1f} s | {pc(r['air_on'], r['air_n'])} | {q90(r['exc']):.1f}° | {q90(r['spd']):.2f} rad/s | {q90(r['wmax']):.2f} rad/s | {pc(r['td_rec'], r['td_n'])} |")
 print()
-if c["n"] and not c["miss"] and not MODE_B:
+if c["n"] and not c["miss"] and not MODE_B and not MODE_C:      # P1–P3 판정 줄은 §1 의 네 팔에만(민감도·진단 모드는 표만)
     for a in ("A2", "A6", "A2i", "A6i"):
         r = D[a]
         if r["n"] == 0 or r["miss"]: print(f"- {a}: 실행 미완 {r['miss']}"); continue

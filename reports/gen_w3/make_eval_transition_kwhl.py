@@ -307,6 +307,7 @@ rep("""pre_pass = (~fell_pre) & pre_both & (pre_pmax <= 10.0)""", """if _AIR is 
 pre_pass = (~fell_pre) & pre_both & (pre_pmax <= 10.0)""")
 # 1008 AIR1: 접지 확인(관측 접촉 비트 양발 0.3 s 연속 — 브리지 HangGuard CONTACT_CONFIRM_S 와 같은 정의, 한 번 확인되면 래치) 전에는 KE 감지기 정지(C5Runner.det_hold — 배포 모듈의 같은 스위치).
 rep("""parser.add_argument("--air_start", type=str, default="",""", """parser.add_argument("--air_det_hold", action="store_true", help="AIR1: 접지 확인(양발 접촉 0.3 s) 전에는 KE 회복 감지기 정지(서기 정책만) — C5Runner.det_hold")
+parser.add_argument("--air_contact_one", action="store_true", help="AIR1c 진단: --air_det_hold 와 함께 — 접지 확인 전에는 러너에 주는 접촉 비트를 (1, 1) 로 고정(정책 관측만, 물리·채점·접지 확인 판정 불변)")
 parser.add_argument("--air_start", type=str, default="",""")
 rep("""            R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], ct[e])
 """, """            if args_cli.air_det_hold:
@@ -316,6 +317,6 @@ rep("""            R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], ct[e])
                     _AIR_DH["run"][e] = _AIR_DH["run"][e] + 1 if (float(ct[e][0]) > 0.5 and float(ct[e][1]) > 0.5) else 0
                     _AIR_DH["acq"][e] = _AIR_DH["run"][e] >= 15
                 R.ke.det_hold = not _AIR_DH["acq"][e]
-            R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], ct[e])
+            R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], (_npk.ones(2, dtype=_npk.float32) if (args_cli.air_contact_one and args_cli.air_det_hold and not _AIR_DH["acq"][e]) else ct[e]))
 """)
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

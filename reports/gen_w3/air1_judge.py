@@ -11,8 +11,11 @@ ARMS = {"C": (-1.5, 2.5, 35.5), "A2": (2.0, 6.0, 39.0), "A2i": (2.0, 6.0, 39.0),
 ARMS_B = {"C": (-1.5, 2.5, 35.5), "Cr1": (-1.5, -0.5, 33.0), "A2i": (2.0, 6.0, 39.0), "A2ir2": (2.0, 4.0, 37.0), "A2ir1": (2.0, 3.0, 36.0), "A2": (2.0, 6.0, 39.0), "A2r1": (2.0, 3.0, 36.0)}
 LABEL_B = {"Cr1": "대조 · 방출 1 s", "A2ir2": "공중 2 s · 감지기 정지 · 방출 2 s", "A2ir1": "공중 2 s · 감지기 정지 · 방출 1 s", "A2r1": "공중 2 s · 감지기 그대로 · 방출 1 s"}
 LABEL = {"C": "대조: 홀드로 착지 뒤 인계", "A2": "공중 2 s · 감지기 그대로", "A2i": "공중 2 s · 접지 전 감지기 정지", "A6": "공중 6 s · 감지기 그대로", "A6i": "공중 6 s · 접지 전 감지기 정지"}
+#: AIR1c 진단 팔(접지 확인 전 접촉 관측 (1, 1) 고정) — `air1_judge.py c`
+ARMS_C = {"C": (-1.5, 2.5, 35.5), "A2i": (2.0, 6.0, 39.0), "A2ic": (2.0, 6.0, 39.0), "A6i": (6.0, 10.0, 43.0), "A6ic": (6.0, 10.0, 43.0)}
+MODE_C = len(sys.argv) > 1 and sys.argv[1] == "c"
 MODE_B = len(sys.argv) > 1 and sys.argv[1] == "b"
-SEEDS = (1,) if MODE_B else tuple(int(x) for x in (sys.argv[1].split(",") if len(sys.argv) > 1 else ("1", "2")))
+SEEDS = (1,) if MODE_B else (1, 2) if MODE_C else tuple(int(x) for x in (sys.argv[1].split(",") if len(sys.argv) > 1 else ("1", "2")))
 def fisher(a, b, c, d):
     n = a + b + c + d; r1 = a + b; c1 = a + c
     def p(x): return math.comb(c1, x) * math.comb(n - c1, r1 - x) / math.comb(n, r1)
@@ -46,6 +49,8 @@ def load(arm):
                 R["td_n"] += 1; R["td_rec"] += bool(mode[int(np.argmax(both)), e])
     return R
 pc = lambda a, n: f"{a} / {n} ({100*a/n:.1f} %)" if n else "—"
+if MODE_C:
+    ARMS = ARMS_C; LABEL = {**LABEL, "A2ic": "공중 2 s · 감지기 정지 · 접촉 관측 (1, 1)", "A6ic": "공중 6 s · 감지기 정지 · 접촉 관측 (1, 1)"}
 if MODE_B:
     ARMS = ARMS_B; LABEL = {**{k: v + " · 방출 4 s" for k, v in LABEL.items()}, **LABEL_B}
 D = {a: load(a) for a in ARMS}

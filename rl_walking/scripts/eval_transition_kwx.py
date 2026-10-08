@@ -195,6 +195,7 @@ parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회�
 parser.add_argument("--kw_unload", type=float, default=0.0, help="X18: 인계 뒤 링크마다 자기 무게의 이 비율(0–0.9)을 위로 받친다(부분지지의 이상화, 1 s 램프). --dist 와 함께 쓰지 않는다")
 parser.add_argument("--contact_pert", type=str, default="", help="X19: 접촉 관측 교란 'delay:N;flip:p;t0:x'(관측 비트만, 물리·채점 불변). '' = 끔")
 parser.add_argument("--air_det_hold", action="store_true", help="AIR1: 접지 확인(양발 접촉 0.3 s) 전에는 KE 회복 감지기 정지(서기 정책만) — C5Runner.det_hold")
+parser.add_argument("--air_contact_one", action="store_true", help="AIR1c 진단: --air_det_hold 와 함께 — 접지 확인 전에는 러너에 주는 접촉 비트를 (1, 1) 로 고정(정책 관측만, 물리·채점·접지 확인 판정 불변)")
 parser.add_argument("--air_start", type=str, default="", help="AIR1: 'clear:lo,hi;hold:T;rel:T' — 지지비 1.0·스폰 높이 +clear[m] 로 시작, 에피소드 시각 hold[s] 부터 rel[s] 에 걸쳐 지지 0. '' = 종전(지면 시작)")
 parser.add_argument("--kw_safety", type=str, default="", help="X19b: W3 감독기 문턱 JSON(브리지 --w3-safety 와 같은 형식·범위 검증). '' = 기본값")
 parser.add_argument("--kw_soft_clamp_all", action="store_true", help="X17: 실물 stage8 처럼 전 관절 목표각을 config soft 한계로 자른다(기본 = 학습과 같이 발목 앞뒤만)")
@@ -1292,7 +1293,7 @@ if KWL:
                     _AIR_DH["run"][e] = _AIR_DH["run"][e] + 1 if (float(ct[e][0]) > 0.5 and float(ct[e][1]) > 0.5) else 0
                     _AIR_DH["acq"][e] = _AIR_DH["run"][e] >= 15
                 R.ke.det_hold = not _AIR_DH["acq"][e]
-            R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], ct[e])
+            R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], (_npk.ones(2, dtype=_npk.float32) if (args_cli.air_contact_one and args_cli.air_det_hold and not _AIR_DH["acq"][e]) else ct[e]))
             act[e] = R.last_step_action; kind[e] = R.last_step_kind; want_v[e] = bool(clk.want)
             if not R.last_event and R.ticks_in_mode > 6:              # 전환 뒤 이력이 다 찬 틱만(fresh 전환의 백필 구간 제외)
                 _ro = (R.w3r if kind[e] == 2 else R.ke.core).last_obs

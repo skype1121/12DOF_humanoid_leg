@@ -19,6 +19,9 @@ KE 회복 모드 켜기 거부[응답 사유], stop 정지 래치·rearm, 한발
 1008 둘째 합성 키(KEW3Q — 첫 키 + KE 감지기 갇힘 해소 = 시뮬 합성 평가 구성): 같은 합성 세션 시나리오 + 갇힘 해소 대조(같은 입력에서 첫 키는 회복 모드에
 갇혀 걷기 켜기가 계속 거부되고 둘째 키는 조용한 양발 서기 2 s 뒤 서기로 돌아와 수락) + 갇힘 해소가 발동하지 않는 세션은 첫 키 세션과 발행 비트 동일
 (키 이름·디버그 c5.requiet 필드만 다름) + 기동 거부 경로. 위의 첫 키 시나리오·기준 커밋 비교는 그대로다.
+1008 셋째 합성 키(KEW3QH — 둘째 키에서 서기 KE 키만 G21h, 명세 air_start = 공중 정책 시작을 받는 유일한 W3 가족 키): 같은 합성 세션 시나리오(지면 시작) +
+지면 시작 세션은 둘째 키 세션과 발행 비트 동일(키 이름만 다름) + 공중 시작 세션(stand + hang_arm 수락 → 접지 전 KE 감지기 정지·풀림 사건 1 회·재들림에 다시 걸리지
+않음·지면 재시작에 잔류 없음·공중 허용 시간 초과는 종전 가드대로 정지) + 그 밖 W3 가족 키의 hang_arm 거부(종전 그대로) + 기동 거부 경로.
 """
 from __future__ import annotations
 
@@ -648,17 +651,23 @@ def scenario_kew3(b, clock, out, ckpt=None, tag="kew3"):
                 return "저주파 반전 시험"
         # 시작: hang_arm 은 W3 키 규칙대로 거부, stand = KE 모드
         H.tick(5)
-        a = H.cmd({"cmd": "stand", "hang_arm": True})
-        assert not a["accepted"] and not core.active, a
+        if getattr(spec, "air_start", False):  # 1008 셋째 합성 키: hang_arm 을 받는다(그 경로는 scenario_air_start). 여기서는 지면 시작 — 다른 합성 키와 같은 규칙이어야 한다
+            assert b.hang_arm_reject(key, True) is None
+        else:
+            a = H.cmd({"cmd": "stand", "hang_arm": True})
+            assert not a["accepted"] and not core.active, a
         a = H.cmd({"cmd": "stand"})
         assert a["accepted"] and core.active and core.ckpt_name == key and run.mode == "ke" and a["kew3"]["mode"] == "ke", a
+        assert not node.air.session and not node.air.det_hold and run.ke.det_hold is False, "지면 시작(hang_arm 없음)에 감지기 정지가 걸림"   # 1008
         H.tick(int(2.6 / dt))
         d = dbg()
+        assert "air_det_hold" not in d and run.ke.det_hold is False, "지면 시작 세션 디버그에 air_det_hold 필드"                               # 1008
         assert d["checkpoint"] == key and d["kew3"]["mode"] == "ke" and d["kew3"]["n_to_w3"] == 0 and d["kew3"]["block"] is None, d["kew3"]
         assert d["c5"]["kew3"]["mode"] == "ke" and d["c5"]["mode"] == 0 and {"raw_stand", "raw_rec", "ref_deg"} <= set(d["c5"])
         assert d["c5"].get("requiet") == (None if spec.requiet is None else {"n": 0, "run": 0.0}), d["c5"].get("requiet")
         assert d["w3"]["ge"] is False and "w3_cmd" in d and "w3_sup" in d and not core.w3hl.latched and not H.stop_alls
-        R.append("hang_arm 시작 거부·stand = KE 모드·디버그 kew3/c5(KE 필드 + kew3)")
+        R.append(("지면 시작(hang_arm 없음 — 이 키는 hang_arm 을 받는다)" if getattr(spec, "air_start", False) else "hang_arm 시작 거부")
+                 + "·stand = KE 모드·디버그 kew3/c5(KE 필드 + kew3)")
         # KE → W3: 켜기 수락 뒤 첫 틱에 W3(STAND), 다음 틱 gait 0→1
         a = on()
         assert a["accepted"] and a["kew3"]["mode"] == "ke" and a["w3"]["want"] is True and core.cmd == (0.06, 0.0, 0.0), a
@@ -808,6 +817,182 @@ def scenario_kew3_requiet(b, clock, out, ckpt, tag):
             assert run.mode == "w3" and clk.ge and run.n_to_w3 == 1
             out[tag] = (f"{ckpt}: 기준 대비 +4.5° 로 조용히 선 지 {t_rq:.2f}s 에 갇힘 해소(기준 재설정·디버그 c5.requiet.n 1) → 서기 복귀 → 걷기 켜기 수락 → W3")
         assert H.cmd({"cmd": "estop"})["accepted"] and not core.active
+    return driver
+
+
+def scenario_air_start(b, clock, out, ckpt, tag="air"):
+    """1008 공중 정책 시작 세션(셋째 합성 키 — 명세 air_start) — 노드 _on_cmd → hang_arm 규칙 → stand 시작(HangGuard 행잉 모드) → _tick 의
+    접지 전 KE 감지기 정지·풀림 사건·디버그/블랙박스 필드까지 실제 코드. 하위 러너는 스텁 정책(걷기 W3 러너 + C5Runner[실제 감지기 설정]).
+    ① touchdown_start + hang_arm 동시 거부(종전 그대로) ② stand + hang_arm 수락 → 무접촉 동안 매 틱 det_hold·KE 서기 모드(감지기 입력이 켜기 문턱을 넘어도)·
+    디버그 air_det_hold true ③ 공중에서 걷기 켜기 거부(감독기 양발 접촉 선행조건) ④ 양발 접촉 0.3 s 확인 틱에 풀림(블랙박스 사건 1 회) ⑤ 풀린 뒤 감지기가
+    살아 있다(기울이면 회복 모드) ⑥ 접지 뒤 재들림(PRE_CONTACT 복귀)·재착지에도 다시 걸리지 않고 사건이 더 없다 ⑦ 정지가 걸린 채 끝난 세션 뒤 지면 재시작 =
+    스위치·필드 없음 ⑧ 공중에서 HANG_MAX_S 를 넘기면 종전 가드대로 정지(W3 세션 지연 동결 — 양발 지지가 없으니 상한 뒤 STOP_ALL), 그때까지 감지기 정지 유지.
+    접촉은 시험이 직접 넣는다(가정). 순서·계약 검증이며 착지 성공·폐루프 성능 증명이 아니다."""
+    def driver(node):
+        H = Harness(node, b, clock)
+        R = []
+        core, dt, spec = node.core, b.TICK_SEC, b.KEW3_SPECS[ckpt]
+        run = core.runner
+        clk = run._w3_clock
+        PRE, ACQ = b.HangGuard.PRE_CONTACT, b.HangGuard.CONTACT_ACQUIRED
+        assert spec.air_start and core.kew3 and core.ckpt_name == ckpt and type(run).__name__ == "KeW3Runner" and run.ke.det_hold is False
+        assert node.w3sup is not None and not node.air.session and any("공중 정책 시작 허용" in m for lv, m in node._log.lines)
+        bb = []                                # 블랙박스에 넘어가는 기록을 그대로 받아 둔다(노드가 큐에 넣는 것과 같은 객체)
+        real_bb = node._bb_write
+        node._bb_write = lambda obj: (bb.append(json.loads(json.dumps(obj))), real_bb(obj))[1]
+        sq = [0]
+
+        def dbgs(n0=0):
+            return [json.loads(m) for m in node._pubs[b.BRIDGE_DEBUG_TOPIC].msgs[n0:] if '"raw_action"' in m]
+
+        def n_dbg():
+            return len(node._pubs[b.BRIDGE_DEBUG_TOPIC].msgs)
+
+        def on():
+            sq[0] += 1
+            return H.cmd({"cmd": "step", "enable": True, "req_id": "op", "seq": sq[0], "vx": 0.06})
+
+        def releases():
+            return [e for e in bb if e.get("event") == "air_det_release"]
+        # ① 공중(무접촉)에서 시작. touchdown_start + hang_arm 은 종전대로 거부
+        H.force_contact = (False, False)
+        H.tick(5)
+        a = H.cmd({"cmd": "stand", "hang_arm": True, "touchdown_start": True})
+        assert not a["accepted"] and not core.active and any("touchdown_start 는 stand 전용" in m for lv, m in node._log.lines), a
+        # ② stand + hang_arm 수락 → 접지 전 감지기 정지
+        n0 = n_dbg()
+        a = H.cmd({"cmd": "stand", "hang_arm": True})
+        assert a["accepted"] and core.active and run.mode == "ke" and a["kew3"]["mode"] == "ke", a
+        assert node.hang_guard.hang_mode and node.hang_guard.state == PRE and node.td_gate is None
+        assert node.air.session and node.air.det_hold and run.ke.det_hold is True, "공중 시작인데 감지기 정지가 걸리지 않음(첫 틱 전)"
+        assert any("공중 정책 시작(" in m for lv, m in node._log.lines) and any("행잉 ARM" in m for lv, m in node._log.lines)
+        H.tick(int(2.6 / dt))                  # 인계 워밍업·블렌딩(1.5 s)을 지난다 — 그동안도 무접촉
+        H.gyro = (0.0, 0.9, 0.0)               # |ω_xy| 0.9 > 켜기 0.5
+        H.tick(30)
+        H.gyro = (0.02, 0.01, 0.0)
+        H.tick(20)
+        H.pitch = math.radians(6.0)            # 기준 대비 +6° > 켜기 3°
+        H.tick(40)
+        air = dbgs(n0)
+        assert len(air) >= 200 and all(d["air_det_hold"] is True and d["hang_state"] == PRE and d["c5"]["mode"] == 0 and d["c5"]["n_on"] == 0
+                                       and d["kew3"]["mode"] == "ke" and d["contact"] == [0.0, 0.0] for d in air), "공중 구간 디버그: det_hold·서기 모드·필드"
+        assert run.ke.det_hold is True and run.last_mode == 0 and run.det.n_on == 0 and not releases() and core.active and not H.stop_alls
+        assert [e["air_det_hold"] for e in bb if e.get("raw_action") is not None] == [d["air_det_hold"] for d in air], "블랙박스 틱 기록의 필드 ≠ 디버그"
+        R.append(f"touchdown_start + hang_arm 거부(종전) · stand + hang_arm 수락 → 무접촉 {len(air)} 틱 내내 det_hold·KE 서기 모드(|ω| 0.9·+6° 에도 감지기 켜짐 0)·"
+                 "디버그/블랙박스 air_det_hold true")
+        # ③ 공중에서는 걷기 켜기가 감독기 선행조건(양발 접촉)으로 거부된다 — 블렌딩은 이미 끝났다
+        H.pitch = 0.0
+        H.tick(60)                             # 조용한 구간(|ω_xy|·기울기 조건은 채운다 — 남는 거부 사유가 접촉이 되게)
+        a = on()
+        assert not a["accepted"] and "양발 접촉" in a["why"] and not clk.want and run.mode == "ke" and run.n_to_w3 == 0, a
+        R.append("공중 걷기 켜기 거부(양발 접촉 선행조건)")
+        # ④ 착지: 양발 접촉이 CONTACT_CONFIRM_S 이어진 틱에 풀린다
+        H.force_contact = (True, True)
+        n1, k = n_dbg(), 0
+        while node.air.det_hold:
+            H.tick(1)
+            k += 1
+            assert k <= 30, "양발 접촉 뒤에도 감지기 정지가 풀리지 않음"
+        land = dbgs(n1)
+        t_rel = (k - 1) * dt
+        assert abs(t_rel - b.CONTACT_CONFIRM_S) <= dt + 1e-9, t_rel
+        assert all(d["air_det_hold"] is True and d["hang_state"] == PRE for d in land[:-1]) and land[-1]["air_det_hold"] is False \
+            and land[-1]["hang_state"] == ACQ and run.ke.det_hold is False and node.air.session, land[-1]
+        ev = [e.get("event") for e in bb if e.get("event") in ("hang_guard", "air_det_release")]
+        assert ev == ["hang_guard", "air_det_release"] and len(releases()) == 1, ev
+        assert any("감지기 정지 해제" in m for lv, m in node._log.lines)
+        R.append(f"양발 접촉 {t_rel:.2f}s 에 풀림(블랙박스 사건 air_det_release 1 회·디버그 false)")
+        # ⑤ 풀린 뒤 감지기는 새 인계처럼 시작(기준 추종 1.5 s) → 기울이면 회복 모드
+        H.tick(80)
+        assert run.last_mode == 0 and run.det.n_on == 0
+        H.pitch = math.radians(4.5)
+        H.tick(15)
+        assert run.last_mode == 1 and run.det.n_on == 1 and dbgs(-1)[0]["c5"]["mode"] == 1 and dbgs(-1)[0]["air_det_hold"] is False, "풀린 뒤 감지기가 켜지지 않음"
+        assert node.hang_guard.state == ACQ, f"대본 점검: 재들림 전 상태 {node.hang_guard.state}"
+        # ⑥ 접지 뒤 재들림(양발 무접촉 1.0 s → PRE_CONTACT 복귀) — 감지기 정지는 다시 걸리지 않는다. 재착지에도 사건 없음
+        H.force_contact = (False, False)
+        k = 0
+        while node.hang_guard.state != PRE:
+            H.tick(1)
+            k += 1
+            assert k <= int(b.LIFT_STOP_S / dt) + 4 and core.active, "재들림이 PRE_CONTACT 복귀로 이어지지 않음(또는 동결됨)"
+        n2 = n_dbg()
+        H.gyro = (0.0, 0.9, 0.0)
+        H.tick(30)
+        H.gyro = (0.02, 0.01, 0.0)
+        re_air = dbgs(n2)
+        assert node.hang_guard.relifts == 1 and all(d["air_det_hold"] is False and d["hang_state"] == PRE for d in re_air) and run.ke.det_hold is False
+        assert run.last_mode == 1 and all(d["c5"]["mode"] == 1 for d in re_air), "재들림 구간: 감지기가 살아 있어야 한다(정지가 다시 걸리지 않았다는 확인)"
+        H.force_contact = (True, True)
+        H.pitch = 0.0
+        H.tick(int(b.CONTACT_CONFIRM_S / dt) + 5)
+        assert node.hang_guard.state == ACQ and len(releases()) == 1 and not node.air.det_hold and core.active and not H.stop_alls
+        R.append(f"풀린 뒤 기울이면 회복 모드 → 재들림({k * dt:.2f}s 뒤 PRE_CONTACT 복귀)에도 다시 걸리지 않음 → 재착지에 사건 없음(누계 1 회)")
+        # ⑦ 정지가 걸린 채 끝난 공중 세션 뒤의 지면 재시작: 스위치·필드가 남지 않는다
+        assert H.cmd({"cmd": "estop"})["accepted"] and not core.active
+        H.force_contact = (False, False)
+        H.tick(5)
+        assert H.cmd({"cmd": "stand", "hang_arm": True})["accepted"]
+        H.tick(10)
+        assert node.air.det_hold and run.ke.det_hold is True and len(releases()) == 1
+        assert H.cmd({"cmd": "estop"})["accepted"] and not core.active and run.ke.det_hold is True     # 세션이 끝난 직후에는 러너에 값이 남아 있다 — 다음 시작이 지운다
+        H.force_contact = (True, True)
+        H.tick(5)
+        n3, nb3 = n_dbg(), len(bb)
+        a = H.cmd({"cmd": "stand"})
+        assert a["accepted"] and core.active and not node.air.session and not node.air.det_hold and run.ke.det_hold is False, "지면 재시작에 감지기 정지가 남음"
+        assert not node.hang_guard.hang_mode and node.hang_guard.state == ACQ
+        H.tick(int(2.6 / dt))
+        H.pitch = math.radians(4.5)
+        H.tick(100)                            # 지면 시작 세션: 감지기는 처음부터 살아 있다
+        H.pitch = 0.0
+        gnd = dbgs(n3)
+        assert gnd and all("air_det_hold" not in d for d in gnd) and run.det.n_on >= 1 and run.ke.det_hold is False and len(releases()) == 1
+        assert sum(1 for e in bb[nb3:] if e.get("raw_action") is not None) == len(gnd) and all("air_det_hold" not in e for e in bb[nb3:]), "지면 재시작 블랙박스에 필드"
+        R.append("정지가 걸린 채 끝난 공중 세션 뒤 지면 재시작: 스위치·필드 없음(감지기 처음부터 동작)")
+        # ⑧ 공중에서 HANG_MAX_S 를 넘기면 종전 가드대로 정지한다(guard_mode safe · W3 세션 = 지연 동결, 양발 지지가 없어 상한 뒤 STOP_ALL)
+        assert H.cmd({"cmd": "estop"})["accepted"] and not core.active
+        n_stop = len(H.stop_alls)
+        H.force_contact = (False, False)
+        H.tick(5)
+        assert H.cmd({"cmd": "stand", "hang_arm": True})["accepted"]
+        H.tick(20)
+        assert core.active and node.air.det_hold and len(H.stop_alls) == n_stop
+        clock.t += b.HANG_MAX_S                # 시계만 넘긴다(센서 시각은 다음 틱의 feed 가 새로 찍는다)
+        n4, k = n_dbg(), 0
+        while len(H.stop_alls) == n_stop:
+            H.tick(1)
+            k += 1
+            assert k <= int(b._W3.W3_SAFETY_DEFAULT.freeze_timeout_s / dt) + 10, "공중 허용 시간 초과 뒤에도 정지하지 않음"
+        assert not core.active and "hang_guard" in node.stop_reason and "timeout" in node.stop_reason, node.stop_reason
+        assert all(d["air_det_hold"] is True and d["c5"]["mode"] == 0 for d in dbgs(n4)) and len(releases()) == 1 and run.n_to_w3 == 0
+        R.append(f"공중 {b.HANG_MAX_S:.0f}s 초과 → 종전 행잉 가드 정지({k * dt:.2f}s 뒤 STOP_ALL, W3 세션 지연 동결 상한) — 그때까지 감지기 정지 유지")
+        node._bb_write = real_bb
+        out[tag] = R
+    return driver
+
+
+def scenario_hang_arm_reject(b, clock, out, tag):
+    """1008: 공중 정책 시작을 받지 않는 W3 가족 키의 세션 — stand + hang_arm 은 종전대로 거부(시작하지 않음), 로그 사유에 허용 키(없으면 '없음')가 적힌다.
+    hang_arm 없는 stand 는 종전대로 시작하고 공중 시작 상태·필드가 없다."""
+    def driver(node):
+        H = Harness(node, b, clock)
+        core = node.core
+        key = core.ckpt_name
+        assert node.w3sup is not None and key in b.W3_CKPTS and b.hang_arm_reject(key, True) is not None
+        H.tick(5)
+        a = H.cmd({"cmd": "stand", "hang_arm": True})
+        assert not a["accepted"] and not core.active and node._launches == 0 and not node.air.session, a
+        allow = [k for k, s in b.KEW3_CKPTS.items() if s.air_start]
+        line = next((m for lv, m in node._log.lines if "hang_arm 불가" in m), None)
+        assert line is not None and "[거부]" in line and (all(k in line for k in allow) if allow else "없음" in line), line
+        a = H.cmd({"cmd": "stand"})
+        assert a["accepted"] and core.active and not node.air.session and not node.air.det_hold and not node.hang_guard.hang_mode, a
+        H.tick(int(2.6 / b.TICK_SEC))
+        d = json.loads(node._pubs[b.BRIDGE_DEBUG_TOPIC].msgs[-1])
+        assert d["checkpoint"] == key and "air_det_hold" not in d and getattr(getattr(core.runner, "ke", None), "det_hold", False) is False
+        assert H.cmd({"cmd": "estop"})["accepted"]
+        out[tag] = f"{key}: stand + hang_arm 거부(허용 키 {', '.join(allow) or '없음'}) · hang_arm 없는 stand 는 종전대로 시작(필드 없음)"
     return driver
 
 
@@ -1292,6 +1477,67 @@ def main():
     except Exception as e:  # noqa: BLE001
         fails += 1
         print(f"[FAIL] 둘째 합성 키 기동 거부: {type(e).__name__}: {e}")
+    # ---- 1008 셋째 합성 키(둘째 키에서 서기 KE 키만 G21h · 공중 정책 시작을 받는 유일한 W3 가족 키) — 앞의 시나리오·기준 커밋 비교는 그대로 두고 뒤에 덧붙인다 ----
+    KH = b.KEW3QH_CKPT_KEY
+    kargv_h = live + ["--experimental-w3", "--experimental-kew3", "--checkpoint", KH]
+    for name, argv, mk, key in (
+            ("KE↔W3 합성 세션 노드 — 셋째 키(1008 G21h 서기 · 지면 시작)", kargv_h, lambda ck: scenario_kew3(b, ck, out, ckpt=KH, tag="kew3qh"), "kew3qh"),
+            ("공중 정책 시작 세션 노드 — 셋째 합성 키(1008)", kargv_h, lambda ck: scenario_air_start(b, ck, out, KH, "air"), "air"),
+            ("hang_arm 거부 — W3S3d 키(합성 플래그 꺼짐)", live + ["--experimental-w3", "--checkpoint", s3d],
+             lambda ck: scenario_hang_arm_reject(b, ck, out, "ha_w3"), "ha_w3"),
+            ("hang_arm 거부 — W3S3d 키(합성 플래그 켬)", live + ["--experimental-w3", "--experimental-kew3", "--checkpoint", s3d],
+             lambda ck: scenario_hang_arm_reject(b, ck, out, "ha_w3k"), "ha_w3k"),
+            ("hang_arm 거부 — 첫 합성 키", kargv, lambda ck: scenario_hang_arm_reject(b, ck, out, "ha_k1"), "ha_k1"),
+            ("hang_arm 거부 — 둘째 합성 키", kargv_q, lambda ck: scenario_hang_arm_reject(b, ck, out, "ha_k2"), "ha_k2")):
+        try:
+            ck = FakeClock()
+            _patch(b, ck)
+            rc = _run_main(b, argv, mk(ck))
+            assert rc == 0, f"main rc {rc}"
+            v = out[key]
+            print(f"[PASS] {name}: " + (" / ".join(v) if isinstance(v, list) else v))
+        except Exception as e:  # noqa: BLE001
+            fails += 1
+            import traceback
+            traceback.print_exc()
+            print(f"[FAIL] {name}: {type(e).__name__}: {e}")
+    try:   # [H1] 셋째 키의 지면 시작 세션 = 둘째 키 세션 — 발행 전부가 키 이름 말고 비트 동일(스텁 정책이 같다 → 노드·러너 경로에 키별 차이가 없다는 확인)
+        logs = []
+        for argv in (kargv_q, kargv_h):
+            if b.EXPERIMENTAL_W3:
+                b.disable_experimental_w3()
+            logs.append(replay(b, argv, driver_fn=replay_driver))
+        la, lb = logs
+        assert len(la) == len(lb), f"발행 수 {len(la)} vs 셋째 키 {len(lb)}"
+        n_named = 0
+        for i, ((ta, da), (tb, db)) in enumerate(zip(la, lb)):
+            dr = db.replace(KH, KQ)
+            n_named += dr != db
+            assert '"air_det_hold"' not in db, f"{i}번째 발행: 지면 시작 세션에 air_det_hold 필드"
+            assert ta == tb and da == dr, f"{i}번째 발행 다름(키 이름 치환 뒤)\n 둘째 키 {ta} {da[:300]}\n 셋째 {tb} {dr[:300]}"
+        n_ack = sum(1 for t, _ in la if t == b.BRIDGE_ACK_TOPIC)
+        n_stop = sum('"STOP_ALL"' in d for t, d in la if t == b.COMMAND_TOPIC)
+        assert n_named > 0 and n_ack >= 5 and n_stop >= 1, (n_named, n_ack, n_stop)
+        print(f"[PASS] 셋째 합성 키 지면 시작 세션 = 둘째 합성 키 세션(스텁 정책): 발행 {len(la)}건이 키 이름({n_named}건) 말고 비트 동일·air_det_hold 필드 없음"
+              f"(응답 {n_ack}·STOP_ALL {n_stop})")
+    except Exception as e:  # noqa: BLE001
+        fails += 1
+        import traceback
+        traceback.print_exc()
+        print(f"[FAIL] 셋째 합성 키 세션 비트 비교: {type(e).__name__}: {e}")
+    try:   # 셋째 키 기동 거부 — 앞의 두 키와 같은 조합
+        rej = (["--checkpoint", KH, "--selftest"], ["--experimental-w3", "--checkpoint", KH, "--selftest"], ["--experimental-kew3", "--checkpoint", KH, "--selftest"],
+               ["--experimental-w3", "--experimental-kew3", "--checkpoint", KH, "--runner-ema-fresh", "2", "--selftest"],
+               ["--experimental-w3", "--experimental-kew3", "--checkpoint", KH, "--c5-settle", "odic", "--selftest"],
+               ["--experimental-w3", "--experimental-kew3", "--checkpoint", KH, "--c5-imu-f32", "--selftest"])
+        for argv in rej:
+            rc = _run_main(b, argv, lambda n: None)
+            assert rc == 2, (argv, rc)
+        assert b.RUNNER_EMA_FRESH == 1 and b.C5_SETTLE is None and not b.C5_IMU_F32, "거부된 기동이 전역 설정을 바꿈"
+        print(f"[PASS] 셋째 합성 키 기동 거부 {len(rej)} 경로(exit 2): 플래그 없이·W3 플래그만·합성 플래그만·--runner-ema-fresh 2·--c5-settle·--c5-imu-f32")
+    except Exception as e:  # noqa: BLE001
+        fails += 1
+        print(f"[FAIL] 셋째 합성 키 기동 거부: {type(e).__name__}: {e}")
     print("w3 node selftest:", "ALL PASS" if fails == 0 else f"{fails} FAILED")
     return 0 if fails == 0 else 1
 

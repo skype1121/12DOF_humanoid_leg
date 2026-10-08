@@ -477,6 +477,24 @@ CKPT_GAIT_FREQ_DEFAULT = 1.4
 CKPT_JVEL_EMA_MODE = {"stand_crouch_g12_ema0": "ema0"}
 #: 1003: 관측 필터 계약(학습 env.yaml 로 결정)이 필요한 정책 — env.yaml 이 없으면 원시 관측으로 조용히 도는 대신 기동 거부.
 CKPT_REQUIRE_ENV_YAML = {"stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra"}
+# ---------------------------------------------------------------------------
+# 1008 G21h — 매달림 시작을 학습 분포에 넣은 서기 세대(G21a-11300 이어 학습, 에피소드 절반 매달림 시작 — reports/gen_w3/AIR_START_1008.md §8).
+# **평가 통과 전 · 실물 미검증 · 젯슨 미배포.** 여기는 키 등록뿐이다 — 어느 키를 쓸지(콘솔 메뉴·배포)는 평가 판정 뒤의 일이다.
+#   stand_crouch_g21h      서기 단독(G21a 키와 같은 계약: 기본자세 CROUCH_V5·클록 1.1 Hz·env.yaml 필수[관측 필터 act β0.27·jvel β0.25])
+#   stand_c5kr_g21h_g24ra  KE = 서기 G21h + 회복 G24R-a(stand_c5kr_g21a_g24ra 와 같은 회복 정책·같은 감지기·같은 cue). 키의 경로 = 서기 정책(C5 키 규약)
+# 관측(320)·행동·기본자세·필터 계약은 G21a 와 같다(학습 환경이 그렇게 정의됨 — selftest 'G21h 키' 가 env.yaml 로 대조한다).
+# 파일이 없으면 다른 미배포 세대처럼 selftest '정책 500틱' 에서 SKIP, 기동 --checkpoint 로 고르면 필수 파일 FAIL.
+# ---------------------------------------------------------------------------
+G21H_EXPORTED = os.path.join(REPO, "logs/rsl_rl/biped12_stage4/2026-10-08_13-16-02_g21h_s1_from_11300/exported")
+CHECKPOINTS["stand_crouch_g21h"] = G21H_EXPORTED
+CHECKPOINTS["stand_c5kr_g21h_g24ra"] = G21H_EXPORTED
+C5_PAIRS["stand_c5kr_g21h_g24ra"] = ("stand_crouch_g21h", C5_PAIRS["stand_c5kr_g21a_g24ra"][1])
+C5_EXTRA["stand_c5kr_g21h_g24ra"] = {_k: dict(_v) for _k, _v in C5_EXTRA["stand_c5kr_g21a_g24ra"].items()}   # 값은 kr 과 같고 dict 는 따로(한쪽을 고쳐도 다른 쪽이 따라 바뀌지 않게)
+for _k in ("stand_crouch_g21h", "stand_c5kr_g21h_g24ra"):
+    CKPT_DEFAULT_POSE[_k] = [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
+    CKPT_GAIT_FREQ[_k] = 1.1
+    CKPT_REQUIRE_ENV_YAML.add(_k)
+del _k
 #: stand 명령에 --checkpoint 가 stand 가족이 아닐 때의 대체 정책 = 7차 데뷔 후보(0906).
 #: 대체는 경고 로그로 드러낸다 (0905 감사 A1: 무언 대체 'stand_v7' = 10.49kg 자산 정책 탑승 경로).
 STAND_DEFAULT = "stand_v18b"
@@ -609,10 +627,12 @@ def disable_experimental_w3():
 #   W3 → KE : 끄기 → W3 반주기 래치 꺼짐 → W3 STAND 로 조용한 양발 서기 0.5 s(|ω_xy| < 0.15, 상한 3 s) → 상태 이어받기(handoff "carry").
 #   움직이는 중 러너 새 시작 금지: carry 는 러너 ema_fresh_ticks 1 에서만 → --runner-ema-fresh 2 와 함께면 기동 거부(kew3_startup_reject·_make_runner).
 # 시작 = stand 명령(KE 모드, 종전 인계 워밍업·온셋 블렌딩 그대로). hang_arm 은 W3 키 규칙대로 거부(지면 시작만 평가됨 — 허용 여부는 사용자 결정).
+# 1008 셋째 합성 키(KEW3QH_CKPT_KEY, 명세 air_start=True)만 hang_arm 을 받는다 — 규칙은 hang_arm_reject, 접지 확인 전 KE 감지기 정지는 AirStart.
 # 가드 트립은 W3 세션 규칙(지연 동결: 양발 지지 확인 뒤 STOP_ALL)이 KE 모드에도 그대로 적용된다(종전 C5 세션의 즉시 동결과 다름).
 # ---------------------------------------------------------------------------
 EXPERIMENTAL_KEW3 = False  # 요청 플래그. 합성 키의 실제 등록(KEW3_CKPTS)은 W3 키가 등록돼 있는 동안만
-KeW3Spec = collections.namedtuple("KeW3Spec", "w3 ke handoff settle_quiet_s requiet", defaults=(None,))   # requiet(1008): 기본 None = 종전(KE 감지기 생성자 인자 그대로)
+# requiet(1008): 기본 None = 종전(KE 감지기 생성자 인자 그대로) · air_start(1008): 기본 False = 종전(stand 의 hang_arm 거부). True 인 키만 공중 정책 시작을 받는다
+KeW3Spec = collections.namedtuple("KeW3Spec", "w3 ke handoff settle_quiet_s requiet air_start", defaults=(None, False))
 KEW3_CKPT_KEY = "stand_kew3_g21a_g24ra_w3s3d15800"     # stand 가족 접두사(시작 = stand·LPF β0.27·heading_hold 강제 OFF)
 #: 1008 둘째 합성 키(**실험 플래그 뒤 · 실물 미검증 · 젯슨 미배포**): 첫 키와 같은 걷기 키·KE 키·전환 방식·정착 시간 + KE 감지기 갇힘 해소
 #: requiet=(T_s, w, 접촉 요구) — 회복 모드 중 감지 |ω_xy| < 0.3 rad/s ∧ 양발 접촉이 2.0 s 이어지면 기준 자세를 현재 자세로 다시 잡고 회복 모드를 끈다
@@ -621,10 +641,20 @@ KEW3_CKPT_KEY = "stand_kew3_g21a_g24ra_w3s3d15800"     # stand 가족 접두사(
 #: 조용히 선 채 회복 모드에 갇히면 걷기 켜기가 계속 거부된다(시뮬 관찰·대조: reports/gen_w3/TRANSITION_W3KE.md §5.10b·§5.10d·§5.11b).
 #: 단독 KE 키(stand_c5kr_*·stand_c5krh_*)의 감지기는 바뀌지 않는다(C5_EXTRA 불변 — requiet 는 이 명세에서 _make_runner 의 합성 분기로만 들어간다).
 KEW3Q_CKPT_KEY = "stand_kew3q_g21a_g24ra_w3s3d15800"
-#: 합성 키 → (걷기 W3 키, 서기 KE 키[C5 키], 전환 방식, W3 → KE 정착 시간[s][, KE 감지기 requiet]). 정착 판정의 |ω_xy| 문턱 0.15·상한 3 s 는 KeW3Runner 기본값.
+#: 1008 셋째 합성 키(**실험 플래그 뒤 · 평가 통과 전 · 실물 미검증 · 젯슨 미배포**): 둘째 키와 같은 걷기 키·전환 방식·정착 시간·갇힘 해소에서
+#: 서기 KE 키만 G21h(매달림 시작을 학습 분포에 넣은 서기 세대)로 바꾸고 air_start=True 를 단 것. **공중 정책 시작(stand 의 hang_arm)을 받는 유일한 W3 가족 키다.**
+#: 배경: 승윤님 결정(1008) — 정책을 공중(매달린 상태)에서 구동한 채 내린다. 앞의 두 합성 키(G21a 서기)는 시뮬 AIR1 에서 공중 구동 뒤 착지 낙상 40–62 %
+#: (대조 = 홀드로 착지 뒤 인계 0/512)라 거부를 풀지 않았다(reports/gen_w3/AIR_START_1008.md §2·§6). 이 키의 허용은 **코드가 받을 수 있다는 뜻일 뿐**이고,
+#: 쓸지는 G21h 가 같은 문서 §8 의 승격 기준을 채운 뒤에 정한다(시뮬 통과 = 실물 성공 확률 아님).
+#: air_start 세션의 규칙: 접지 확인(HangGuard 가 PRE_CONTACT 를 벗어남 = 양발 접촉 CONTACT_CONFIRM_S) 전에는 KE 회복 감지기를 세운다(C5Runner.det_hold —
+#: 시뮬 평가기 --air_det_hold 와 같은 스위치). 그 밖(HangGuard·워밍업·블렌딩·중력 게이트·W3 감독기 선행조건)은 종전 그대로다.
+KEW3QH_CKPT_KEY = "stand_kew3qh_g21h_g24ra_w3s3d15800"
+#: 합성 키 → (걷기 W3 키, 서기 KE 키[C5 키], 전환 방식, W3 → KE 정착 시간[s][, KE 감지기 requiet][, air_start]). 정착 판정의 |ω_xy| 문턱 0.15·상한 3 s 는 KeW3Runner 기본값.
 KEW3_SPECS = {KEW3_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5),
               KEW3Q_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5,
-                                       requiet=(2.0, 0.3, "both"))}
+                                       requiet=(2.0, 0.3, "both")),
+              KEW3QH_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21h_g24ra", handoff="carry", settle_quiet_s=0.5,
+                                        requiet=(2.0, 0.3, "both"), air_start=True)}
 KEW3_KEYS = tuple(KEW3_SPECS)
 KEW3_CKPTS = {}            # 켜졌을 때만 {합성 키: KeW3Spec}
 
@@ -638,7 +668,7 @@ def _kew3_register():
             raise ValueError(f"{k}: 서기 키 {sp.ke} 가 C5 키가 아님")
         if CKPT_DEFAULT_POSE.get(sp.w3) != CKPT_DEFAULT_POSE.get(sp.ke) or CKPT_GAIT_FREQ.get(sp.w3) != CKPT_GAIT_FREQ.get(sp.ke):
             raise ValueError(f"{k}: 하위 키 {sp.w3}·{sp.ke} 의 기본자세 또는 클록 주파수가 다름 — 합성 불가")
-        CHECKPOINTS[k] = CHECKPOINTS[C5_PAIRS[sp.ke][0]]         # 경로 = KE 서기 정책(시작 모드) — C5 키와 같은 규약(이름 기반 계약이 G21a 로 해석)
+        CHECKPOINTS[k] = CHECKPOINTS[C5_PAIRS[sp.ke][0]]         # 경로 = KE 서기 정책(시작 모드) — C5 키와 같은 규약(이름 기반 계약이 그 서기 정책[G21a·1008 G21h]으로 해석)
         CKPT_GAIT_FREQ[k] = CKPT_GAIT_FREQ[sp.ke]                # stand 가족 레지스트리 요건(합성 러너는 쓰지 않는다 — 하위 러너가 각자 계약)
         CKPT_DEFAULT_POSE[k] = list(CKPT_DEFAULT_POSE[sp.ke])    # 착지 대기 홀드 자세 검사(ckpt_default_pose)가 읽는다
         CKPT_REQUIRE_ENV_YAML.add(k)
@@ -2143,6 +2173,391 @@ def _selftest_c5krh():
             f"krh {dwell[H]} 틱(조기 복귀 {nearly[H]} — 0 이면 평온 경로로 꺼짐)")
 
 
+def _selftest_g21h(required=()):
+    """(1008) G21h 키 둘(stand_crouch_g21h · stand_c5kr_g21h_g24ra): 레지스트리 계약이 G21a 짝(stand_crouch_g21a · stand_c5kr_g21a_g24ra)과
+    서기 정책 파일 경로 하나만 다른지 — 기본자세·클록·env.yaml 요구·jvel_ema 모드·회복 정책 경로·감지기/cue 설정(값은 같고 dict 는 따로).
+    env.yaml 이 있으면 관측 필터와 학습 계약(기본자세 12 관절·액션 스케일·슬루·제어 주기·기본 오프셋·jvel_ema·관측 필터 함수)을 G21a 와 대조하고,
+    정책 파일이 있으면 실제 키로 러너를 만들어 종류·설정·관측 차원·200 틱 유한/슬루를 본다(G21a 와 출력이 다른지 = 다른 파일을 읽는지도).
+    파일이 없으면 그 구간은 SKIP — 단 required(기동 --checkpoint·합성 키의 하위 키)에 G21h 키가 있으면 FAIL(배포 누락).
+    계약·경로 확인이다 — 정책 성능(매달림 시작 뒤 착지)은 시뮬 평가(reports/gen_w3/AIR_START_1008.md §8)의 몫이다."""
+    import numpy as np
+    A, H, KA, KH = "stand_crouch_g21a", "stand_crouch_g21h", "stand_c5kr_g21a_g24ra", "stand_c5kr_g21h_g24ra"
+    assert CHECKPOINTS[H] == CHECKPOINTS[KH] == G21H_EXPORTED and G21H_EXPORTED != CHECKPOINTS[A] and CHECKPOINTS[KA] == CHECKPOINTS[A], "G21h 경로"
+    assert G21H_EXPORTED.endswith(os.path.join("biped12_stage4", "2026-10-08_13-16-02_g21h_s1_from_11300", "exported")), G21H_EXPORTED
+    v5 = [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
+    assert CKPT_DEFAULT_POSE[H] == CKPT_DEFAULT_POSE[KH] == CKPT_DEFAULT_POSE[A] == CKPT_DEFAULT_POSE[KA] == v5, "G21h 기본자세 ≠ G21a(CROUCH_V5)"
+    assert CKPT_DEFAULT_POSE[H] is not CKPT_DEFAULT_POSE[A] and CKPT_DEFAULT_POSE[KH] is not CKPT_DEFAULT_POSE[H], "기본자세 목록 객체 공유"
+    assert CKPT_GAIT_FREQ[H] == CKPT_GAIT_FREQ[KH] == CKPT_GAIT_FREQ[A] == CKPT_GAIT_FREQ[KA] == 1.1, "G21h 클록 ≠ G21a(1.1 Hz)"
+    assert {H, KH, A, KA} <= CKPT_REQUIRE_ENV_YAML and not {H, KH} & set(CKPT_JVEL_EMA_MODE), "G21h env.yaml 요구·jvel_ema 모드(v2)"
+    assert C5_PAIRS[KH] == (H, C5_PAIRS[KA][1]) and C5_PAIRS[KA][0] == A and H not in C5_PAIRS, "G21h KE 키 = 서기 G21h + G21a KE 와 같은 회복 정책"
+    assert C5_EXTRA[KH] == C5_EXTRA[KA] and C5_EXTRA[KH] is not C5_EXTRA[KA] and all(C5_EXTRA[KH][k] is not C5_EXTRA[KA][k] for k in C5_EXTRA[KA]), \
+        "G21h KE 키의 감지기·cue 설정이 kr 과 값이 다르거나 dict 를 공유"
+    assert "requiet" not in C5_EXTRA[KH]["det"], "단독 G21h KE 키에 갇힘 해소가 켜짐(그 옵션은 합성 키 명세로만)"
+    assert H.startswith("stand_") and KH.startswith("stand_") and H not in W3_CKPTS and KH not in W3_CKPTS and not {H, KH} & set(KEW3_KEYS)
+    need = [k for k in required if k in (H, KH)]
+    have_yml = os.path.isfile(_ckpt_env_yaml(H))
+    have_pol = os.path.exists(os.path.join(G21H_EXPORTED, "policy.pt")) or os.path.exists(os.path.join(G21H_EXPORTED, "policy.onnx"))
+    assert not need or (have_yml and have_pol), f"필수 키 {need} 의 G21h 정책 파일·env.yaml 없음({G21H_EXPORTED}) — 배포 누락"
+    _saved = CHECKPOINTS[H]                                   # env.yaml 없는 G21h 는 원시 관측으로 조용히 돌지 않고 기동 거부(G21a 와 같은 규칙)
+    try:
+        CHECKPOINTS[H] = "/nonexistent/g21h/exported"
+        try:
+            ckpt_obs_filter(H); raise AssertionError("env.yaml 없는 G21h 가 원시 관측으로 허용됨")
+        except ValueError:
+            pass
+    finally:
+        CHECKPOINTS[H] = _saved
+    if not have_yml:
+        return f"레지스트리 OK(G21a 짝과 서기 정책 경로만 다름) · env.yaml·실행 SKIP (G21h 미배포: {G21H_EXPORTED})"
+    assert ckpt_obs_filter(H) == ckpt_obs_filter(KH) == (OBS_ACT_EMA_BETA_DEPLOY, 0.25), f"G21h 관측 필터 {ckpt_obs_filter(H)} ≠ (0.27, 0.25)"
+    assert ckpt_jvel_ema_mode(H) == ckpt_jvel_ema_mode(KH) == "v2"
+    ch = _parse_env_contract(_ckpt_env_yaml(H))
+    for j, want in zip(JOINT_ORDER, v5):
+        assert abs(ch["joint_pos"].get(j, float("nan")) - want) < 1e-6, f"G21h env.yaml 기본자세 {j} {ch['joint_pos'].get(j)} ≠ {want}"
+    assert abs(ch.get("scale", -1.0) - _DC.ACTION_SCALE) < 1e-9 and abs(ch.get("max_delta", -1.0) - SLEW_RAD) < 1e-9 and ch.get("use_default_offset") is True
+    assert abs(1.0 / (ch["dt"] * ch["decimation"]) - _DC.RATE_HZ) < 1e-6 and _jvel_ema_contract(ch.get("jvel_ema_func")) == "v2"
+    note_a = "G21a env.yaml 없음(대조 SKIP)"
+    if os.path.isfile(_ckpt_env_yaml(A)):
+        ca = _parse_env_contract(_ckpt_env_yaml(A))
+        assert ckpt_obs_filter(H) == ckpt_obs_filter(A), f"관측 필터 G21h {ckpt_obs_filter(H)} ≠ G21a {ckpt_obs_filter(A)}"
+        diff = sorted(k for k in set(ca) | set(ch) if k not in ("min_delay", "max_delay") and ca.get(k) != ch.get(k))
+        assert not diff, f"G21h 학습 계약이 G21a 와 다름: {diff}"
+        note_a = (f"학습 계약 = G21a({len(ch['joint_pos'])} 관절 기본자세·스케일·슬루·50 Hz·기본 오프셋·jvel_ema v2·관측 필터 함수) · "
+                  f"지연 대역 G21h {ch.get('min_delay', '?')}~{ch.get('max_delay', '?')} / G21a {ca.get('min_delay', '?')}~{ca.get('max_delay', '?')} 틱")
+    if not have_pol:
+        return f"레지스트리·env.yaml OK(관측 필터 act β0.27·jvel β0.25, {note_a}) · 실행 SKIP (G21h 정책 파일 없음)"
+
+    def run(name, n=200):
+        core = BridgeCore(name); core.reset(); core.heading_hold = False; core.cmd = (0.0, 0.0, 0.0)
+        q = np.asarray(CKPT_DEFAULT_POSE[name], dtype=np.float32); prev = None; outs = []
+        ang = math.radians(1.0)
+        for k in range(n):
+            out = core.tick((0.01 * math.sin(0.3 * k), 0.02 * math.cos(0.2 * k), 0.0), (math.cos(ang / 2), 0.0, math.sin(ang / 2), 0.0),
+                            q, np.zeros(12, np.float32), (1.0, 1.0))
+            assert np.all(np.isfinite(out)), f"{name} 틱 {k}: 비유한 목표"
+            if prev is not None:
+                assert float(np.max(np.abs(out - prev))) <= SLEW_RAD * 1.001 + 1e-6, f"{name} 틱 {k}: 슬루 초과"
+            prev = out; q = out.astype(np.float32); outs.append(out)
+        return core, np.asarray(outs)
+    _bias = list(IMU_MOUNT_BIAS_DEG)                          # 입력을 대본 그대로(앞선 selftest 가 읽은 맵의 장착 편향 보정이 끼면 실행 순서에 따라 숫자가 달라진다)
+    try:
+        IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = 0.0, 0.0
+        ch_core, oh = run(H)
+        assert isinstance(ch_core.runner, PolicyRunnerStage4) and not isinstance(ch_core.runner, C5Runner) and ch_core.runner.obs_dim == 320
+        assert (ch_core.runner.act_obs_ema_beta, ch_core.runner.jvel_obs_ema_beta) == (0.27, 0.25) and ch_core.c5_view() is None and not ch_core.w3
+        note_k = "KE 키 실행 SKIP (회복 정책 G24R-a 파일 없음)"
+        if os.path.exists(os.path.join(C5_PAIRS[KH][1], "policy.pt")) or os.path.exists(os.path.join(C5_PAIRS[KH][1], "policy.onnx")):
+            ck_core, ok_ = run(KH)
+            r = ck_core.runner
+            assert isinstance(r, C5Runner) and r.obs_dim == 320 and r.det_hold is False and ck_core.c5_view() is r
+            assert tuple(r.det.early) == tuple(C5_EXTRA[KA]["det"]["early"]) and r.cue_vx == C5_EXTRA[KA]["runner"]["cue_vx"] and r.det.requiet is None
+            assert r.det.n_on == 0 and np.array_equal(ok_, oh), "조용한 서기(회복 모드 0 회)에서 G21h KE 키 ≠ G21h 서기 단독 키(같은 서기 정책이면 비트 동일해야 한다)"
+            note_k = f"KE 키 = C5Runner(감지기·cue = kr 값, det_hold 기본 False)·조용한 서기 {len(ok_)} 틱 = 서기 단독 키와 비트 동일"
+        note_d = "G21a 정책 파일 없음(출력 대조 SKIP)"
+        if os.path.exists(os.path.join(CHECKPOINTS[A], "policy.pt")) or os.path.exists(os.path.join(CHECKPOINTS[A], "policy.onnx")):
+            _c, oa = run(A)
+            dmax = float(np.max(np.abs(oa - oh)))
+            assert dmax > 0.0, "G21h 키의 출력이 G21a 키와 비트 동일 — 같은 정책 파일을 읽고 있다(경로·배포 확인)"
+            note_d = f"같은 입력에서 G21a 와 목표각 최대 차 {math.degrees(dmax):.2f}°(다른 정책 파일)"
+    finally:
+        IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = _bias
+    return (f"G21h 키 OK: G21a 짝과 서기 정책 경로만 다름(기본자세 CROUCH_V5·1.1 Hz·env.yaml 필수·관측 필터 act β0.27·jvel β0.25) · {note_a} · "
+            f"서기 단독 {len(oh)} 틱 유한·슬루 [{ch_core.runner.backend}] · {note_k} · {note_d}")
+
+
+def _selftest_air_start():
+    """1008 공중 정책 시작(셋째 합성 키 KEW3QH_CKPT_KEY — 서기 G21h, 명세 air_start). 스텁 정책 — 규칙·순서 확인이며 착지 성공·폐루프 성능 증명이 아니다.
+    (e) KEW3_KEYS = 세 키(순서)·셋째 명세 = 둘째 명세에서 ke·air_start 만 다름·앞의 두 명세 air_start False·명세 기본값 False.
+    (a) hang_arm 규칙(hang_arm_reject — 노드 stand 처리가 쓰는 함수): W3-A·W3S3d·첫째·둘째 합성 키는 거부(사유에 허용 키), 셋째 합성 키만 통과,
+        W3 가족 밖 키(서기·KE·G21h 단독 키 포함)와 hang_arm 없는 시작은 종전대로 통과. 합성 플래그가 꺼져 있으면 통과시킬 W3 키가 없다.
+    (b) 공중 시작 세션 — 노드의 stand 처리·_tick 과 같은 순서(HangGuard.update → AirStart.step → apply → core.tick)를 목 세션으로:
+        무접촉 동안 매 틱 runner.ke.det_hold True·KE 모드 0·감지기 켜짐 0 회 — 감지기 입력이 켜기 문턱을 넘어도(|ω_xy| 0.9 > 0.5, 기준 대비 5° > 3°).
+        대조(같은 입력·감지기 정지 없음)는 두 입력 각각에서 회복 모드가 켜진다. 양발 접촉 CONTACT_CONFIRM_S 확인 틱에 풀리고(사건 1 회) 그 뒤 감지기가
+        살아 있다(기울이면 회복 모드). 접지 뒤 재들림으로 PRE_CONTACT 에 돌아가도 다시 걸리지 않고, 재착지에도 사건이 더 나오지 않는다.
+        정지 중 목표각 = 서기 정책 단독 러너(같은 스텁)와 비트 동일(= 서기 정책만 쓴다).
+    (c) 같은 키의 지면 시작(hang_arm 없음)은 det_hold 를 한 번도 켜지 않는다 — 목표각이 스위치를 모르는 조립(AirStart 없이 core.tick 만)·둘째 키와 비트 동일.
+        다른 합성 키·W3 가족 밖 키의 hang_arm 은 공중 시작 세션이 아니다(air_start_session False), 단독 C5 러너에는 스위치가 닿지 않는다.
+    (d) 블랙박스 필드 air_det_hold 는 공중 시작 세션에만(AirStart.fields) + 노드 연결(이 파일 소스: 생성 1 곳·stand 처리 순서·리셋·틱 순서·필드 덧붙임).
+    실모델(셋째 키의 정책 파일이 다 있으면): _make_runner 경로의 합성 러너로 공중 구간을 돌려 det_hold·모드 0·유한·슬루, 목표각 = stand_crouch_g21h 단독 러너와 비트 동일.
+    노드(_on_cmd·_tick·블랙박스) 실제 경로는 jetson/scripts/selftest_w3_bridge_node.py 의 공중 시작 세션 시나리오가 본다."""
+    import re
+    import numpy as np
+    global RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32
+    was_w3, was_kw = EXPERIMENTAL_W3, EXPERIMENTAL_KEW3
+    saved = (RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32, list(IMU_MOUNT_BIAS_DEG))
+    K1, K2, K3 = KEW3_CKPT_KEY, KEW3Q_CKPT_KEY, KEW3QH_CKPT_KEY
+    notes = []
+    try:
+        RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32 = 1, None, _W3.W3_HL_DEFAULT, None, None, False
+        IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = 0.0, 0.0            # 기울기 수치를 대본 그대로(장착 편향 보정은 이 시험 대상이 아님)
+        # ── (e) 키·명세 ──
+        assert KEW3_KEYS == (K1, K2, K3) == ("stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800",
+                                             "stand_kew3qh_g21h_g24ra_w3s3d15800"), KEW3_KEYS
+        s1, s2, s3 = (KEW3_SPECS[k] for k in KEW3_KEYS)
+        assert s1.air_start is False and s2.air_start is False and s3.air_start is True, (s1.air_start, s2.air_start, s3.air_start)
+        assert s3 == s2._replace(ke="stand_c5kr_g21h_g24ra", air_start=True) and s3.ke != s2.ke and s3.requiet == s2.requiet == (2.0, 0.3, "both"), s3
+        assert KeW3Spec(w3="w", ke="k", handoff="carry", settle_quiet_s=0.5) == KeW3Spec("w", "k", "carry", 0.5, None, False), "명세 기본값(requiet None·air_start False)"
+        assert _kew3_det_kw(s3) == _kew3_det_kw(s2) and _kew3_det_want(s3) == _kew3_det_want(s2), "셋째 키의 KE 감지기 설정 ≠ 둘째 키"
+        # ── (a) hang_arm 규칙 ──
+        disable_experimental_kew3()
+        if EXPERIMENTAL_W3:
+            disable_experimental_w3()
+        enable_experimental_w3()
+        w3_keys = list(_W3.W3_KEYS)
+        for k in w3_keys:                     # 합성 플래그 꺼짐: W3 키는 전부 거부, 통과시킬 키 없음
+            why = hang_arm_reject(k, True)
+            assert why and "hang_arm 불가" in why and "없음" in why and hang_arm_reject(k, False) is None, (k, why)
+        enable_experimental_kew3()
+        assert [k for k, s in KEW3_CKPTS.items() if s.air_start] == [K3], "air_start 를 단 등록 키가 셋째 합성 키 하나가 아님"
+        rejected = w3_keys + [K1, K2]
+        assert _W3.W3S3D_CKPT_KEY in rejected and set(rejected) | {K3} == set(W3_CKPTS), (rejected, sorted(W3_CKPTS))
+        for k in rejected:
+            why = hang_arm_reject(k, True)
+            assert why and "hang_arm 불가" in why and K3 in why and K1 not in why and K2 not in why, (k, why)
+            assert not air_start_session(k, True) and not air_start_session(k, False)
+        assert hang_arm_reject(K3, True) is None and air_start_session(K3, True) and not air_start_session(K3, False)
+        plain = ["stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_crouch_g21h", "stand_c5kr_g21h_g24ra", STAND_DEFAULT, "stand_hang_v5"]
+        for k in plain + list(W3_CKPTS):
+            assert hang_arm_reject(k, False) is None, k
+        for k in plain:                       # W3 가족 밖 키: hang_arm 은 종전 HangGuard 계약대로 받는다 — 공중 시작 세션(감지기 정지)은 아니다
+            assert k in CHECKPOINTS and hang_arm_reject(k, True) is None and not air_start_session(k, True), k
+        notes.append(f"hang_arm: W3 가족 {len(rejected)} 키 거부(사유에 허용 키)·{K3} 만 통과·W3 가족 밖 {len(plain)} 키 종전대로 통과(공중 시작 세션 아님)·"
+                     "합성 플래그 꺼짐이면 통과 키 없음")
+
+        # ── 스텁 러너·목 세션 ──
+        pose = np.asarray(CKPT_DEFAULT_POSE[s3.ke], dtype=np.float32)
+        rng = np.random.default_rng(1008)
+        Ww, Ws, Wr = (rng.normal(0.0, 0.05, (12, 320)).astype(np.float32) for _ in range(3))
+        rkw = dict(obs_dim=320, gait_freq=1.1, default_pose_rad=CKPT_DEFAULT_POSE[s3.ke], act_obs_ema_beta=0.27, jvel_obs_ema_beta=0.25)
+        NONE, BOTH = [0.0, 0.0], [1.0, 1.0]
+
+        def net(W):
+            return lambda o: np.tanh(W @ np.asarray(o, np.float32)).astype(np.float32)
+
+        def mk_composite(key):                # 합성 러너(스텁 정책 3 개) — 실제 _make_runner 와 같은 감지기·cue 설정·같은 합성 함수
+            sp = KEW3_SPECS[key]
+            ex = C5_EXTRA[sp.ke]
+            ke = C5Runner(net(Ws), net(Wr), detector=SwitchDetector(**C5_DETECTOR_KW, **ex["det"], **_kew3_det_kw(sp)), **ex["runner"], **rkw)
+            return _kew3_compose(key, PolicyRunnerStage4(model_path=net(Ww), w3=W3_CKPTS[sp.w3], **rkw), ke)
+
+        def quat(pitch_deg):
+            p = math.radians(pitch_deg)
+            return (math.cos(p / 2), 0.0, math.sin(p / 2), 0.0)
+
+        class Session:
+            """노드의 stand 처리(_reset_chain_state → core.reset → AirStart.begin·apply)와 _tick(HangGuard.update → AirStart.step → apply → core.tick)
+            순서를 옮긴 목 세션. use_air=False 는 '스위치를 모르는 조립'(AirStart 를 건드리지 않고 core.tick 만) — 비트 비교 기준.
+            (속성 이름을 노드와 다르게 둔다 — 아래 소스 확인의 줄 머리 정규식이 이 목 세션에 걸리지 않게.)"""
+
+            def __init__(self, core, use_air=True):
+                self.c, self.use_air, self.ast = core, use_air, AirStart()
+                self.n, self.q, self.prev = 0, pose.copy(), None
+                self.events, self.rows, self.outs = [], [], []
+                self.hg = None
+
+            def now(self):
+                return 500.0 + self.n * TICK_SEC
+
+            def stand(self, hang_arm, force_no_hold=False):
+                ck = self.c.ckpt_name
+                assert hang_arm_reject(ck, hang_arm) is None, f"{ck}: stand(hang_arm={hang_arm}) 거부됨"
+                self.hg = HangGuard(hang_mode=bool(hang_arm), t0=self.now())
+                ast = self.ast
+                if self.use_air:
+                    ast.begin(False)                                        # 노드 _reset_chain_state
+                self.c.reset(); self.c.heading_hold = False; self.c.cmd = (0.0, 0.0, 0.0)
+                if self.use_air:
+                    ast.begin(air_start_session(ck, bool(hang_arm)) and not force_no_hold)
+                    ast.apply(self.c.runner)
+
+            def tick(self, contact, pitch=1.0, gyro=(0.0, 0.0, 0.0)):
+                now, ast = self.now(), self.ast
+                why = self.hg.update(now, contact)
+                assert why is None, f"틱 {self.n}: 가드 정지 사유 {why} (대본 점검)"
+                if self.use_air:
+                    if ast.step(self.hg.state):
+                        self.events.append({"timestamp": now, "event": "air_det_release", "tick": self.n})
+                    ast.apply(self.c.runner)
+                out = self.c.tick(gyro, quat(pitch), self.q, np.zeros(12, np.float32), contact)
+                assert np.isfinite(out).all(), f"틱 {self.n}: 비유한 목표"
+                if self.prev is not None:
+                    assert float(np.abs(out - self.prev).max()) <= SLEW_RAD * 1.001 + 1e-6, f"틱 {self.n}: 슬루 초과"
+                r = self.c.runner
+                self.rows.append(dict(ast.fields() if self.use_air else {}, hang_state=self.hg.state, mode=int(r.last_mode),
+                                      hold=bool(r.ke.det_hold), kind=str(r.mode)))
+                self.prev = out; self.q = np.asarray(out, dtype=np.float32); self.outs.append(out); self.n += 1
+                return self.rows[-1]
+
+        #: 공중(무접촉) 대본: 조용히 2 s → |ω_y| 0.9 rad/s n_w 틱 → 조용히 0.4 s → 기준(1°) 대비 +5° n_tilt 틱. (자이로, 피치°) 목록
+        def air_inputs(n_w=30, n_tilt=40):
+            return ([("quiet", (0.0, 0.0, 0.0), 1.0)] * 100 + [("w", (0.0, 0.9, 0.0), 1.0)] * n_w + [("gap", (0.0, 0.0, 0.0), 1.0)] * 20
+                    + [("tilt", (0.0, 0.0, 0.0), 6.0)] * n_tilt)
+
+        def air_script(S, **kw):
+            seg = {"quiet": [], "w": [], "gap": [], "tilt": []}
+            for name, g, pd in air_inputs(**kw):
+                seg[name].append(S.tick(NONE, pitch=pd, gyro=g))
+            return seg
+
+        # ── (b) 공중 시작 세션 ──
+        core = BridgeCore(K3, runner=mk_composite(K3))
+        R = core.runner
+        assert type(R).__name__ == "KeW3Runner" and isinstance(R.ke, C5Runner) and R.ke.det_hold is False and core.kew3 and core.c5_view() is R
+        S = Session(core)
+        S.stand(hang_arm=True)
+        assert S.ast.session and S.ast.det_hold and R.ke.det_hold is True and S.hg.state == HangGuard.PRE_CONTACT, "공중 시작인데 감지기 정지가 걸리지 않음"
+        seg = air_script(S)
+        air_rows = [r for v in seg.values() for r in v]
+        assert all(r["hold"] and r["mode"] == 0 and r["kind"] == "ke" and r["hang_state"] == HangGuard.PRE_CONTACT and r["air_det_hold"] is True
+                   for r in air_rows), "공중 구간: det_hold·서기 모드·필드가 매 틱 유지되지 않음"
+        assert R.det.n_on == 0 and not S.events and R.last_mode == 0, (R.det.n_on, S.events)
+        n_air = len(air_rows)
+        # 정지 중 목표각 = 서기 정책 단독 러너(같은 스텁·같은 입력) — 회복 네트워크·감지기가 출력에 끼지 않는다
+        ref = PolicyRunnerStage4(model_path=net(Ws), **rkw); ref.reset()
+        q, zero3 = pose.copy(), np.zeros(3, np.float32)
+        for k, (_nm, g, pd) in enumerate(air_inputs()):
+            o = ref.step(g, correct_gravity(projected_gravity(quat(pd))), zero3, q, np.zeros(12, np.float32), NONE)
+            assert np.array_equal(o, S.outs[k]), f"공중 구간 틱 {k}: 합성 러너(감지기 정지) ≠ 서기 정책 단독 러너"
+            q = np.asarray(o, dtype=np.float32)
+        # 대조: 같은 키·같은 입력, 감지기 정지만 없음 → 두 입력 각각에서 회복 모드가 켜진다(입력이 실제로 켜기 문턱을 넘는다는 확인)
+        ctl = {}
+        for name, kw in (("w", dict(n_w=30, n_tilt=0)), ("tilt", dict(n_w=0, n_tilt=40))):
+            cc = BridgeCore(K3, runner=mk_composite(K3))
+            Sc = Session(cc)
+            Sc.stand(hang_arm=True, force_no_hold=True)
+            segc = air_script(Sc, **kw)
+            assert not Sc.ast.session and all(not r["hold"] and "air_det_hold" not in r for v in segc.values() for r in v)
+            assert max(r["mode"] for r in segc["quiet"]) == 0 and max(r["mode"] for r in segc[name]) == 1 and cc.runner.det.n_on >= 1, \
+                f"대조({name}): 감지기 정지 없이도 회복 모드가 켜지지 않음 — 입력이 문턱을 넘지 않는다(대본 점검)"
+            ctl[name] = next(i for i, r in enumerate(segc[name]) if r["mode"] == 1)
+        # 착지: 양발 접촉이 CONTACT_CONFIRM_S 이어진 틱에 풀린다(그 전 틱까지는 그대로 정지)
+        k_land = S.n
+        rows = []
+        while S.ast.det_hold:
+            rows.append(S.tick(BOTH))
+            assert len(rows) <= 40, "양발 접촉 뒤에도 감지기 정지가 풀리지 않음"
+        t_rel = (S.n - 1 - k_land) * TICK_SEC
+        assert abs(t_rel - CONTACT_CONFIRM_S) <= TICK_SEC + 1e-9 and all(r["hold"] and r["air_det_hold"] is True for r in rows[:-1]), (t_rel, len(rows))
+        assert rows[-1]["hold"] is False and rows[-1]["air_det_hold"] is False and rows[-1]["hang_state"] == HangGuard.CONTACT_ACQUIRED and R.ke.det_hold is False
+        assert len(S.events) == 1 and S.events[0]["event"] == "air_det_release" and S.events[0]["tick"] == S.n - 1, S.events
+        # 풀린 뒤: 감지기가 새 인계처럼 시작(기준 추종 1.5 s) → 기울이면 회복 모드(감지기가 살아 있다)
+        for _ in range(85):
+            r = S.tick(BOTH)
+            assert r["mode"] == 0 and r["hold"] is False and r["air_det_hold"] is False
+        on_rows = [S.tick(BOTH, pitch=6.0) for _ in range(20)]
+        assert max(r["mode"] for r in on_rows) == 1 and R.det.n_on == 1 and all(r["hold"] is False for r in on_rows), "풀린 뒤 감지기가 켜지지 않음"
+        assert S.hg.state == HangGuard.CONTACT_ACQUIRED, f"대본 점검: 재들림 전 상태 {S.hg.state}(FREE_STAND 면 재들림이 동결 사유가 된다)"
+        # 접지 뒤 재들림(양발 무접촉 LIFT_STOP_S) → HangGuard 는 PRE_CONTACT 로 돌아가지만 감지기 정지는 다시 걸리지 않는다
+        k_lift = S.n
+        while S.hg.state != HangGuard.PRE_CONTACT:
+            r = S.tick(NONE, pitch=6.0)
+            assert S.n - k_lift <= int(LIFT_STOP_S / TICK_SEC) + 3, "재들림이 PRE_CONTACT 복귀로 이어지지 않음"
+        relift = [S.tick(NONE, pitch=6.0, gyro=(0.0, 0.9, 0.0)) for _ in range(40)]
+        assert S.hg.relifts == 1 and all(r["hang_state"] == HangGuard.PRE_CONTACT and r["hold"] is False and r["air_det_hold"] is False for r in relift), \
+            "재들림 뒤 감지기 정지가 다시 걸림(래치가 아님)"
+        assert max(r["mode"] for r in relift) == 1, "재들림 구간: 감지기가 살아 있어야 한다(정지가 다시 걸리지 않았다는 확인)"
+        reland = [S.tick(BOTH) for _ in range(int(CONTACT_CONFIRM_S / TICK_SEC) + 5)]
+        assert S.hg.state == HangGuard.CONTACT_ACQUIRED and len(S.events) == 1 and all(r["hold"] is False for r in reland), "재착지에서 풀림 사건이 또 나옴"
+        assert all("air_det_hold" in r for r in S.rows) and [r["air_det_hold"] for r in S.rows].count(True) == n_air + len(rows) - 1
+        notes.append(f"공중 시작: 무접촉 {n_air} 틱 내내 det_hold·KE 모드 0·감지기 켜짐 0(입력 |ω| 0.9·기준 대비 +5°), 목표각 = 서기 정책 단독 러너와 비트 동일 / "
+                     f"대조(정지 없음)는 ω {ctl['w'] + 1} 틱·기울기 {ctl['tilt'] + 1} 틱째 회복 모드 / 양발 접촉 {t_rel:.2f}s 에 풀림(사건 1 회) → "
+                     f"풀린 뒤 기울이면 회복 모드 → 재들림(PRE_CONTACT 복귀)·재착지에도 다시 걸리지 않음(사건 그대로 1 회)")
+
+        # ── (c) 지면 시작(hang_arm 없음) + (d) 필드 ──
+        cg = BridgeCore(K3, runner=mk_composite(K3)); Sg = Session(cg); Sg.stand(hang_arm=False)
+        cn = BridgeCore(K3, runner=mk_composite(K3)); Sn = Session(cn, use_air=False); Sn.stand(hang_arm=False)
+        c2 = BridgeCore(K2, runner=mk_composite(K2)); S2 = Session(c2); S2.stand(hang_arm=False)
+        assert not Sg.ast.session and not Sg.ast.det_hold and Sg.ast.fields() == {} and Sg.hg.state == HangGuard.CONTACT_ACQUIRED
+        for k in range(260):                  # 조용한 서기 → 기울기 펄스(회복 모드 왕복) → 서기
+            kw = dict(pitch=1.0 + (6.0 if 100 <= k < 110 else 0.0), gyro=(0.0, 0.6 if k == 100 else 0.0, 0.0))
+            rg, rn, r2 = Sg.tick(BOTH, **kw), Sn.tick(BOTH, **kw), S2.tick(BOTH, **kw)
+            assert rg["hold"] is False and rn["hold"] is False and "air_det_hold" not in rg and "air_det_hold" not in r2, f"지면 시작 틱 {k}: det_hold·필드"
+        assert np.array_equal(np.asarray(Sg.outs), np.asarray(Sn.outs)), "지면 시작: AirStart 를 거친 세션 ≠ 스위치를 모르는 조립(종전 순서)"
+        assert np.array_equal(np.asarray(Sg.outs), np.asarray(S2.outs)), "지면 시작: 셋째 키 ≠ 둘째 키(같은 스텁 정책이면 비트 동일해야 한다)"
+        assert cg.runner.det.n_on >= 1 and not Sg.events and cg.runner.ke.det_hold is False, "시나리오 점검: 지면 시작 세션의 회복 모드 왕복"
+        # 공중 시작 세션 뒤 같은 러너로 지면 재시작 → 스위치가 남지 않는다(정지가 걸린 채 끝난 세션 뒤에도)
+        S.stand(hang_arm=False)
+        assert not S.ast.session and not S.ast.det_hold and R.ke.det_hold is False and S.ast.fields() == {} and "air_det_hold" not in S.tick(BOTH)
+        S.stand(hang_arm=True)
+        S.tick(NONE)
+        assert S.ast.session and R.ke.det_hold is True
+        S.stand(hang_arm=False)
+        assert R.ke.det_hold is False and not S.ast.det_hold
+        a0 = AirStart()
+        assert a0.fields() == {} and a0.step(HangGuard.CONTACT_ACQUIRED) is False and a0.step(HangGuard.PRE_CONTACT) is False
+        a0.begin(True)
+        assert a0.fields() == {"air_det_hold": True} and a0.step(HangGuard.PRE_CONTACT) is False and a0.step(HangGuard.CONTACT_ACQUIRED) is True
+        assert a0.fields() == {"air_det_hold": False} and a0.step(HangGuard.PRE_CONTACT) is False and a0.step(HangGuard.FREE_STAND) is False and a0.session
+        a0.begin(True)
+        assert a0.step(HangGuard.FREE_STAND) is True
+        for other in (PolicyRunnerStage4(model_path=net(Ws), **rkw), cg.runner.ke):       # 합성 러너가 아니면 apply 는 무동작(단독 서기·단독 C5 러너에 스위치가 닿지 않는다)
+            a0.begin(True); a0.apply(other)
+            assert "ke" not in vars(other) and other.__dict__.get("det_hold", False) is False, type(other).__name__
+        with open(os.path.abspath(__file__), encoding="utf-8") as fh:
+            src = fh.read()
+
+        def at(pat, n=1):
+            """노드 코드에서 줄 머리(들여쓰기 뒤)가 pat 인 곳이 정확히 n 곳 — 첫 위치. 이 selftest 안의 정규식 원문은 줄 머리가 아니고 역슬래시가 끼어 걸리지 않는다."""
+            ms = list(re.finditer(r"^ +" + pat, src, re.M))
+            assert len(ms) == n, f"노드 소스에서 /{pat}/ 가 {len(ms)} 곳(기대 {n})"
+            return ms[0].start()
+        at(r"self\.air = AirStart\(\)")
+        i_rej = at(r'_ha_why = hang_arm_reject\(ck, bool\(d\.get\("hang_arm", False\)\)\)\n +if _ha_why is not None:')
+        i_td = at(r'if _td and \(c != "stand" or bool\(d\.get\("hang_arm", False\)\)\):')
+        i_rst = at(r"self\._reset_chain_state\(_hang, time\.time\(\)\)")
+        i_core = at(r"self\.core\.reset\(checkpoint=ck\)")
+        i_beg = at(r"_air = air_start_session\(ck, _hang\)\n +self\.air\.begin\(_air\)\n +self\.air\.apply\(self\.core\.runner\)")
+        assert i_rej < i_td < i_rst < i_core < i_beg, "stand 처리 순서: hang_arm 규칙 → touchdown 동시 거부 → 리셋 → core.reset → 공중 시작 판정"
+        at(r"self\.air\.begin\(False\)")
+        at(r"self\.air\.begin\(", n=2)
+        i_hg = at(r"_why = self\.hang_guard\.update\(")
+        i_step = at(r'if self\.air\.step\(self\.hang_guard\.state\):\n +self\._bb_write\(\{"timestamp": now, "event": "air_det_release"\}\)')
+        i_app = at(r"self\.air\.apply\(self\.core\.runner\)\n +if self\.live and _why:")
+        i_tick = at(r"targets_rad = self\.core\.tick\(", n=2)
+        assert i_hg < i_step < i_app < i_tick, "틱 순서: hang_guard.update → 풀림 판정·사건 → apply → core.tick"
+        at(r"dbg\.update\(self\.air\.fields\(\)\)[^\n]*\n +self\.pub_dbg\.publish\(String\(data=json\.dumps\(dbg\)\)\)")
+        assert src.count("self." + "air.") == 6, "노드에서 AirStart 를 쓰는 곳이 begin 2·step 1·apply 2·fields 1 이 아님(다른 곳에서 스위치를 건드림?)"
+        notes.append("지면 시작: det_hold 0 회·필드 없음·목표각 = 스위치를 모르는 조립 = 둘째 키(260 틱 비트 동일, 회복 모드 왕복 포함)·공중 세션 뒤 지면 재시작에 스위치 잔류 없음 / "
+                     "필드 air_det_hold 는 공중 시작 세션에만 / 노드 연결(생성 1·stand 순서·리셋·틱 순서·필드) 소스 확인")
+
+        # ── 실모델(셋째 키의 정책 파일이 다 있으면) ──
+        if all(os.path.exists(os.path.join(d, "policy.pt")) or os.path.exists(os.path.join(d, "policy.onnx")) for d in _ckpt_policy_dirs(K3)):
+            cr = BridgeCore(K3)
+            rr = cr.runner
+            assert type(rr).__name__ == "KeW3Runner" and isinstance(rr.ke, C5Runner) and rr.ke.det_hold is False
+            assert (rr.ke.det.requiet, rr.ke.det.requiet_contact) == _kew3_det_want(s3) and rr.ke.det.early == C5_EXTRA[s3.ke]["det"]["early"]
+            Sr = Session(cr)
+            Sr.stand(hang_arm=True)
+            segr = air_script(Sr)
+            assert all(r["hold"] and r["mode"] == 0 and r["air_det_hold"] is True for v in segr.values() for r in v) and rr.det.n_on == 0
+            cs = BridgeCore("stand_crouch_g21h"); cs.reset(); cs.heading_hold = False; cs.cmd = (0.0, 0.0, 0.0)
+            q = pose.copy()
+            for k, (_nm, g, pd) in enumerate(air_inputs()):
+                o = cs.tick(g, quat(pd), q, np.zeros(12, np.float32), NONE)
+                assert np.array_equal(o, Sr.outs[k]), f"실모델 공중 구간 틱 {k}: 합성 러너(감지기 정지) ≠ stand_crouch_g21h 단독 러너"
+                q = np.asarray(o, dtype=np.float32)
+            nr = len(Sr.outs)
+            while Sr.ast.det_hold:
+                Sr.tick(BOTH)
+                assert Sr.n - nr <= 40, "실모델: 양발 접촉 뒤에도 감지기 정지가 풀리지 않음"
+            assert len(Sr.events) == 1 and rr.ke.det_hold is False
+            notes.append(f"실모델 {K3}: 공중 {nr} 틱 det_hold·모드 0·유한·슬루, 목표각 = stand_crouch_g21h 단독 러너와 비트 동일 → 양발 접촉 {(Sr.n - 1 - nr) * TICK_SEC:.2f}s 에 풀림 "
+                         f"[{rr.backend}]")
+        else:
+            notes.append(f"실모델 SKIP ({K3} 의 정책 파일 없음)")
+    finally:
+        RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32 = saved[:6]
+        IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = saved[6]
+        disable_experimental_kew3()
+        if EXPERIMENTAL_W3 and not was_w3:
+            disable_experimental_w3()
+        elif was_w3 and not EXPERIMENTAL_W3:
+            enable_experimental_w3()
+        if was_kw:
+            enable_experimental_kew3()
+    return " / ".join(notes) + (" (기동 플래그 켜짐 상태 복원)" if was_kw else "")
+
+
 def _selftest_obs_filter():
     """(1003) 체크포인트별 관측 필터 계약: G12 = 종전(필터 없음), G21a = actions EMA β0.27·joint_vel EMA β0.25 (env.yaml 기준).
     BridgeCore 가 정책을 바꾸면 러너를 새로 만들어 필터·이력 상태가 비워진다(G21a → G12 전환 후 G12 러너에 필터 없음)."""
@@ -2388,6 +2803,66 @@ class HangGuard:
             else:
                 self.free_t0 = None
         return None
+
+
+#: ── 공중 정책 시작 허용 규칙·접지 전 감지기 정지 (1008, 승윤님 결정: 정책을 공중에서 구동한 채 내린다) ──────────
+#: 바뀐 가드는 하나다: "W3 가족 키의 stand + hang_arm 거부" 가 "명세 air_start 인 합성 키만 통과" 로 좁게 풀린다. 다른 W3·합성 키는 종전대로 거부,
+#: W3 가족이 아닌 키(stand_hang_*·stand_crouch_* …)의 hang_arm 은 종전 HangGuard 계약 그대로, touchdown_start + hang_arm 동시 거부도 그대로다.
+def hang_arm_reject(ck, hang_arm):
+    """stand 의 hang_arm(공중 정책 시작) 거부 사유(문자열) 또는 None(통과) — 노드 stand 처리와 selftest 가 같은 함수를 쓴다.
+    W3 가족 키(W3_CKPTS — 걷기·합성)는 지면 시작으로만 학습·평가됐으므로 거부한다. 예외는 명세에 air_start 를 단 합성 키뿐이다."""
+    if not hang_arm or ck not in W3_CKPTS:
+        return None
+    sp = KEW3_CKPTS.get(ck)
+    if sp is not None and sp.air_start:
+        return None
+    allow = [k for k, s in KEW3_CKPTS.items() if s.air_start]
+    return ("W3 키는 hang_arm 불가(지면 시작 학습) — 공중 정책 시작을 받는 키: "
+            + (", ".join(allow) if allow else "없음(--experimental-kew3 로 등록된 air_start 합성 키만)"))
+
+
+def air_start_session(ck, hang):
+    """이번 stand 시작이 '공중 정책 시작 세션'인가 — hang_arm 이 통과된 stand(hang)이고 키가 air_start 합성 키일 때만 True.
+    W3 가족이 아닌 키의 hang_arm(종전 행잉 ARM)은 False 다: 그 세션에는 KE 감지기 정지가 걸리지 않는다(종전 동작 그대로)."""
+    sp = KEW3_CKPTS.get(ck)
+    return bool(hang and sp is not None and sp.air_start)
+
+
+class AirStart:
+    """1008 공중 정책 시작 세션의 상태(ROS 무관 — 노드와 selftest 가 같은 객체를 쓴다).
+
+    session  이번 정책 세션이 공중 시작(stand + hang_arm + air_start 합성 키)으로 시작됐는가 — 틱 블랙박스 air_det_hold 필드의 유무.
+    det_hold KE 회복 감지기 정지 중. 공중 시작 세션에서만 True 로 시작하고, HangGuard 가 PRE_CONTACT 를 벗어난 틱(양발 접촉 CONTACT_CONFIRM_S 확인)에
+             풀린다. **한 번 풀리면 그 세션에서는 다시 걸리지 않는다**(접지 뒤 재들림으로 PRE_CONTACT 에 돌아가도 그대로 — 래치).
+    근거: 공중에서는 감지기가 회복 모드를 켠다(시뮬 AIR1: 86–94 % 가 회복 모드인 채 착지). 시뮬 평가기 --air_det_hold 와 같은 규칙이다.
+    한계(그대로 드러낸다): 한쪽 패드가 0 을 내는 고장이면 접지 확인이 오지 않아 정지가 풀리지 않는다(HangGuard 도 PRE_CONTACT 에 머문다 —
+    guard_mode safe 면 HANG_MAX_S 뒤 동결, data 면 정지하지 않는다). 그 동안 회복 정책은 켜지지 않고 걷기 켜기도 감독기가 거부한다."""
+
+    def __init__(self):
+        self.session = False
+        self.det_hold = False
+
+    def begin(self, air):
+        """정책 (재)시작마다. air = 이번 시작이 공중 시작인가. 그 밖의 시작은 전부 False(감지기 정지 없음 = 종전)."""
+        self.session = self.det_hold = bool(air)
+
+    def step(self, hang_state):
+        """매 틱, hang_guard.update 뒤·core.tick 앞. 반환 True = 이번 틱에 정지가 풀렸다(호출자가 사건 air_det_release 를 한 번 남긴다)."""
+        if self.det_hold and hang_state != HangGuard.PRE_CONTACT:
+            self.det_hold = False
+            return True
+        return False
+
+    def apply(self, runner):
+        """합성 러너의 KE 하위 러너(runner.ke = C5Runner)에 스위치를 맞춘다. 합성 러너가 아니면(ke 없음) 무동작.
+        공중 시작이 아닌 세션에서는 늘 False 를 쓴다 — C5Runner.det_hold 의 기본값이라 계산은 종전과 같다."""
+        ke = getattr(runner, "ke", None)
+        if ke is not None:
+            ke.det_hold = bool(self.det_hold)
+
+    def fields(self):
+        """틱 블랙박스·디버그에 덧붙일 필드. 공중 시작 세션에서만 {"air_det_hold": bool} — 그 밖 세션은 {}(스키마 불변)."""
+        return {"air_det_hold": bool(self.det_hold)} if self.session else {}
 
 
 #: ── 착지 자동 인수 게이트 (1005, 단순화 기동 경로 — stand 명령에 touchdown_start:true 를 **명시**한 경우만) ──────────
@@ -3809,6 +4284,8 @@ def _kew3_expand_required(required):
 def _selftest_kew3(key=None):
     """1008: key = 합성 키(기본 None = KEW3_CKPT_KEY — 종전과 같은 시험). 둘째 합성 키(KEW3Q_CKPT_KEY = 첫 키 + KE 감지기 갇힘 해소)를 주면 **같은 시험 전체**를
     그 키의 명세로 돈다(스텁 시나리오 + exported 가 있으면 실모델 왕복). 꺼짐 판정은 합성 키 전부(KEW3_KEYS)를 본다. 어느 키로 돌든 (g) 를 본다:
+    셋째 합성 키(KEW3QH_CKPT_KEY = 둘째 키에서 서기 KE 키만 G21h, 명세 air_start)도 같은 시험 전체를 돈다 — 지면 시작 경로는 다른 합성 키와 같은 규칙이어야 한다.
+    공중 정책 시작(hang_arm 허용·접지 전 감지기 정지)은 _selftest_air_start 가 본다. G21h 정책 파일이 없으면 그 키의 실모델 구간만 SKIP 된다.
     (g) KE 감지기 = 명세(첫 키·단독 KE 키는 requiet None, 둘째 키는 (2.0, 0.3)·'both' — 생성자 경로) · 명세와 다른 감지기는 합성 거부 · 두 합성 러너의
     감지기에 같은 입력(가벼운 밀림으로 회복 모드 켜짐 → 기준과 2.2° 다른 자세로 조용한 양발 서기 6 s)을 넣으면 첫 키는 끝까지 갇히고 둘째 키만
     약 2 s 뒤 requiet 로 나온다(n_requiet 1·기준 재설정). 감지기 단독 구동 — 계약·규칙 확인이며 폐루프 성능 증명이 아니다.
@@ -3991,8 +4468,12 @@ def _selftest_kew3(key=None):
         assert CKPT_DEFAULT_POSE[key] == CKPT_DEFAULT_POSE[spec.ke] == CKPT_DEFAULT_POSE[spec.w3] == [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
         assert W3_CKPTS[key] is W3_CKPTS[spec.w3] and W3_CMD_LIMITS[key] is W3_CMD_LIMITS[spec.w3] and key not in C5_PAIRS
         assert spec.handoff == "carry" and spec.settle_quiet_s == 0.5 and spec.w3 == _W3.W3S3D_CKPT_KEY and C5_EXTRA[spec.ke]["det"]["early"] is not None
-        # 1008: 합성 키 = 정확히 둘(등록 순서 = 명세 순서). 첫 키의 이름·명세는 그대로(requiet 없음), 둘째 키는 requiet 하나만 다르다.
-        assert KEW3_KEYS == (KEW3_CKPT_KEY, KEW3Q_CKPT_KEY) == ("stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800"), KEW3_KEYS
+        # 1008: 합성 키 = 정확히 셋(등록 순서 = 명세 순서). 첫 키의 이름·명세는 그대로(requiet 없음), 둘째 키는 requiet 하나만 다르다.
+        # 셋째 키(G21h 서기·공중 정책 시작)는 둘째 키에서 서기 KE 키와 air_start 만 다르다 — 앞의 두 키는 air_start False(hang_arm 거부 그대로).
+        assert KEW3_KEYS == (KEW3_CKPT_KEY, KEW3Q_CKPT_KEY, KEW3QH_CKPT_KEY) == (
+            "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800", "stand_kew3qh_g21h_g24ra_w3s3d15800"), KEW3_KEYS
+        assert KEW3_SPECS[KEW3QH_CKPT_KEY] == KEW3_SPECS[KEW3Q_CKPT_KEY]._replace(ke="stand_c5kr_g21h_g24ra", air_start=True), KEW3_SPECS[KEW3QH_CKPT_KEY]
+        assert KEW3_SPECS[KEW3_CKPT_KEY].air_start is False and KEW3_SPECS[KEW3Q_CKPT_KEY].air_start is False and KEW3_SPECS[KEW3QH_CKPT_KEY].air_start is True
         assert list(KEW3_CKPTS) == list(KEW3_KEYS) and all(k in CHECKPOINTS and k in W3_CKPTS and k in CKPT_REQUIRE_ENV_YAML for k in KEW3_KEYS)
         assert KEW3_SPECS[KEW3_CKPT_KEY] == KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5) \
             and KEW3_SPECS[KEW3_CKPT_KEY].requiet is None, KEW3_SPECS[KEW3_CKPT_KEY]
@@ -4341,13 +4822,17 @@ def _selftest_kew3(key=None):
             notes.append(f"실모델 {La.n} 틱(KE 100 틱 = 종전 {spec.ke} 코어 비트 동일 → 걷기 150 틱 → 래치·정착 {k_} 틱 → KE) 유한·슬루 최대 "
                          f"{math.degrees(La.smax):.2f}°/틱·{dt * 1000:.2f}ms [{rr.backend}]")
             # 1008: 실모델 경로(_make_runner)로 만든 두 합성 러너의 감지기 = 명세, 갇힘 해소 동작 = 위 (g) 의 스텁 조립 감지기와 틱 단위로 같다
-            real = {k2: (rr if k2 == key else _make_runner(k2)).ke.det for k2 in KEW3_KEYS}
+            # 1008: 다른 합성 키의 러너는 그 키의 정책 파일이 있을 때만 만든다(셋째 키의 G21h 가 아직 배포되지 않은 곳에서 앞의 두 키 시험이 그 때문에 실패하지 않게).
+            # 앞의 두 키는 같은 세 정책 폴더를 쓰므로 서로에 대해서는 종전과 같다(둘 다 항상 포함).
+            _have = lambda k2: all(os.path.exists(os.path.join(d_, "policy.pt")) or os.path.exists(os.path.join(d_, "policy.onnx")) for d_ in _ckpt_policy_dirs(k2))   # noqa: E731
+            real = {k2: (rr if k2 == key else _make_runner(k2)).ke.det for k2 in KEW3_KEYS if k2 == key or _have(k2)}
             for k2, d in real.items():
                 assert (d.requiet, d.requiet_contact) == _kew3_det_want(KEW3_SPECS[k2]), f"{k2}: 실모델 경로 KE 감지기 requiet {d.requiet}·{d.requiet_contact}"
                 assert det_run(d) == (m_old if KEW3_SPECS[k2].requiet is None else m_new) and d.n_requiet == (0 if KEW3_SPECS[k2].requiet is None else 1), \
                     f"{k2}: 실모델 경로 감지기의 갇힘 해소 동작이 스텁 조립 감지기와 다름"
-            notes.append(f"실모델 경로 감지기: {KEW3_CKPT_KEY} requiet None(갇힘 유지) · {KEW3Q_CKPT_KEY} {real[KEW3Q_CKPT_KEY].requiet}·{real[KEW3Q_CKPT_KEY].requiet_contact}"
-                         f"(같은 입력에서 requiet 로 서기 복귀) · 단독 {spec.ke} None")
+            _rq = lambda k2: f"{real[k2].requiet}·{real[k2].requiet_contact}" if k2 in real else "정책 파일 없음(건너뜀)"   # noqa: E731
+            notes.append(f"실모델 경로 감지기: {KEW3_CKPT_KEY} {'requiet None(갇힘 유지)' if KEW3_CKPT_KEY in real else '정책 파일 없음(건너뜀)'} · {KEW3Q_CKPT_KEY} {_rq(KEW3Q_CKPT_KEY)}"
+                         f"(같은 입력에서 requiet 로 서기 복귀) · {KEW3QH_CKPT_KEY} {_rq(KEW3QH_CKPT_KEY)} · 단독 {spec.ke} None")
         else:
             notes.append("실모델 exported 없음(왕복 SKIP)")
 
@@ -4587,6 +5072,7 @@ def run_selftest(required=()):
              ("관측 필터 계약(1003)", _selftest_obs_filter),
              ("C5 전환 경로(1004)", _selftest_c5),
              ("C5 krh 키(1007)", _selftest_c5krh),
+             ("G21h 키 — 매달림 시작 학습 서기 세대(1008)", lambda: _selftest_g21h(required)),
              ("C5 kr 경로(1005)", _selftest_c5kr),
              ("C5 odic 조기 복귀 플래그(1007)", _selftest_c5_odic),
              ("HTURN2 실험 플래그(1006)", _selftest_hturn2),
@@ -4599,6 +5085,9 @@ def run_selftest(required=()):
              ("KE↔W3 합성 러너 실험 플래그(1007, 기본 꺼짐)", _selftest_kew3),
              # 1008 둘째 합성 키(첫 키 + KE 감지기 갇힘 해소 = 시뮬 합성 평가 구성): 위 항목과 **같은 시험 전체**를 새 키의 명세로 한 번 더
              ("KE↔W3 합성 러너 둘째 키 — 갇힘 해소(1008, 기본 꺼짐)", lambda: _selftest_kew3(KEW3Q_CKPT_KEY)),
+             # 1008 셋째 합성 키(둘째 키에서 서기 KE 키만 G21h — 공중 정책 시작을 받는 키): 같은 시험 전체(지면 시작 경로) + 공중 시작 규칙
+             ("KE↔W3 합성 러너 셋째 키 — G21h 서기(1008, 기본 꺼짐)", lambda: _selftest_kew3(KEW3QH_CKPT_KEY)),
+             ("공중 정책 시작 — hang_arm 허용 키·접지 전 감지기 정지(1008, 기본 꺼짐)", _selftest_air_start),
              ("모터 오류 기록(1007)", _selftest_errlog),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
@@ -4642,6 +5131,8 @@ def main():
                     help="1007 실험(기본 꺼짐·실물 미검증·젯슨 미배포): KE↔W3 합성 러너 키 " + ", ".join(KEW3_KEYS) + " 등록 — 서 있는 동안 KE"
                          "(G21a 서기 + G24Ra 회복 + 감지기), 걷는 동안만 W3S3d-15800. 1008: " + KEW3Q_CKPT_KEY + " 는 같은 구성 + KE 감지기 "
                          "갇힘 해소(회복 모드 중 조용한 양발 서기 2.0 s → 기준 재설정·서기 복귀) = 시뮬 합성 평가 구성, 첫 키는 그 옵션이 꺼져 있다. "
+                         + KEW3QH_CKPT_KEY + " 는 둘째 키에서 서기 정책만 G21h(매달림 시작 학습)로 바꾼 것 — 이 키만 stand 의 hang_arm(공중 정책 시작)을 받고, "
+                         "접지 확인 전에는 KE 회복 감지기를 세운다(평가 통과 전·실물 미검증). "
                          "**--experimental-w3 와 함께만**(합성 키는 W3 세션의 "
                          "step·seq·ack·감독기·헤딩 고리·감시를 그대로 쓴다), --runner-ema-fresh 2 와는 함께 쓸 수 없다. 켜도 --checkpoint 로 "
                          "합성 키를 고른 세션에서만 러너가 바뀐다. 시작 = stand(KE 모드), 걷기 = step 켜기(KE 회복 모드 중에는 거부), "
@@ -4756,7 +5247,8 @@ def main():
             return 2
         print("[경고] --experimental-kew3: KE↔W3 합성 러너 키 등록(실물 미검증·젯슨 미배포) — "
               + ", ".join(f"{k} = 걷기 {sp.w3} + 서기 {sp.ke}(전환 {sp.handoff}·정착 {sp.settle_quiet_s:g}s"
-                          + (f"·KE 감지기 갇힘 해소 requiet {sp.requiet}" if sp.requiet is not None else "") + ")" for k, sp in KEW3_CKPTS.items()),
+                          + (f"·KE 감지기 갇힘 해소 requiet {sp.requiet}" if sp.requiet is not None else "")
+                          + ("·공중 정책 시작(hang_arm) 허용" if sp.air_start else "") + ")" for k, sp in KEW3_CKPTS.items()),
               file=sys.stderr)
     if args.experimental_hturn2:
         enable_experimental_hturn2()
@@ -4861,6 +5353,7 @@ def main():
             self.blend_from = None
             self.nocontact_t0 = None
             self.hang_guard = HangGuard(hang_mode=False)
+            self.air = AirStart()        # 1008 공중 정책 시작 세션 상태(접지 확인 전 KE 감지기 정지) — air_start 합성 키 + hang_arm 시작에서만 켜진다
             self.td_gate = None          # 1005 착지 자동 인수 게이트 — stand 에 touchdown_start 를 명시할 때만 생성
             self.td_hold_rel = None      # 착지 대기 중 보내는 홀드 상대 명령(첫 대기 틱 래치)
             self.stage8_cmd_rel = {}
@@ -4927,7 +5420,9 @@ def main():
                     f"W3 → KE 정착 {_sp.settle_quiet_s:g}s(상한 {getattr(self.core.runner, 'settle_max_s', float('nan')):g}s). "
                     "시작 = stand(KE 모드), KE 회복 모드 중 걷기 켜기 거부, 가드 트립 = W3 세션 지연 동결"
                     + (f". KE 감지기 갇힘 해소 켜짐 requiet {_sp.requiet} — 회복 모드 중 조용한 양발 서기 {_sp.requiet[0]:g}s 뒤 기준 자세를 다시 잡고 "
-                       "서기로 복귀(블랙박스 c5.requiet = 발동 횟수 n·진행 run)" if _sp.requiet is not None else ""))     # 1008: 갇힘 해소 키에서만(첫 키 로그 불변)
+                       "서기로 복귀(블랙박스 c5.requiet = 발동 횟수 n·진행 run)" if _sp.requiet is not None else "")     # 1008: 갇힘 해소 키에서만(첫 키 로그 불변)
+                    + (f". 공중 정책 시작 허용(stand + hang_arm) — 접지 확인(양발 접촉 {CONTACT_CONFIRM_S}s) 전에는 KE 회복 감지기 정지"
+                       "(블랙박스 air_det_hold, 풀릴 때 사건 air_det_release)" if _sp.air_start else ""))               # 1008: air_start 키에서만(앞의 두 키 로그 불변)
 
         # ---- 입력 콜백 ----
         def _on_js(self, msg):
@@ -5272,8 +5767,10 @@ def main():
                         return
                 # 1005 착지 자동 인수(touchdown_start): stand 전용, 행잉 ARM 과 동시 금지(공중 정책 경로와 섞지 않는다).
                 _td = bool(d.get("touchdown_start", False))
-                if ck in W3_CKPTS and bool(d.get("hang_arm", False)):   # 1006 W3: 학습 분포는 지면 시작뿐
-                    self.get_logger().error(f"[거부] W3 키는 hang_arm 불가(지면 시작 학습) — 무시: {d}")
+                # 1006 W3: 학습 분포는 지면 시작뿐 → hang_arm 거부. 1008: 명세 air_start 인 합성 키만 통과(hang_arm_reject — 그 밖 W3·합성 키는 종전대로 거부)
+                _ha_why = hang_arm_reject(ck, bool(d.get("hang_arm", False)))
+                if _ha_why is not None:
+                    self.get_logger().error(f"[거부] {_ha_why} — 무시: {d}")
                     return
                 if _td and (c != "stand" or bool(d.get("hang_arm", False))):
                     self.get_logger().error(
@@ -5307,6 +5804,15 @@ def main():
                         f"착지 자동 인수 — 착지 전 정책 미구동(수평 홀드 유지), 양발 접촉 {TD_CONFIRM_S}s·정착 뒤 "
                         f"정책 시작(최대 대기 {TD_WAIT_MAX_S:.0f}s)")
                 self.core.reset(checkpoint=ck)
+                # 1008 공중 정책 시작(air_start 합성 키 + hang_arm)에서만 접지 확인 전 KE 감지기 정지. 그 밖의 시작은 전부 꺼짐(종전) —
+                # 같은 러너를 다시 쓰는 재시작에서 앞 세션의 스위치가 남지 않게 여기서 러너에도 바로 맞춘다.
+                _air = air_start_session(ck, _hang)
+                self.air.begin(_air)
+                self.air.apply(self.core.runner)
+                if _air:
+                    self.get_logger().warn(
+                        f"공중 정책 시작({ck}) — 접지 확인(양발 접촉 {CONTACT_CONFIRM_S}s) 전에는 KE 회복 감지기 정지(서기 정책만). "
+                        "걷기 켜기는 감독기의 양발 접촉 선행조건으로 계속 거부된다")
                 self.core.cmd = cmd
                 # stand 계열은 heading_hold 강제 OFF (0803 발진 분석: stand_v3
                 # 학습 명령은 전 에피소드 (0,0,0) — HeadingHold의 wz≠0 주입은
@@ -5337,6 +5843,7 @@ def main():
             self.blend_from = None
             self.nocontact_t0 = None
             self.hang_guard = HangGuard(hang_mode=hang, t0=t0)
+            self.air.begin(False)        # 1008: 어떤 (재)시작이든 감지기 정지는 꺼진 채로 시작 — 공중 시작만 stand 처리가 이 뒤에 켠다
             self.tgt_filt = None
             self.roll_comp.reset()
             self.pitch_comp.reset()
@@ -5546,6 +6053,12 @@ def main():
             for _st, _t in self.hang_guard.pop_transitions():
                 self._bb_write({"timestamp": _t, "event": "hang_guard", "state": _st})
                 self.get_logger().info(f"행잉 가드 상태 → {_st}")
+            # 1008 공중 정책 시작 세션: 접지 확인(HangGuard 가 PRE_CONTACT 를 벗어남) 틱에 KE 감지기 정지를 푼다(한 번 — 재들림으로 다시 걸리지 않는다).
+            # 그 밖 세션은 step 이 늘 False·apply 가 기본값(False)을 다시 쓸 뿐이라 계산이 종전과 같다. 자리 = hang_guard.update 뒤·core.tick 앞.
+            if self.air.step(self.hang_guard.state):
+                self._bb_write({"timestamp": now, "event": "air_det_release"})
+                self.get_logger().info("공중 정책 시작: 접지 확인 — KE 회복 감지기 정지 해제(이 틱부터 감지기는 새 인계처럼 시작)")
+            self.air.apply(self.core.runner)
             if self.live and _why:
                 if self.guard_mode == "data":
                     # 데이터 수집 모드: 양발 무접촉(=낙상 중)에도 멈추지 않는다. 그 구간이
@@ -5793,6 +6306,7 @@ def main():
                 dbg["w3_mon"] = self.core.w3mon.snapshot()
             if self.core.kew3:             # 1007 합성 키에서만 필드 추가(종전 스키마 불변): 지금 도는 러너(ke/w3)·전환 횟수·켜기 차단 사유·정착 대기 진행
                 dbg["kew3"] = self.core.kew3_snapshot(_c5bb)
+            dbg.update(self.air.fields())  # 1008 공중 정책 시작 세션에서만 air_det_hold(bool) — 그 밖 세션은 {} (종전 스키마 불변)
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             dbg.update(self.errlog.fields(now, self.fb_age))   # 1007 블랙박스 전용 — 발행한 뒤에 덧붙인다(디버그 토픽 내용 불변)
             self._bb_write(dbg)

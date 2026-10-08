@@ -386,6 +386,10 @@ class C5Runner:
         rb, self._rec_net = _load_backend(rec_model, backend)
         self.rec_backend = rb
         self.det = detector or SwitchDetector()
+        # 1008 AIR1(**기본 False = 종전과 같은 계산**): 감지기 정지 — True 인 동안 서기 네트워크만 쓰고(모드 0), 감지기 상태는 매 틱 초기화한다.
+        #   풀리는 틱부터 감지기는 새 인계처럼 다시 시작한다(ref_init_s 동안 기준 = 현재 자세). 쓰는 곳: 공중 정책 시작(hang_arm)의 접지 확인 전.
+        #   reset() 은 이 값을 건드리지 않는다(스위치의 주인은 호출자 — 브리지 HangGuard 상태 / 시뮬 평가기).
+        self.det_hold = False
         self.last_mode = 0
         self.last_switch = ""
         self.last_raw_stand = None
@@ -467,7 +471,9 @@ class C5Runner:
         core.last_obs = obs
         core._tick += 1
         prev = self.last_mode
-        if getattr(self.det, "settle", None) is not None:
+        if self.__dict__.get("det_hold", False):       # 1008 AIR1: 감지기 정지(접지 확인 전) — 서기 모드 고정, 감지 상태 초기화
+            self.det.reset(); mode = 0
+        elif getattr(self.det, "settle", None) is not None:
             mode = self.det.update(gravity_unit, gyro_rad_s, contact2, qpos_rad=qpos, tau_knee_nm=tau_knee_nm)
         else:
             mode = self.det.update(gravity_unit, gyro_rad_s, contact2)

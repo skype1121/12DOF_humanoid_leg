@@ -194,6 +194,8 @@ parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토�
 parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
 parser.add_argument("--kw_unload", type=float, default=0.0, help="X18: 인계 뒤 링크마다 자기 무게의 이 비율(0–0.9)을 위로 받친다(부분지지의 이상화, 1 s 램프). --dist 와 함께 쓰지 않는다")
 parser.add_argument("--contact_pert", type=str, default="", help="X19: 접촉 관측 교란 'delay:N;flip:p;t0:x'(관측 비트만, 물리·채점 불변). '' = 끔")
+parser.add_argument("--air_det_hold", action="store_true", help="AIR1: 접지 확인(양발 접촉 0.3 s) 전에는 KE 회복 감지기 정지(서기 정책만) — C5Runner.det_hold")
+parser.add_argument("--air_start", type=str, default="", help="AIR1: 'clear:lo,hi;hold:T;rel:T' — 지지비 1.0·스폰 높이 +clear[m] 로 시작, 에피소드 시각 hold[s] 부터 rel[s] 에 걸쳐 지지 0. '' = 종전(지면 시작)")
 parser.add_argument("--kw_safety", type=str, default="", help="X19b: W3 감독기 문턱 JSON(브리지 --w3-safety 와 같은 형식·범위 검증). '' = 기본값")
 parser.add_argument("--kw_soft_clamp_all", action="store_true", help="X17: 실물 stage8 처럼 전 관절 목표각을 config soft 한계로 자른다(기본 = 학습과 같이 발목 앞뒤만)")
 parser.add_argument("--kw_soft_clamp_json", type=str, default="", help="X17b: --kw_soft_clamp_all 이 읽을 한계 표(기본 = config/joint_limits_12dof.json). 넓힌 soft 한계 제안의 대조 평가용")
@@ -299,7 +301,27 @@ _hp = env_cfg.events.hang_support_reset.params
 if args_cli.ramp_off:
     # 1004 정정: None 으로 지우면 난수 호출 수가 줄어 이후 DR 표본(편향·CoM)이 전부 바뀐다(짝 비교 붕괴) → 범위를 0 으로 두어 같은 수의 난수를 소비
     _hp["ramp_rate_range"] = (0.0, 0.0); _hp["ramp_cap_range"] = (0.0, 0.0); print("[ramp_off] 준정적 롤 토크 램프 0 (RNG 소비 유지, 진단)", flush=True)
-assert float(_hp["r0_range"][1]) <= 1e-6, f"지면 절차 평가는 지지 0 태스크에서만 (r0_range={_hp['r0_range']})"
+_AIR = None
+if args_cli.air_start:
+    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3)}
+    for _it in args_cli.air_start.split(";"):
+        _k, _, _v = _it.strip().partition(":")
+        if _k == "clear":
+            _a, _, _b = _v.partition(","); _AIR["clear"] = (float(_a), float(_b or _a))
+        elif _k in ("hold", "rel"):
+            _AIR[_k] = float(_v)
+        elif _k == "tp":
+            _a, _, _b = _v.partition(","); _AIR["tp"] = (float(_a), float(_b or _a))
+        elif _k:
+            raise SystemExit(f"--air_start: 모르는 항목 {_k!r}")
+    _hp["r0_range"] = (1.0, 1.0); _hp["hold_range"] = (_AIR["hold"], _AIR["hold"]); _hp["release_range"] = (_AIR["rel"], _AIR["rel"])
+    # 지지 = 힘제어 케이블(장력 r(t)·m·g, 방향 후크→고정 앵커; 후크는 base 위 0.25–0.40 m) + 앞뒤 2점 현수의 피치 구속(간격 tp m — 실측 없음, 가정 0.1–0.3).
+    # base 원점에 수직힘만 주는 종전 힘 모델은 매달린 몸이 CoM 편심만큼 20° 넘게 기운다(연습 실행에서 확인) — 실물 지그와 다르다.
+    _hp["cable"] = True; _hp["cable_force_mode"] = True; _hp["two_point_d_range"] = tuple(_AIR["tp"])
+    _AIR["pre_air"] = (float(args_cli.precheck_s) + float(args_cli.level_s)) <= _AIR["hold"] + 1e-9      # 인계가 방출 시작보다 먼저 = 공중에서 정책 시작
+    print(f"[air_start] 지지비 1.0·스폰 +{_AIR['clear']} m · 방출 {_AIR['hold']} s 부터 {_AIR['rel']} s · 인계 {'공중' if _AIR['pre_air'] else '착지 뒤(홀드로 착지)'} · 힘제어 케이블 + 2점 현수 간격 {_AIR['tp']} m (가정 모형 — 실물 줄·지그의 실측 아님)", flush=True)
+else:
+    assert float(_hp["r0_range"][1]) <= 1e-6, f"지면 절차 평가는 지지 0 태스크에서만 (r0_range={_hp['r0_range']})"
 _DR_AXES = ("pose", "gains", "delay", "com", "posebias", "play", "mass", "friction", "calib", "asym")
 _OFF = {x.strip() for x in (args_cli.dr_off or "").split(",") if x.strip()}
 _bad = _OFF - set(_DR_AXES)
@@ -645,6 +667,8 @@ if args_cli.com_set:
     env_cfg.events.base_com.params["com_range"] = _cr
     print(f"[com_set] base_com com_range ← {_cr}")
 _pr = env_cfg.events.reset_base.params["pose_range"]
+if _AIR is not None:
+    _pr["z"] = tuple(_AIR["clear"])
 if args_cli.tilt_pitch_deg != 0.0:
     _r = math.radians(args_cli.tilt_pitch_deg); _pr["pitch"] = (_r, _r)     # env 규약: +피치 = 앞으로 기울임(projected_gravity x>0) 과 같은 부호로 둔다(아래 실측 표에서 확인)
 if args_cli.tilt_roll_deg != 0.0:
@@ -1261,6 +1285,13 @@ if KWL:
                 if _H.w3hl.latched and _H.w3hl.err is not None:
                     _hlerr[e] = math.degrees(_H.w3hl.err)
                 _wzc[e] = float(_cmd_e[2])
+            if args_cli.air_det_hold:
+                if "_AIR_DH" not in globals():
+                    globals()["_AIR_DH"] = {"run": [0] * N, "acq": [False] * N}
+                if not _AIR_DH["acq"][e]:
+                    _AIR_DH["run"][e] = _AIR_DH["run"][e] + 1 if (float(ct[e][0]) > 0.5 and float(ct[e][1]) > 0.5) else 0
+                    _AIR_DH["acq"][e] = _AIR_DH["run"][e] >= 15
+                R.ke.det_hold = not _AIR_DH["acq"][e]
             R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], ct[e])
             act[e] = R.last_step_action; kind[e] = R.last_step_kind; want_v[e] = bool(clk.want)
             if not R.last_event and R.ticks_in_mode > 6:              # 전환 뒤 이력이 다 찬 틱만(fresh 전환의 백필 구간 제외)
@@ -2198,6 +2229,8 @@ final_quiet = alive & (fq_run >= 50)
 # ── 판정 ──
 fell = death_step >= 0
 fell_pre = fell & (death_step < STEPS_PRE)
+if _AIR is not None and _AIR["pre_air"]:
+    pre_both = torch.ones_like(pre_both)      # AIR1: 공중 인계 — 사전 검사에서 접촉을 요구하지 않는다(기울기·각속도·속도 기준은 그대로)
 pre_pass = (~fell_pre) & pre_both & (pre_pmax <= 10.0) & (pre_rmax <= 6.0) & (pre_w / max(pre_n, 1) <= 0.3) & (pre_v / max(pre_n, 1) <= 0.1)
 pre_pitch = pre_pitch_sum / max(pre_n, 1)
 fell_post = fell & (death_step >= STEPS_PRE)

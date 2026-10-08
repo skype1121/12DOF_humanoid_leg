@@ -272,4 +272,50 @@ rep("""    KWS = [_W3D.W3Supervisor(_BR.W3_SAFETY, cmd_limits=_BR.W3_CMD_LIMITS[
         print(f"[runner_loop] X19b 감독기 문턱 덮어쓰기: {args_cli.kw_safety} → {_KW_SAFETY}", flush=True)
     KWS = [_W3D.W3Supervisor(_KW_SAFETY, cmd_limits=_BR.W3_CMD_LIMITS[_KW_KEYS[0]]) for _ in range(N)]""")
 rep("""감독기 {_BR.W3_SAFETY}""", """감독기 {_KW_SAFETY}""")
+# 1008 AIR1: 공중 시작 — 지지비 1.0 으로 띄워 놓고(스폰 높이 +clear) 인계한 뒤 hold s 부터 rel s 에 걸쳐 지지를 0 으로 내린다(env 의 hang_support 힘 모델 그대로).
+#   인계 시각은 종전대로 --precheck_s. precheck_s ≤ hold 이면 "공중에서 정책 시작", precheck_s > hold 이면 "홀드로 착지한 뒤 정책 시작"(대조).
+rep("""parser.add_argument("--kw_safety", type=str, default="",""", """parser.add_argument("--air_start", type=str, default="", help="AIR1: 'clear:lo,hi;hold:T;rel:T' — 지지비 1.0·스폰 높이 +clear[m] 로 시작, 에피소드 시각 hold[s] 부터 rel[s] 에 걸쳐 지지 0. '' = 종전(지면 시작)")
+parser.add_argument("--kw_safety", type=str, default="",""")
+rep("""assert float(_hp["r0_range"][1]) <= 1e-6, f"지면 절차 평가는 지지 0 태스크에서만 (r0_range={_hp['r0_range']})\"""", """_AIR = None
+if args_cli.air_start:
+    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3)}
+    for _it in args_cli.air_start.split(";"):
+        _k, _, _v = _it.strip().partition(":")
+        if _k == "clear":
+            _a, _, _b = _v.partition(","); _AIR["clear"] = (float(_a), float(_b or _a))
+        elif _k in ("hold", "rel"):
+            _AIR[_k] = float(_v)
+        elif _k == "tp":
+            _a, _, _b = _v.partition(","); _AIR["tp"] = (float(_a), float(_b or _a))
+        elif _k:
+            raise SystemExit(f"--air_start: 모르는 항목 {_k!r}")
+    _hp["r0_range"] = (1.0, 1.0); _hp["hold_range"] = (_AIR["hold"], _AIR["hold"]); _hp["release_range"] = (_AIR["rel"], _AIR["rel"])
+    # 지지 = 힘제어 케이블(장력 r(t)·m·g, 방향 후크→고정 앵커; 후크는 base 위 0.25–0.40 m) + 앞뒤 2점 현수의 피치 구속(간격 tp m — 실측 없음, 가정 0.1–0.3).
+    # base 원점에 수직힘만 주는 종전 힘 모델은 매달린 몸이 CoM 편심만큼 20° 넘게 기운다(연습 실행에서 확인) — 실물 지그와 다르다.
+    _hp["cable"] = True; _hp["cable_force_mode"] = True; _hp["two_point_d_range"] = tuple(_AIR["tp"])
+    _AIR["pre_air"] = (float(args_cli.precheck_s) + float(args_cli.level_s)) <= _AIR["hold"] + 1e-9      # 인계가 방출 시작보다 먼저 = 공중에서 정책 시작
+    print(f"[air_start] 지지비 1.0·스폰 +{_AIR['clear']} m · 방출 {_AIR['hold']} s 부터 {_AIR['rel']} s · 인계 {'공중' if _AIR['pre_air'] else '착지 뒤(홀드로 착지)'} · 힘제어 케이블 + 2점 현수 간격 {_AIR['tp']} m (가정 모형 — 실물 줄·지그의 실측 아님)", flush=True)
+else:
+    assert float(_hp["r0_range"][1]) <= 1e-6, f"지면 절차 평가는 지지 0 태스크에서만 (r0_range={_hp['r0_range']})\"""")
+rep("""_pr = env_cfg.events.reset_base.params["pose_range"]
+""", """_pr = env_cfg.events.reset_base.params["pose_range"]
+if _AIR is not None:
+    _pr["z"] = tuple(_AIR["clear"])
+""")
+rep("""pre_pass = (~fell_pre) & pre_both & (pre_pmax <= 10.0)""", """if _AIR is not None and _AIR["pre_air"]:
+    pre_both = torch.ones_like(pre_both)      # AIR1: 공중 인계 — 사전 검사에서 접촉을 요구하지 않는다(기울기·각속도·속도 기준은 그대로)
+pre_pass = (~fell_pre) & pre_both & (pre_pmax <= 10.0)""")
+# 1008 AIR1: 접지 확인(관측 접촉 비트 양발 0.3 s 연속 — 브리지 HangGuard CONTACT_CONFIRM_S 와 같은 정의, 한 번 확인되면 래치) 전에는 KE 감지기 정지(C5Runner.det_hold — 배포 모듈의 같은 스위치).
+rep("""parser.add_argument("--air_start", type=str, default="",""", """parser.add_argument("--air_det_hold", action="store_true", help="AIR1: 접지 확인(양발 접촉 0.3 s) 전에는 KE 회복 감지기 정지(서기 정책만) — C5Runner.det_hold")
+parser.add_argument("--air_start", type=str, default="",""")
+rep("""            R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], ct[e])
+""", """            if args_cli.air_det_hold:
+                if "_AIR_DH" not in globals():
+                    globals()["_AIR_DH"] = {"run": [0] * N, "acq": [False] * N}
+                if not _AIR_DH["acq"][e]:
+                    _AIR_DH["run"][e] = _AIR_DH["run"][e] + 1 if (float(ct[e][0]) > 0.5 and float(ct[e][1]) > 0.5) else 0
+                    _AIR_DH["acq"][e] = _AIR_DH["run"][e] >= 15
+                R.ke.det_hold = not _AIR_DH["acq"][e]
+            R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], ct[e])
+""")
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

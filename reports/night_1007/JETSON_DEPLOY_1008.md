@@ -79,3 +79,27 @@
 - 하드웨어맵 md5 `41b68a6f2f4161297320d7786a2e161d`(불변) · 콘솔 서비스 active · 제어 프로세스 0 · 디스크 여유 28 GB.
 - 06:27 에 회복 키 `stand_c5kr_g21a_g24ra` 의 브리지 selftest 를 따로 돌렸다(배포 스크립트의 selftest 목록에는 krh 만 있다): 32 항목 통과. 이 키는 실물에서 돈 적이 없다.
 - 종전부터의 차이 1 건은 그대로다: `~/rl_calib/ak_mit_command.py` 실행본(`a3582fa2`)이 저장소 `protocols/ak_mit_command.py`(`52543d3d`)와 다르다 — 이번 배포가 건드리지 않는 경로다. 어느 쪽이 맞는지는 현장 확인.
+
+## 정책 메뉴 정리·robotctl prep (2026-10-08 11:46–11:51) — 승윤님 지시, 배포 승인(같은 날 오전)
+지시: 안 쓰는 정책을 다 정리하고 하나만 남긴다 · `robotctl prep` 과 `hang` 을 한 명령으로(hang 을 prep 에 흡수) · 인계는 공중에서. 물리 실행 없음(CAN 송신·ARM·토크·영점 변경 없음).
+
+| 항목 | 값 |
+|---|---|
+| 원본 커밋 | `90d52a9a`(코드) — 매니페스트 md5 `5d51b9b8978eafdb5596e1f770245201`, 123 파일 |
+| 바뀐 파일(8) | `jetson/scripts/operator_console.py` · `jetson/scripts/robotctl.py` · `rl_walking/deploy/c5_switch.py` · `tests/test_operator_console.py` · `tests/test_console_walk.py` · `deploy/cand/head_1008/OPERATOR_COMMANDS.md` · 매니페스트 · VERSION |
+| 새 파일(1) | `tests/test_robotctl.py` |
+| 안 바뀐 것 | 하드웨어맵 `41b68a6f`(적용 뒤 재확인) · 영점·보정 · 브리지·stage8·정책 파일 전부 |
+| 젯슨 selftest | 전부 통과(로그 `~/humanoid_repo_bak_1008/selftest_20261008_114642.log`): 문법 90 · 러너 · c5_switch · kew3_runner · w3_cmd · latency_check · 콘솔 · 브리지 7 종 · W3 노드 · stage8 4 종 · 러너 동치 6 키 · 매니페스트 대조 |
+| 콘솔 서비스 | 11:51 재기동(제어 프로세스 0·콘솔 유휴 확인 뒤). 재기동 뒤 기본 정책 = `stand_kew3q_g21a_g24ra_w3s3d15800`, 드롭다운 선택지 1 개 |
+
+**무엇이 달라졌나**
+- 콘솔: 고를 수 있는 정책이 합성 키 하나다. 드롭다운·기본값·시험 설정·정책 로드·계약 검사가 그 키만 받는다. 그 밖의 키는 서버가 "정리된 정책입니다"로 거부한다.
+  브리지의 정책 등록과 정책 파일은 건드리지 않았다(브리지 selftest 가 다른 키로도 돌기 때문이다. 0929 의 정리와 같은 방식). 다시 올리려면 `CKPT_MENU_KEYS` 에 키를 더한다.
+- `robotctl prep` = 준비 5 단계 → 공중 자세 유지 → 운용 게인. 모터가 움직이기 직전의 확인 질문은 남겼다(`-y` 생략, `--no-hang` 준비까지만). `robotctl hang` 은 별칭.
+- `c5_switch.py` 에 감지기 정지 스위치(`det_hold`, 기본 꺼짐)가 들어갔다. 시뮬 평가(AIR1)에서만 켠다. 브리지는 켜지 않는다 — 러너 동치 6 키 차 0 으로 종전과 같은 계산임을 확인했다.
+- **공중 정책 구동(hang_arm)은 켜지 않았다.** 시뮬 대조평가 AIR1 이 기준 미달이다(`reports/gen_w3/AIR_START_1008.md`). 남긴 정책에 공중 방식을 고르면 콘솔이 사유와 다음 할 일('정책 ON')을 알려 준다.
+
+**로컬 근거**: 콘솔 selftest ALL PASS(메뉴 항목 ②a 추가) · pytest 101 통과 · 가짜 젯슨 왕복 PASS 37 / FAIL 0(기존 키의 브리지 발행·CAN 프레임 비교 포함) · 예행 예상 밖 0.
+
+**되돌리기**: `deploy/deploy_head_1008.sh --rollback --restart-console` 은 1007 밤의 원래 상태(head_1008 이전)로 돌아간다.
+오늘 아침 상태(매니페스트 `8f4373d3`, 정책 10 개 메뉴)로만 되돌리려면 커밋 `6b58d6e6` 의 해당 파일로 매니페스트를 다시 만들어 적용한다.

@@ -5190,6 +5190,7 @@ def run_selftest(required=()):
              ("KE↔W3 합성 러너 셋째 키 — 공중·착지 정책(1008, 기본 꺼짐)", lambda: _selftest_kew3(KEW3QA_CKPT_KEY)),
              ("공중 정책 시작 — hang_arm 허용 키·AIR 모드 → KE 인계(1008, 기본 꺼짐)", _selftest_air_start),
              ("모터 오류 기록(1007)", _selftest_errlog),
+             ("계약 검사 통과 기록 재사용 규칙(1008)", _selftest_stamp),
              ("정책 500틱", lambda: _selftest_policy(required))]
     failed = 0
     for name, fn in tests:
@@ -5202,9 +5203,202 @@ def run_selftest(required=()):
     return 0 if failed == 0 else 1
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# 1008 계약 검사 통과 기록 재사용 — 승윤님 지적(1008 실물 세션): prep 마다 정책 계약 검사 37 s.
+# 이 검사는 ROS·로봇 없이 도는 결정적 검사라, 입력이 같으면 결과가 같다. 입력 = 기동 인자 · 부팅 · 파이썬/넘파이/onnxruntime
+# (판·경로·sys.path) · 저장소의 코드·설정·모델 파일 내용(+ 하드웨어맵 후보 경로). 전체 검사가 ALL PASS 로 끝났을 때만 입력 지문을
+# 적어 두고, 다음 --selftest 에서 지문이 같으면 다시 돌리지 않는다. 파일 하나라도(영점 배수 보정이 고쳐 쓴 하드웨어맵 포함) 달라지면
+# 전체 검사다. 검사 항목·기준은 그대로다(줄이지 않는다) — 같은 입력의 재실행만 건너뛴다.
+#  · 지문 계산·기록 읽기에서 어떤 오류가 나도 전체 검사로 간다(생략 쪽으로 넘어가지 않는다).
+#  · 검사 도중 입력 파일이 바뀌면 통과 기록을 남기지 않는다. 같은 지문으로 다시 돌려 실패하면 그 기록을 지운다.
+#  · 항상 전체 검사: --selftest-full(통과하면 기록을 새로 쓴다) 또는 환경 변수 HUMANOID_SELFTEST_FULL=1(종전 동작 그대로 — 지문 계산도
+#    기록 읽기·쓰기도 없다. 배포 검증·tests/ 가 쓴다).
+SELFTEST_STAMP_ENV = "HUMANOID_SELFTEST_STAMP"      # 통과 기록 파일 경로를 바꾼다(시험용)
+SELFTEST_FULL_ENV = "HUMANOID_SELFTEST_FULL"        # "1" 이면 재사용하지 않는다
+SELFTEST_STAMP_PATH = os.path.join(os.path.expanduser("~"), ".cache", "humanoid_selftest_pass.json")
+SELFTEST_FP_EXT = (".py", ".json", ".yaml", ".yml", ".onnx", ".pt", ".npz", ".npy")
+SELFTEST_FP_SKIP_DIRS = (".git", "__pycache__")
+SELFTEST_BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id"
+
+
+def _selftest_fingerprint(argv, root=None, extra_paths=None, boot_id_path=None):
+    """계약 검사 입력 지문(sha256 16진)과 내용을 읽은 파일 수. 파일은 전부 내용을 읽어 해시한다(크기·수정 시각으로 대신하지 않는다)."""
+    import hashlib
+    root = REPO if root is None else root
+    h = hashlib.sha256()
+
+    def put(tag, value):
+        h.update(tag.encode("utf-8") + b"\0" + str(value).encode("utf-8", "surrogateescape") + b"\0")
+
+    put("fmt", 1)
+    with open(SELFTEST_BOOT_ID_PATH if boot_id_path is None else boot_id_path, encoding="ascii") as f:
+        put("boot", f.read().strip())
+    put("py", sys.version); put("exe", sys.executable); put("path", json.dumps(list(sys.path)))
+    import numpy as _np_fp
+    put("np", f"{_np_fp.__version__}@{getattr(_np_fp, '__file__', '')}")
+    try:
+        import onnxruntime as _ort
+        put("ort", f"{_ort.__version__}@{getattr(_ort, '__file__', '')}")
+    except Exception as e:  # noqa: BLE001 — 없으면 '없음'도 입력의 일부
+        put("ort", f"없음:{type(e).__name__}")
+    put("argv", json.dumps(list(argv), ensure_ascii=False))
+    files = []
+    for d, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(x for x in dirnames if x not in SELFTEST_FP_SKIP_DIRS)
+        files += [os.path.join(d, fn) for fn in sorted(filenames) if fn.endswith(SELFTEST_FP_EXT)]
+    seen = {os.path.realpath(x) for x in files}
+    for x in (HARDWARE_MAP_PATHS if extra_paths is None else extra_paths):
+        if os.path.isfile(x) and os.path.realpath(x) not in seen:
+            files.append(x); seen.add(os.path.realpath(x))
+    for x in files:
+        with open(x, "rb") as f:
+            put("f", os.path.relpath(x, root) + ":" + hashlib.sha256(f.read()).hexdigest())
+    return h.hexdigest(), len(files)
+
+
+def run_selftest_cached(required, argv, full=False, stamp_path=None, fingerprint=None, runner=None, out=print):
+    """--selftest 진입점. 입력 지문이 마지막 전체 통과와 같으면 그 결과를 다시 쓴다(위 주석). 반환 = 종료 코드(0 = ALL PASS)."""
+    runner = runner or (lambda: run_selftest(required=required))
+    if os.environ.get(SELFTEST_FULL_ENV) == "1":
+        return runner()               # 종전 동작 그대로: 지문 계산도 통과 기록 읽기·쓰기도 하지 않는다(배포 검증·tests/)
+    stamp_path = stamp_path or os.environ.get(SELFTEST_STAMP_ENV) or SELFTEST_STAMP_PATH
+    fingerprint = fingerprint or (lambda: _selftest_fingerprint(argv))
+    key = json.dumps(list(argv), ensure_ascii=False)
+
+    def load():
+        try:
+            with open(stamp_path, encoding="utf-8") as f:
+                d = json.load(f)
+            return d if isinstance(d, dict) else {}
+        except FileNotFoundError:
+            return {}
+
+    def store(d):
+        os.makedirs(os.path.dirname(stamp_path) or ".", exist_ok=True)
+        tmp = f"{stamp_path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, stamp_path)
+
+    fp = n = None
+    try:
+        fp, n = fingerprint()
+        rec = None if full else load().get(key)
+        if isinstance(rec, dict) and rec.get("pass") is True and rec.get("fp") == fp:
+            out(f"[재사용] 정책 계약 검사: 입력이 마지막 전체 검사와 같다 — 파일 {n} 개 내용·기동 인자·부팅·파이썬/넘파이/onnxruntime 지문 일치"
+                f"(지문 {fp[:12]}). 전체 검사 ALL PASS 시각 {time.strftime('%m-%d %H:%M:%S', time.localtime(float(rec['t'])))}"
+                f"(걸린 시간 {float(rec['dur']):.0f} s). 다시 돌리려면 --selftest-full")
+            out("selftest: ALL PASS (통과 기록 재사용)")
+            return 0
+    except Exception as e:  # noqa: BLE001 — 기록 쪽 문제는 검사를 건너뛸 이유가 못 된다
+        out(f"[알림] 통과 기록 확인 실패({type(e).__name__}: {e}) — 전체 검사로 진행")
+    t0 = time.time()
+    rc = runner()
+    try:
+        if fp is None:
+            return rc
+        try:
+            d = load()
+        except Exception:  # noqa: BLE001 — 깨진 기록은 버리고 새로 쓴다
+            d = {}
+        if rc == 0:
+            fp2, _ = fingerprint()
+            if fp2 != fp:
+                out("[알림] 검사 도중 입력 파일이 바뀌었다 — 통과 기록을 남기지 않는다(다음 검사는 전체)")
+                d.pop(key, None)
+            else:
+                d[key] = {"pass": True, "fp": fp, "t": time.time(), "dur": round(time.time() - t0, 1), "files": n}
+            store(d)
+        elif key in d:
+            d.pop(key); store(d)      # 실패한 인자의 옛 통과 기록은 지운다
+    except Exception as e:  # noqa: BLE001
+        out(f"[알림] 통과 기록 쓰기 실패({type(e).__name__}: {e}) — 다음 검사는 전체")
+    return rc
+
+
+def _selftest_stamp():
+    """1008 통과 기록 재사용 규칙 자체 시험(임시 폴더·가짜 검사): 같은 입력만 재사용하고, 무엇이든 달라지면 전체 검사로 간다."""
+    import tempfile
+    env_keep = os.environ.pop(SELFTEST_FULL_ENV, None)            # 바깥에서 전체 검사를 강제했어도 이 시험은 재사용 규칙을 본다
+    try:
+        with tempfile.TemporaryDirectory(prefix="bridge-selftest-stamp-") as d:
+            changed = _selftest_stamp_cases(d)
+    finally:
+        os.environ.pop(SELFTEST_FULL_ENV, None)
+        if env_keep is not None:
+            os.environ[SELFTEST_FULL_ENV] = env_keep
+    return (f"기록 없음·--selftest-full·환경 변수 = 전체 검사(환경 변수는 기록 무변경) / 같은 입력 = 재사용 / 인자·모델·코드·하드웨어맵·부팅 {changed + 1} 종 변경"
+            "(크기·수정 시각 같은 내용 변경 포함)·파일 추가 = 전체 / 실패·검사 중 변경·깨진 기록·지문 불가 = 재사용 안 함")
+
+
+def _selftest_stamp_cases(d):
+    root = os.path.join(d, "repo"); os.makedirs(os.path.join(root, "a", "__pycache__")); os.makedirs(os.path.join(root, ".git"))
+    boot = os.path.join(d, "boot_id"); stamp = os.path.join(d, "cache", "pass.json"); ext = os.path.join(d, "map.json")
+
+    def w(path, data):
+        with open(path, "wb") as f:
+            f.write(data)
+
+    def r(path):
+        with open(path, "rb") as f:
+            return f.read()
+
+    w(boot, b"boot-1\n"); w(ext, b"{}"); w(os.path.join(root, "a", "m.onnx"), b"AAAA"); w(os.path.join(root, "x.py"), b"x = 1\n")
+    w(os.path.join(root, "a", "__pycache__", "c.py"), b"1"); w(os.path.join(root, ".git", "g.json"), b"1"); w(os.path.join(root, "note.txt"), b"1")
+    calls, lines, rc_next, during = [], [], [0], [None]
+
+    def fake():
+        calls.append(1)
+        if during[0]:
+            during[0]()
+        return rc_next[0]
+
+    def run(argv=("--selftest", "--checkpoint", "k"), full=False):
+        n0 = len(calls)
+        rc = run_selftest_cached((), list(argv), full=full, stamp_path=stamp, runner=fake, out=lines.append,
+                                 fingerprint=lambda: _selftest_fingerprint(list(argv), root=root, extra_paths=(ext,), boot_id_path=boot))
+        return rc, len(calls) - n0
+
+    _, n_files = _selftest_fingerprint(["--selftest"], root=root, extra_paths=(ext,), boot_id_path=boot)
+    assert n_files == 3, n_files                                       # x.py · a/m.onnx · 저장소 밖 맵 — .git·__pycache__·.txt 는 뺀다
+    os.environ[SELFTEST_FULL_ENV] = "1"
+    assert run() == (0, 1) and not os.path.exists(stamp)               # ④ 환경 변수 → 전체, 기록을 만들지 않는다
+    del os.environ[SELFTEST_FULL_ENV]
+    assert run() == (0, 1) and os.path.isfile(stamp)                   # ① 기록 없음 → 전체 검사, 통과 기록 생김
+    assert run() == (0, 0) and lines[-1] == "selftest: ALL PASS (통과 기록 재사용)" and lines[-2].startswith("[재사용]")   # ② 같은 입력 → 재사용
+    assert run(full=True) == (0, 1) and run() == (0, 0)                # ③ --selftest-full → 전체(기록 갱신)
+    before = r(stamp); os.environ[SELFTEST_FULL_ENV] = "1"
+    assert run() == (0, 1) and r(stamp) == before                      # ④ 기록이 있어도 환경 변수 → 전체, 기록은 그대로
+    del os.environ[SELFTEST_FULL_ENV]
+    assert run(("--selftest", "--checkpoint", "k2")) == (0, 1) and run() == (0, 0)   # ⑤ 인자가 다르면 전체(종전 인자 기록은 그대로)
+    changed = 0
+    for path, data in ((os.path.join(root, "a", "m.onnx"), b"AAAB"), (os.path.join(root, "x.py"), b"x = 2\n"), (ext, b"{ }"), (boot, b"boot-2\n")):
+        st = os.stat(path)
+        w(path, data)
+        if len(data) == st.st_size:
+            os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns))        # 크기·수정 시각이 같아도 내용이 다르면 잡아야 한다
+        assert run() == (0, 1), path                                   # ⑥ 모델·코드·맵·부팅 가운데 하나만 바뀌어도 전체,
+        assert run() == (0, 0), path                                   #    그 뒤 같은 입력은 재사용
+        changed += 1
+    w(os.path.join(root, "new.yaml"), b"a: 1\n"); assert run() == (0, 1) and run() == (0, 0)      # ⑦ 파일이 늘어도 전체
+    w(os.path.join(root, "note.txt"), b"2"); w(os.path.join(root, ".git", "g.json"), b"2"); assert run() == (0, 0)   # ⑧ 입력 밖 파일은 무관
+    rc_next[0] = 1; assert run(full=True) == (1, 1)                    # ⑨ 실패 → 기록 지움
+    rc_next[0] = 0; assert run() == (0, 1) and run() == (0, 0)
+    during[0] = lambda: w(os.path.join(root, "x.py"), b"x = 3\n")      # ⑩ 검사 도중 입력이 바뀜 → 기록 안 남김
+    assert run(full=True) == (0, 1) and any("검사 도중" in x for x in lines[-2:])
+    during[0] = None
+    assert run() == (0, 1) and run() == (0, 0)
+    w(stamp, b"{broken"); assert run() == (0, 1) and any("통과 기록 확인 실패" in x for x in lines); assert run() == (0, 0)   # ⑪ 깨진 기록 → 전체
+    w(stamp, b"[1, 2]"); assert run() == (0, 1) and run() == (0, 0)    # ⑫ 형식이 다른 기록 → 전체
+    os.remove(boot); assert run() == (0, 1) and run() == (0, 1)        # ⑬ 지문을 못 구하면 늘 전체(기록도 안 쓴다)
+    return changed
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--selftest-full", action="store_true",
+                    help="계약 검사를 통과 기록 재사용 없이 전부 다시 돌린다(1008)")
     ap.add_argument("--live", action="store_true",
                     help="실제 Stage8 명령 발행 (없으면 드라이런 — debug 토픽만)")
     ap.add_argument("--force-gains", action="store_true",
@@ -5376,8 +5570,10 @@ def main():
         global RUNNER_EMA_FRESH
         RUNNER_EMA_FRESH = int(args.runner_ema_fresh)
         print(f"[경고] --runner-ema-fresh {RUNNER_EMA_FRESH}: 러너 EMA 재시작 시뮬 계약 — 실물 미검증", file=sys.stderr)
-    if args.selftest:
-        return run_selftest(required=(args.checkpoint, STAND_DEFAULT))
+    if args.selftest or args.selftest_full:
+        # 1008: 입력 지문이 마지막 전체 통과와 같으면 그 결과를 다시 쓴다(run_selftest_cached 주석). 인자 지문에서 --selftest-full 은 뺀다(같은 검사)
+        return run_selftest_cached(required=(args.checkpoint, STAND_DEFAULT), argv=[a for a in sys.argv[1:] if a != "--selftest-full"],
+                                   full=args.selftest_full)
 
     # 프레임 변환 상수 — 하드웨어맵 결함 시 여기서 하드 페일 (드라이런 포함 기동 차단)
     frames = load_frame_map()

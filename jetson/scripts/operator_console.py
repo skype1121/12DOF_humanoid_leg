@@ -1836,6 +1836,8 @@ def console_snapshot():
         acks = DEMO_SOURCE.drain_acks() if DEMO else TEL.drain_acks()
         for item in acks:
             SESSION.event("bridge_ack", recv=item.get("t"), ack=item.get("ack"))
+            if isinstance(item.get("ack"), dict) and item["ack"].get("cmd") == "stand":
+                STAND_ACKS.append(item)        # 1008 정책 ON 순서기의 'IMU 미수신' 재전송 판단용(그 밖의 판정에는 쓰지 않는다)
         TRIAL.walk.feed(acks)
         TRIAL.update(st)
         st["trial"] = TRIAL.snapshot()
@@ -2060,6 +2062,27 @@ POLICY_ON_WORKER = None
 POLICY_ON_STEP_TIMEOUT_S = 90.0      # 단계 응답 확인 상한(각 단계 고유 시간 초과는 TrialState.update 가 먼저 판정)
 POLICY_ON_SUB_WAIT_S = 10.0          # 정책 로드 뒤 브리지 명령 토픽 구독 연결 대기 상한(DDS 발견) — 넘으면 그대로 진행(stand 8 s 확인이 판정)
 POLICY_ON_POLL_S = 0.05
+#: 1008 밤(실물 시도 5): 순서기가 브리지 기동 0.9 s 뒤 stand 를 보냈는데 브리지가 아직 첫 IMU 를 받기 전이라 "IMU 미수신"으로 거부했고,
+#:   콘솔은 8 s 확인 시간 초과로 정책 ON 을 중단했다(스택을 내리고 prep 부터 다시 해야 했다). 명령 토픽 구독 연결(_bridge_cmd_subscribed)은
+#:   브리지가 센서를 받기 시작했다는 뜻이 아니다. → 브리지가 **stand 를 'IMU 미수신'으로 거부했다고 응답한 경우에만** 같은 stand 를 다시 보낸다.
+#:   · 그 거부는 브리지가 아무 상태도 바꾸기 전에 난다(중력 정합 게이트 — _reset_chain_state·행잉 ARM 보다 앞). 다시 보내도 겹쳐 실행되지 않는다.
+#:   · 다른 거부 사유(IMU 스테일·중력 정합 실패·hang_arm 조건 …)와 응답 없음은 다시 보내지 않는다 — 종전대로 8 s 확인 시간 초과가 판정한다.
+#:   · 횟수 상한·간격 고정, 매번 고장 래치·진행 취소를 다시 본다. stand 확인 판정과 8 s 상한(TrialState.update)은 그대로다.
+#:   · 응답은 W3 세션 브리지(--experimental-w3)만 낸다. 그 밖의 브리지에서는 재전송이 일어나지 않는다(종전 동작).
+POLICY_ON_STAND_RETRY_WHY = "IMU 미수신"
+POLICY_ON_STAND_RETRY_MAX = 6
+POLICY_ON_STAND_RETRY_GAP_S = 0.6
+STAND_ACKS = collections.deque(maxlen=32)      # 최근 stand 응답 {"t": 콘솔 수신 시각, "ack": 원문} — console_snapshot 이 채운다
+
+
+def _stand_rejected_not_ready(since):
+    """since(콘솔 시각) 뒤에 받은 stand 응답 가운데 'IMU 미수신' 거부가 있는가."""
+    for item in list(STAND_ACKS):
+        ack = item.get("ack") or {}
+        if (item.get("t") or 0.0) >= since and ack.get("cmd") == "stand" and ack.get("accepted") is False \
+                and POLICY_ON_STAND_RETRY_WHY in str(ack.get("why") or ""):
+            return True
+    return False
 
 
 def _bridge_cmd_subscribed():
@@ -2141,6 +2164,7 @@ def _policy_on_worker(trial):
             effective = ({"checkpoint": trial.checkpoint, "hang_arm": True, "touchdown_start": False} if trial.mode == "air"
                          else {"checkpoint": trial.checkpoint, "hang_arm": False, "touchdown_start": True})
             SESSION.event("policy_on_step", step=step, trial=trial.number)
+        sent_wall = now()
         try:
             ok, msg = DEMO_SOURCE.act(step, effective) if DEMO else ACTIONS[step][0](effective)
         except Exception as exc:
@@ -2154,8 +2178,10 @@ def _policy_on_worker(trial):
                 return _policy_on_abort(trial, msg)
             pending["launched"] = True
         t0 = time.monotonic()
+        n_retry, retry_at = 0, None
         while True:
             time.sleep(POLICY_ON_POLL_S)
+            resend = False
             with STATE_LOCK:
                 console_snapshot()
                 if TRIAL is not trial:
@@ -2165,6 +2191,29 @@ def _policy_on_worker(trial):
                 if time.monotonic() - t0 > POLICY_ON_STEP_TIMEOUT_S:
                     trial.finish(False, "정책 ON 단계 응답 확인 시간 초과")
                     break
+                # 1008 밤: 브리지가 stand 를 'IMU 미수신'으로 거부했다고 응답한 경우에만 같은 stand 를 다시 보낸다(위 POLICY_ON_STAND_RETRY_* 주석)
+                if step == "stand" and not trial.fault and n_retry < POLICY_ON_STAND_RETRY_MAX:
+                    if retry_at is None:
+                        if _stand_rejected_not_ready(sent_wall):
+                            retry_at = time.monotonic() + POLICY_ON_STAND_RETRY_GAP_S
+                    elif time.monotonic() >= retry_at:
+                        resend = True
+            if resend:
+                n_retry, retry_at = n_retry + 1, None
+                sent_wall = now()
+                try:
+                    ok, msg = DEMO_SOURCE.act(step, effective) if DEMO else ACTIONS[step][0](effective)
+                except Exception as exc:
+                    ok, msg = False, f"{LABELS[step]} 실행 실패: {exc}"
+                with STATE_LOCK:
+                    SESSION.event("action_dispatched", action=step, ok=bool(ok), message=msg, via="policy_on", retry=n_retry,
+                                  retry_why=f"브리지 거부 '{POLICY_ON_STAND_RETRY_WHY}'")
+                    if trial.pending is not pending:
+                        return _policy_on_abort(trial, "진행이 취소되었습니다 — 잔존 프로세스·실제 상태를 확인하세요")
+                    trial.emit("policy_on_stand_retry", n=n_retry, why=POLICY_ON_STAND_RETRY_WHY)
+                    if not ok:
+                        trial.finish(False, msg)
+                        return _policy_on_abort(trial, msg)
         with STATE_LOCK:
             if step not in trial.completed:
                 lr = trial.last_result or {}
@@ -2880,8 +2929,77 @@ def selftest_policy_on_modes(directory):
                 seen[mode] = (stand, snap["phase"], label["label"])
             finally:
                 session.close()
+    # 1008 밤 — 'IMU 미수신' 거부 뒤 재전송(실물 시도 5 의 경합): 첫 stand 를 브리지가 거부했다고 응답하는 합성 브리지로 순서기를 돌린다.
+    #   (가) 사유 = IMU 미수신: 한 번 다시 보내고 그대로 완료(stand 2 회·고장 없음·재전송 기록 1 건)
+    #   (나) 사유 = IMU 스테일: 다시 보내지 않는다 — 종전대로 stand 확인 시간 초과로 정책 ON 중단(stand 1 회)
+    retry = {}
+    for case, why in (("미수신", "stand 시작 거부(종전 게이트) — IMU 미수신"), ("스테일", "stand 시작 거부(종전 게이트) — IMU 스테일 (age 0.53s > 0.2s)")):
+        demo, calls, queued = Demo(), [], []
+        real_act, real_drain = demo.act, demo.drain_acks
+
+        def fake_act(action, payload, _r=real_act, _c=calls, _q=queued, _why=why, _case=case):
+            _c.append((action, dict(payload)))
+            if action == "stand" and sum(1 for a, _ in _c if a == "stand") == 1:      # 첫 stand: 브리지가 아무것도 하지 않고 거부 응답만 낸다
+                _q.append({"t": now(), "ack": {"cmd": "stand", "req_id": None, "accepted": False, "why": _why, "action": "launch", "active": False}})
+                if _case == "스테일":                                              # 8 s 확인 상한을 빨리 넘기려고 상태기 시계만 40 배로(이어지게)
+                    c0, m0 = TRIAL.clock(), time.monotonic()
+                    TRIAL.clock = lambda: c0 + (time.monotonic() - m0) * 40.0
+                return True, "브리지 명령 발행: stand (합성 — 거부 응답)"
+            return _r(action, payload)
+
+        def fake_drain(_r=real_drain, _q=queued):
+            out = list(_q) + list(_r()); del _q[:]
+            return out
+
+        demo.act, demo.drain_acks = fake_act, fake_drain
+        session = SessionLog()
+        with patch.dict(globals(), DEMO=True, DEMO_SOURCE=demo, TRIAL=TrialState(CKPT_DEFAULT), SESSION=session,
+                        SESSION_DIR=os.path.join(directory, f"policy-on-retry-{case}"), TEL=Telemetry(), RUN=Runner(), BUSY=False,
+                        REQUESTS=collections.OrderedDict(), PROCESS_HEALTH={"ts": now(), "external": [], "error": None}, POLICY_ON_WORKER=None,
+                        STAND_ACKS=collections.deque(maxlen=32)):
+            try:
+                def req(action, **extra):
+                    st = console_snapshot()["trial"]
+                    return dispatch_action({"action": action, "boot_id": st["boot_id"], "revision": st["revision"],
+                                            "request_id": uuid.uuid4().hex, "confirmed": True, **extra})
+                code, res = req("configure", mode="air", checkpoint=CKPT_DEFAULT)
+                assert code == 200 and res["ok"], (case, code, res)
+                for action in TRIAL.flow():
+                    code, res = req(action)
+                    console_snapshot()
+                    assert code == 200 and res["ok"] and action in TRIAL.completed, (case, action, code, res)
+                    if action == "gain_ramp":
+                        break
+                del calls[:]
+                code, res = req("policy_on")
+                assert code == 200 and res["ok"], (case, code, res)
+                worker = POLICY_ON_WORKER
+                worker.join(timeout=30)
+                assert not worker.is_alive(), f"재전송 {case}: 정책 ON 순서기가 끝나지 않음"
+                console_snapshot()
+                n_stand = sum(1 for a, _ in calls if a == "stand")
+                resent = [e for e in TRIAL.history if e.get("event") == "policy_on_stand_retry"]
+                rows = []
+                if session.dir and os.path.isfile(os.path.join(session.dir, "timeline.jsonl")):      # 기록이 열린 경우에만(순서기 판정과 무관한 부가 확인)
+                    session.f.flush()
+                    with open(os.path.join(session.dir, "timeline.jsonl"), encoding="utf-8") as f:
+                        rows = [r for r in map(json.loads, f) if r.get("kind") == "action_dispatched" and r.get("action") == "stand"]
+                if case == "미수신":
+                    assert n_stand == 2 and not TRIAL.fault and {"stand", "policy_on"} <= TRIAL.completed, (case, n_stand, TRIAL.fault, sorted(TRIAL.completed))
+                    assert resent == [{"event": "policy_on_stand_retry", "trial": TRIAL.number, "n": 1, "why": POLICY_ON_STAND_RETRY_WHY}], resent
+                    assert calls[-1] == calls[-2] and calls[-1][1].get("hang_arm") is True, calls[-2:]            # 같은 stand 를 그대로 다시
+                    assert not rows or [r.get("retry") for r in rows] == [None, 1], rows
+                    assert [a for a, _ in calls] == list(POLICY_ON_STEPS) + ["stand"], [a for a, _ in calls]      # 다른 단계는 한 번씩 그대로
+                else:
+                    assert n_stand == 1 and not resent and len(rows) <= 1, (case, n_stand, resent, rows)
+                    assert TRIAL.fault and "stand" not in TRIAL.completed and "policy_on" not in TRIAL.completed and TRIAL.macro is None, (TRIAL.fault, sorted(TRIAL.completed))
+                    assert any(e.get("event") == "policy_on_aborted" and e.get("step") == "stand" for e in TRIAL.history), TRIAL.history[-4:]
+                retry[case] = n_stand
+            finally:
+                session.close()
     return (f"접지 방식: stand {seen['ground'][0]} → '{seen['ground'][1]}'(이름 '{seen['ground'][2]}') · "
-            f"공중 방식: stand {seen['air'][0]} → '{seen['air'][1]}'(이름 '{seen['air'][2]}') · 두 방식 모두 단계 {len(POLICY_ON_STEPS)} 개 순서대로 1 회씩·중복 실행 거부")
+            f"공중 방식: stand {seen['air'][0]} → '{seen['air'][1]}'(이름 '{seen['air'][2]}') · 두 방식 모두 단계 {len(POLICY_ON_STEPS)} 개 순서대로 1 회씩·중복 실행 거부 · "
+            f"stand 거부 'IMU 미수신' → 재전송 1 회로 완료(stand {retry['미수신']} 회) / 'IMU 스테일' → 재전송 없음·종전대로 중단(stand {retry['스테일']} 회)")
 
 
 def selftest_walk_report():

@@ -76,7 +76,7 @@ if [ $((ROLLBACK + VERIFY)) -gt 0 ] || [ -n "$ADDPOL$RMPOL" ] || { [ $RESTART -e
 # ------------------------------------------------------------------ 원격(또는 가짜) 실행
 rsh_in() {   # $1 = 명령 문자열, stdin 통과
   if [ -n "$FAKE" ]; then
-    env -i HOME="$RH" PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 CUDA_VISIBLE_DEVICES="" PYTHONDONTWRITEBYTECODE=1 \
+    env -i HOME="$RH" PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 CUDA_VISIBLE_DEVICES="" PYTHONDONTWRITEBYTECODE=1 HUMANOID_SELFTEST_FULL=1 \
       PYTHONPATH="${JETSON_FAKE_PYTHONPATH:-}" bash -c "$1"
   else
     $SSH "$1"
@@ -159,7 +159,7 @@ echo "== [3] 로컬 selftest 게이트 (CPU 만 — GPU 를 쓰지 않는다)"
 local_gate() {
   local ok=1 out
   lg() { local name=$1 tok=$2; shift 2
-    out=$(CUDA_VISIBLE_DEVICES="" timeout 900 "$@" 2>&1) || true
+    out=$(CUDA_VISIBLE_DEVICES="" HUMANOID_SELFTEST_FULL=1 timeout 900 "$@" 2>&1) || true
     if echo "$out" | grep -qF -- "$tok" && ! echo "$out" | grep -q '^\[FAIL\]'; then echo "   PASS $name"; else echo "   ★FAIL $name: $(echo "$out" | tail -1 | cut -c1-160)"; ok=0; fi; }
   lg "러너" "selftest: ALL PASS" python3 rl_walking/deploy/policy_runner_stage4.py --selftest
   lg "c5_switch" "C5 selftest PASS" python3 rl_walking/deploy/c5_switch.py --selftest
@@ -280,7 +280,7 @@ if [ $PROBE -eq 1 ]; then
   # 지금 젯슨에 있는 브리지의 selftest 를 그대로 한 번 돌려 시간을 잰다(오프라인, 파일을 쓰지 않는다). 새 판은 항목이 20 → 30 으로 늘어
   # 로컬(젯슨 모사 환경) 측정으로 약 3.3 배 걸린다(1.4 s → 4.7 s) — 콘솔 준비 단계 제한을 넘을지 미리 가늠한다. 실제 판정은 --apply 의 selftest 가 한다.
   echo "== [4b] 젯슨의 현재 브리지 selftest 소요 시간 (--probe-selftest-time)"
-  PR=$(rsh "cd '$R' && { [ -z '$ROS_SETUP' ] || [ ! -f '$ROS_SETUP' ] || source '$ROS_SETUP'; }; export PYTHONDONTWRITEBYTECODE=1 CUDA_VISIBLE_DEVICES=; t0=\$(date +%s); timeout 900 $PY jetson/scripts/rl_bridge_node.py --selftest --checkpoint $KEY_G21A 2>&1 | tail -1; echo \"SECS \$(( \$(date +%s) - t0 ))\"" || true)
+  PR=$(rsh "cd '$R' && { [ -z '$ROS_SETUP' ] || [ ! -f '$ROS_SETUP' ] || source '$ROS_SETUP'; }; export PYTHONDONTWRITEBYTECODE=1 CUDA_VISIBLE_DEVICES= HUMANOID_SELFTEST_FULL=1; t0=\$(date +%s); timeout 900 $PY jetson/scripts/rl_bridge_node.py --selftest --checkpoint $KEY_G21A 2>&1 | tail -1; echo \"SECS \$(( \$(date +%s) - t0 ))\"" || true)
   T_OLD=$(echo "$PR" | sed -n 's/^SECS //p'); echo "   $(echo "$PR" | head -1 | cut -c1-120) — ${T_OLD:-?} s"
   if [ -n "${T_OLD:-}" ]; then
     T_NEW=$(( T_OLD * 33 / 10 ))
@@ -304,7 +304,8 @@ R=$1; BAK=$2; PY=$3; ROS_SETUP=$4; KEY_G21A=$5; KEY_KRH=$6; KEY_W3=$7; KEY_KEW3=
 cd "$R" || { echo "ST|cd|90|0|0|0|저장소 폴더 없음"; exit 0; }
 # 콘솔 서비스와 같은 환경(ROS 경로)에서 돌린다 — selftest 는 rclpy 를 초기화하지 않는다(브리지 노드 시험은 가짜 rclpy)
 if [ -n "$ROS_SETUP" ] && [ -f "$ROS_SETUP" ]; then set +u; source "$ROS_SETUP"; fi
-export PYTHONDONTWRITEBYTECODE=1 CUDA_VISIBLE_DEVICES=""
+# HUMANOID_SELFTEST_FULL=1: 브리지 계약 검사의 통과 기록 재사용(1008 밤)을 끈다 — 배포 검증은 늘 전체 검사이고 통과 기록을 읽지도 쓰지도 않는다
+export PYTHONDONTWRITEBYTECODE=1 CUDA_VISIBLE_DEVICES="" HUMANOID_SELFTEST_FULL=1
 mkdir -p "$BAK" 2>/dev/null; LOG="$BAK/selftest_$(date +%Y%m%d_%H%M%S).log"; : > "$LOG" 2>/dev/null || LOG=/dev/null
 echo "LOG|$LOG"
 run() { name=$1; tmo=$2; token=$3; shift 3

@@ -3920,3 +3920,26 @@ class Biped12HangStandW3S3xEnvCfg(Biped12HangStandW3S3fFEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         _w3t_knee_over(self, weight=-4.0, max_flex_rad=0.785)
+
+
+@configclass
+class Biped12HangStandG21hEnvCfg(Biped12HangStandG21aEnvCfg):
+    """G21h — 매달림 시작 혼합(1008 claude2, reports/gen_w3/AIR_START_1008.md §8): **G21a 와 전부 같고**, 에피소드의 절반만 매달림 시작으로 바꾼다
+    (`mdp_hang.hang_mix_reset`: 스폰 +0.03–0.15 m · 지지비 1.0 을 2–8 s 유지 뒤 1–4 s 에 걸쳐 0 · 지지점 = base 위 0.25–0.40 m · 2 점 현수 간격 0.1–0.3 m).
+    지면 에피소드의 지지·외란·게이트·보상은 G21a 그대로다. 매달림 에피소드는 외란 일정을 지지가 풀린 뒤로 밀고, 지지가 남은 동안 회복 게이트를 닫는다
+    (`hang_mix_step`). 보상은 `hang_quiet`(지지비 > 0.5 인 동안 관절속도 제곱합) 가중만 −0.002 → −0.01 — 지면 에피소드에는 0 이다.
+    시작 = G21a-11300 이어 학습. 관측(320)·행동·기본자세 계약 불변. 지지 모형은 가정(실측 없음).
+    태스크 등록은 rl_walking/tasks_extra_1008.py(젯슨에 가는 rl_walking/__init__.py 를 건드리지 않는다)."""
+
+    P_HANG = 0.5
+    W_HANG_QUIET = -0.01
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.hang_mix_reset = EventTerm(
+            func=mdp_hang.hang_mix_reset, mode="reset",
+            params={"p_hang": float(self.P_HANG), "clearance_range": (0.03, 0.15), "air_hold_range": (2.0, 8.0), "air_release_range": (1.0, 4.0),
+                    "hook_z_range": (0.25, 0.40), "two_point_d_range": (0.1, 0.3), "two_point_kp": 200.0, "two_point_kd": 10.0, "dist_shift_s": 1.0,
+                    "asset_cfg": SceneEntityCfg("robot", body_names="base")})      # 매니저가 base 링크로 푼다(안 풀리면 지지력이 전 링크에 걸린다)
+        self.events.hang_mix_step = EventTerm(func=mdp_hang.hang_mix_step, mode="interval", interval_range_s=(0.0, 0.0), params={"gate_grace_s": 1.0})
+        self.rewards.hang_quiet.weight = float(self.W_HANG_QUIET)

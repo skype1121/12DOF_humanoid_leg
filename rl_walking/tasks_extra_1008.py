@@ -12,3 +12,15 @@ for _stage in ("W3S3x",):
             "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
         },
     )
+
+# 1008 낮: 매달림 시작 혼합 서기 세대(G21a 계열 — 에이전트 설정은 G 계열과 같은 것)
+for _stage in ("G21h",):
+    gym.register(
+        id=f"Biped12-HangStand-{_stage}-v0",
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"rl_walking.hang_stand_env_cfg:Biped12HangStand{_stage}EnvCfg",
+            "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12Stage4PPOHoldPriorRunnerCfg",
+        },
+    )

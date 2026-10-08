@@ -55,6 +55,8 @@ def _state(env):
         st = {"r0": z(), "t_hold": z(), "t_rel": z(), "t": z(), "r": z(), "mass": z(), "lvl_k": z(), "lvl_c": z(),
               "bx": z(), "by": z(), "px": z(), "py": z(), "L": torch.ones(N, device=dev),
               "x0": z(), "y0": z(),
+              # 1008 G21h: 힘 모델의 작용점 높이(base 위 [m], 0 = 종전 = base 원점)와 '매달림 시작 에피소드' 표식 — hang_mix_reset 만 0 이 아닌 값을 쓴다
+              "pz": z(), "mix_hang": z(),
               "released_t": torch.full((N,), -1.0, device=dev),   # r 가 0 에 닿은 시각 (−1 = 아직)
               "touch_t": torch.full((N,), -1.0, device=dev),      # 양발 첫 동시 접촉 시각
               # 0911 케이블 지지 모델 (cable_on=True 일 때 _cable_apply 사용)
@@ -155,7 +157,7 @@ def _apply(env, st, ids, asset_cfg):
     F_w = torch.stack([Fx, Fy, Fz], dim=-1)                          # (n,3) 세계
     F_b = _quat_inv(asset.data.root_quat_w[ids], F_w)               # base 링크 프레임
     forces = F_b.unsqueeze(1)                                       # (n,1,3)
-    positions = torch.stack([st["px"][ids], st["py"][ids], torch.zeros_like(Fz)], dim=-1).unsqueeze(1)
+    positions = torch.stack([st["px"][ids], st["py"][ids], st["pz"][ids]], dim=-1).unsqueeze(1)      # pz 기본 0 = 종전(base 원점)과 같은 값
     # 프레임 수평 유지 토크 (0908 22:40, 승윤님 "실물은 저 정도로 흔들리며 착지하지 않는다"): 실물 현가는 앞뒤 두 줄이
     # 프레임을 수평으로 잡는다(오늘 착지 피치 −0.5°). 지지비 r 에 비례해 줄이 풀리면 사라진다. lvl_k=0 이면 종전과 동일.
     pgv = asset.data.projected_gravity_b[ids]; w = asset.data.root_ang_vel_b[ids]
@@ -3208,3 +3210,70 @@ def track_yaw_rate_exp(env, std: float = 0.25) -> torch.Tensor:
     """명령 yaw rate vs 월드 ω_z, exp(−e²/std²)."""
     asset = env.scene[_base_cfg().name]; c = env.command_manager.get_command("base_velocity")
     return torch.exp(-((c[:, 2] - asset.data.root_ang_vel_w[:, 2]) ** 2) / std ** 2)
+
+
+# ───────────────── 1008 G21h: 매달림 시작 혼합 (reports/gen_w3/AIR_START_1008.md §8) ─────────────────
+# 승윤님 결정(1008): 정책을 공중(매달림)에서부터 구동한 채 내려 착지시킨다. 지금 서기 정책(G21a)은 지면 시작으로만 배워 공중에서 자세를 바꾸고
+# 착지 뒤 주저앉는다(AIR1: 40–62 % 낙상). 여기서는 G21a 의 환경을 그대로 두고 에피소드의 일부만 '매달림 시작'으로 바꾼다.
+#   · 지면 에피소드: 아무것도 건드리지 않는다(지지비 0, 외란·게이트 그대로) — G21a 와 같은 분포.
+#   · 매달림 에피소드: 스폰 높이 + clearance, 지지비 1.0 을 air_hold 동안 유지한 뒤 air_release 에 걸쳐 0 으로. 지지력은 **base 위 hook_z 의 한 점**에
+#     건다(base 원점에 걸면 몸이 CoM 편심만큼 20° 넘게 기운다 — AIR1 연습 실행). 앞뒤 2 점 현수의 피치 구속(간격 d, 실측 없음)도 켠다.
+#     외란 일정은 지지가 다 풀린 뒤로 민다(매달린 채·착지 중에 미는 것은 이 세대의 물음이 아니다).
+# 지지 모형은 가정이다(줄·지그·내리는 속도의 실측 없음).
+
+def hang_mix_reset(env, env_ids, p_hang: float = 0.5, clearance_range=(0.03, 0.15), air_hold_range=(2.0, 8.0), air_release_range=(1.0, 4.0),
+                   hook_z_range=(0.25, 0.40), two_point_d_range=(0.1, 0.3), two_point_kp: float = 200.0, two_point_kd: float = 10.0,
+                   dist_shift_s: float = 1.0, asset_cfg=None):
+    """mode="reset". **hang_support_reset·disturbance 뒤에 정의할 것**(이벤트는 정의 순서로 돈다 — 둘이 만든 일정을 여기서 덮어쓴다).
+    asset_cfg 는 **base 링크로 풀린** SceneEntityCfg 여야 한다(이벤트 params 로 주면 매니저가 푼다). 안 풀린 채(body_ids = 전체)면 지지력이
+    전 링크에 걸린다 — 1008 기전 확인에서 잡은 버그. 아래에서 한 번 더 막는다."""
+    asset_cfg = asset_cfg or _base_cfg()
+    if isinstance(getattr(asset_cfg, "body_ids", None), slice):
+        asset_cfg.resolve(env.scene)
+    assert not isinstance(asset_cfg.body_ids, slice) and len(asset_cfg.body_ids) == 1, f"hang_mix_reset: 지지력을 걸 링크가 하나로 풀리지 않음({asset_cfg.body_ids})"
+    st = _state(env)
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    n = len(ids)
+    st["mix_hang"][ids] = 0.0
+    st["pz"][ids] = 0.0
+    hang = torch.rand(n, device=env.device) < float(p_hang)
+    if not bool(hang.any()):
+        return
+    hid = ids[hang]
+    m = len(hid)
+
+    def U(rng):
+        return torch.empty(m, device=env.device).uniform_(float(rng[0]), float(rng[1]))
+
+    asset = env.scene[asset_cfg.name]
+    pos = asset.data.root_pos_w[hid].clone()
+    quat = asset.data.root_quat_w[hid].clone()
+    pos[:, 2] += U(clearance_range)
+    asset.write_root_pose_to_sim(torch.cat([pos, quat], dim=-1), env_ids=hid)
+    st["mix_hang"][hid] = 1.0
+    st["r0"][hid] = 1.0
+    st["t_hold"][hid] = U(air_hold_range)
+    st["t_rel"][hid] = U(air_release_range)
+    st["pz"][hid] = U(hook_z_range)
+    st["tp_d"][hid] = U(two_point_d_range)
+    st["tp_kp"][hid] = float(two_point_kp)
+    st["tp_kd"][hid] = float(two_point_kd)
+    st["dst_t0"][hid] = st["dst_t0"][hid] + (st["t_hold"][hid] + st["t_rel"][hid] + float(dist_shift_s)).unsqueeze(1)
+    st["r"][hid] = 1.0
+    _apply(env, st, hid, asset_cfg)
+
+
+def hang_mix_step(env, env_ids, gate_grace_s: float = 1.0):
+    """mode="interval", interval_range_s=(0,0). **recovery_gate 뒤에 정의할 것.** 매달림 시작 에피소드는 지지가 남아 있는 동안과 지지 0 뒤
+    gate_grace_s 동안 회복 게이트를 닫아 둔다. 이유: 공중은 '양발 비접촉 + 기울기 > 3°' 로 게이트가 열리는 조건이라 자세 벌점이 꺼지고,
+    착지해 가라앉으면 회복 이벤트 보상(+30)이 나온다 — 매달려 있기만 해도 받는 보상이 된다. 지면 에피소드는 건드리지 않는다."""
+    st = _state(env)
+    blocked = (st["mix_hang"] > 0.5) & ((st["released_t"] < 0.0) | ((st["t"] - st["released_t"]) < float(gate_grace_s)))
+    if bool(blocked.any()):
+        for k in ("rec_open", "rec_open_t", "rec_ev", "rec_guard"):
+            st[k] = torch.where(blocked, torch.zeros_like(st[k]), st[k])
+
+
+def hang_mix_flag(env) -> torch.Tensor:
+    """(N,) 이번 에피소드가 매달림 시작이면 1 (기록·진단용)."""
+    return _state(env)["mix_hang"]

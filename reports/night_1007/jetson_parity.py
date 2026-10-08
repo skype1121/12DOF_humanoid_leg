@@ -28,8 +28,11 @@ sys.path.insert(0, os.path.join(REPO, "jetson", "scripts"))
 T = 600
 # 1008: 둘째 합성 키(첫 합성 키 + KE 감지기 갇힘 해소)를 **맨 뒤에** 더했다 — 앞의 5 키·순서·입력열은 그대로(키마다 독립 입력열·독립 러너라 기존 키의 기준값은 바뀌지 않는다).
 # --check 는 기준 파일에 들어 있는 키만 본다: 5 키 기준 파일이면 5 키만 대조하고, 새 키를 대조하려면 6 키로 --gen 한 기준 파일이 필요하다.
+# 1008 오후: 공중 정책 시작 키를 **맨 뒤에** 더했다(앞의 6 키·순서·입력열은 그대로) — 공중·착지 서기 정책 단독 키, 셋째 합성 키의 지면 시작(= 둘째 합성 키와 같은
+# 출력이어야 한다), 그리고 "@air" = 같은 합성 키를 start_air() 로 시작해 처음 3 s 를 무접촉으로 준 입력열(AIR 정책 추론 → 착지 → KE 인계 경로).
 KEYS = ["stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra", "stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800",
-        "stand_kew3q_g21a_g24ra_w3s3d15800"]
+        "stand_kew3q_g21a_g24ra_w3s3d15800", "stand_crouch_g21h", "stand_kew3qa_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3s3d15800@air"]
+AIR_TICKS = 150      # "@air" 입력열: 처음 3 s 는 양발 무접촉(공중), 그 뒤는 표준 입력열의 접촉
 WALK_EVENTS = [(100, True, (0.06, 0.0, 0.0)), (300, False, (0.0, 0.0, 0.0)), (420, True, (0.0, 0.0, 0.15)), (520, False, (0.0, 0.0, 0.0))]
 
 
@@ -72,6 +75,7 @@ def kew3_keys(b):
 
 
 def run_key(b, key, inp=None):
+    key, _, variant = key.partition("@")               # "<키>@air" = 그 합성 키의 공중 정책 시작 경로(1008)
     if key in getattr(b._W3, "W3_KEYS", ()) or key in kew3_keys(b):
         if not b.EXPERIMENTAL_W3:
             b.enable_experimental_w3()
@@ -83,9 +87,13 @@ def run_key(b, key, inp=None):
         pose = getattr(r, "default_pose", None)
     if inp is None:
         inp = make_inputs(pose)
+        if variant == "air":
+            _g, _gv, _q, _qv, _ct = inp; _ct = _ct.copy(); _ct[:AIR_TICKS] = 0.0; inp = (_g, _gv, _q, _qv, _ct)
     gyro, grav, q, qv, ct = inp
     walking = hasattr(r, "set_gait_enable") and (key in getattr(b._W3, "W3_KEYS", ()) or key in kew3_keys(b))
     r.reset()
+    if variant == "air":
+        r.start_air()                                  # 브리지의 hang_arm stand 와 같은 순서(reset 바로 뒤)
     out = np.zeros((T, 12), np.float64); raw = np.zeros((T, 12), np.float32); mode = np.zeros(T, np.int16); cmd = (0.0, 0.0, 0.0); ev = {k0: (w, c) for k0, w, c in WALK_EVENTS}
     for k in range(T):
         if walking and k in ev:
@@ -112,9 +120,10 @@ def run_key(b, key, inp=None):
 def files_of(b, key):
     """키가 읽는 정책 파일 md5(있는 것만)."""
     res = {}
+    key = key.partition("@")[0]
     keys = [key]
     if key in kew3_keys(b):
-        sp = b.KEW3_SPECS[key]; keys = [sp.w3, sp.ke]
+        sp = b.KEW3_SPECS[key]; keys = [sp.w3, sp.ke] + ([sp.air] if getattr(sp, "air", None) else [])
     for kk in keys:
         dirs = []
         if kk in b.C5_PAIRS:

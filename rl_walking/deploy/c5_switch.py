@@ -388,9 +388,8 @@ class C5Runner:
         self.det = detector or SwitchDetector()
         # 1008 AIR1(**기본 False = 종전과 같은 계산**): 감지기 정지 — True 인 동안 서기 네트워크만 쓰고(모드 0), 감지기 상태는 매 틱 초기화한다.
         #   풀리는 틱부터 감지기는 새 인계처럼 다시 시작한다(ref_init_s 동안 기준 = 현재 자세). reset() 은 이 값을 건드리지 않는다(스위치의 주인은 호출자).
-        #   쓰는 곳: 시뮬 평가기의 AIR1 팔(eval_transition_kwx.py --air_det_hold)과, 1008 오후부터 브리지의 **공중 정책 시작 세션**(rl_bridge_node.AirStart —
-        #   명세 air_start 인 합성 키를 stand + hang_arm 으로 시작했을 때만, 양발 접지 확인 전까지). 그 밖의 세션·키에서는 브리지가 켜지 않는다.
-        #   G21a 서기로는 AIR1 에서 공중 정책 구동이 기준 미달이라 그 키들의 hang_arm 거부는 그대로다(reports/gen_w3/AIR_START_1008.md §2·§8).
+        #   쓰는 곳: 시뮬 평가기의 AIR1 팔(eval_transition_kwx.py --air_det_hold)뿐이다. **브리지는 이 값을 켜지 않는다** — AIR1 에서 공중 정책 구동이
+        #   기준 미달이라 hang_arm 거부를 풀지 않았다(reports/gen_w3/AIR_START_1008.md).
         self.det_hold = False
         self.last_mode = 0
         self.last_switch = ""

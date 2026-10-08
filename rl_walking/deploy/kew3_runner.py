@@ -13,6 +13,16 @@
     어느 방식이든 슬루 기준(직전 방출 목표)은 이어받는다: reset 된 러너는 첫 틱에 실측 qpos 를 슬루 기준으로 쓰는데, 실물은 명령–엔코더
     추종 오차가 수 도라 그대로 두면 전환 틱에 목표가 끌려간다(시뮬은 체인이 연속이었다).
 
+1008 AIR(공중·착지 구간 — 선택, air_runner 를 줄 때만. 안 주면 모든 동작·기록이 종전과 같다): 승윤님 결정 "정책을 공중에서부터 구동한다".
+    AIR(매달림 시작으로 배운 서기 정책 G21h, PolicyRunnerStage4)  →  KE  ⇄  W3
+       start_air()           : 세션 시작(reset 뒤)에 부르면 AIR 로 시작한다. 안 부르면 종전처럼 KE 로 시작(= 공중 러너가 없는 합성 러너와 같은 동작).
+       AIR → KE              : 러너가 스스로 넘긴다 — 양발 접촉 연속 air_contact_s ∧ 조용한 양발(|ω_xy| < air_w) 연속 air_quiet_s,
+                               또는 양발 접촉 연속 air_max_s(시끄러워도 — 그때는 회복이 있는 KE 가 낫다). 한 번 넘기면 AIR 로 돌아오지 않는다.
+                               이어받기는 이력·필터·last_action·슬루 기준·**클록 틱과 클록 이력까지 그대로**(둘 다 같은 계약의 서기 정책). 감지기는 새로.
+       AIR 동안              : 걷기 켜기 거부(enable_block_reason), 회복 감지기 없음(공중 러너는 단일 서기 정책).
+    왜 이 구조인가: G21h 를 서기 정책 전체로 바꾸면 공중 시작은 서지만 지면 회복이 기준 미달이었다(reports/gen_w3/AIR_START_1008.md §9).
+    공중·착지에만 쓰고 넘기면 착지 뒤의 서기·회복·걷기는 평가가 끝난 종전 구성 그대로다.
+
 브리지가 읽는 러너 인터페이스(step·reset·set_gait_enable·_w3_clock·last_obs·last_action·blackbox·needs_knee_tau …)를 그대로 낸다.
 노드의 LPF·가드·워밍업·블렌딩 상태는 건드리지 않는다(전환은 러너 안의 일).
 
@@ -27,7 +37,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-MODE_KE, MODE_W3 = "ke", "w3"
+MODE_KE, MODE_W3, MODE_AIR = "ke", "w3", "air"
 
 
 def _core(r):
@@ -39,7 +49,8 @@ class KeW3Runner:
     """W3 세션의 '서기 정책'을 KE 로 바꾼 합성 러너."""
 
     def __init__(self, w3_runner, ke_runner, *, handoff: str = "carry", settle_quiet_s: float = 0.0, settle_w: float = 0.15,
-                 settle_max_s: float = 3.0, dt: float = 0.02):
+                 settle_max_s: float = 3.0, dt: float = 0.02, air_runner=None, air_contact_s: float = 1.0, air_quiet_s: float = 0.5,
+                 air_w: float = 0.15, air_max_s: float = 3.0):
         """handoff: "carry" | "fresh". settle_quiet_s: 0 = 래치 다음 틱에 KE / > 0 = 래치 뒤 W3 STAND 로 (양발 접촉 ∧ |ω_xy| < settle_w)가
         이 시간 이어지면 KE(상한 settle_max_s — 시뮬 전환 평가의 정착 판정과 같은 정의: 0.5 s·0.15 rad/s·상한 3 s)."""
         if handoff not in ("carry", "fresh"):
@@ -64,6 +75,31 @@ class KeW3Runner:
         # gyro_ema·joint_vel_ema 를 순간값으로 재시작하므로, 그 조합은 '이어받기'가 조용히 '재시작'이 된다(X2 폭주 경로) → 기동 거부.
         if handoff == "carry" and (int(getattr(cw, "ema_fresh_ticks", 1)) != 1 or int(getattr(ck, "ema_fresh_ticks", 1)) != 1):
             raise ValueError("handoff 'carry' 는 ema_fresh_ticks 1 에서만 — 2 는 전환 틱에 저역 필터가 순간값으로 재시작된다(TRANSITION_W3KE.md §5.6)")
+        # 1008 AIR(선택): 공중·착지 구간의 서기 러너. 단일 PolicyRunnerStage4 만 받는다(감지기·W3 클록 없는 것) — 계약은 KE 코어와 같아야 한다.
+        self.air = air_runner
+        self.air_contact_s, self.air_quiet_s, self.air_w, self.air_max_s = float(air_contact_s), float(air_quiet_s), float(air_w), float(air_max_s)
+        self._air_both_run = 0.0; self._air_quiet_run = 0.0
+        self.n_air_to_ke = 0
+        if air_runner is not None:
+            ca = _core(air_runner)
+            if ca is not air_runner or hasattr(air_runner, "det"):
+                raise ValueError("air_runner 는 단일 서기 러너(PolicyRunnerStage4)여야 함 — C5Runner(감지기)·합성 러너는 안 됨")
+            if getattr(ca, "_w3_clock", None) is not None:
+                raise ValueError("air_runner 가 W3 러너임 — 서기 정책 러너를 넘길 것")
+            if ca.obs_dim != ck.obs_dim or list(ca.terms) != list(ck.terms):
+                raise ValueError(f"공중 러너 관측 레이아웃 다름: {ca.obs_dim} vs {ck.obs_dim}")
+            if not np.array_equal(np.asarray(ca.default_pose), np.asarray(ck.default_pose)):
+                raise ValueError("공중 러너 기본자세 다름 — 관측 joint_pos·행동 오프셋 기준이 바뀐다")
+            if (ca.act_obs_ema_beta, ca.jvel_obs_ema_beta) != (ck.act_obs_ema_beta, ck.jvel_obs_ema_beta):
+                raise ValueError("공중 러너 관측 필터 β 다름")
+            if getattr(ca, "jvel_ema_mode", None) != getattr(ck, "jvel_ema_mode", None):
+                raise ValueError("공중 러너 jvel_ema_mode 다름")
+            if float(ca.gait_freq) != float(ck.gait_freq):
+                raise ValueError(f"공중 러너 클록 주파수 다름: {ca.gait_freq} vs {ck.gait_freq} — 클록 틱을 이어받을 수 없다")
+            if int(getattr(ca, "ema_fresh_ticks", 1)) != 1 or int(getattr(ck, "ema_fresh_ticks", 1)) != 1:
+                raise ValueError("공중 러너 인계는 ema_fresh_ticks 1 에서만(이어받기)")
+            if not (self.air_contact_s > 0.0 and self.air_quiet_s > 0.0 and self.air_w > 0.0 and self.air_max_s >= self.air_contact_s):
+                raise ValueError("air_contact_s·air_quiet_s·air_w > 0, air_max_s ≥ air_contact_s 여야 함")
         self.w3r, self.ke = w3_runner, ke_runner
         self.mode = MODE_KE
         self._want = False
@@ -73,11 +109,13 @@ class KeW3Runner:
         self.last_event = ""          # 이번 틱 전환 사건: "" | "to_w3" | "to_ke" | "force_ke"
         self.ticks_in_mode = 0
         self.last_step_action = None  # 이번 틱에 실제로 실행한 원시 행동(전환이 같은 틱에 일어나도 '행동한 러너'의 값) — 시뮬 폐루프·기록용
-        self.last_step_kind = 0       # 이번 틱 행동 주체: 0 KE 서기 · 1 KE 회복 · 2 W3
+        self.last_step_kind = 0       # 이번 틱 행동 주체: 0 KE 서기 · 1 KE 회복 · 2 W3 · 3 AIR(공중·착지 서기 — air_runner 가 있을 때만)
 
     # ---------- 브리지가 읽는 속성 ----------
     @property
     def _active(self):
+        if self.mode == MODE_AIR:
+            return self.air
         return self.ke if self.mode == MODE_KE else self.w3r
 
     def __getattr__(self, name):
@@ -85,7 +123,15 @@ class KeW3Runner:
         d = self.__dict__
         if "w3r" not in d or "ke" not in d:
             raise AttributeError(name)
-        return getattr(d["ke"] if d.get("mode", MODE_KE) == MODE_KE else d["w3r"], name)
+        m = d.get("mode", MODE_KE)
+        if m == MODE_AIR and d.get("air") is not None:
+            return getattr(d["air"], name)
+        return getattr(d["ke"] if m == MODE_KE else d["w3r"], name)
+
+    @property
+    def has_air(self) -> bool:
+        """공중·착지 러너가 있는가(이 합성 러너가 공중 정책 시작을 받을 수 있는가)."""
+        return self.air is not None
 
     @property
     def _w3_clock(self):
@@ -111,6 +157,8 @@ class KeW3Runner:
 
     def enable_block_reason(self):
         """켜기 추가 선행조건: KE 회복 모드가 켜져 있으면 거부(사유 문자열), 아니면 None. 감독기 판정 위에 얹는다."""
+        if self.mode == MODE_AIR:
+            return "공중·착지 정책 구간 — 착지가 가라앉아 KE 로 넘어간 뒤에 켤 것"
         if self.mode == MODE_KE and int(self.ke.last_mode) == 1:
             return "KE 회복 모드 켜짐 — 서기 복귀 뒤에 켤 것"
         return None
@@ -119,6 +167,8 @@ class KeW3Runner:
         bb = dict(self.ke.blackbox()) if hasattr(self.ke, "blackbox") else {}
         bb["kew3"] = {"mode": self.mode, "event": self.last_event, "n_to_w3": int(self.n_to_w3), "n_to_ke": int(self.n_to_ke),
                       "ticks": int(self.ticks_in_mode), "want": bool(self._want)}
+        if self.air is not None:                        # 공중 러너가 있는 키에서만 키 추가(없는 키의 스키마는 불변)
+            bb["kew3"]["n_air_to_ke"] = int(self.n_air_to_ke)
         return bb
 
     # ---------- 상태 ----------
@@ -126,12 +176,27 @@ class KeW3Runner:
         """세션 시작(stand) — 두 러너 초기화, KE 로 시작."""
         self.w3r.reset()
         self.ke.reset()
+        if self.air is not None:
+            self.air.reset()
         self.mode = MODE_KE
         self._want = False
         self._force_ke = False
         self.last_event = ""
         self.ticks_in_mode = 0
         self._settle_run = 0.0; self._since_latch = None; self._w3_arm_want = False
+        self._air_both_run = 0.0; self._air_quiet_run = 0.0
+
+    def start_air(self) -> None:
+        """1008: 이 세션을 AIR(공중·착지 서기 정책)로 시작한다 — **reset() 바로 뒤, 첫 step 전에** 부른다(공중 정책 시작 = 브리지 hang_arm).
+        부르지 않으면 종전처럼 KE 로 시작한다. 공중 러너가 없거나 이미 스텝이 돈 뒤면 거부."""
+        if self.air is None:
+            raise RuntimeError("공중·착지 러너가 없는 합성 러너 — start_air 불가")
+        if self.ticks_in_mode != 0 or self.mode != MODE_KE or self._want:
+            raise RuntimeError("start_air 는 reset() 바로 뒤(첫 step 전)에만")
+        self.air.reset()
+        self.mode = MODE_AIR
+        self._air_both_run = 0.0; self._air_quiet_run = 0.0
+        self.last_event = "start_air"
 
     @staticmethod
     def _carry(src, dst, clock_frame, tick: int) -> None:
@@ -147,8 +212,36 @@ class KeW3Runner:
         dst._prev_emitted = None if src._prev_emitted is None else np.array(src._prev_emitted, dtype=np.float32, copy=True)
         dst._tick = int(tick)
 
+    @staticmethod
+    def _carry_same(src, dst) -> None:
+        """src → dst(둘 다 같은 계약의 서기 정책 코어): 이력 전부(클록 이력 포함)·EMA·last_action·슬루 기준·클록 틱을 그대로 복사 —
+        받는 정책은 주는 정책이 보던 관측 이력을 끊김 없이 이어서 본다(AIR → KE)."""
+        for name, h in src._hist.items():
+            d = dst._hist[name]
+            d._buf = h._buf.copy()
+            d._pushes = h._pushes
+        dst._ema = {k: v.copy() for k, v in src._ema.items()}
+        dst.last_action = src.last_action.copy()
+        dst.last_jvel_ema = None if src.last_jvel_ema is None else src.last_jvel_ema.copy()
+        dst._prev_emitted = None if src._prev_emitted is None else np.array(src._prev_emitted, dtype=np.float32, copy=True)
+        dst._tick = int(src._tick)
+
+    def _air_to_ke(self) -> None:
+        ca, ck = _core(self.air), _core(self.ke)
+        self.ke.reset()                                 # 감지기 새로(기준 자세 ref_init_s 추종), 코어 초기화 → 아래에서 공중 러너의 상태를 이어받는다
+        self._carry_same(ca, ck)
+        self._air_both_run = 0.0; self._air_quiet_run = 0.0
+        self.mode = MODE_KE
+        self.n_air_to_ke += 1
+        self.ticks_in_mode = 0
+        self.last_event = "air_to_ke"
+
     def set_gait_enable(self, want: bool) -> None:
         """명령이 원하는 gait_enable. 켜기 = 다음 step 에서 W3 로 전환(같은 틱에 ge 켜짐), 끄기 = W3 래치가 반주기 경계에서 내린다."""
+        if self.mode == MODE_AIR:                       # 공중·착지 구간: 켜기는 받지 않는다(남겨 두면 KE 로 넘어간 틱에 걷기가 켜진다)
+            self._want = False
+            self._w3_clock.set_want(False)
+            return
         self._want = bool(want)
         if self.mode == MODE_W3:
             self.w3r.set_gait_enable(self._want)
@@ -197,6 +290,18 @@ class KeW3Runner:
     # ---------- 스텝 ----------
     def step(self, gyro_rad_s, gravity_unit, cmd, qpos_rad, qvel_rad_s, contact2, tau_knee_nm=None) -> np.ndarray:
         self.last_event = ""
+        if self.mode == MODE_AIR:                       # 1008 공중·착지 구간: 공중 러너가 행동, 착지가 가라앉으면 이 틱까지 AIR·다음 틱부터 KE
+            out = self.air.step(gyro_rad_s, gravity_unit, np.zeros(3, dtype=np.float32), qpos_rad, qvel_rad_s, contact2)
+            self.ticks_in_mode += 1
+            self.last_step_action = np.array(_core(self.air).last_action, dtype=np.float32, copy=True); self.last_step_kind = 3
+            g = np.asarray(gyro_rad_s, dtype=np.float64).reshape(-1); c = np.asarray(contact2, dtype=np.float64).reshape(-1)
+            both = bool(c[0] > 0.5 and c[1] > 0.5)
+            self._air_both_run = self._air_both_run + self.dt if both else 0.0
+            self._air_quiet_run = self._air_quiet_run + self.dt if (both and float(np.hypot(g[0], g[1])) < self.air_w) else 0.0
+            if ((self._air_both_run >= self.air_contact_s - 1e-9 and self._air_quiet_run >= self.air_quiet_s - 1e-9)
+                    or self._air_both_run >= self.air_max_s - 1e-9):
+                self._air_to_ke()
+            return out
         if self.mode == MODE_W3 and self._force_ke:
             self._to_ke("force_ke")
         if self.mode == MODE_KE and self._want:
@@ -244,6 +349,7 @@ def _mk(seed=0):
     from rl_walking.deploy import w3_deploy as W3
     rng = np.random.default_rng(seed)
     Ww = rng.normal(0, 0.05, (12, 320)).astype(np.float32); Ws = rng.normal(0, 0.05, (12, 320)).astype(np.float32); Wr = rng.normal(0, 0.05, (12, 320)).astype(np.float32)
+    Wa = rng.normal(0, 0.05, (12, 320)).astype(np.float32)      # 1008 공중·착지 서기 정책 스텁(위 셋의 난수열 뒤에 뽑는다 — 종전 스텁 값 불변)
     f = lambda W: (lambda o: np.tanh(W @ np.asarray(o, np.float32)).astype(np.float32))
     pose = (rng.normal(0, 0.2, 12)).astype(np.float32)
     kw = dict(obs_dim=320, gait_freq=1.1, default_pose_rad=pose, act_obs_ema_beta=0.27, jvel_obs_ema_beta=0.25)
@@ -251,6 +357,7 @@ def _mk(seed=0):
                   early=(0.6, 6.0, 0.4, 0.2), refrac=(1.5, 6.0, 1.0), in_filt=0.33, early_gate=(5.0, 1.0))
     mk_w3 = lambda: PolicyRunnerStage4(model_path=f(Ww), w3=W3.W3S3D_CONFIG, **kw)
     mk_ke = lambda **extra: C5Runner(f(Ws), f(Wr), detector=SwitchDetector(**det_kw), cue_vx=0.03, cue_s=1.0, cue_dir_imu=True, **kw, **extra)
+    _mk.air = lambda **extra: PolicyRunnerStage4(model_path=f(Wa), **dict(kw, **extra))     # selftest [10] 용(반환값 꼴은 종전 그대로)
     return mk_w3, mk_ke, pose, kw
 
 
@@ -391,6 +498,74 @@ def selftest() -> int:
     except ValueError:
         pass
     KeW3Runner(mk_w3(), mk_ke(ema_fresh_ticks=2), handoff="fresh")
+    # [10] 1008 AIR(공중·착지 구간): 공중 러너가 있어도 start_air 를 안 부르면 종전과 비트 동일 · AIR = 단독 공중 러너와 비트 동일 ·
+    #      착지 정착 뒤 한 번만 KE 로(이력·클록 틱까지 이어받기) · 시끄러우면 상한에서 · 한 발 접촉으로는 안 넘김 · 걷기 켜기 거부 · 계약 불일치 거부
+    mk_air = _mk.air
+    def inp_c(k, c, **kw_):
+        d = _inp(k, pose, **kw_); d["contact2"] = np.array(c, np.float32); return d
+    old_bb_keys = set(KeW3Runner(mk_w3(), mk_ke(), handoff="carry").blackbox()["kew3"])
+    A0 = KeW3Runner(mk_w3(), mk_ke(), handoff="carry", settle_quiet_s=0.5, air_runner=mk_air()); A0.reset()
+    B0 = KeW3Runner(mk_w3(), mk_ke(), handoff="carry", settle_quiet_s=0.5); B0.reset()
+    assert A0.has_air and not B0.has_air and A0.mode == MODE_KE
+    for k in range(80):                                   # 지면 시작(start_air 없음) = 공중 러너 없는 합성 러너와 같은 출력
+        if k == 30:
+            A0.set_gait_enable(True); B0.set_gait_enable(True)
+        if k == 55:
+            A0.set_gait_enable(False); B0.set_gait_enable(False)
+        cm = cmdf if 30 <= k < 55 else cmd0
+        a = A0.step(cmd=cm, **_inp(k, pose)); b = B0.step(cmd=cm, **_inp(k, pose))
+        assert np.array_equal(a, b) and A0.mode == B0.mode and A0.last_event == B0.last_event, f"공중 러너가 있는데 지면 시작이 달라짐(틱 {k})"
+    assert set(B0.blackbox()["kew3"]) == old_bb_keys and set(A0.blackbox()["kew3"]) == old_bb_keys | {"n_air_to_ke"}, "블랙박스 스키마"
+    try:
+        B0.reset(); B0.start_air(); raise AssertionError("공중 러너 없이 start_air 허용")
+    except RuntimeError:
+        pass
+    try:
+        A0.start_air(); raise AssertionError("스텝이 돈 뒤 start_air 허용")
+    except RuntimeError:
+        pass
+    A = KeW3Runner(mk_w3(), mk_ke(), handoff="carry", settle_quiet_s=0.5, air_runner=mk_air()); A.reset(); A.start_air()
+    ref_air = mk_air(); ref_air.reset()
+    assert A.mode == MODE_AIR and A.last_event == "start_air" and A.enable_block_reason() is not None and A.last_mode == 0
+    for k in range(100):                                  # 공중(접촉 0,0): 큰 각속도·기울기에도 계속 AIR, 출력 = 단독 공중 러너
+        dd = inp_c(k, (0.0, 0.0), w=(1.2 if 40 <= k < 60 else 0.0), tilt=(6.0 if 40 <= k < 60 else 0.0))
+        a = A.step(cmd=cmdf, **dd); b = ref_air.step(cmd=cmd0, **dd)
+        assert A.mode == MODE_AIR and np.array_equal(a, b) and A.last_step_kind == 3, f"AIR 불일치 틱 {k}"
+    A.set_gait_enable(True)                               # AIR 중 걷기 켜기는 버린다
+    assert A.mode == MODE_AIR and A._want is False and not A._w3_clock.want and A.blackbox()["kew3"]["mode"] == "air"
+    k = 100
+    for j in range(60):                                   # 한 발만 접촉: 넘기지 않는다
+        dd = inp_c(k, (1.0, 0.0)); A.step(cmd=cmd0, **dd); ref_air.step(cmd=cmd0, **dd); k += 1
+    assert A.mode == MODE_AIR and A.n_air_to_ke == 0
+    n_c = 0
+    while A.mode == MODE_AIR:                             # 조용한 양발 접촉: 1.0 s(50 틱)째에 넘긴다(조용함 0.5 s 는 그 안에 찬다)
+        dd = inp_c(k, (1.0, 1.0)); a = A.step(cmd=cmd0, **dd); b = ref_air.step(cmd=cmd0, **dd); k += 1; n_c += 1
+        assert np.array_equal(a, b), "인계 틱까지 AIR 출력"
+        assert n_c <= 60
+    assert n_c == 50 and A.last_event == "air_to_ke" and A.n_air_to_ke == 1 and A.last_step_kind == 3, f"양발 접촉 1.0 s 에 인계여야 함: {n_c}"
+    ca, ck = ref_air, _core(A.ke)
+    assert ck._tick == ca._tick and all(np.array_equal(ck._hist[n_]._buf, ca._hist[n_]._buf) for n_ in ca._hist), "AIR → KE: 이력·클록 틱 이어받기"
+    assert np.array_equal(ck.last_action, ca.last_action) and np.array_equal(ck._prev_emitted, ca._prev_emitted) and A.det.n_on == 0
+    air_last = a
+    a = A.step(cmd=cmd0, **inp_c(k, (1.0, 1.0), q_off=far)); k += 1
+    assert A.mode == MODE_KE and A.last_step_kind == 0 and float(np.abs(a - air_last).max()) <= SLEW_RAD + 1e-6, "KE 첫 틱 목표 점프"
+    assert A.enable_block_reason() is None
+    for j in range(80):                                   # 다시 들려도(접촉 0,0) AIR 로 돌아가지 않는다
+        A.step(cmd=cmd0, **inp_c(k, (0.0, 0.0))); k += 1
+    assert A.mode == MODE_KE and A.n_air_to_ke == 1
+    N = KeW3Runner(mk_w3(), mk_ke(), handoff="carry", air_runner=mk_air()); N.reset(); N.start_air(); n_n = 0
+    while N.mode == MODE_AIR:                             # 양발 접촉이지만 계속 흔들림(|ω| 0.5): 상한 3.0 s(150 틱)에 넘긴다
+        N.step(cmd=cmd0, **inp_c(n_n, (1.0, 1.0), w=0.5)); n_n += 1
+        assert n_n <= 160
+    assert n_n == 150, f"시끄러운 양발 접촉은 상한 3.0 s 에 인계: {n_n}"
+    for bad, why in ((mk_air(default_pose_rad=pose + 0.01), "기본자세"), (mk_air(act_obs_ema_beta=None), "관측 필터"), (mk_air(gait_freq=1.4), "클록 주파수"),
+                     (mk_w3(), "W3 러너"), (mk_ke(), "C5Runner")):
+        try:
+            KeW3Runner(mk_w3(), mk_ke(), handoff="carry", air_runner=bad); raise AssertionError(f"공중 러너 {why} 불일치 허용")
+        except ValueError:
+            pass
+    print(f"[selftest] kew3_runner AIR: start_air 없으면 종전과 비트 동일(80 틱·걷기 포함)·블랙박스 스키마 불변 · AIR = 단독 공중 러너(100 틱, 큰 흔들림에도 유지) · "
+          f"걷기 켜기 거부 · 한 발 접촉 미인계 · 조용한 양발 {n_c} 틱에 KE(이력·클록 틱 이어받기·목표 점프 ≤ 슬루) · 재들림에도 AIR 로 안 돌아감 · 시끄러우면 {n_n} 틱 상한 · 계약 불일치 5 종 거부")
     print(f"[selftest] kew3_runner: KE 모드 = 단독 KE(60 틱 비트 동일) · 켜기 틱 W3 fresh(ge·게이트 즉시, 이력 백필) = 단독 W3(80 틱) · "
           f"슬루 기준 이어받기(qpos 28.6° 떨어져도 전환 틱 |Δ목표| ≤ {np.degrees(SLEW_RAD):.0f}°) · 끄기 = 반주기 래치({n_wait} 틱) 다음 틱 KE fresh · "
           f"회복 모드 켜기 차단 · force_ke · 계약 불일치 거부 · carry(이력·EMA·last_action 연속, 클록만 교체, 감지기 새로) · 정착 대기({n_q} 틱) · carry + ema_fresh 2 거부 — ALL PASS")

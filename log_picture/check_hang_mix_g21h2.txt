@@ -1,0 +1,16 @@
+G21h 기전 확인 — Biped12-HangStand-G21h2-v0 env 256 seed 1 · 액션 0(기본자세 명령) · 30 s · 설정 {'p_hang': 0.7, 'clearance_range': (0.03, 0.15), 'air_hold_range': (2.0, 20.0), 'air_release_range': (1.5, 8.0), 'hook_z_range': (0.25, 0.4), 'two_point_d_range': (0.1, 0.3), 'two_point_kp': 200.0, 'two_point_kd': 10.0, 'dist_shift_s': 1.0, 'asset_cfg': SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names='base', body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'cable_frac': 0.5, 'sway_v': 0.1, 'two_point_yaw': True, 'hold_fix': True, 'pitch0_deg_range': (-8.0, 8.0)}
+[PASS] ① 매달림 에피소드 비율 — 180 / 256 (70.3 %, 설정 70 %)
+[PASS] ② 매달림 스폰 높이(지면 에피소드 중앙 대비) — +0.028 ~ +0.151 m (설정 (0.03, 0.15), 지면 스폰의 z 무작위 ±0.01 포함)
+[PASS] ② 방출 시작 전 발 접촉 없음 — 접촉한 개체 0 / 180
+[PASS] ② 떠 있는 동안 높이 유지(최대 − 최소) — 중앙 0.2 cm · p95 0.8 cm
+[PASS] ② 떠 있는 동안 기울기(힘 모형 매달림은 학습 DR 의 준정적 롤 토크 ≤ 12 N·m 가 걸린다) — 최대 기울기 중앙 4.5° · p95 8.7°
+[PASS] ③ 지면 에피소드는 0.5 s 안에 양발 접촉 — 76 / 76
+[PASS] ④ 지지가 남은 동안 회복 게이트 닫힘(매달림) — 열린 적 있는 개체 0 / 180
+[PASS] ⑤ 외란 일정이 지지 풀린 뒤로 밀림(매달림) — 첫 외란 시각 − (유지 + 방출 + 1 s) 최소 2.05 s(원래 일정의 하한 2.0) · 일찍 걸린 개체 0
+[참고] 매달림: 유지 2.0–20.0 s · 방출 1.6–8.0 s · 양발 첫 접촉 = 방출 시작 뒤 중앙 0.93 s · 액션 0 으로 첫 에피소드 종료(낙상) 59 / 180 (지면 67 / 76) — 정책 없는 참고값
+[PASS] ⑥ 줄 길이 모형 에피소드 비율(매달림 중) — 91 / 180 (51 %, 설정 50 %)
+[PASS] ⑥ 줄 길이 모형: 방출 전 발 접촉 없음 — 접촉한 개체 0 / 91
+[PASS] ⑥ 줄 길이 모형: 떠 있는 동안 높이 유지(최대 − 최소) — 중앙 0.3 cm · p95 1.0 cm
+[PASS] ⑥ 줄 길이 모형: 떠 있는 동안 기울기 — 최대 기울기 중앙 4.4° · p95 8.5°
+[참고] 줄 길이 모형: 양발 첫 접촉 = 방출 시작 뒤 중앙 1.57 s · 액션 0 으로 첫 에피소드 종료 0 / 91 · 힘 모형 매달림 59 / 89
+ALL PASS

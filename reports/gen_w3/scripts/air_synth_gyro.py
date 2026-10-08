@@ -4,7 +4,10 @@ sys.path.insert(0, "/home/ryu/humanoid_leg_test1"); sys.path.insert(0, "/home/ry
 import numpy as np
 import rl_bridge_node as B
 D = "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4"
-CAND = {"G21a-11300(지면 서기 기준)": "stand_crouch_g21a", "G21h-11500": D + "/2026-10-08_13-16-02_g21h_s1_from_11300/exported_11500", "G21h-12299(후보)": D + "/2026-10-08_13-16-02_g21h_s1_from_11300/exported_12299"}
+CAND = {"G21a-11300(지면 서기 기준)": "stand_crouch_g21a", "G21h-11500": D + "/2026-10-08_13-16-02_g21h_s1_from_11300/exported_11500", "G21h-12299": D + "/2026-10-08_13-16-02_g21h_s1_from_11300/exported_12299",
+        "G21h2-13498(후보)": D + "/2026-10-08_16-04-12_g21h2_s1_from_12299/exported"}
+if len(sys.argv) > 1:
+    CAND = {k: v for k, v in CAND.items() if any(a in k for a in sys.argv[1:])}
 def quat(p):
     p = math.radians(p); return (math.cos(p / 2), 0.0, math.sin(p / 2), 0.0)
 def mk(name, src):

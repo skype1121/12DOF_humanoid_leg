@@ -1,10 +1,18 @@
-# head_1008 재적용 허용 목록(1008 오전 갱신) — 젯슨에 있는 직전 배포본(매니페스트 8f4373d3…, 1008 04:37 적용, 06:48 확인)의 md5.
-# 이번 변경(정책 메뉴 하나·robotctl prep 의 hang 흡수)으로 덮어쓸 파일만 적는다.
-89e76dedf8c53f6d35925b5f44fb7a73  deploy/cand/head_1008/OPERATOR_COMMANDS.md
-33537f41b12633ac416248ba7f4ae19f  jetson/scripts/operator_console.py
-2d47069b5f5dcb0879407a51ef8226d2  jetson/scripts/robotctl.py
-5149404c4a92d64f1a5b0b87013da1ac  rl_walking/deploy/c5_switch.py
-50e64227752fd8c335270c4e9de604c5  tests/test_console_walk.py
-906bdcda83703b65053f24f3cc540e59  tests/test_operator_console.py
-8f4373d380d9e07a97408a69f3e3acdc  deploy/head_1008.md5
-5a921c923a9e77bd81cc82d8ddc99d2b  deploy/head_1008.VERSION
+# head_1008 재적용 허용 목록(1008 오후 갱신) — 젯슨에 있는 직전 배포본(매니페스트 5d51b9b8…, 1008 11:46–11:51 적용·확인)의 md5.
+# 이번 변경(공중 정책 시작 키 stand_kew3qa_… · 3 단 러너 · 공중 방식 정책 ON)으로 덮어쓸 파일만 적는다.
+f26afb4f98c7264ec8ec0c595075b9ca  deploy/cand/head_1008/OPERATOR_COMMANDS.md
+059378825bce9f039e50be3b8b29c922  jetson/scripts/console_state.py
+ece403f13bfa73823137ab6b5a1a1391  jetson/scripts/console_ui.html
+c0741b0dea5d6d5479a5c7da9163690b  jetson/scripts/operator_console.py
+d800563d1aabed809b5e3f8197325a96  jetson/scripts/rl_bridge_node.py
+5a69d9ae0abb587de8aa56a70e4c2c92  jetson/scripts/robotctl.py
+caf3c4feb213ac01f4c37b84a0e90177  jetson/scripts/selftest_w3_bridge_node.py
+e3143a7d56a46bb3f68b52f45e58ebce  reports/night_1007/jetson/parity_ref.npz
+0db927b4c17745cfe2402098bf21f4be  reports/night_1007/jetson_parity.py
+3fbf04519c1d47a29a0491364407952f  rl_walking/deploy/kew3_runner.py
+750de14973fe4217481bddcaf80f44b9  tests/test_console_walk.py
+0a3aada3564ecabfa19a6d75c62d65a0  tests/test_console_walk_bridge.py
+81a96f59eb8a1ac78c92fb4d7b0c6a8a  tests/test_operator_console.py
+75af6c525afd48e1a2f304382cbbb7bd  tests/test_robotctl.py
+5d51b9b8978eafdb5596e1f770245201  deploy/head_1008.md5
+de6d1d90d06c916301d51b92756e5c37  deploy/head_1008.VERSION

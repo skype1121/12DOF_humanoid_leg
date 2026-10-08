@@ -194,6 +194,7 @@ parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토�
 parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
 parser.add_argument("--kw_unload", type=float, default=0.0, help="X18: 인계 뒤 링크마다 자기 무게의 이 비율(0–0.9)을 위로 받친다(부분지지의 이상화, 1 s 램프). --dist 와 함께 쓰지 않는다")
 parser.add_argument("--contact_pert", type=str, default="", help="X19: 접촉 관측 교란 'delay:N;flip:p;t0:x'(관측 비트만, 물리·채점 불변). '' = 끔")
+parser.add_argument("--kw_ke_key", type=str, default="", help="합성 러너의 KE 키(브리지 C5_PAIRS 에 등록된 것). '' = stand_c5kr_g21a_g24ra(종전). 새 서기 정책을 브리지에 등록한 뒤의 확인 실행용 — 덮어쓰기 없이 등록 그대로 쓴다")
 parser.add_argument("--kw_stand_exported", type=str, default="", help="G21h 평가 전용: 합성 러너의 서기 정책 폴더(exported_N — policy.pt/onnx 가 있는 곳). '' = 브리지 등록 그대로(G21a)")
 parser.add_argument("--air_det_hold", action="store_true", help="AIR1: 접지 확인(양발 접촉 0.3 s) 전에는 KE 회복 감지기 정지(서기 정책만) — C5Runner.det_hold")
 parser.add_argument("--air_contact_one", action="store_true", help="AIR1c 진단: --air_det_hold 와 함께 — 접지 확인 전에는 러너에 주는 접촉 비트를 (1, 1) 로 고정(정책 관측만, 물리·채점·접지 확인 판정 불변)")
@@ -1075,7 +1076,8 @@ if KWL:
             if _sx_v == _sx_old:
                 _BR.CHECKPOINTS[_sx_k] = _sx_new; _sx_n += 1
         print(f"[runner_loop] ★ 서기 정책 덮어쓰기(평가 전용): {_sx_n} 키의 경로 {_sx_old} → {_sx_new} (키 이름은 G21a 그대로 — 실제 정책은 새 폴더)", flush=True)
-    _KW_KEYS = ("stand_w3s3d_15800", "stand_c5kr_g21a_g24ra")
+    _KW_KEYS = ("stand_w3s3d_15800", args_cli.kw_ke_key or "stand_c5kr_g21a_g24ra")
+    assert _KW_KEYS[1] in _BR.C5_PAIRS, "--kw_ke_key: 브리지에 없는 KE 키 " + repr(_KW_KEYS[1])
     if args_cli.kw_w3_export:
         _kwx_ = os.path.abspath(args_cli.kw_w3_export)
         if not (os.path.exists(os.path.join(_kwx_, "policy.pt")) or os.path.exists(os.path.join(_kwx_, "policy.onnx"))):

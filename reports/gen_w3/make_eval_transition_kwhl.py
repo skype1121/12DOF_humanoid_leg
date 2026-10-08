@@ -333,7 +333,7 @@ rep("""    _KW_KEYS = ("stand_w3s3d_15800", "stand_c5kr_g21a_g24ra")""", """    
                 _BR.CHECKPOINTS[_sx_k] = _sx_new; _sx_n += 1
         print(f"[runner_loop] ★ 서기 정책 덮어쓰기(평가 전용): {_sx_n} 키의 경로 {_sx_old} → {_sx_new} (키 이름은 G21a 그대로 — 실제 정책은 새 폴더)", flush=True)
     _KW_KEYS = ("stand_w3s3d_15800", args_cli.kw_ke_key or "stand_c5kr_g21a_g24ra")
-    assert _KW_KEYS[1] in _BR.C5_PAIRS, f"--kw_ke_key: 브리지에 없는 KE 키 {_KW_KEYS[1]!r} (있는 것 {sorted(_BR.C5_PAIRS)})""")
+    assert _KW_KEYS[1] in _BR.C5_PAIRS, "--kw_ke_key: 브리지에 없는 KE 키 " + repr(_KW_KEYS[1])""")
 rep("""parser.add_argument("--kw_stand_exported", type=str, default="",""", """parser.add_argument("--kw_ke_key", type=str, default="", help="합성 러너의 KE 키(브리지 C5_PAIRS 에 등록된 것). '' = stand_c5kr_g21a_g24ra(종전). 새 서기 정책을 브리지에 등록한 뒤의 확인 실행용 — 덮어쓰기 없이 등록 그대로 쓴다")
 parser.add_argument("--kw_stand_exported", type=str, default="",""")
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

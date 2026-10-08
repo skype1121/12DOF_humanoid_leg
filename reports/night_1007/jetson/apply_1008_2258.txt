@@ -1,0 +1,92 @@
+== [1] 금지 파일 검사 (하드웨어맵·영점·보정·~/rl_calib — 계획서 127 항목)
+   통과 — 금지 0
+== [2] 로컬 원본 ↔ 계획서 md5 (deploy/head_1008.plan)
+   일치 127/127 — 전송 대상 71 개(9166 KB) · 확인만 56 개 · 매니페스트 181d53c4
+   package: head_1008
+   source_commit: 8e67b87ab409ae6aaaea83d1d0ac4cc4ee89c469 2026-10-08T22:46:07+09:00
+   source_uncommitted: none
+== [3] 로컬 selftest 게이트 (CPU 만 — GPU 를 쓰지 않는다)
+   PASS 러너
+   PASS c5_switch
+   PASS kew3_runner
+   PASS w3_cmd
+   PASS latency_check
+   PASS 콘솔
+   PASS 브리지(기본)
+   PASS 브리지(합성 키)
+   PASS 브리지(둘째 합성 키 — 갇힘 해소)
+   PASS 브리지(셋째 합성 키 — 공중 정책 시작)
+   PASS 브리지(공중·착지 서기 정책 단독 키)
+   PASS W3 노드(git 기준 커밋 비교 포함)
+== [4] 젯슨 현재 상태 (읽기만) — mama@172.16.35.89:/home/mama
+   이미 새 판과 같음 123 · 바뀔 파일(백업 뒤 덮어씀) 4 · 새로 생길 파일 0 · ★예상 밖 0
+     바뀜  [session] jetson/scripts/operator_console.py  a976fb13 → 3dd9f6c4
+     바뀜  [session] jetson/scripts/rl_bridge_node.py  8938e790 → 2c4bed9e
+     바뀜  [record] deploy/head_1008.md5  b6d9793c → 181d53c4
+     바뀜  [record] deploy/head_1008.VERSION  013a27a6 → 087de0ca
+   제어 프로세스: 없음
+   센서 프로세스: 208227 208228 208270 208271 
+   콘솔: session_active=False bridge_live=False armed=False procs=- phase=준비 확인 · 서비스 active(KillMode=process, PID 179791)
+   디스크 여유 27396 MB — 필요 약 19 MB(임시 사본 + 백업) + 남길 여유 200 MB
+   파이썬 환경(ROS 를 불러오지 않은 셸): python 3.10.12 · numpy 1.21.5 · onnxruntime 1.15.1 · torch 없음 · can 4.6.1 · rclpy 없음
+   ~/rl_calib 실행본 ↔ 저장소 HEAD (읽기만 — 이 스크립트는 ~/rl_calib 를 바꾸지 않는다):
+     boot_pose_check.py  HEAD jetson/scripts/boot_pose_check.py cf24508e — 같음
+     can_up.sh  HEAD jetson/scripts/can_up.sh 42f27f3a — 같음
+     hang_stand.py  HEAD jetson/scripts/hang_stand.py 2692298a — 같음
+     release_all.py  HEAD jetson/scripts/release_all.py e06b80d1 — 같음
+     sensors_up.sh  HEAD jetson/scripts/sensors_up.sh 3b372a2b — 같음
+     stage8_cmd.py  HEAD jetson/scripts/stage8_cmd.py 344aae83 — 같음
+     stack_down.sh  HEAD jetson/scripts/stack_down.sh 7f8f7925 — 같음
+     ping_all.py  HEAD jetson/scripts/ping_all.py 18c4b94a — 같음
+     imu_adapter_node.py  HEAD jetson/scripts/imu_adapter_node.py 7feaf579 — 같음
+     foot_force_adapter_node.py  HEAD jetson/scripts/foot_force_adapter_node.py 9b13d698 — 같음
+     zero_torque_read.py  HEAD jetson/scripts/zero_torque_read.py fd7eec04 — 같음
+     ak_mit_command.py  HEAD protocols/ak_mit_command.py 52543d3d — ★다름(실행본 a3582fa2)
+     ak_mit_decoder.py  HEAD protocols/ak_mit_decoder.py 23d9de66 — 같음
+   stage8 지연 옵션: 꺼짐(옵션 파일 없음/빈 파일 · 서비스 환경변수 없음) — 콘솔이 stage8 에 붙이는 추가 인자 0 개
+   백업 폴더 /home/mama/humanoid_repo_bak_1008: selftest_pass 2026-10-08T17:24:30 manifest b6d9793c095182ea3b4da1d469355844
+== [5] 백업 → 전송 → 교체 (4 파일: 바뀜 4 · 새로 0)
+   BKDONE new=0 kept=4 create=0 bad=0
+   전송·임시 폴더 md5 일치 4/4
+   INDONE n=4 bad=0
+   적용 뒤 젯슨 md5 = 매니페스트 127/127
+== [6] 젯슨 selftest (오프라인 — 실패하면 자동 롤백)
+     환경: python 3.10.12 · numpy 1.21.5 · onnxruntime 1.15.1 · torch 없음
+     환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/exported
+     환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stage4/2026-09-28_23-19-13_g11a/exported
+     환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported
+     환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported
+     환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stage4/2026-10-08_16-04-12_g21h2_s1_from_12299/exported
+     환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported
+     환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported
+     PASS 문법(전송한 .py 전부, 메모리 컴파일) (1s) — SYNTAX_OK 90
+     PASS 러너 (0s) — selftest: ALL PASS
+     PASS c5_switch (3s) — C5 selftest PASS
+     PASS kew3_runner (2s) — [selftest] kew3_runner: KE 모드 = 단독 KE(60 틱 비트 동일) · 켜기 틱 W3 fresh(ge·게이트 즉시, 이력 백필) = 단독 W3(80 틱) · 슬루 기준 이어받기(qpos 28.6° 떨어져도 전환 틱 /Δ목
+     PASS w3_cmd (0s) — [PASS] w3_cmd: seq 단조(같은 ms·시계 역행)·켜기 로컬 검사 4 종 거부·off/stop/rearm·estop 없음·응답 매칭·감독기 계약 일치
+     PASS latency_check (1s) — latency_check selftest: ALL PASS
+     PASS 콘솔 (17s) — console selftest: ALL PASS (offline only; hardware not exercised)
+     PASS 브리지(기본) (36s) — selftest: ALL PASS
+     PASS 브리지(서기 stand_crouch_g21a) (36s) — selftest: ALL PASS
+     PASS 브리지(회복 stand_c5krh_g21a_g24ra) (36s) — selftest: ALL PASS
+     PASS 브리지(--experimental-w3) (37s) — selftest: ALL PASS
+     PASS 브리지(W3 stand_w3s3d_15800) (37s) — selftest: ALL PASS
+     PASS 브리지(합성 stand_kew3_g21a_g24ra_w3s3d15800) (38s) — selftest: ALL PASS
+     PASS 브리지(합성 stand_kew3q_g21a_g24ra_w3s3d15800) (39s) — selftest: ALL PASS
+     PASS 브리지(서기 stand_crouch_g21h) (36s) — selftest: ALL PASS
+     PASS 브리지(합성 stand_kew3qa_g21a_g24ra_w3s3d15800) (40s) — selftest: ALL PASS
+     PASS W3 노드(기준 원문은 파일에서) (43s) — w3 node selftest: ALL PASS
+     PASS stage8 기본 인자 = 종전(지연 옵션 꺼짐) (0s) — STAGE8_DEFAULT_OK {'feedback_after_send': False, 'feedback_wait_ms': 4.0, 'send_on_command': False, 'control_hz': 50.0, 'time_based_slew': False, 'slew_deg_per_sec': 200.0}
+     PASS stage8 기본 = 종전 단위 시험(가짜 버스) (1s) — OK
+     PASS stage8 기준점 단위 시험(가짜 버스) (0s) — OK
+     PASS stage8 지연 옵션(콘솔이 붙일 인자 — 기본 0 개여야 함) (1s) — LATENCY_ARGS_OK 인자 [] · 옵션 파일 없음
+     PASS 러너 동치 jetson_parity(로컬 기준 ↔ 젯슨 러너) (6s) — jetson parity: ALL PASS
+     PASS 매니페스트 대조(md5sum -c) (0s) — MD5_ALL_OK
+     · 러너: [PASS] 모델 추론: 모델 로드+추론 OK (백엔드=onnx, 2026-10-08_16-04-12_g21h2_s1_from_12299 관측 320→출력 12 유한, 첫 틱 /Δ/max=0.0698 rad ≤ 슬루)
+     전체 출력: /home/mama/humanoid_repo_bak_1008/selftest_20261008_225849.log
+== 콘솔 재기동 (KillMode=process — 센서 노드는 유지)
+active
+   선택지: 
+   '정책 ON' 버튼: 1 (1 = 새 화면)
+   걷기 실험 키 선택지 수: 1 (2 = 걷기 패널이 있는 새 화면)
+== 배포 완료 — head_1008 (매니페스트 181d53c4). 백업 /home/mama/humanoid_repo_bak_1008 · 되돌리기: deploy/deploy_head_1008.sh --rollback --restart-console

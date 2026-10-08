@@ -5,8 +5,8 @@ jetson/scripts/__init__.py	verify	session	repo	85f774809979ff4267f7368820276d2a	
 jetson/scripts/console_demo.py	send	session	repo	8bcd50e639020e2073685b24dc787328	15935	6f305da7d8f52dd80c5e887ad0067dcb	젯슨 구판 = 98ecfc9b 2026-09-22
 jetson/scripts/console_state.py	send	session	repo	d4bf8d03bb9a4cabe76674f034bbee44	81024	446a7c2bf5df35f3fe5069a53e2f7aa4	젯슨 구판 = 432d1176 2026-10-03
 jetson/scripts/console_ui.html	send	session	repo	9c902322363fe5805eb5a7d93bf5e110	55093	9f6a963dea7d265d4cedc32e7fd2fb9f	젯슨 구판 = 432d1176 2026-10-03
-jetson/scripts/operator_console.py	send	session	repo	a976fb13c9008a7d92633df7ee542975	222583	90b7ef283a9da1450de34d3f3da09cc2	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
-jetson/scripts/rl_bridge_node.py	send	session	repo	8938e7901e34f269ad611b7eb553aea7	466576	15dcabf224f9bbfdc01f1017c93d101a	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
+jetson/scripts/operator_console.py	send	session	repo	3dd9f6c4c83e2a6fefee501f6e919e8c	232085	90b7ef283a9da1450de34d3f3da09cc2	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
+jetson/scripts/rl_bridge_node.py	send	session	repo	2c4bed9ecd115d43950417bbf79dd162	479455	15dcabf224f9bbfdc01f1017c93d101a	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
 jetson/scripts/stage8_12axis_mit_control_node.py	send	session	repo	18e1ec3e7e22d952fe97869df7e5c224	91128	2509bd9998a5177e42dcf8d66bc833b6	젯슨 구판 = c93b45d1 2026-09-30
 jetson/scripts/w3_cmd.py	send	session	repo	e06de3d422841c127aa93ac3b774638e	9569	-	-
 protocols/__init__.py	verify	session	repo	3820717ce5c7b02b864108ca81604e25	50	3820717ce5c7b02b864108ca81604e25	-
@@ -126,5 +126,5 @@ deploy/cand/head_1008/selftest_w3_node_refs.py	send	ref	repo	40edb00b9d06bde97f3
 deploy/cand/head_1008/OPERATOR_COMMANDS.md	send	record	repo	3dfbf67297c795daa17b53b1a9f29c7d	31707	-	-
 reports/night_1007/jetson/parity_ref.npz	send	parity	repo	425e48cf21a4768bf956787086a8033a	1128300	-	러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime)
 reports/night_1007/jetson_parity.py	send	parity	repo	029cb8b23c4e7bef35b5e9eb01cc574c	10754	-	러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime)
-deploy/head_1008.md5	send	record	repo	b6d9793c095182ea3b4da1d469355844	9656	-	매니페스트(젯슨에서 md5sum -c)
-deploy/head_1008.VERSION	send	record	repo	013a27a6c8e69635213b42d3891cd400	657	-	버전 기록
+deploy/head_1008.md5	send	record	repo	181d53c4555401e3860c3a1dc6b1abfa	9656	-	매니페스트(젯슨에서 md5sum -c)
+deploy/head_1008.VERSION	send	record	repo	087de0ca93531ca07b20e1c126d44bcc	657	-	버전 기록

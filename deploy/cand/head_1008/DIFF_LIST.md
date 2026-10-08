@@ -5,9 +5,9 @@
 
 ```
 package: head_1008
-source_commit: 385686de411ecb153fb790628d9e3178ef272d06 2026-10-08T16:44:22+09:00
+source_commit: 8e67b87ab409ae6aaaea83d1d0ac4cc4ee89c469 2026-10-08T22:46:07+09:00
 source_uncommitted: none
-manifest: deploy/head_1008.md5 md5 b6d9793c095182ea3b4da1d469355844
+manifest: deploy/head_1008.md5 md5 181d53c4555401e3860c3a1dc6b1abfa
 files: 127 (send 71 incl. this file and the manifest, verify 56)
 jetson_inventory: deploy/cand/head_1008/jetson_inventory_before_md5.txt md5 35a129c9f16a082e1cb6d3ba9cb13855
 note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드(콘솔·브리지·stage8·러너·도구·시험)를 마지막으로 바꾼 커밋,
@@ -18,7 +18,7 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 
 | 구분 | 파일 수 | 크기 합 |
 |---|---|---|
-| 전송 — 변경(젯슨에 구판이 있음) | 14 | 1115 KB |
+| 전송 — 변경(젯슨에 구판이 있음) | 14 | 1137 KB |
 | 전송 — 신규(젯슨에 없음) | 55 (+ 매니페스트·VERSION 2) | 8019 KB |
 | 확인만(젯슨과 같음 — 복사하지 않음) | 56 | 13343 KB |
 | 삭제 | 0 | — |
@@ -34,9 +34,9 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `jetson/scripts/console_state.py` | session | `446a7c2b` | `d4bf8d03` | 432d1176 2026-10-03 | operator_console.py, robotctl.py |
 | `jetson/scripts/console_ui.html` | session | `9f6a963d` | `9c902322` | 432d1176 2026-10-03 | - |
 | `jetson/scripts/imu_mount_calib.py` | sync | `b8aa00e9` | `7c3bd93c` | 29b984d2 2026-07-27 | - |
-| `jetson/scripts/operator_console.py` | session | `90b7ef28` | `a976fb13` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | operator_console.py |
+| `jetson/scripts/operator_console.py` | session | `90b7ef28` | `3dd9f6c4` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | operator_console.py |
 | `jetson/scripts/pose_hold.py` | sync | `83e4f599` | `16f57ffd` | 9c4750d3 2026-07-27 | - |
-| `jetson/scripts/rl_bridge_node.py` | session | `15dcabf2` | `8938e790` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
+| `jetson/scripts/rl_bridge_node.py` | session | `15dcabf2` | `2c4bed9e` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
 | `jetson/scripts/robotctl.py` | tool | `f761802c` | `61327e6b` | 83faa61b 2026-09-19 | robotctl.py |
 | `jetson/scripts/sensors_up.sh` | sync | `73fec1f3` | `3b372a2b` | 54425ab0 2026-09-13 | - |
 | `jetson/scripts/stage8_12axis_mit_control_node.py` | session | `2509bd99` | `18e1ec3e` | c93b45d1 2026-09-30 | stage8_12axis_mit_control_node.py |

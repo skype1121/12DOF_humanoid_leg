@@ -373,4 +373,38 @@ rep("""        if i == STEPS_PRE:
 """)
 rep("""                _ro = (R.w3r if kind[e] == 2 else R.ke.core).last_obs""", """                _ro = (R.w3r if kind[e] == 2 else (R.air if kind[e] == 3 else R.ke.core)).last_obs""")
 rep("""        ke_act = (kind_t == 0) | (kind_t == 1); w3_act = kind_t == 2; sw_mode = kind_t == 1""", """        ke_act = (kind_t == 0) | (kind_t == 1) | (kind_t == 3); w3_act = kind_t == 2; sw_mode = kind_t == 1      # 3 = AIR(공중·착지 서기 — 클록 있는 서기 정책이라 KE 서기와 같은 쪽)""")
+# 1008 확인 실행: 합성 러너를 **브리지에 등록된 합성 키 그대로** 만든다(_make_runner(합성 키) — 명세의 걷기·KE·갇힘 해소·공중 러너·정착 시간 전부 브리지 값).
+#   평가용 덮어쓰기(--kw_requiet·--kw_air_exported·--kw_stand_exported·--kw_ke_key)와 함께 쓰지 않는다. 공중 인계 팔이고 러너에 공중 러너가 있으면 start_air().
+rep("""parser.add_argument("--kw_air_exported", type=str, default="",""", """parser.add_argument("--kw_composite_key", type=str, default="", help="확인 실행: 브리지 합성 키(예 stand_kew3qa_g21a_g24ra_w3s3d15800)로 러너를 만든다 — 평가용 덮어쓰기 없이 배포 등록 그대로")
+parser.add_argument("--kw_air_exported", type=str, default="",""")
+rep("""    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max),
+                **({"air_runner": _BR._make_runner(_KW_AIRKEY)} if _KW_AIRKEY else {})) for _ in range(N)]""", """    if args_cli.kw_composite_key:
+        assert not (args_cli.kw_requiet or args_cli.kw_air_exported or args_cli.kw_stand_exported or args_cli.kw_ke_key or args_cli.kw_w3_export or args_cli.kw_rec_export), "--kw_composite_key 는 평가용 덮어쓰기와 함께 쓰지 않는다"
+        _BR.enable_experimental_kew3()
+        assert args_cli.kw_composite_key in _BR.KEW3_CKPTS, f"--kw_composite_key: 등록된 합성 키가 아님({sorted(_BR.KEW3_CKPTS)})"
+        _csp = _BR.KEW3_CKPTS[args_cli.kw_composite_key]
+        assert args_cli.kw_handoff == _csp.handoff and abs(float(args_cli.kw_settle) - float(_csp.settle_quiet_s)) < 1e-9, f"평가기 인자(handoff {args_cli.kw_handoff}·정착 {args_cli.kw_settle})가 키 명세({_csp.handoff}·{_csp.settle_quiet_s})와 다름"
+        KWR = [_BR._make_runner(args_cli.kw_composite_key) for _ in range(N)]
+        _KW_AIRKEY = _csp.air if getattr(_csp, "air", None) else None
+        print(f"[runner_loop] ★ 확인 실행: 브리지 합성 키 {args_cli.kw_composite_key} 그대로(명세 {_csp}) — 평가용 덮어쓰기 없음", flush=True)
+    else:
+        KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max),
+                    **({"air_runner": _BR._make_runner(_KW_AIRKEY)} if _KW_AIRKEY else {})) for _ in range(N)]""")
+# 1008 AIR3: 지지 모형 정정 옵션 — fix:1 = 제어 주기 고정 보정(mdp_hang._hold_fix), yaw:1 = 2 줄 현수의 요 복원. 둘 다 기본 꺼짐(= AIR1·AIR2 와 같은 모형).
+rep("""    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3), "model": "force", "k": None}""",
+    """    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3), "model": "force", "k": None, "fix": 0, "yaw": 0}""")
+rep("""        elif _k == "k":
+            _a, _, _b = _v.partition(","); _AIR["k"] = (float(_a), float(_b or _a))
+        elif _k:""", """        elif _k == "k":
+            _a, _, _b = _v.partition(","); _AIR["k"] = (float(_a), float(_b or _a))
+        elif _k in ("fix", "yaw"):
+            assert _v in ("0", "1"), _v; _AIR[_k] = int(_v)
+        elif _k:""")
+rep("""    _AIR["pre_air"] = (float(args_cli.precheck_s) + float(args_cli.level_s)) <= _AIR["hold"] + 1e-9      # 인계가 방출 시작보다 먼저 = 공중에서 정책 시작""",
+    """    if _AIR["fix"]:
+        _hp["hold_fix"] = True                                # AIR3: 지지력의 제어 주기 고정 보정(행동 0 대조에서 종전 모형이 흔들림을 키우는 것을 확인 — AIR_START_1008.md §11)
+    if _AIR["yaw"]:
+        _hp["two_point_yaw"] = True                           # AIR3: 2 줄 현수의 요(비틀림) 복원 — 종전 모형은 행동 0 에서도 몸이 자전했다
+    print(f"[air_start] 지지 모형 정정: 고정 보정 {'켬' if _AIR['fix'] else '끔'} · 요 복원 {'켬' if _AIR['yaw'] else '끔'}", flush=True)
+    _AIR["pre_air"] = (float(args_cli.precheck_s) + float(args_cli.level_s)) <= _AIR["hold"] + 1e-9      # 인계가 방출 시작보다 먼저 = 공중에서 정책 시작""")
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

@@ -42,6 +42,7 @@ st = mdp_hang._state(u)
 robot = u.scene["robot"]
 N, dev = u.num_envs, u.device
 hang = st["mix_hang"].clone() > 0.5
+st_cbl0 = st["cbl_env"].clone() if "cbl_env" in st else torch.zeros_like(hang)
 t_hold = st["t_hold"].clone(); t_rel = st["t_rel"].clone(); z0 = robot.data.root_pos_w[:, 2].clone()
 dst_kind = st["dst_kind"].clone(); dst_t0 = st["dst_t0"].clone()
 pre = u.cfg.events.hang_mix_reset.params
@@ -95,7 +96,7 @@ chk("② 매달림 스폰 높이(지면 에피소드 중앙 대비)", nh > 0 and
     f"+{q(dz, 0.0):.3f} ~ +{q(dz, 1.0):.3f} m (설정 {pre['clearance_range']}, 지면 스폰의 z 무작위 ±0.01 포함)")
 chk("② 방출 시작 전 발 접촉 없음", nh > 0 and float(air_contact[hang].float().mean()) <= 0.02, f"접촉한 개체 {int(air_contact[hang].sum())} / {nh}")
 chk("② 떠 있는 동안 높이 유지(최대 − 최소)", nh > 0 and q((zmax - zmin)[hang], 0.95) <= 0.04, f"중앙 {q((zmax - zmin)[hang], 0.5) * 100:.1f} cm · p95 {q((zmax - zmin)[hang], 0.95) * 100:.1f} cm")
-chk("② 떠 있는 동안 기울기", nh > 0 and q(tilt_max[hang], 0.5) <= 5.0 and q(tilt_max[hang], 0.95) <= 10.0, f"최대 기울기 중앙 {q(tilt_max[hang], 0.5):.1f}° · p95 {q(tilt_max[hang], 0.95):.1f}°")
+chk("② 떠 있는 동안 기울기(힘 모형 매달림은 학습 DR 의 준정적 롤 토크 ≤ 12 N·m 가 걸린다)", nh > 0 and q(tilt_max[hang], 0.5) <= 6.0 and q(tilt_max[hang], 0.95) <= 15.0, f"최대 기울기 중앙 {q(tilt_max[hang], 0.5):.1f}° · p95 {q(tilt_max[hang], 0.95):.1f}°")
 chk("③ 지면 에피소드는 0.5 s 안에 양발 접촉", ng > 0 and float(((both_by[g] >= 0) & (both_by[g] <= 0.5)).float().mean()) >= 0.95,
     f"{int(((both_by[g] >= 0) & (both_by[g] <= 0.5)).sum())} / {ng}")
 chk("④ 지지가 남은 동안 회복 게이트 닫힘(매달림)", int(gate_open_sup[hang].sum()) == 0, f"열린 적 있는 개체 {int(gate_open_sup[hang].sum())} / {nh}")
@@ -107,6 +108,15 @@ chk("⑤ 외란 일정이 지지 풀린 뒤로 밀림(매달림)", bool((tmin >=
 td = both_by[hang]
 lines.append(f"[참고] 매달림: 유지 {q(t_hold[hang], 0.0):.1f}–{q(t_hold[hang], 1.0):.1f} s · 방출 {q(t_rel[hang], 0.0):.1f}–{q(t_rel[hang], 1.0):.1f} s · 양발 첫 접촉 = 방출 시작 뒤 중앙 {q((td - t_hold[hang])[td >= 0], 0.5):.2f} s"
              f" · 액션 0 으로 첫 에피소드 종료(낙상) {int(died[hang].sum())} / {nh} (지면 {int(died[g].sum())} / {ng}) — 정책 없는 참고값")
+cb = hang & st_cbl0
+if bool(cb.any()):                                      # 1008 G21h2: 줄 길이 모형 에피소드 — 매달린 동안 가라앉지 않는가, 방출 전 접촉이 없는가
+    nb = int(cb.sum())
+    chk("⑥ 줄 길이 모형 에피소드 비율(매달림 중)", abs(nb / max(nh, 1) - float(pre.get("cable_frac", 0.0))) <= 0.15, f"{nb} / {nh} ({100 * nb / max(nh, 1):.0f} %, 설정 {100 * float(pre.get('cable_frac', 0.0)):.0f} %)")
+    chk("⑥ 줄 길이 모형: 방출 전 발 접촉 없음", float(air_contact[cb].float().mean()) <= 0.02, f"접촉한 개체 {int(air_contact[cb].sum())} / {nb}")
+    chk("⑥ 줄 길이 모형: 떠 있는 동안 높이 유지(최대 − 최소)", q((zmax - zmin)[cb], 0.95) <= 0.04, f"중앙 {q((zmax - zmin)[cb], 0.5) * 100:.1f} cm · p95 {q((zmax - zmin)[cb], 0.95) * 100:.1f} cm")
+    chk("⑥ 줄 길이 모형: 떠 있는 동안 기울기", q(tilt_max[cb], 0.5) <= 5.0 and q(tilt_max[cb], 0.95) <= 12.0, f"최대 기울기 중앙 {q(tilt_max[cb], 0.5):.1f}° · p95 {q(tilt_max[cb], 0.95):.1f}°")
+    tdc = both_by[cb]
+    lines.append(f"[참고] 줄 길이 모형: 양발 첫 접촉 = 방출 시작 뒤 중앙 {q((tdc - t_hold[cb])[tdc >= 0], 0.5):.2f} s · 액션 0 으로 첫 에피소드 종료 {int(died[cb].sum())} / {nb} · 힘 모형 매달림 {int(died[hang & ~st_cbl0].sum())} / {int((hang & ~st_cbl0).sum())}")
 lines.append("ALL PASS" if ok else "FAILED")
 out = os.path.join(REPO, "log_picture", f"check_hang_mix_{args_cli.out_tag}.txt")
 open(out, "w", encoding="utf-8").write("\n".join(lines) + "\n")

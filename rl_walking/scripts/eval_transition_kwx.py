@@ -194,6 +194,7 @@ parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토�
 parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
 parser.add_argument("--kw_unload", type=float, default=0.0, help="X18: 인계 뒤 링크마다 자기 무게의 이 비율(0–0.9)을 위로 받친다(부분지지의 이상화, 1 s 램프). --dist 와 함께 쓰지 않는다")
 parser.add_argument("--contact_pert", type=str, default="", help="X19: 접촉 관측 교란 'delay:N;flip:p;t0:x'(관측 비트만, 물리·채점 불변). '' = 끔")
+parser.add_argument("--kw_composite_key", type=str, default="", help="확인 실행: 브리지 합성 키(예 stand_kew3qa_g21a_g24ra_w3s3d15800)로 러너를 만든다 — 평가용 덮어쓰기 없이 배포 등록 그대로")
 parser.add_argument("--kw_air_exported", type=str, default="", help="AIR2: 공중·착지 구간 서기 정책 폴더(exported_N). 주면 합성 러너에 air_runner 를 달고, 공중 인계 팔에서 start_air() 로 시작")
 parser.add_argument("--kw_ke_key", type=str, default="", help="합성 러너의 KE 키(브리지 C5_PAIRS 에 등록된 것). '' = stand_c5kr_g21a_g24ra(종전). 새 서기 정책을 브리지에 등록한 뒤의 확인 실행용 — 덮어쓰기 없이 등록 그대로 쓴다")
 parser.add_argument("--kw_stand_exported", type=str, default="", help="G21h 평가 전용: 합성 러너의 서기 정책 폴더(exported_N — policy.pt/onnx 가 있는 곳). '' = 브리지 등록 그대로(G21a)")
@@ -307,7 +308,7 @@ if args_cli.ramp_off:
     _hp["ramp_rate_range"] = (0.0, 0.0); _hp["ramp_cap_range"] = (0.0, 0.0); print("[ramp_off] 준정적 롤 토크 램프 0 (RNG 소비 유지, 진단)", flush=True)
 _AIR = None
 if args_cli.air_start:
-    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3), "model": "force", "k": None}
+    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3), "model": "force", "k": None, "fix": 0, "yaw": 0}
     for _it in args_cli.air_start.split(";"):
         _k, _, _v = _it.strip().partition(":")
         if _k == "clear":
@@ -320,6 +321,8 @@ if args_cli.air_start:
             assert _v in ("force", "len"), _v; _AIR["model"] = _v
         elif _k == "k":
             _a, _, _b = _v.partition(","); _AIR["k"] = (float(_a), float(_b or _a))
+        elif _k in ("fix", "yaw"):
+            assert _v in ("0", "1"), _v; _AIR[_k] = int(_v)
         elif _k:
             raise SystemExit(f"--air_start: 모르는 항목 {_k!r}")
     _hp["r0_range"] = (1.0, 1.0); _hp["hold_range"] = (_AIR["hold"], _AIR["hold"]); _hp["release_range"] = (_AIR["rel"], _AIR["rel"])
@@ -333,6 +336,11 @@ if args_cli.air_start:
         _hp["cable_no_ramp"] = True; _hp["cbl_slack_range"] = (_AIR["clear"][1] + 0.03, _AIR["clear"][1] + 0.08)
         if _AIR["k"] is not None:
             _hp["cbl_k_range"] = tuple(_AIR["k"])
+    if _AIR["fix"]:
+        _hp["hold_fix"] = True                                # AIR3: 지지력의 제어 주기 고정 보정(행동 0 대조에서 종전 모형이 흔들림을 키우는 것을 확인 — AIR_START_1008.md §11)
+    if _AIR["yaw"]:
+        _hp["two_point_yaw"] = True                           # AIR3: 2 줄 현수의 요(비틀림) 복원 — 종전 모형은 행동 0 에서도 몸이 자전했다
+    print(f"[air_start] 지지 모형 정정: 고정 보정 {'켬' if _AIR['fix'] else '끔'} · 요 복원 {'켬' if _AIR['yaw'] else '끔'}", flush=True)
     _AIR["pre_air"] = (float(args_cli.precheck_s) + float(args_cli.level_s)) <= _AIR["hold"] + 1e-9      # 인계가 방출 시작보다 먼저 = 공중에서 정책 시작
     print(f"[air_start] 지지비 1.0·스폰 +{_AIR['clear']} m · 방출 {_AIR['hold']} s 부터 {_AIR['rel']} s · 인계 {'공중' if _AIR['pre_air'] else '착지 뒤(홀드로 착지)'} · {'힘제어 케이블' if _AIR['model'] == 'force' else '줄 길이 모형(위치 제어 하강)'} + 2점 현수 간격 {_AIR['tp']} m (가정 모형 — 실물 줄·지그의 실측 아님)", flush=True)
 else:
@@ -1112,8 +1120,18 @@ if KWL:
         _BR.CKPT_GAIT_FREQ[_KW_AIRKEY] = _BR.CKPT_GAIT_FREQ["stand_crouch_g21a"]; _BR.CKPT_REQUIRE_ENV_YAML.add(_KW_AIRKEY)
         assert _BR.ckpt_obs_filter(_KW_AIRKEY) == _BR.ckpt_obs_filter("stand_crouch_g21a"), "공중 정책의 관측 필터 계약이 G21a 와 다름"
         print(f"[runner_loop] AIR2 공중·착지 러너: {_ax} (평가용 키 {_KW_AIRKEY}, 계약 = stand_crouch_g21a) · 공중 인계 팔이면 start_air()", flush=True)
-    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max),
-                **({"air_runner": _BR._make_runner(_KW_AIRKEY)} if _KW_AIRKEY else {})) for _ in range(N)]
+    if args_cli.kw_composite_key:
+        assert not (args_cli.kw_requiet or args_cli.kw_air_exported or args_cli.kw_stand_exported or args_cli.kw_ke_key or args_cli.kw_w3_export or args_cli.kw_rec_export), "--kw_composite_key 는 평가용 덮어쓰기와 함께 쓰지 않는다"
+        _BR.enable_experimental_kew3()
+        assert args_cli.kw_composite_key in _BR.KEW3_CKPTS, f"--kw_composite_key: 등록된 합성 키가 아님({sorted(_BR.KEW3_CKPTS)})"
+        _csp = _BR.KEW3_CKPTS[args_cli.kw_composite_key]
+        assert args_cli.kw_handoff == _csp.handoff and abs(float(args_cli.kw_settle) - float(_csp.settle_quiet_s)) < 1e-9, f"평가기 인자(handoff {args_cli.kw_handoff}·정착 {args_cli.kw_settle})가 키 명세({_csp.handoff}·{_csp.settle_quiet_s})와 다름"
+        KWR = [_BR._make_runner(args_cli.kw_composite_key) for _ in range(N)]
+        _KW_AIRKEY = _csp.air if getattr(_csp, "air", None) else None
+        print(f"[runner_loop] ★ 확인 실행: 브리지 합성 키 {args_cli.kw_composite_key} 그대로(명세 {_csp}) — 평가용 덮어쓰기 없음", flush=True)
+    else:
+        KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max),
+                    **({"air_runner": _BR._make_runner(_KW_AIRKEY)} if _KW_AIRKEY else {})) for _ in range(N)]
     _KW_SAFETY = _W3D.parse_w3_safety(args_cli.kw_safety) if args_cli.kw_safety else _BR.W3_SAFETY
     if args_cli.kw_safety:
         print(f"[runner_loop] X19b 감독기 문턱 덮어쓰기: {args_cli.kw_safety} → {_KW_SAFETY}", flush=True)

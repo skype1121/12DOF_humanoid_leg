@@ -14,7 +14,7 @@ for _stage in ("W3S3x",):
     )
 
 # 1008 낮: 매달림 시작 혼합 서기 세대(G21a 계열 — 에이전트 설정은 G 계열과 같은 것)
-for _stage in ("G21h",):
+for _stage in ("G21h", "G21h2"):
     gym.register(
         id=f"Biped12-HangStand-{_stage}-v0",
         entry_point="isaaclab.envs:ManagerBasedRLEnv",

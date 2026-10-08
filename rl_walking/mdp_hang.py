@@ -57,6 +57,12 @@ def _state(env):
               "x0": z(), "y0": z(),
               # 1008 G21h: 힘 모델의 작용점 높이(base 위 [m], 0 = 종전 = base 원점)와 '매달림 시작 에피소드' 표식 — hang_mix_reset 만 0 이 아닌 값을 쓴다
               "pz": z(), "mix_hang": z(),
+              # 1008 G21h2: env 별 케이블 표식 — cbl_mixed 가 True 일 때만 본다(hang_mix_reset 이 켠다). 표식이 선 env 는 길이 케이블, 나머지는 힘 모델.
+              "cbl_env": torch.zeros(N, dtype=torch.bool, device=dev), "cbl_mixed": False,
+              # 1008: 2 줄 현수의 요(비틀림) 복원 — tp_yaw_on 이 1 인 env 에만(기본 0 = 종전). yaw0 = 리셋 시 요, tp_yaw_c = 요 감쇠 [N·m·s/rad]
+              "tp_yaw_on": z(), "yaw0": z(), "tp_yaw_c": z(),
+              # 1008: 지지력의 제어 주기 고정(sample-and-hold) 보정 — mid 가 1 인 env 에만(기본 0 = 종전). _hold_fix 주석 참고
+              "mid": z(),
               "released_t": torch.full((N,), -1.0, device=dev),   # r 가 0 에 닿은 시각 (−1 = 아직)
               "touch_t": torch.full((N,), -1.0, device=dev),      # 양발 첫 동시 접촉 시각
               # 0911 케이블 지지 모델 (cable_on=True 일 때 _cable_apply 사용)
@@ -126,27 +132,46 @@ def _cable_apply(env, st, ids, asset_cfg):
         L = st["cbl_L0"][ids] - st["cbl_d0"][ids] + payout
         v = asset.data.root_lin_vel_w[ids] if hasattr(asset.data, "root_lin_vel_w") else torch.zeros_like(pos)
         ddist = -(dirw * v).sum(-1)
-        T = _cable_tension(dist, L, st["cbl_k"][ids], st["cbl_c"][ids], ddist, st["cbl_tmax"][ids])
+        _mid = st["mid"][ids]
+        if bool((_mid > 0.5).any()):                         # 1008 고정 보정: 줄 늘어남도 반 주기 뒤 값으로(후크 속도 기준) — 강성 k 의 고정이 만드는 음의 감쇠 −k·dt/2 제거
+            _vH = v + torch.cross(_qrot(quat, asset.data.root_ang_vel_b[ids]), H - pos, dim=-1)
+            _dd = -(dirw * _vH).sum(-1)
+            ddist = torch.where(_mid > 0.5, _dd, ddist)
+            dist_t = dist + _mid * _dd * (0.5 * float(env.step_dt))
+        else:
+            dist_t = dist
+        T = _cable_tension(dist_t, L, st["cbl_k"][ids], st["cbl_c"][ids], ddist, st["cbl_tmax"][ids])
         if not bool(st.get("cbl_noramp", False)):          # 1008: 공중 매달림 시작(cable_no_ramp)에서는 램프 없이 처음부터 장력
             ramp = (st["t"][ids] / 1.0).clamp(0.0, 1.0)      # 첫 1s 램프인: 스폰 낙하 착지 충격(시뮬 인공물) 제거
             T = T * ramp
     st["cbl_T"][ids] = T.detach()                        # item 4c: 실제 적용 장력 기록 (지지 소멸·재긴장 판정·로깅용)
     st["cbl_dist"][ids] = dist.detach()
     F_w = T.unsqueeze(-1) * dirw
-    F_b = _quat_inv(quat, F_w)
+    F_b = _hold_fix(_quat_inv(quat, F_w), asset.data.root_ang_vel_b[ids], st["mid"][ids], float(env.step_dt))
     asset.permanent_wrench_composer.set_forces_and_torques(
         forces=F_b.unsqueeze(1), torques=None, positions=hook_b.unsqueeze(1),
         body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
     if bool((st["tp_d"][ids] > 0).any()):   # 0913 앞뒤 2점 현수 피치 구속 (cap = T·d/2)
         _ty = _two_point_pitch_torque(asset.data.projected_gravity_b[ids], asset.data.root_ang_vel_b[ids], st["tp_kp"][ids], st["tp_kd"][ids], T * st["tp_d"][ids] * 0.5)
         _tau = torch.stack([torch.zeros_like(_ty), _ty, torch.zeros_like(_ty)], dim=-1)
+        _yo = st["tp_yaw_on"][ids] > 0.5
+        if bool(_yo.any()):                                  # 1008 요 복원(켠 env 만 — 기본 꺼짐 = 종전)
+            _tz = _two_point_yaw_torque_b(quat, asset.data.root_ang_vel_b[ids], T, st["tp_d"][ids], st["cbl_L0"][ids], st["yaw0"][ids], st["tp_yaw_c"][ids])
+            _tau = _tau + _tz * _yo.to(_tz.dtype).unsqueeze(-1)
         asset.permanent_wrench_composer.add_forces_and_torques(forces=None, torques=_tau.unsqueeze(1), positions=None, body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
 
 
 def _apply(env, st, ids, asset_cfg):
     """지지력을 base 링크 프레임으로 넣는다. ids: long tensor."""
     if bool(st.get("cable_on", False)):
-        return _cable_apply(env, st, ids, asset_cfg)
+        if not bool(st.get("cbl_mixed", False)):          # 종전: 케이블이 켜지면 전 env 가 케이블
+            return _cable_apply(env, st, ids, asset_cfg)
+        _cm = st["cbl_env"][ids]                           # 1008 G21h2: env 별 — 표식이 선 env 만 케이블, 나머지는 아래 힘 모델(외란·램프 포함 종전 그대로)
+        if bool(_cm.any()):
+            _cable_apply(env, st, ids[_cm], asset_cfg)
+        ids = ids[~_cm]
+        if len(ids) == 0:
+            return
     asset = env.scene[asset_cfg.name]
     r = st["r"][ids]
     Fz = r * st["mass"][ids] * G                                    # 수직 지지력 [N], 세계 +z
@@ -157,6 +182,7 @@ def _apply(env, st, ids, asset_cfg):
     Fy = -kx * (pos[:, 1] - st["y0"][ids]) + Fz * st["by"][ids]
     F_w = torch.stack([Fx, Fy, Fz], dim=-1)                          # (n,3) 세계
     F_b = _quat_inv(asset.data.root_quat_w[ids], F_w)               # base 링크 프레임
+    F_b = _hold_fix(F_b, asset.data.root_ang_vel_b[ids], st["mid"][ids], float(env.step_dt))      # 1008: mid 가 0 이면 종전과 같은 값
     forces = F_b.unsqueeze(1)                                       # (n,1,3)
     positions = torch.stack([st["px"][ids], st["py"][ids], st["pz"][ids]], dim=-1).unsqueeze(1)      # pz 기본 0 = 종전(base 원점)과 같은 값
     # 프레임 수평 유지 토크 (0908 22:40, 승윤님 "실물은 저 정도로 흔들리며 착지하지 않는다"): 실물 현가는 앞뒤 두 줄이
@@ -173,6 +199,10 @@ def _apply(env, st, ids, asset_cfg):
     # 0913 앞뒤 2점 현수 피치 구속 (tp_d>0 일 때만; cap = Fz·d/2 — 줄이 풀리면(Fz→0) 자동 소멸)
     _ty = _two_point_pitch_torque(pgv, w, st["tp_kp"][ids], st["tp_kd"][ids], Fz * st["tp_d"][ids] * 0.5)
     tau = tau + torch.stack([torch.zeros_like(_ty), _ty, torch.zeros_like(_ty)], dim=-1)
+    _yo = st["tp_yaw_on"][ids] > 0.5
+    if bool(_yo.any()):                                      # 1008 요 복원(켠 env 만 — 기본 꺼짐 = 종전)
+        _tz = _two_point_yaw_torque_b(asset.data.root_quat_w[ids], w, Fz, st["tp_d"][ids], st["L"][ids], st["yaw0"][ids], st["tp_yaw_c"][ids])
+        tau = tau + _tz * _yo.to(_tz.dtype).unsqueeze(-1)
     # ★정정(2026-09-12): Isaac Lab 2.3 `set_forces_and_torques` 는 positions 를 주면 합성 토크를 position×force 로 **덮어써**
     # torques 인자를 버린다(kernels.set_forces_and_torques_at_position). 종전 코드는 수평 유지 토크(lvl_k, 0908)를 한 번도 적용하지
     # 못했다(v5 학습·평가 전부 — 정책은 그 조건으로 학습된 것이므로 배포엔 영향 없음, 문서의 '수평 유지 토크' 서술만 무효).
@@ -526,7 +556,7 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
                        cbl_slack_range=(0.05, 0.15), cable_force_mode=False, anchor_vx_range=(0.0, 0.0), anchor_vy_range=(0.0, 0.0), ramp_roll_torque=(0.0, 0.0, 0.0),
                        ramp_rate_range=None, ramp_cap_range=None, ramp_start_range=None, ramp_sign_random=False,
                        two_point_d_range=(0.0, 0.0), two_point_kp_range=(200.0, 200.0), two_point_kd_range=(10.0, 10.0),
-                       yaw_damp=0.0, cable_no_ramp=False):
+                       yaw_damp=0.0, cable_no_ramp=False, two_point_yaw=False, two_point_yaw_c_range=(0.05, 0.3), hold_fix=False):
     """mode="reset": 에피소드마다 지지 스케줄·로프 기하를 새로 뽑고 첫 지지력을 즉시 건다.
     cable_no_ramp(1008, 기본 False = 종전): 길이 제약 케이블의 '첫 1 s 장력 램프인'을 끈다 — 공중 매달림 시작에서는 램프 동안 몸이 떨어진다.
     two_point_d_range: 0913 승윤님 확인 '줄은 몸통 앞·뒤 2점' — 두 줄이 팽팽한 동안 피치를 구속한다(롤은 진자 그대로).
@@ -556,6 +586,11 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
     st["ramp_rate"][ids] = float(ramp_roll_torque[0]); st["ramp_cap"][ids] = float(ramp_roll_torque[1]); st["ramp_start"][ids] = float(ramp_roll_torque[2])
     st["yaw_c"][ids] = float(yaw_damp)   # 0914: 공중 롤 응답 기준 시험에서 요 회전(0913 sig4 오염 원인) 억제용
     st["tp_d"][ids] = U(*two_point_d_range); st["tp_kp"][ids] = U(*two_point_kp_range); st["tp_kd"][ids] = U(*two_point_kd_range)
+    st["mid"][ids] = 1.0 if hold_fix else 0.0                # 1008: 고정 보정은 hold_fix 를 켠 호출만(기본 꺼짐 = 종전)
+    st["tp_yaw_on"][ids] = 0.0                               # 1008: 요 복원은 two_point_yaw 를 켠 호출(평가기 공중 시작)·hang_mix_reset(two_point_yaw) 만 켠다
+    if two_point_yaw:
+        st["tp_yaw_on"][ids] = 1.0; st["tp_yaw_c"][ids] = U(*two_point_yaw_c_range)
+        st["yaw0"][ids] = _yaw_of(env.scene[asset_cfg.name].data.root_quat_w[ids])
     if ramp_rate_range is not None:   # 학습용 DR(0912 S8ac4q): 준정적 롤 토크 램프를 env 마다 다르게, 부호 랜덤
         st["ramp_rate"][ids] = U(*ramp_rate_range); st["ramp_cap"][ids] = U(*ramp_cap_range); st["ramp_start"][ids] = U(*ramp_start_range)
         if ramp_sign_random:
@@ -784,6 +819,32 @@ def _level_torque(pg, w, k, c):
     +x 롤(pg_y<0)→ −x 토크. τ = k·(pg_y, −pg_x, 0) − c·(w_x, w_y, 0)."""
     zero = torch.zeros_like(k)
     return torch.stack([k * pg[:, 1] - c * w[:, 0], -k * pg[:, 0] - c * w[:, 1], zero], dim=-1)
+
+
+def _hold_fix(F_b, w_b, mid, dt):
+    """지지력의 제어 주기 고정 보정(1008). 지지력은 제어 주기(dt = 20 ms)마다 **몸통 좌표**로 한 번 정해져 그 사이의 물리 스텝 동안 고정된다 —
+    몸이 ω 로 돌면 힘 방향이 몸과 같이 돌아(따라가는 힘) 주기 평균이 F + (dt/2)·ω×F 가 된다. 후크가 회전 중심 위에 있으면 이 오차는 ω² 에 비례하는
+    **양의 일**을 한다(매달린 몸의 롤 흔들림에 음의 감쇠 ≈ −T·h·dt/2 [N·m·s/rad]; T 173 N·h 0.35 m 면 −0.6). 행동 0(자세 고정)으로 매달아 두면
+    롤 진폭이 12 s 에 3° → 20° 로 자란 원인. 보정: 반 주기만큼 미리 되돌린 힘 F_b − (dt/2)·ω_b×F_b 를 넣어 주기 평균이 의도한 세계 좌표 힘이 되게 한다."""
+    return F_b - (0.5 * dt) * mid.unsqueeze(-1) * torch.cross(w_b, F_b, dim=-1)
+
+
+def _yaw_of(q):
+    """쿼터니언(wxyz) → 요 [rad]."""
+    return torch.atan2(2.0 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]), 1.0 - 2.0 * (q[:, 2] ** 2 + q[:, 3] ** 2))
+
+
+def _two_point_yaw_torque_b(quat, w_b, T, d, L, yaw0, c):
+    """앞뒤 2 줄 현수의 요(비틀림) 복원 토크를 몸통 좌표 벡터로 (1008). 길이 L 의 줄 두 가닥이 간격 d 로 장력 T 를 나눠 받으면(각 T/2) 몸이 ψ 만큼
+    틀어질 때 복원 토크 ≈ −(T·d²/(4L))·ψ (이중줄 진자), 여기에 감쇠 −c·ω_z. 줄이 느슨하면(T → 0) 사라진다. 세계 수직축 토크를 몸통 좌표로 돌려 낸다.
+    왜 필요한가: 피치 구속 토크(_two_point_pitch_torque)는 몸통 y 축 토크라, 몸이 옆으로 기울면 수직 성분이 생겨 요를 계속 돌린다 — 요 복원이 없으면
+    매달린 몸이 정책과 무관하게 자전하며 기울기가 커진다(영점 행동 대조: 12 s 에 요속도 중앙 2 rad/s). 실제 두 줄은 비틀림을 되돌린다."""
+    dpsi = _yaw_of(quat) - yaw0
+    dpsi = torch.atan2(torch.sin(dpsi), torch.cos(dpsi))
+    wz_w = _qrot(quat, w_b)[:, 2]
+    tz = -(T.clamp(min=0.0) * d * d / (4.0 * L.clamp(min=0.1))) * dpsi - c * wz_w * (T > 1.0).to(T.dtype)
+    zw = torch.zeros_like(tz)
+    return _quat_inv(quat, torch.stack([zw, zw, tz], dim=-1))
 
 
 def _two_point_pitch_torque(pg, w, kp, kd, cap):
@@ -3226,7 +3287,9 @@ def track_yaw_rate_exp(env, std: float = 0.25) -> torch.Tensor:
 
 def hang_mix_reset(env, env_ids, p_hang: float = 0.5, clearance_range=(0.03, 0.15), air_hold_range=(2.0, 8.0), air_release_range=(1.0, 4.0),
                    hook_z_range=(0.25, 0.40), two_point_d_range=(0.1, 0.3), two_point_kp: float = 200.0, two_point_kd: float = 10.0,
-                   dist_shift_s: float = 1.0, asset_cfg=None):
+                   dist_shift_s: float = 1.0, asset_cfg=None, cable_frac: float = 0.0, anchor_xy: float = 0.05, anchor_h_range=(1.0, 1.6),
+                   cbl_k_range=(1500.0, 3000.0), cbl_c_range=(20.0, 120.0), cbl_slack_extra=(0.03, 0.08), sway_v: float = 0.0,
+                   two_point_yaw: bool = False, hold_fix: bool = False):
     """mode="reset". **hang_support_reset·disturbance 뒤에 정의할 것**(이벤트는 정의 순서로 돈다 — 둘이 만든 일정을 여기서 덮어쓴다).
     asset_cfg 는 **base 링크로 풀린** SceneEntityCfg 여야 한다(이벤트 params 로 주면 매니저가 푼다). 안 풀린 채(body_ids = 전체)면 지지력이
     전 링크에 걸린다 — 1008 기전 확인에서 잡은 버그. 아래에서 한 번 더 막는다."""
@@ -3239,6 +3302,8 @@ def hang_mix_reset(env, env_ids, p_hang: float = 0.5, clearance_range=(0.03, 0.1
     n = len(ids)
     st["mix_hang"][ids] = 0.0
     st["pz"][ids] = 0.0
+    st["cbl_env"][ids] = False
+    st["tp_yaw_on"][ids] = 0.0
     hang = torch.rand(n, device=env.device) < float(p_hang)
     if not bool(hang.any()):
         return
@@ -3253,6 +3318,10 @@ def hang_mix_reset(env, env_ids, p_hang: float = 0.5, clearance_range=(0.03, 0.1
     quat = asset.data.root_quat_w[hid].clone()
     pos[:, 2] += U(clearance_range)
     asset.write_root_pose_to_sim(torch.cat([pos, quat], dim=-1), env_ids=hid)
+    if float(sway_v) > 0.0:                                 # 1008 G21h2: 매달린 몸의 작은 초기 흔들림(수평 속도 ±sway_v m/s) — 운영자가 건드린 정도
+        vel = torch.zeros(m, 6, device=env.device)
+        vel[:, 0] = U((-sway_v, sway_v)); vel[:, 1] = U((-sway_v, sway_v))
+        asset.write_root_velocity_to_sim(vel, env_ids=hid)
     st["mix_hang"][hid] = 1.0
     st["r0"][hid] = 1.0
     st["t_hold"][hid] = U(air_hold_range)
@@ -3261,8 +3330,39 @@ def hang_mix_reset(env, env_ids, p_hang: float = 0.5, clearance_range=(0.03, 0.1
     st["tp_d"][hid] = U(two_point_d_range)
     st["tp_kp"][hid] = float(two_point_kp)
     st["tp_kd"][hid] = float(two_point_kd)
+    st["mid"][ids] = 1.0 if hold_fix else 0.0               # 기본 꺼짐 = G21h 가 학습한 그대로
+    if two_point_yaw:                                        # 기본 꺼짐 = G21h 가 학습한 그대로
+        st["tp_yaw_on"][hid] = 1.0; st["yaw0"][hid] = _yaw_of(quat); st["tp_yaw_c"][hid] = U((0.05, 0.3))      # 2 줄 현수의 요 복원(감쇠는 가정 범위)
     st["dst_t0"][hid] = st["dst_t0"][hid] + (st["t_hold"][hid] + st["t_rel"][hid] + float(dist_shift_s)).unsqueeze(1)
     st["r"][hid] = 1.0
+    if float(cable_frac) > 0.0:
+        # 1008 G21h2: 매달림 에피소드의 일부는 **줄 길이 모형**으로 — 강성 k 의 줄(당기기만)을 고정 앵커에 걸고, 방출 동안 길이를 (초기 늘어남 + 여유)만큼 푼다.
+        # 힘 모델과 달리 매달린 동안 몸이 가라앉지 않고, 앵커를 축으로 한 진자 흔들림이 실제 줄처럼 생긴다(AIR2 L20: 오래 매달리면 정책이 이 흔들림을 키웠다).
+        # 여유 = 스폰 높이 최댓값 + cbl_slack_extra → 다 풀면 줄이 반드시 느슨하다. 강성·감쇠·앵커 기하는 가정(실측 없음).
+        st["cable_on"] = True; st["cbl_mixed"] = True; st["cbl_force"] = False; st["cbl_noramp"] = True
+        cm = torch.rand(m, device=env.device) < float(cable_frac)
+        if bool(cm.any()):
+            cid = hid[cm]; nc = len(cid)
+
+            def Uc(lo, hi):
+                return torch.empty(nc, device=env.device).uniform_(float(lo), float(hi))
+
+            pc = pos[cm]; qc = quat[cm]
+            st["cbl_env"][cid] = True
+            st["pz"][cid] = 0.0
+            st["hx"][cid] = 0.0; st["hy"][cid] = 0.0; st["hz"][cid] = Uc(*hook_z_range)
+            hook_w = pc + _qrot(qc, torch.stack([st["hx"][cid], st["hy"][cid], st["hz"][cid]], dim=-1))
+            st["ax"][cid] = hook_w[:, 0] + Uc(-anchor_xy, anchor_xy)
+            st["ay"][cid] = hook_w[:, 1] + Uc(-anchor_xy, anchor_xy)
+            st["az"][cid] = hook_w[:, 2] + Uc(*anchor_h_range)
+            st["avx"][cid] = 0.0; st["avy"][cid] = 0.0
+            st["cbl_k"][cid] = Uc(*cbl_k_range); st["cbl_c"][cid] = Uc(*cbl_c_range)
+            st["cbl_slack"][cid] = float(clearance_range[1]) + Uc(*cbl_slack_extra)
+            st["cbl_L0"][cid] = torch.norm(torch.stack([st["ax"][cid], st["ay"][cid], st["az"][cid]], dim=-1) - hook_w, dim=-1)
+            st["cbl_d0"][cid] = st["mass"][cid] * G / st["cbl_k"][cid]          # 지지비 1.0 의 초기 늘어남
+            st["cbl_tmax"][cid] = st["mass"][cid] * G * 1.5
+            st["cbl_T"][cid] = st["mass"][cid] * G
+            assert bool((st["cbl_d0"][cid] > 0).all()), "hang_mix_reset: 케이블 초기 늘어남 0(질량 미설정)"
     _apply(env, st, hid, asset_cfg)
 
 
@@ -3275,6 +3375,28 @@ def hang_mix_step(env, env_ids, gate_grace_s: float = 1.0):
     if bool(blocked.any()):
         for k in ("rec_open", "rec_open_t", "rec_ev", "rec_guard"):
             st[k] = torch.where(blocked, torch.zeros_like(st[k]), st[k])
+
+
+def push_unsupported(env, env_ids, velocity_range: dict, asset_cfg=None):
+    """mode="interval" — 종전 push_robot(push_by_setting_velocity)을 **지지가 남아 있지 않은 env 에만** 건다(1008 G21h2).
+    매달린 몸은 감쇠가 거의 없어 속도 밀기가 몇 번 쌓이면 흔들림이 15° 넘게 커진다(기전 확인에서 봤다) — 아무도 매달린 로봇을 몇 초마다 차지 않는다.
+    지면 에피소드와 지지가 풀린 뒤에는 종전과 같은 함수·같은 범위다. 매달림의 흔들림은 hang_mix_reset 의 sway_v 로 따로 준다."""
+    import isaaclab_tasks.manager_based.locomotion.velocity.mdp as _vmdp
+    st = _state(env)
+    ids = (torch.arange(env.num_envs, device=env.device) if env_ids is None else torch.as_tensor(env_ids, device=env.device, dtype=torch.long))
+    ids = ids[st["r"][ids] <= 0.0]
+    if len(ids) == 0:
+        return
+    kw = {} if asset_cfg is None else {"asset_cfg": asset_cfg}
+    _vmdp.push_by_setting_velocity(env, ids, velocity_range=velocity_range, **kw)
+
+
+def hang_swing(env, r_min: float = 0.5, asset_cfg=None) -> torch.Tensor:
+    """매달린 동안(지지비 > r_min) 몸통 롤·피치 각속도 제곱합 — 공중에서 정책이 몸의 흔들림을 키우는 되먹임을 누른다
+    (AIR2 L20: 20 s 매달림에서 |롤| p90 이 4° → 11° 로 자라 9 / 256 이 공중에서 넘어갔다). 지면 에피소드(지지비 0)에는 0 이다."""
+    st = _state(env)
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    return (st["r"] > r_min).to(torch.float32) * asset.data.root_ang_vel_b[:, :2].pow(2).sum(dim=1)
 
 
 def hang_mix_flag(env) -> torch.Tensor:

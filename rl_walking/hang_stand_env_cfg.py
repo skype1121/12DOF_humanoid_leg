@@ -3943,3 +3943,28 @@ class Biped12HangStandG21hEnvCfg(Biped12HangStandG21aEnvCfg):
                     "asset_cfg": SceneEntityCfg("robot", body_names="base")})      # 매니저가 base 링크로 푼다(안 풀리면 지지력이 전 링크에 걸린다)
         self.events.hang_mix_step = EventTerm(func=mdp_hang.hang_mix_step, mode="interval", interval_range_s=(0.0, 0.0), params={"gate_grace_s": 1.0})
         self.rewards.hang_quiet.weight = float(self.W_HANG_QUIET)
+
+
+@configclass
+class Biped12HangStandG21h2EnvCfg(Biped12HangStandG21hEnvCfg):
+    """G21h2 — 공중·착지 구간 전용 정책(1008 claude2, reports/gen_w3/AIR_START_1008.md §11): G21h 에서 **매달림 분포만 넓히고 항 하나를 더한다.**
+    겨냥: AIR2 의 긴 매달림 팔(줄 길이 모형·공중 20 s)에서 G21h-12299 가 몸의 좌우 흔들림을 키웠다(낙상 9 / 256 중 7 이 하강 전 공중). G21h 는 공중 2–8 s 만 봤다.
+    바뀌는 것: 매달림 에피소드 비율 0.5 → 0.7 · 공중 유지 2–8 → 2–20 s · 방출 1–4 → 1.5–8 s · 매달림 에피소드의 절반은 줄 길이 모형(`cable_frac` 0.5 — 강성 줄을
+    풀어 내린다. 매달린 동안 가라앉지 않고 앵커 축 진자 흔들림이 생긴다) · 에피소드 20 → 36 s · 보상 `hang_swing`(지지비 > 0.5 인 동안 몸통 롤·피치 각속도 제곱합, −1.0) 추가 ·
+    속도 밀기(`push_robot`)는 지지가 풀린 env 에만(`push_unsupported`), 매달림에는 작은 초기 흔들림(±0.1 m/s).
+    지면 에피소드(30 %)의 지지·외란·게이트·보상 항은 G21a 그대로다(에피소드 길이만 36 s). 시작 = G21h-12299 이어 학습. 관측·행동 계약 불변.
+    이 정책은 3 단 러너의 AIR 구간(공중 ~ 착지 정착)에만 쓴다 — 착지 뒤의 서기·회복·걷기는 종전 구성이 맡는다.
+    ★ **준비만 해 둔 환경이다 — 학습한 적 없다(1008 15:10).** AIR3(§13)이 미달일 때만 쓴다. 쓰기 전에 check_hang_mix 를 이 태스크로 다시 돌려 ALL PASS 를 확인할 것
+    (마지막 확인은 지지 모형 정정 전 설정에서 ⑥ 기울기 한 항목이 FAIL 이었다 — 그 원인이 §12 의 모형 결함)."""
+
+    P_HANG = 0.7
+    W_HANG_SWING = -1.0
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.episode_length_s = 36.0
+        self.events.hang_mix_reset.params.update({"air_hold_range": (2.0, 20.0), "air_release_range": (1.5, 8.0), "cable_frac": 0.5, "sway_v": 0.1,
+                                                  "two_point_yaw": True, "hold_fix": True})      # 정정한 지지 모형(AIR_START_1008.md §12)
+        # 속도 밀기(push_robot)는 지지가 풀린 env 에만 — 매달린 몸에 몇 초마다 속도를 더하면 흔들림이 쌓인다(같은 함수·같은 범위, 대상만 거른다)
+        self.events.push_robot.func = mdp_hang.push_unsupported
+        self.rewards.hang_swing = RewTerm(func=mdp_hang.hang_swing, weight=float(self.W_HANG_SWING), params={"r_min": 0.5})

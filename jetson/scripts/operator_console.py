@@ -1903,7 +1903,10 @@ def dispatch_action(payload):
                 return 400, {"ok": False, "message": "이 콘솔은 기립 시험용입니다. 보행 정책은 별도 절차가 필요합니다"}
             if payload["checkpoint"] in WALK_KEYS and payload["mode"] == "air":
                 # 1007: W3 키는 지면 시작 학습뿐이라 브리지가 hang_arm(공중 정책 시작)을 거부한다 — 시작이 조용히 막히기 전에 여기서 알린다
-                return 400, {"ok": False, "message": "걷기 실험 키는 '접지 후 정책 인계' 방식만 됩니다 — 브리지가 공중 정책 시작(hang_arm)을 거부합니다"}
+                # 1008: 남긴 정책이 이 경우다. 시뮬 대조평가(AIR1, reports/gen_w3/AIR_START_1008.md)에서 공중 구동은 기준 미달이라 거부를 풀지 않았다.
+                #   운영자가 다음에 할 일(공중에서 인계하되 정책은 착지 뒤 시작 = '정책 ON')을 문구에 적는다.
+                return 400, {"ok": False, "message": "이 정책은 공중 정책 시작(hang_arm)을 받지 않습니다 — 지면 시작으로만 학습됐고 브리지가 거부합니다. "
+                                                     "공중에서 인계하려면 방식을 '접지 후 정책 인계'로 두고 '정책 ON'(robotctl policy-on — 착지 확인 뒤 정책 시작)을 쓰세요"}
         if walk_action:
             # 1007: 화면이 본 서버 시각(seen)이 오래됐으면 보내지 않는다 — 연결이 끊겼다 뒤늦게 도착한 요청으로 로봇이 걷지 않게.
             seen = payload.get("seen")

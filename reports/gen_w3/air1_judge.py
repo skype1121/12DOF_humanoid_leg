@@ -7,8 +7,12 @@ import numpy as np
 LP = "/home/ryu/humanoid_leg_test1/log_picture"
 #: 팔 → (인계 기준 방출 시작, 지지 0, 걷기 버튼 시각) [s]
 ARMS = {"C": (-1.5, 2.5, 35.5), "A2": (2.0, 6.0, 39.0), "A2i": (2.0, 6.0, 39.0), "A6": (6.0, 10.0, 43.0), "A6i": (6.0, 10.0, 43.0)}
+#: AIR1b 민감도 팔(방출 1·2 s, seed 1) — `air1_judge.py b` 로 본다
+ARMS_B = {"C": (-1.5, 2.5, 35.5), "Cr1": (-1.5, -0.5, 33.0), "A2i": (2.0, 6.0, 39.0), "A2ir2": (2.0, 4.0, 37.0), "A2ir1": (2.0, 3.0, 36.0), "A2": (2.0, 6.0, 39.0), "A2r1": (2.0, 3.0, 36.0)}
+LABEL_B = {"Cr1": "대조 · 방출 1 s", "A2ir2": "공중 2 s · 감지기 정지 · 방출 2 s", "A2ir1": "공중 2 s · 감지기 정지 · 방출 1 s", "A2r1": "공중 2 s · 감지기 그대로 · 방출 1 s"}
 LABEL = {"C": "대조: 홀드로 착지 뒤 인계", "A2": "공중 2 s · 감지기 그대로", "A2i": "공중 2 s · 접지 전 감지기 정지", "A6": "공중 6 s · 감지기 그대로", "A6i": "공중 6 s · 접지 전 감지기 정지"}
-SEEDS = tuple(int(x) for x in (sys.argv[1].split(",") if len(sys.argv) > 1 else ("1", "2")))
+MODE_B = len(sys.argv) > 1 and sys.argv[1] == "b"
+SEEDS = (1,) if MODE_B else tuple(int(x) for x in (sys.argv[1].split(",") if len(sys.argv) > 1 else ("1", "2")))
 def fisher(a, b, c, d):
     n = a + b + c + d; r1 = a + b; c1 = a + c
     def p(x): return math.comb(c1, x) * math.comb(n - c1, r1 - x) / math.comb(n, r1)
@@ -42,6 +46,8 @@ def load(arm):
                 R["td_n"] += 1; R["td_rec"] += bool(mode[int(np.argmax(both)), e])
     return R
 pc = lambda a, n: f"{a} / {n} ({100*a/n:.1f} %)" if n else "—"
+if MODE_B:
+    ARMS = ARMS_B; LABEL = {**{k: v + " · 방출 4 s" for k, v in LABEL.items()}, **LABEL_B}
 D = {a: load(a) for a in ARMS}
 print(f"## AIR1 — 공중 정책 구동 대 홀드 착지 뒤 인계 (seed {','.join(map(str, SEEDS))}, 낙상 분모 = 전체 env)")
 print("| 팔 | env | 인계 전 낙상 | 처음부터 지지 0 뒤 30 s 까지 낙상 | 대조 대비 · Fisher p | 지지 0 뒤 5 s 낙상(그때 서 있던 개체) | 걷기 버튼 수락(서 있던 개체) |"); print("|---|---|---|---|---|---|---|")
@@ -55,7 +61,7 @@ for a, r in D.items():
     if r["air_n"] == 0: print(f"| {a} | 0 | — | — | — | — | — | {pc(r['td_rec'], r['td_n'])} |"); continue
     print(f"| {a} | {r['air_n']} | {np.median(r['air']):.1f} s | {pc(r['air_on'], r['air_n'])} | {q90(r['exc']):.1f}° | {q90(r['spd']):.2f} rad/s | {q90(r['wmax']):.2f} rad/s | {pc(r['td_rec'], r['td_n'])} |")
 print()
-if c["n"] and not c["miss"]:
+if c["n"] and not c["miss"] and not MODE_B:
     for a in ("A2", "A6", "A2i", "A6i"):
         r = D[a]
         if r["n"] == 0 or r["miss"]: print(f"- {a}: 실행 미완 {r['miss']}"); continue

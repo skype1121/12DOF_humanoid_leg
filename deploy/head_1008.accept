@@ -1,15 +1,8 @@
-# head_1008 재적용 허용 목록(1008 04:35 갱신) — 젯슨에 있는 직전 배포본(매니페스트 8c210340…, 1008 00:25 적용)의 md5. 이 값이면 덮어써도 된다.
-81ab09d3b9a451d4db74ee4edc7cfc9a  deploy/cand/head_1008/OPERATOR_COMMANDS.md
-22c7f9e01b5ff2f87c496c33813da3bb  jetson/scripts/console_state.py
-2078b4634e0d4c2002ef63390c9ae6cd  jetson/scripts/operator_console.py
-550f539027885aec058cc1e4cf9adaca  jetson/scripts/rl_bridge_node.py
-0ea71b7a5645c259eee539826e18f718  jetson/scripts/selftest_w3_bridge_node.py
-50b3330889bca7ab4c7c73b8415b64bc  reports/night_1007/jetson/parity_ref.npz
-8e378318f50be826d61c13197b06e254  reports/night_1007/jetson_parity.py
-840dd764226caa00c95a089f4bcdf12f  rl_walking/__init__.py
-8dda5fdb085083857b7b614e6c01ba9b  tests/test_console_walk.py
-64c9078de587a5a345a7922361e64bd7  tests/test_console_walk_bridge.py
-8c210340a7a64e13da28c663c980809f  deploy/head_1008.md5
-485285deabb384c287c0fae0c4cf1290  deploy/head_1008.VERSION
-d24a50ffe21c4bbd9c58d2cef2c46fde  deploy/cand/head_1008/DIFF_LIST.md
-8214625fe659a985ef80ba64eb5e2fe4  deploy/head_1008.plan
+# head_1008 재적용 허용 목록(1008 오전 갱신) — 젯슨에 있는 직전 배포본(매니페스트 8f4373d3…, 1008 04:37 적용, 06:48 확인)의 md5.
+# 이번 변경(정책 메뉴 하나·robotctl prep 의 hang 흡수)으로 덮어쓸 파일만 적는다.
+89e76dedf8c53f6d35925b5f44fb7a73  deploy/cand/head_1008/OPERATOR_COMMANDS.md
+33537f41b12633ac416248ba7f4ae19f  jetson/scripts/operator_console.py
+2d47069b5f5dcb0879407a51ef8226d2  jetson/scripts/robotctl.py
+5149404c4a92d64f1a5b0b87013da1ac  rl_walking/deploy/c5_switch.py
+50e64227752fd8c335270c4e9de604c5  tests/test_console_walk.py
+906bdcda83703b65053f24f3cc540e59  tests/test_operator_console.py

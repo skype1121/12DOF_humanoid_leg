@@ -103,3 +103,36 @@
 
 **되돌리기**: `deploy/deploy_head_1008.sh --rollback --restart-console` 은 1007 밤의 원래 상태(head_1008 이전)로 돌아간다.
 오늘 아침 상태(매니페스트 `8f4373d3`, 정책 10 개 메뉴)로만 되돌리려면 커밋 `6b58d6e6` 의 해당 파일로 매니페스트를 다시 만들어 적용한다.
+
+---
+
+## 공중 정책 시작 키 배포(17:17–17:24) — 승윤님 지시("지금 바로 진행해주세요 배포까지 완료해주세요 저는 실물테스트만 합니다")
+
+| 항목 | 값 |
+|---|---|
+| 원본 커밋(실행 코드) | `385686de` (기록·문서 커밋 `e636e162`) |
+| 매니페스트 | `deploy/head_1008.md5` md5 `b6d9793c095182ea3b4da1d469355844` (직전 `5d51b9b8…`) |
+| 바뀐 파일 16 | 콘솔 3(`operator_console.py`·`console_state.py`·`console_ui.html`) · 브리지 `rl_bridge_node.py` · 러너 `kew3_runner.py` · `robotctl.py` · `selftest_w3_bridge_node.py` · 시험 4 · 운영 문서 · 러너 동치 2 · 매니페스트·VERSION |
+| 새 파일 4 | 공중·착지 정책 G21h2-13498: `logs/rsl_rl/biped12_stage4/2026-10-08_16-04-12_g21h2_s1_from_12299/exported/{policy.onnx(2b718875…),policy.pt,SOURCE_CHECKPOINT}` · `params/env.yaml` |
+| 안 바뀐 것 | 하드웨어맵 `41b68a6f…`(적용 뒤 md5 확인) · `config/` · `jetson/calib_data/` · `~/rl_calib/` — 금지 검사 0 |
+| 젯슨 selftest | 전부 PASS(브리지 9 구성·콘솔·러너·kew3_runner·c5_switch·W3 노드·w3_cmd·latency_check·러너 동치 9 키·md5) — 출력 `/home/mama/humanoid_repo_bak_1008/selftest_20261008_171807.log` |
+| 콘솔 | 17:24 재기동(PID 179791). 기본 정책 `stand_kew3qa_g21a_g24ra_w3s3d15800` · 시험 방식 기본 `air` · 정책 ON 이름 "정책 ON(공중에서 바로 구동)" |
+| 물리 실행 | 없음(CAN 송신·ARM·토크·영점 쓰기 없음. 파일 복사·오프라인 selftest·콘솔 서비스 재기동만) |
+| 기록 | `reports/night_1007/jetson/apply_1008_1717.txt` · 로컬 왕복 `local_test_1008_1709.txt`(PASS 37 / FAIL 0) · 첫 예행 `local_test_1008_1522_rehearsal_fail.txt`(12299 로 selftest 실패 → 원인 추적의 출발점) |
+
+**무엇이 달라졌나**
+- 콘솔이 고를 수 있는 정책 = `stand_kew3qa_…` 하나. 종전 `stand_kew3q_…` 에 공중·착지 구간 정책(G21h2)을 단 3 단 러너(AIR → KE ⇄ W3)다. **지면에서 시작하면 종전과 비트 동일**(러너 동치).
+- 시험 방식 기본값이 `air` 다: `robotctl policy-on` 이 정책을 공중에서 바로 켠다(브리지 `stand + hang_arm`). 착지가 가라앉으면 러너가 KE 로 넘긴다. `robotctl config ground` 로 종전 방식(홀드로 착지 뒤 정책 시작).
+- 러너에 공중 폭주 차단이 들어갔다(매달린 동안 목표가 기본자세에서 30° 넘게 벗어나면 정책을 끊고 기본자세로 되돌려 유지). 콘솔 걷기 버튼 사유·`robotctl status` 에 표시된다.
+- 운영 절차·주의는 `deploy/cand/head_1008/OPERATOR_COMMANDS.md` §0-1, 이상 대응은 `reports/gen_w3/ANOMALY_CARD.md`(v1.1).
+
+**근거**: `reports/gen_w3/AIR_START_1008.md` §11–§16. 사전 등록 판정 AIR5 전부 충족(명목 1,280 env 낙상 0·기운 매달림 512 env 낙상 0·인계 99.8 %·차단 발동 0 / 1,792).
+**한계**: 실물 미검증. 지지 모형은 가정. G21h2 는 seed 1 한 번의 학습. 판정이 본 매달림 피치는 −2.9 ~ +6.2°, 매달림 시간은 20 s 까지.
+
+**되돌리기**: `deploy/deploy_head_1008.sh --rollback --restart-console` 은 1007 밤의 원래 상태(head_1008 이전)로 돌아간다.
+오늘 낮 상태(매니페스트 `5d51b9b8`, 접지 방식 기본)로만 되돌리려면 커밋 `90d52a9a` 의 해당 파일로 매니페스트를 다시 만들어 적용한다.
+공중 방식만 쓰지 않으려면 되돌릴 필요 없이 `robotctl config ground` 면 된다.
+
+**실물 첫 공중 시험 전 확인(현장)**: ① 매달린 상태의 콘솔 fwd·lat(−3 ~ +6° 안인가) ② 공중에서 양발 접촉 비트 0 ③ 정책 ON 직후 다리 움직임이 작고(시뮬 4–6°) 커지지 않는가
+④ 착지 뒤 걷기 버튼 사유 "공중·착지 정책 구간" 이 1–3 s 안에 사라지는가 ⑤ `robotctl status` 에 "공중 폭주 차단" 이 뜨지 않는가.
+

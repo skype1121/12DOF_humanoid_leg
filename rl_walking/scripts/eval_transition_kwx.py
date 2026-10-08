@@ -194,6 +194,7 @@ parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토�
 parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
 parser.add_argument("--kw_unload", type=float, default=0.0, help="X18: 인계 뒤 링크마다 자기 무게의 이 비율(0–0.9)을 위로 받친다(부분지지의 이상화, 1 s 램프). --dist 와 함께 쓰지 않는다")
 parser.add_argument("--contact_pert", type=str, default="", help="X19: 접촉 관측 교란 'delay:N;flip:p;t0:x'(관측 비트만, 물리·채점 불변). '' = 끔")
+parser.add_argument("--kw_air_exported", type=str, default="", help="AIR2: 공중·착지 구간 서기 정책 폴더(exported_N). 주면 합성 러너에 air_runner 를 달고, 공중 인계 팔에서 start_air() 로 시작")
 parser.add_argument("--kw_ke_key", type=str, default="", help="합성 러너의 KE 키(브리지 C5_PAIRS 에 등록된 것). '' = stand_c5kr_g21a_g24ra(종전). 새 서기 정책을 브리지에 등록한 뒤의 확인 실행용 — 덮어쓰기 없이 등록 그대로 쓴다")
 parser.add_argument("--kw_stand_exported", type=str, default="", help="G21h 평가 전용: 합성 러너의 서기 정책 폴더(exported_N — policy.pt/onnx 가 있는 곳). '' = 브리지 등록 그대로(G21a)")
 parser.add_argument("--air_det_hold", action="store_true", help="AIR1: 접지 확인(양발 접촉 0.3 s) 전에는 KE 회복 감지기 정지(서기 정책만) — C5Runner.det_hold")
@@ -306,7 +307,7 @@ if args_cli.ramp_off:
     _hp["ramp_rate_range"] = (0.0, 0.0); _hp["ramp_cap_range"] = (0.0, 0.0); print("[ramp_off] 준정적 롤 토크 램프 0 (RNG 소비 유지, 진단)", flush=True)
 _AIR = None
 if args_cli.air_start:
-    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3)}
+    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3), "model": "force", "k": None}
     for _it in args_cli.air_start.split(";"):
         _k, _, _v = _it.strip().partition(":")
         if _k == "clear":
@@ -315,14 +316,25 @@ if args_cli.air_start:
             _AIR[_k] = float(_v)
         elif _k == "tp":
             _a, _, _b = _v.partition(","); _AIR["tp"] = (float(_a), float(_b or _a))
+        elif _k == "model":
+            assert _v in ("force", "len"), _v; _AIR["model"] = _v
+        elif _k == "k":
+            _a, _, _b = _v.partition(","); _AIR["k"] = (float(_a), float(_b or _a))
         elif _k:
             raise SystemExit(f"--air_start: 모르는 항목 {_k!r}")
     _hp["r0_range"] = (1.0, 1.0); _hp["hold_range"] = (_AIR["hold"], _AIR["hold"]); _hp["release_range"] = (_AIR["rel"], _AIR["rel"])
     # 지지 = 힘제어 케이블(장력 r(t)·m·g, 방향 후크→고정 앵커; 후크는 base 위 0.25–0.40 m) + 앞뒤 2점 현수의 피치 구속(간격 tp m — 실측 없음, 가정 0.1–0.3).
     # base 원점에 수직힘만 주는 종전 힘 모델은 매달린 몸이 CoM 편심만큼 20° 넘게 기운다(연습 실행에서 확인) — 실물 지그와 다르다.
-    _hp["cable"] = True; _hp["cable_force_mode"] = True; _hp["two_point_d_range"] = tuple(_AIR["tp"])
+    _hp["cable"] = True; _hp["cable_force_mode"] = (_AIR["model"] == "force"); _hp["two_point_d_range"] = tuple(_AIR["tp"])
+    if _AIR["model"] == "len":
+        # AIR2 줄 길이 모형(위치 제어 하강): 줄 = 강성 k 의 스프링(당기기만), 길이를 rel s 에 걸쳐 (초기 늘어남 + 여유) 만큼 푼다 — 몸은 줄에 매달려 내려가고
+        # 발이 닿으면 줄이 느슨해지며 하중이 다리로 넘어간다. 여유 = 스폰 높이 최댓값 + 3–8 cm(다 풀면 줄이 반드시 느슨). 하강 속도 ≈ (늘어남 + 여유) / rel.
+        # 매달려 있는 동안 몸이 가라앉지 않는다(힘 모형은 장력이 정확히 체중이라 수직으로 중립 — 오래 매달면 표류한다). 강성은 가정(실측 없음).
+        _hp["cable_no_ramp"] = True; _hp["cbl_slack_range"] = (_AIR["clear"][1] + 0.03, _AIR["clear"][1] + 0.08)
+        if _AIR["k"] is not None:
+            _hp["cbl_k_range"] = tuple(_AIR["k"])
     _AIR["pre_air"] = (float(args_cli.precheck_s) + float(args_cli.level_s)) <= _AIR["hold"] + 1e-9      # 인계가 방출 시작보다 먼저 = 공중에서 정책 시작
-    print(f"[air_start] 지지비 1.0·스폰 +{_AIR['clear']} m · 방출 {_AIR['hold']} s 부터 {_AIR['rel']} s · 인계 {'공중' if _AIR['pre_air'] else '착지 뒤(홀드로 착지)'} · 힘제어 케이블 + 2점 현수 간격 {_AIR['tp']} m (가정 모형 — 실물 줄·지그의 실측 아님)", flush=True)
+    print(f"[air_start] 지지비 1.0·스폰 +{_AIR['clear']} m · 방출 {_AIR['hold']} s 부터 {_AIR['rel']} s · 인계 {'공중' if _AIR['pre_air'] else '착지 뒤(홀드로 착지)'} · {'힘제어 케이블' if _AIR['model'] == 'force' else '줄 길이 모형(위치 제어 하강)'} + 2점 현수 간격 {_AIR['tp']} m (가정 모형 — 실물 줄·지그의 실측 아님)", flush=True)
 else:
     assert float(_hp["r0_range"][1]) <= 1e-6, f"지면 절차 평가는 지지 0 태스크에서만 (r0_range={_hp['r0_range']})"
 _DR_AXES = ("pose", "gains", "delay", "com", "posebias", "play", "mass", "friction", "calib", "asym")
@@ -1091,7 +1103,17 @@ if KWL:
         _st_, _old_ = _BR.C5_PAIRS[_KW_KEYS[1]]
         print(f"[runner_loop] KE 키 {_KW_KEYS[1]} 의 회복 정책 폴더 덮어쓰기: {_old_} → {_krx_} · SOURCE_CHECKPOINT {open(os.path.join(_krx_, 'SOURCE_CHECKPOINT')).read().strip()[:120] if os.path.exists(os.path.join(_krx_, 'SOURCE_CHECKPOINT')) else '(없음)'}", flush=True)
         _BR.C5_PAIRS[_KW_KEYS[1]] = (_st_, _krx_)
-    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max)) for _ in range(N)]
+    _KW_AIRKEY = None
+    if args_cli.kw_air_exported:
+        _ax = os.path.abspath(args_cli.kw_air_exported); _KW_AIRKEY = "stand_eval_air"
+        assert os.path.exists(os.path.join(_ax, "policy.pt")) or os.path.exists(os.path.join(_ax, "policy.onnx")), f"--kw_air_exported: 정책 파일 없음 {_ax}"
+        assert os.path.exists(os.path.join(os.path.dirname(_ax), "params", "env.yaml")), f"--kw_air_exported: 학습 env.yaml 없음 {_ax}"
+        _BR.CHECKPOINTS[_KW_AIRKEY] = _ax; _BR.CKPT_DEFAULT_POSE[_KW_AIRKEY] = list(_BR.CKPT_DEFAULT_POSE["stand_crouch_g21a"])
+        _BR.CKPT_GAIT_FREQ[_KW_AIRKEY] = _BR.CKPT_GAIT_FREQ["stand_crouch_g21a"]; _BR.CKPT_REQUIRE_ENV_YAML.add(_KW_AIRKEY)
+        assert _BR.ckpt_obs_filter(_KW_AIRKEY) == _BR.ckpt_obs_filter("stand_crouch_g21a"), "공중 정책의 관측 필터 계약이 G21a 와 다름"
+        print(f"[runner_loop] AIR2 공중·착지 러너: {_ax} (평가용 키 {_KW_AIRKEY}, 계약 = stand_crouch_g21a) · 공중 인계 팔이면 start_air()", flush=True)
+    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max),
+                **({"air_runner": _BR._make_runner(_KW_AIRKEY)} if _KW_AIRKEY else {})) for _ in range(N)]
     _KW_SAFETY = _W3D.parse_w3_safety(args_cli.kw_safety) if args_cli.kw_safety else _BR.W3_SAFETY
     if args_cli.kw_safety:
         print(f"[runner_loop] X19b 감독기 문턱 덮어쓰기: {args_cli.kw_safety} → {_KW_SAFETY}", flush=True)
@@ -1173,6 +1195,8 @@ if KWL:
         if i == STEPS_PRE:
             for R in KWR:
                 R.reset()
+                if _KW_AIRKEY and _AIR is not None and _AIR["pre_air"]:
+                    R.start_air()
             if args_cli.kw_soft_clamp_all:
                 import json as _jsc
                 _lim_ = _jsc.load(open(args_cli.kw_soft_clamp_json or os.path.join(REPO, "config", "joint_limits_12dof.json"), encoding="utf-8"))["limits_deg"]
@@ -1308,7 +1332,7 @@ if KWL:
             R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], (_npk.ones(2, dtype=_npk.float32) if (args_cli.air_contact_one and args_cli.air_det_hold and not _AIR_DH["acq"][e]) else ct[e]))
             act[e] = R.last_step_action; kind[e] = R.last_step_kind; want_v[e] = bool(clk.want)
             if not R.last_event and R.ticks_in_mode > 6:              # 전환 뒤 이력이 다 찬 틱만(fresh 전환의 백필 구간 제외)
-                _ro = (R.w3r if kind[e] == 2 else R.ke.core).last_obs
+                _ro = (R.w3r if kind[e] == 2 else (R.air if kind[e] == 3 else R.ke.core)).last_obs
                 if _ro is not None:
                     _eo = po_np[e]
                     for n_, (a0_, b0_) in _KW_CMP:
@@ -1333,7 +1357,7 @@ if KWL:
             if _hl_fault_now.any():
                 kw_des = kw_des & ~torch.as_tensor(_hl_fault_now, device=dev)
         kind_t = torch.as_tensor(kind, device=dev); ge_t = torch.as_tensor(ge_top, device=dev); fk = torch.as_tensor(first_ke, device=dev); en_t = torch.as_tensor(en_now, device=dev)
-        ke_act = (kind_t == 0) | (kind_t == 1); w3_act = kind_t == 2; sw_mode = kind_t == 1
+        ke_act = (kind_t == 0) | (kind_t == 1) | (kind_t == 3); w3_act = kind_t == 2; sw_mode = kind_t == 1      # 3 = AIR(공중·착지 서기 — 클록 있는 서기 정책이라 KE 서기와 같은 쪽)
         tr_want = torch.as_tensor(want_v, device=dev); tr_cmdv = torch.where(tr_want.unsqueeze(1), torch.as_tensor(_npk.asarray(kw_cur, _npk.float32), device=dev), torch.zeros(N, 3, device=dev))
         uenv._tr_want = tr_want & w3_act; uenv._tr_cmd = torch.where((tr_want & w3_act).unsqueeze(1), tr_cmdv, torch.zeros_like(tr_cmdv))   # env 쪽 W3 추적기(지표용)를 러너 클록과 같이
         tr_enable = torch.where(en_t & torch.isnan(tr_enable), torch.full_like(tr_enable, t_rel), tr_enable)

@@ -127,8 +127,9 @@ def _cable_apply(env, st, ids, asset_cfg):
         v = asset.data.root_lin_vel_w[ids] if hasattr(asset.data, "root_lin_vel_w") else torch.zeros_like(pos)
         ddist = -(dirw * v).sum(-1)
         T = _cable_tension(dist, L, st["cbl_k"][ids], st["cbl_c"][ids], ddist, st["cbl_tmax"][ids])
-        ramp = (st["t"][ids] / 1.0).clamp(0.0, 1.0)          # 첫 1s 램프인: 스폰 낙하 착지 충격(시뮬 인공물) 제거
-        T = T * ramp
+        if not bool(st.get("cbl_noramp", False)):          # 1008: 공중 매달림 시작(cable_no_ramp)에서는 램프 없이 처음부터 장력
+            ramp = (st["t"][ids] / 1.0).clamp(0.0, 1.0)      # 첫 1s 램프인: 스폰 낙하 착지 충격(시뮬 인공물) 제거
+            T = T * ramp
     st["cbl_T"][ids] = T.detach()                        # item 4c: 실제 적용 장력 기록 (지지 소멸·재긴장 판정·로깅용)
     st["cbl_dist"][ids] = dist.detach()
     F_w = T.unsqueeze(-1) * dirw
@@ -525,8 +526,9 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
                        cbl_slack_range=(0.05, 0.15), cable_force_mode=False, anchor_vx_range=(0.0, 0.0), anchor_vy_range=(0.0, 0.0), ramp_roll_torque=(0.0, 0.0, 0.0),
                        ramp_rate_range=None, ramp_cap_range=None, ramp_start_range=None, ramp_sign_random=False,
                        two_point_d_range=(0.0, 0.0), two_point_kp_range=(200.0, 200.0), two_point_kd_range=(10.0, 10.0),
-                       yaw_damp=0.0):
+                       yaw_damp=0.0, cable_no_ramp=False):
     """mode="reset": 에피소드마다 지지 스케줄·로프 기하를 새로 뽑고 첫 지지력을 즉시 건다.
+    cable_no_ramp(1008, 기본 False = 종전): 길이 제약 케이블의 '첫 1 s 장력 램프인'을 끈다 — 공중 매달림 시작에서는 램프 동안 몸이 떨어진다.
     two_point_d_range: 0913 승윤님 확인 '줄은 몸통 앞·뒤 2점' — 두 줄이 팽팽한 동안 피치를 구속한다(롤은 진자 그대로).
     토크 = clip(−kp·pitch − kd·ω_y, ±T·d/2) (줄은 당기기만 하므로 한 줄이 전 장력을 받을 때가 최대). d=0 이면 종전(단일 후크)과 동일.
     d 실측 없음(가정 0.1~0.3 m)."""
@@ -575,6 +577,7 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
         # 0912 힘제어 케이블: 장력 크기는 r(t)·m·g(힘 모델과 같은 스케줄), 방향은 후크→고정 앵커(기하 결합). 강성·길이 제약 없음 —
         # 실물 로프 강성이 미측정이라 길이 모델은 k 에 결과가 지배되므로, 줄 모멘트(후크 비연직) 가설 검정엔 이 모드를 쓴다.
         st["cbl_force"] = bool(cable_force_mode)
+        st["cbl_noramp"] = bool(cable_no_ramp)
         st["avx"][ids] = U(*anchor_vx_range); st["avy"][ids] = U(*anchor_vy_range)   # 앵커가 t 에 비례해 이동(운영자·윈치 드리프트 가설)
         asset0 = env.scene[asset_cfg.name]
         p0 = asset0.data.root_pos_w[ids]                     # 리셋 시 base 월드 위치

@@ -278,7 +278,7 @@ rep("""parser.add_argument("--kw_safety", type=str, default="",""", """parser.ad
 parser.add_argument("--kw_safety", type=str, default="",""")
 rep("""assert float(_hp["r0_range"][1]) <= 1e-6, f"지면 절차 평가는 지지 0 태스크에서만 (r0_range={_hp['r0_range']})\"""", """_AIR = None
 if args_cli.air_start:
-    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3)}
+    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3), "model": "force", "k": None}
     for _it in args_cli.air_start.split(";"):
         _k, _, _v = _it.strip().partition(":")
         if _k == "clear":
@@ -287,14 +287,25 @@ if args_cli.air_start:
             _AIR[_k] = float(_v)
         elif _k == "tp":
             _a, _, _b = _v.partition(","); _AIR["tp"] = (float(_a), float(_b or _a))
+        elif _k == "model":
+            assert _v in ("force", "len"), _v; _AIR["model"] = _v
+        elif _k == "k":
+            _a, _, _b = _v.partition(","); _AIR["k"] = (float(_a), float(_b or _a))
         elif _k:
             raise SystemExit(f"--air_start: 모르는 항목 {_k!r}")
     _hp["r0_range"] = (1.0, 1.0); _hp["hold_range"] = (_AIR["hold"], _AIR["hold"]); _hp["release_range"] = (_AIR["rel"], _AIR["rel"])
     # 지지 = 힘제어 케이블(장력 r(t)·m·g, 방향 후크→고정 앵커; 후크는 base 위 0.25–0.40 m) + 앞뒤 2점 현수의 피치 구속(간격 tp m — 실측 없음, 가정 0.1–0.3).
     # base 원점에 수직힘만 주는 종전 힘 모델은 매달린 몸이 CoM 편심만큼 20° 넘게 기운다(연습 실행에서 확인) — 실물 지그와 다르다.
-    _hp["cable"] = True; _hp["cable_force_mode"] = True; _hp["two_point_d_range"] = tuple(_AIR["tp"])
+    _hp["cable"] = True; _hp["cable_force_mode"] = (_AIR["model"] == "force"); _hp["two_point_d_range"] = tuple(_AIR["tp"])
+    if _AIR["model"] == "len":
+        # AIR2 줄 길이 모형(위치 제어 하강): 줄 = 강성 k 의 스프링(당기기만), 길이를 rel s 에 걸쳐 (초기 늘어남 + 여유) 만큼 푼다 — 몸은 줄에 매달려 내려가고
+        # 발이 닿으면 줄이 느슨해지며 하중이 다리로 넘어간다. 여유 = 스폰 높이 최댓값 + 3–8 cm(다 풀면 줄이 반드시 느슨). 하강 속도 ≈ (늘어남 + 여유) / rel.
+        # 매달려 있는 동안 몸이 가라앉지 않는다(힘 모형은 장력이 정확히 체중이라 수직으로 중립 — 오래 매달면 표류한다). 강성은 가정(실측 없음).
+        _hp["cable_no_ramp"] = True; _hp["cbl_slack_range"] = (_AIR["clear"][1] + 0.03, _AIR["clear"][1] + 0.08)
+        if _AIR["k"] is not None:
+            _hp["cbl_k_range"] = tuple(_AIR["k"])
     _AIR["pre_air"] = (float(args_cli.precheck_s) + float(args_cli.level_s)) <= _AIR["hold"] + 1e-9      # 인계가 방출 시작보다 먼저 = 공중에서 정책 시작
-    print(f"[air_start] 지지비 1.0·스폰 +{_AIR['clear']} m · 방출 {_AIR['hold']} s 부터 {_AIR['rel']} s · 인계 {'공중' if _AIR['pre_air'] else '착지 뒤(홀드로 착지)'} · 힘제어 케이블 + 2점 현수 간격 {_AIR['tp']} m (가정 모형 — 실물 줄·지그의 실측 아님)", flush=True)
+    print(f"[air_start] 지지비 1.0·스폰 +{_AIR['clear']} m · 방출 {_AIR['hold']} s 부터 {_AIR['rel']} s · 인계 {'공중' if _AIR['pre_air'] else '착지 뒤(홀드로 착지)'} · {'힘제어 케이블' if _AIR['model'] == 'force' else '줄 길이 모형(위치 제어 하강)'} + 2점 현수 간격 {_AIR['tp']} m (가정 모형 — 실물 줄·지그의 실측 아님)", flush=True)
 else:
     assert float(_hp["r0_range"][1]) <= 1e-6, f"지면 절차 평가는 지지 0 태스크에서만 (r0_range={_hp['r0_range']})\"""")
 rep("""_pr = env_cfg.events.reset_base.params["pose_range"]
@@ -336,4 +347,30 @@ rep("""    _KW_KEYS = ("stand_w3s3d_15800", "stand_c5kr_g21a_g24ra")""", """    
     assert _KW_KEYS[1] in _BR.C5_PAIRS, "--kw_ke_key: 브리지에 없는 KE 키 " + repr(_KW_KEYS[1])""")
 rep("""parser.add_argument("--kw_stand_exported", type=str, default="",""", """parser.add_argument("--kw_ke_key", type=str, default="", help="합성 러너의 KE 키(브리지 C5_PAIRS 에 등록된 것). '' = stand_c5kr_g21a_g24ra(종전). 새 서기 정책을 브리지에 등록한 뒤의 확인 실행용 — 덮어쓰기 없이 등록 그대로 쓴다")
 parser.add_argument("--kw_stand_exported", type=str, default="",""")
+# 1008 AIR2: 합성 러너의 AIR(공중·착지 구간) 모드 평가 — 공중 러너 = 브리지 _make_runner 로 만든 단일 서기 러너(정책 폴더만 평가용 키로 지정).
+#   --air_start 의 인계가 공중일 때(인계 ≤ 방출 시작)만 start_air() 를 부른다. 대조 팔(홀드로 착지 뒤 인계)은 종전처럼 KE 로 시작한다.
+rep("""parser.add_argument("--kw_ke_key", type=str, default="",""", """parser.add_argument("--kw_air_exported", type=str, default="", help="AIR2: 공중·착지 구간 서기 정책 폴더(exported_N). 주면 합성 러너에 air_runner 를 달고, 공중 인계 팔에서 start_air() 로 시작")
+parser.add_argument("--kw_ke_key", type=str, default="",""")
+rep("""    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max)) for _ in range(N)]""", """    _KW_AIRKEY = None
+    if args_cli.kw_air_exported:
+        _ax = os.path.abspath(args_cli.kw_air_exported); _KW_AIRKEY = "stand_eval_air"
+        assert os.path.exists(os.path.join(_ax, "policy.pt")) or os.path.exists(os.path.join(_ax, "policy.onnx")), f"--kw_air_exported: 정책 파일 없음 {_ax}"
+        assert os.path.exists(os.path.join(os.path.dirname(_ax), "params", "env.yaml")), f"--kw_air_exported: 학습 env.yaml 없음 {_ax}"
+        _BR.CHECKPOINTS[_KW_AIRKEY] = _ax; _BR.CKPT_DEFAULT_POSE[_KW_AIRKEY] = list(_BR.CKPT_DEFAULT_POSE["stand_crouch_g21a"])
+        _BR.CKPT_GAIT_FREQ[_KW_AIRKEY] = _BR.CKPT_GAIT_FREQ["stand_crouch_g21a"]; _BR.CKPT_REQUIRE_ENV_YAML.add(_KW_AIRKEY)
+        assert _BR.ckpt_obs_filter(_KW_AIRKEY) == _BR.ckpt_obs_filter("stand_crouch_g21a"), "공중 정책의 관측 필터 계약이 G21a 와 다름"
+        print(f"[runner_loop] AIR2 공중·착지 러너: {_ax} (평가용 키 {_KW_AIRKEY}, 계약 = stand_crouch_g21a) · 공중 인계 팔이면 start_air()", flush=True)
+    KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max),
+                **({"air_runner": _BR._make_runner(_KW_AIRKEY)} if _KW_AIRKEY else {})) for _ in range(N)]""")
+rep("""        if i == STEPS_PRE:
+            for R in KWR:
+                R.reset()
+""", """        if i == STEPS_PRE:
+            for R in KWR:
+                R.reset()
+                if _KW_AIRKEY and _AIR is not None and _AIR["pre_air"]:
+                    R.start_air()
+""")
+rep("""                _ro = (R.w3r if kind[e] == 2 else R.ke.core).last_obs""", """                _ro = (R.w3r if kind[e] == 2 else (R.air if kind[e] == 3 else R.ke.core)).last_obs""")
+rep("""        ke_act = (kind_t == 0) | (kind_t == 1); w3_act = kind_t == 2; sw_mode = kind_t == 1""", """        ke_act = (kind_t == 0) | (kind_t == 1) | (kind_t == 3); w3_act = kind_t == 2; sw_mode = kind_t == 1      # 3 = AIR(공중·착지 서기 — 클록 있는 서기 정책이라 KE 서기와 같은 쪽)""")
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

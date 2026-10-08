@@ -53,7 +53,11 @@ class ConsoleTests(unittest.TestCase):
 
     #: 1008: 콘솔 메뉴에 남은 정책(합성 키)은 공중 정책 시작(hang_arm)을 받지 않는다. 공중 방식의 콘솔 경로(코드는 그대로 남아 있다)는
     #: 메뉴를 시험용으로 바꿔 정리된 서기 키로 계속 고정한다.
+    #: 1008 오후: 남긴 정책이 공중 정책 시작을 받는 합성 키로 바뀌어, 기본 키로도 공중 방식을 탈 수 있다(아래 *_kept_policy 시험들).
+    #: 걷기 키가 아닌 서기 키의 공중 절차(종전 hang_arm 계약)는 이 시험용 메뉴로 계속 고정한다.
     AIR_KEY = "stand_crouch_g12"
+    #: 공중 정책 시작을 받지 않는 걷기 키(지면 시작 학습) — 시험용 메뉴에 올려 '공중 방식 거부'를 계속 고정한다
+    GROUND_ONLY_WALK_KEYS = ("stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800")
 
     def use_air_key(self):
         p = patch.object(c, "CKPT_MENU", [self.AIR_KEY]); p.start(); self.addCleanup(p.stop)
@@ -76,16 +80,49 @@ class ConsoleTests(unittest.TestCase):
         self.assertIsNone(self.trial.slack_at)
         self.assertEqual(c.console_snapshot()["bridge"]["loaded_checkpoint"], c.CKPT_DEFAULT)
 
-    def test_kept_policy_refuses_air_policy_start(self):
-        """1008: 남긴 정책(합성 키)은 지면 시작으로만 학습·평가됐다 — 공중 정책 시작 설정은 서버가 사유를 대고 거부한다(AIR1 시뮬: 착지 낙상 다수)."""
-        code, res = self.request("configure", mode="air", checkpoint=c.CKPT_DEFAULT)
-        self.assertEqual(code, 400, res)
-        self.assertIn("공중 정책 시작", res["message"])
-        self.assertEqual(self.trial.mode, "ground")
+    def test_kept_policy_is_the_air_start_key_and_accepts_both_modes(self):
+        """1008 오후: 남긴 정책 = 공중 정책 시작을 받는 합성 키(종전 합성 키 + 공중·착지 구간 정책). 시험 방식의 기본값은 '공중'이고, 공중·접지 설정을 둘 다 받는다."""
+        self.assertEqual(c.CKPT_DEFAULT, "stand_kew3qa_g21a_g24ra_w3s3d15800")
+        self.assertEqual((c.MODE_DEFAULT, self.trial.mode, c.console_snapshot()["trial"]["mode"]), ("air", "air", "air"))
+        self.assertEqual(TrialState("stand_crouch_g12").mode, "ground")                      # 공중 정책 시작 키가 아니면 종전 기본값
+        self.assertEqual(TrialState("stand_kew3q_g21a_g24ra_w3s3d15800").mode, "ground")
+        self.assertEqual(c.console_snapshot()["trial"]["allowed"]["policy_on"]["label"], "정책 ON(공중에서 바로 구동)")
         self.step("configure", mode="ground", checkpoint=c.CKPT_DEFAULT)
+        self.assertEqual(self.trial.mode, "ground")
+        self.assertEqual(c.console_snapshot()["trial"]["allowed"]["policy_on"]["label"], "정책 ON(착지 자동 인수)")
+        self.step("configure", mode="air", checkpoint=c.CKPT_DEFAULT)
+        self.assertEqual(self.trial.mode, "air")
+        self.assertEqual(self.request("configure", mode="hang", checkpoint=c.CKPT_DEFAULT)[0], 400)
+        self.assertEqual(self.trial.mode, "air")
+
+    def test_new_trial_keeps_the_mode_of_the_previous_trial(self):
+        """'새 시험 준비'는 앞 시험의 방식·정책을 그대로 넘긴다(기본값으로 되돌리지 않는다) — 접지 방식으로 바꿔 둔 운영자의 선택이 다음 시험에서 조용히 공중으로 바뀌지 않게."""
+        for mode in ("ground", "air"):
+            self.step("configure", mode=mode, checkpoint=c.CKPT_DEFAULT)
+            c.TRIAL.completed.add("release")                                                 # (회수·토크 해제까지 끝난 상태)
+            number = c.TRIAL.number
+            self.step("new_trial")
+            self.assertEqual((c.TRIAL.mode, c.TRIAL.checkpoint, c.TRIAL.number), (mode, c.CKPT_DEFAULT, number + 1))
+            self.assertEqual(c.console_snapshot()["trial"]["mode"], mode)
+
+    def test_ground_only_walk_keys_still_refuse_air_policy_start(self):
+        """공중 정책 시작을 받지 않는 걷기 키(지면 시작으로만 학습·평가 — AIR1 시뮬: 착지 낙상 다수)는 메뉴에 올라와 있어도 공중 방식 설정을 서버가 사유를 대고 거부한다."""
+        for key in self.GROUND_ONLY_WALK_KEYS:
+            with patch.object(c, "CKPT_MENU", [key]):
+                before = (self.trial.mode, self.trial.checkpoint)
+                code, res = self.request("configure", mode="air", checkpoint=key)
+                self.assertEqual(code, 400, (key, res))
+                self.assertIn("공중 정책 시작(hang_arm)을 받지 않습니다", res["message"])
+                self.assertIn("접지 후 정책 인계", res["message"])
+                self.assertEqual((self.trial.mode, self.trial.checkpoint), before)           # 설정 불변
+                self.step("configure", mode="ground", checkpoint=key)                        # 접지 방식은 받는다
+                self.assertEqual((self.trial.mode, self.trial.checkpoint), ("ground", key))
+                self.assertEqual(TrialState(key).mode, "ground")
+            self.trial.mode, self.trial.checkpoint = before
 
     def test_cleaned_up_policies_are_refused_by_the_server(self):
-        for key in ("stand_crouch_g12", "stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800"):
+        for key in ("stand_crouch_g12", "stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800",
+                    "stand_kew3q_g21a_g24ra_w3s3d15800"):
             code, res = self.request("configure", mode="ground", checkpoint=key)
             self.assertEqual(code, 400, (key, res))
             self.assertIn("정리된 정책", res["message"])
@@ -98,6 +135,21 @@ class ConsoleTests(unittest.TestCase):
         self.step("op_touchdown")
         self.step("op_slack_done")
         self.assertEqual(self.trial.measurement["state"], "measuring")
+
+    def test_air_flow_with_the_kept_policy(self):
+        """1008 오후: 남긴 정책(공중 정책 시작 키)으로 단계별 공중 절차 — 접촉 없이 stand 까지 가고, stand 는 hang_arm 으로 나간다(요청이 끼워 넣은 값은 무시)."""
+        self.prepare("air", until="bridge")
+        self.assertEqual(self.demo.contact, [False, False])
+        with patch.object(self.demo, "act", wraps=self.demo.act) as execute:
+            self.step("stand", checkpoint="stand_v7", hang_arm=False, touchdown_start=True)
+            execute.assert_called_once_with("stand", {"checkpoint": c.CKPT_DEFAULT, "hang_arm": True})
+        self.assertIn("stand", self.trial.completed)
+        self.assertFalse(self.trial.fault)
+        self.assertFalse(self.trial.policy_on)
+        self.assertEqual(self.request("op_slack_done")[0], 409)                              # 매달린 채(무접촉)로는 무보조 확인 불가
+        self.step("op_touchdown")
+        self.step("op_slack_done")
+        self.assertEqual(self.trial.measurement["commander"], "policy")
 
     def test_force_values_do_not_gate_contact(self):
         telemetry = c.Telemetry()
@@ -564,6 +616,58 @@ class ConsoleTests(unittest.TestCase):
         self.step("op_slack_done")
         self.assertEqual(self.trial.measurement["commander"], "policy")
 
+    def _policy_on_air(self, checkpoint=None):
+        self.prepare("air", until="gain_ramp", checkpoint=checkpoint)
+        self.assertEqual(self.demo.contact, [False, False])        # 매달린 상태
+        calls = []
+        original = self.demo.act
+        def spy(action, payload):
+            calls.append((action, dict(payload)))
+            return original(action, payload)
+        with patch.object(self.demo, "act", side_effect=spy):
+            code, res = self.request("policy_on")
+            self.assertEqual(code, 200, res)
+            self.assertIn("공중에서 바로 구동", res["message"])
+            self.assertNotIn("착지 확인 뒤에만", res["message"])
+            self.wait_policy_on()
+        return calls
+
+    def test_policy_on_air_mode_starts_policy_in_the_air(self):
+        """1008 오후 공중 방식의 정책 ON: 같은 단계를 같은 순서로 한 번씩 — 마지막 stand 만 hang_arm 으로 나간다(착지 자동 인수 touchdown_start 아님).
+        착지 대기가 없다: 정책이 공중에서 구동 중(명령 주체 = 정책), 화면 이름·기록 문구도 그렇게 말한다."""
+        self.assertEqual(c.console_snapshot()["trial"]["allowed"]["policy_on"]["label"], "정책 ON(공중에서 바로 구동)")
+        calls = self._policy_on_air()
+        self.assertFalse(self.trial.fault, self.trial.fault)
+        self.assertEqual([a for a, _ in calls], list(c.POLICY_ON_STEPS))   # 기존 단계를 순서대로, 한 번씩
+        stand = dict(calls)["stand"]
+        self.assertEqual(stand, {"checkpoint": c.CKPT_DEFAULT, "hang_arm": True, "touchdown_start": False})
+        self.assertEqual(c.bridge_cmd_payload("stand", {k: stand[k] for k in ("hang_arm", "touchdown_start")}), {"cmd": "stand", "hang_arm": True})
+        self.assertTrue(set(c.POLICY_ON_STEPS) | {"policy_on"} <= self.trial.completed)
+        self.assertTrue(self.trial.policy_on)
+        snap = c.console_snapshot()["trial"]
+        self.assertNotIn("착지 대기", snap["phase"])
+        self.assertIn("정책 제어", snap["phase"])
+        self.assertIsNone(self.demo.start_gate)                      # 착지 자동 인수 게이트를 만들지 않았다
+        self.assertEqual(self.trial.commander(), "policy")           # 공중에서 이미 정책이 명령 중
+        armed = [e for e in self.trial.history if e.get("event") == "policy_on_armed"]
+        self.assertEqual(len(armed), 1)
+        self.assertIn("공중 정책 구동", armed[0]["message"])
+        self.assertNotIn("착지 대기", armed[0]["message"])
+        self.assertEqual(self.request("policy_on")[0], 409)          # 중복 실행 거부
+        self.assertEqual(self.request("stand")[0], 409)              # 단계 재실행 거부
+        self.assertEqual(self.request("op_slack_done")[0], 409)      # 매달린 채로는 무보조 확인 불가(양발 접촉 필요)
+        self.step("op_touchdown")
+        self.step("op_slack_done")
+        self.assertEqual(self.trial.measurement["commander"], "policy")
+
+    def test_policy_on_follows_the_mode_for_a_non_walk_key_too(self):
+        """정책 ON 의 마지막 단계는 시험 방식만 본다: 걷기 키가 아닌 서기 키(시험용 메뉴)의 공중 방식도 hang_arm 으로 나간다(종전 단계별 공중 절차와 같은 인자)."""
+        key = self.use_air_key()
+        calls = self._policy_on_air(checkpoint=key)
+        self.assertFalse(self.trial.fault, self.trial.fault)
+        self.assertEqual(dict(calls)["stand"], {"checkpoint": key, "hang_arm": True, "touchdown_start": False})
+        self.assertEqual(self.trial.commander(), "policy")
+
     def test_policy_on_blocks_other_actions_while_running_and_estop_aborts(self):
         self.prepare(until="gain_ramp")
         gate = threading.Event()
@@ -771,6 +875,27 @@ def test_slack_confirm_still_needs_contact_and_fresh_sensors():
     assert reason() is None, reason()                       # 홀드·양발·신선 → 허용
     assert reason(contact=(False, True)) is not None        # 한 발만 → 거부
     assert reason(fresh=dict(FRESH, imu=False)) is not None  # IMU 낡음 → 거부
+
+
+def test_page_policy_on_wording_follows_the_mode():
+    """1008 오후: 정책 ON 의 화면 문구는 시험 방식을 따른다 — 접지 방식의 버튼·설명·확인 문구는 종전 글자 그대로이고, 공중 방식일 때만 '공중에서 바로 구동' 문구로 바뀐다
+    (마크업·스크립트 조각 확인. 스크립트를 실제로 돌려 본 것은 아니다)."""
+    page = c.render_page()
+    ground_note = "공중 수평 자세(kp150)에서 한 번 — 인계·기준점·ARM·정책 로드를 같은 게이트로 진행, 정책은 양발 착지 확인 뒤에만 시작"
+    assert '<button data-action="policy_on" id="policyOnBtn">정책 ON (착지 자동 인수)</button><small id="policyOnNote">' + ground_note + "</small>" in page
+    assert "const POLICY_ON_GROUND={label:'정책 ON (착지 자동 인수)',note:'" + ground_note + "'};" in page
+    assert "function confirmText(action){return action==='policy_on'&&state?.trial.mode==='air'?POLICY_ON_AIR.confirm:confirmations[action]}" in page
+    assert "text('confirmText',custom?.text||confirmText(action))" in page and "text('confirmText',custom?.text||confirmations[action])" not in page
+    air = page.split("const POLICY_ON_AIR={", 1)[1].split("};", 1)[0]
+    for part in ("정책이 공중에서 바로 구동", "다리가 움직일 수 있", "줄이 로봇을 지지", "발이 바닥에서 떨어져", "다리 주변에 사람이 없는지", "지그를 천천히 내리세요",
+                 "서기 정책(KE)으로 자동으로 넘깁니다", "걷기 버튼이 잠겨"):
+        assert part in air, part
+    assert "착지(0.3 s)·정착을 브리지가 확인한 뒤에만 시작" not in air           # 접지 방식의 문장이 공중 문구에 섞이지 않는다
+    ground = page.split("const confirmations={policy_on:'", 1)[1].split("',air_gait_on:", 1)[0]
+    assert "정책은 양발 착지(0.3 s)·정착을 브리지가 확인한 뒤에만 시작" in ground and "공중에서 바로" not in ground
+    assert "text('policyOnBtn',t.mode==='air'?(t.allowed.policy_on?.label||'정책 ON(공중에서 바로 구동)'):POLICY_ON_GROUND.label)" in page
+    assert "text('policyOnNote',t.mode==='air'?POLICY_ON_AIR.note:POLICY_ON_GROUND.note)" in page
+    assert "w.mode==='air'?'공중·착지 정책(착지 정착 뒤 KE 인계)'" in page       # 걷기 패널의 모드 표시
 
 
 def test_policy_on_level_pose_and_ramp_preconditions():

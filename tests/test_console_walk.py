@@ -138,9 +138,11 @@ def test_sim_reference_is_labelled_and_only_on_enabled_buttons(tmp_path):
 
 def test_walk_keys_are_the_1007_pair_plus_the_requiet_composite_key():
     """1008: 걷기 키 = 1007 의 두 키(이름·순서·표시·기동 인자 그대로) + 둘째 합성 키(첫 합성 키 + KE 감지기 갇힘 해소 = 시뮬 합성 평가 구성).
-    그 밖의 키는 없다. 둘째 합성 키의 브리지 인자는 첫 합성 키와 같다(다른 것은 브리지 명세의 감지기 설정뿐)."""
+    그 밖의 키는 없다. 둘째 합성 키의 브리지 인자는 첫 합성 키와 같다(다른 것은 브리지 명세의 감지기 설정뿐).
+    1008 오후: + 셋째 합성 키(둘째 합성 키 + 공중·착지 구간 서기 정책 G21h — 공중 정책 시작을 받는 키). 맨 뒤에 붙고 앞의 세 키는 그대로다."""
     old = {"stand_w3s3d_15800": ["--experimental-w3"], "stand_kew3_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"]}
-    new = {"stand_kew3q_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"]}
+    new = {"stand_kew3q_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
+           "stand_kew3qa_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"]}
     assert list(cs.WALK_KEYS) == list(old) + list(new) == c.WALK_CKPTS and set(c.WALK_BRIDGE_ARGS) == set(old) | set(new)
     assert cs.WALK_KEYS["stand_w3s3d_15800"] == {"composite": False, "label": "걷기 실험 · W3 단독"}
     assert cs.WALK_KEYS["stand_kew3_g21a_g24ra_w3s3d15800"] == {"composite": True, "label": "걷기 실험 · 서기 KE + 걷기 W3 합성"}
@@ -150,6 +152,16 @@ def test_walk_keys_are_the_1007_pair_plus_the_requiet_composite_key():
     assert all(s in q["label"] for s in ("걷기 실험", "서기 KE + 걷기 W3 합성 + 갇힘 해소(시뮬 평가 구성)", "실물 미검증")), q["label"]
     assert not any("갇힘 해소" in cs.WALK_KEYS[k]["label"] or "실물 미검증" in cs.WALK_KEYS[k]["label"] for k in old)
     assert len({v["label"] for v in cs.WALK_KEYS.values()}) == len(cs.WALK_KEYS)
+    # 넷째 걷기 키(공중 정책 시작): air_start 표시는 이 키에만 있고, 앞의 세 항목에는 그 키 자체가 없다(= False 로 읽는다)
+    h = cs.WALK_KEYS["stand_kew3qa_g21a_g24ra_w3s3d15800"]
+    assert set(h) == {"composite", "air_start", "label"} and h["composite"] is True and h["air_start"] is True
+    assert h["label"] == "걷기 실험 · 서기 KE + 걷기 W3 합성 + 갇힘 해소 + 공중·착지 정책(G21h) · 공중 정책 시작 가능 · 실물 미검증"
+    assert all(s in h["label"] for s in ("걷기 실험", "서기 KE + 걷기 W3 합성 + 갇힘 해소 + 공중·착지 정책(G21h)", "공중 정책 시작 가능", "실물 미검증")), h["label"]
+    others = [k for k in cs.WALK_KEYS if k != "stand_kew3qa_g21a_g24ra_w3s3d15800"]
+    assert all("air_start" not in cs.WALK_KEYS[k] and "공중 정책 시작" not in cs.WALK_KEYS[k]["label"] and "G21h" not in cs.WALK_KEYS[k]["label"] for k in others)
+    assert [k for k in cs.WALK_KEYS if cs.walk_air_start(k)] == ["stand_kew3qa_g21a_g24ra_w3s3d15800"]
+    assert not cs.walk_air_start("stand_crouch_g12") and not cs.walk_air_start("모르는 키") and not cs.walk_air_start(None)
+    assert cs.default_mode("stand_kew3qa_g21a_g24ra_w3s3d15800") == "air" and all(cs.default_mode(k) == "ground" for k in others + list(c.CKPT_CHOICES) + [None])
     for key, flags in {**old, **new}.items():
         assert c.WALK_BRIDGE_ARGS[key] == flags
         assert c.bridge_live_argv(key)[2:] == ["--live", "--checkpoint", key] + flags + ["--w3-heading-loop", "off"]
@@ -160,9 +172,13 @@ def test_walk_keys_are_the_1007_pair_plus_the_requiet_composite_key():
 
 
 def test_policy_menu_is_the_single_composite_key():
-    """1008 승윤님 지시(안 쓰는 정책 정리): 고를 수 있는 정책 = 합성 키 하나. 드롭다운·기본값·시험 설정·정책 로드·계약 검사가 모두 그 키만 받는다."""
-    keep = "stand_kew3q_g21a_g24ra_w3s3d15800"
+    """1008 승윤님 지시(안 쓰는 정책 정리): 고를 수 있는 정책 = 합성 키 하나. 드롭다운·기본값·시험 설정·정책 로드·계약 검사가 모두 그 키만 받는다.
+    1008 오후: 그 한 키 = 공중 정책 시작을 받는 합성 키(종전 합성 키 + 공중·착지 구간 서기 정책 G21h). 시험 방식의 기본값도 그에 맞춰 '공중'이다.
+    종전 메뉴 키는 정리된 키가 됐다."""
+    keep = "stand_kew3qa_g21a_g24ra_w3s3d15800"
     assert c.CKPT_MENU_KEYS == (keep,) and c.CKPT_MENU == [keep] and c.CKPT_DEFAULT == keep and c.TRIAL.checkpoint == keep
+    assert c.MODE_DEFAULT == "air" == c.TRIAL.mode == cs.TrialState(keep).mode and cs.TrialState("stand_kew3q_g21a_g24ra_w3s3d15800").mode == "ground"
+    assert "정리된 정책" in c.ckpt_menu_reason("stand_kew3q_g21a_g24ra_w3s3d15800")
     page = c.render_page()
     assert re.findall(r'<option value="(stand[A-Za-z0-9_]*)">', page) == [keep]
     assert f'<option value="{keep}">{keep} — {html.escape(cs.WALK_KEYS[keep]["label"])}</option>' in page
@@ -196,16 +212,17 @@ def test_policy_menu_never_falls_back_to_an_old_policy_when_walk_module_is_missi
 def test_sim_reference_of_the_requiet_key_equals_what_the_first_composite_key_shows(tmp_path):
     """1008: 참고 이동량(X14)은 갇힘 해소를 켠 구성으로 잰 값이다 — 둘째 합성 키는 첫 합성 키에 지금 보이는 것과 같은 숫자를 보인다(표는 키별이 아니다)."""
     first, second = "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800"
+    third = "stand_kew3qa_g21a_g24ra_w3s3d15800"                # 1008 오후: 표가 키별이 아니므로 셋째 합성 키도 같은 숫자를 보인다(KE 인계 뒤의 서기·걷기 정책이 둘째 키와 같다)
     enabled = {m["name"] for m in c.walk_moves() if m["enabled"]}
     shown = {}
-    for key in (first, second):
+    for key in (first, second, third):
         with c.WalkBench(str(tmp_path), key) as bn:
             bn.prepare()                                        # 이 키로 시험을 설정해 정책 실행 단계까지(걷기 세션)
             w = bn.walk()
             assert w["session"] and w["profile"]["checkpoint"] == key and w["profile"]["label"] == cs.WALK_KEYS[key]["label"], w["profile"]
             assert "실물 미확인" in w["sim_ref_note"]
             shown[key] = {b["name"]: b["sim_ref"] for b in w["buttons"]}
-    assert shown[second] == shown[first]
+    assert shown[second] == shown[first] == shown[third]
     assert {n: v for n, v in shown[second].items() if v} == {n: v for n, v in c.WALK_SIM_REF.items() if n in enabled} and any(shown[second].values())
 
 
@@ -337,6 +354,34 @@ def test_older_debug_frame_after_accept_ack_does_not_end_the_walk():
     assert cur["stage"] == "ending" and cur["end_by"] == "observed"
     assert rig.frame(ts=200.72, want=False, ge=False, mode="w3")["stage"] == "ending"     # 합성: KE 인계 전
     assert rig.frame(ts=201.30, want=False, ge=False, mode="ke")["stage"] == "done"
+
+
+def test_air_landing_phase_blocks_walk_buttons_until_ke_handoff():
+    """1008 공중 정책 시작 키: 브리지 러너가 공중·착지 구간(kew3.mode "air")인 동안은 서기도 걷기도 아니다 — 걷기 버튼은 사유와 함께 잠기고
+    (양발이 닿아도), '정착 대기' 시계는 서기 KE 로 넘어간(mode "ke") 뒤에야 돈다."""
+    rig = Rig("stand_kew3qa_g21a_g24ra_w3s3d15800")
+    assert rig.trial.mode == "air"                              # 공중 정책 시작 키의 기본 방식
+    for _ in range(40):
+        rig.frame(ts=rig.t, mode="air", contact=(False, False))     # 매달린 채 공중·착지 정책 구동
+    st = rig.walk.bridge_status(rig.trial)
+    assert st["mode"] == "air" and st["standing"] is False and st["walking"] is False and rig.walk.snapshot(rig.trial)["mode"] == "air"
+    why = rig.trial.reason("w3_move")
+    assert why and "공중·착지 정책 구간(착지 정착 뒤 KE 인계 대기)" in why, why
+    for _ in range(40):
+        rig.frame(ts=rig.t, mode="air")                         # 양발이 닿았지만 아직 공중·착지 구간 — 접촉만으로는 열리지 않는다
+    why = rig.trial.reason("w3_move")
+    assert why and "공중·착지 정책 구간(착지 정착 뒤 KE 인계 대기)" in why and rig.walk._steady_since is None, why
+    assert not rig.trial.fault and rig.walk.cur is None
+    rig.frame(ts=rig.t, mode="ke")                              # 서기 KE 로 인계 → 이제부터 정착 대기
+    why = rig.trial.reason("w3_move")
+    assert why and "서기 정착 대기" in why, why
+    for _ in range(30):
+        rig.frame(ts=rig.t, mode="ke")
+    assert rig.trial.reason("w3_move") is None and rig.walk.snapshot(rig.trial)["mode"] == "ke"
+    other = Rig()                                               # 다른 합성 키의 문구는 그대로(W3 모드일 때)
+    for _ in range(30):
+        other.frame(ts=other.t, mode="w3")
+    assert "걷기 정책(W3) 모드" in other.trial.reason("w3_move")
 
 
 def test_burst_end_ack_then_same_tick_frame_is_not_yet_standing():

@@ -133,8 +133,9 @@ class Link:
         return round(self.clock.t - t0, 2)
 
 
-def run_session(bench, tmp_path, monkeypatch, key, guard, body):
-    """콘솔이 만든 기동 인자로 실제 브리지 main() 을 띄우고(가짜 ROS), spin 자리에서 body(link) 를 돌린다."""
+def run_session(bench, tmp_path, monkeypatch, key, guard, body, start=None):
+    """콘솔이 만든 기동 인자로 실제 브리지 main() 을 띄우고(가짜 ROS), spin 자리에서 body(link) 를 돌린다.
+    start(1008): 정책 시작을 시험이 직접 하는 경우의 함수 start(link, trial) — 주면 아래의 기본 시작(콘솔의 지면 stand 발행 → 2.6 s → 완료 처리)을 하지 않는다."""
     st, b = bench
     clock = st.FakeClock()
     monkeypatch.setenv("HOME", str(tmp_path))                     # 블랙박스 = tmp/logs (실제 ~/logs 를 건드리지 않는다)
@@ -158,6 +159,7 @@ def run_session(bench, tmp_path, monkeypatch, key, guard, body):
         if node.core.kew3:                    # 1008: 콘솔 인자로 뜬 합성 세션의 KE 감지기 갇힘 해소 = 그 키의 값(첫 합성 키는 꺼짐 — 종전 그대로)
             det = node.core.runner.det
             assert (det.requiet, det.requiet_contact) == REQUIET[key], (key, det.requiet, det.requiet_contact)
+            assert bool(node.core.runner.has_air) is (key == AIR_START_KEY), f"{key}: 공중·착지 러너 유무가 기대와 다름"       # 1008 오후: 공중 정책 시작 키에만
         link = Link(node, st, b, clock, key)
         trial = TrialState(key, clock=lambda: clock.t)
         trial.completed = set(trial.flow()) - {"stand"}            # 기존 단계별 절차로 정책 로드까지 끝난 상태에서 출발
@@ -174,6 +176,14 @@ def run_session(bench, tmp_path, monkeypatch, key, guard, body):
                 patch.object(c.subprocess, "run", side_effect=AssertionError("real process forbidden")), \
                 patch.object(c.subprocess, "Popen", side_effect=AssertionError("real process forbidden")):
             session.ensure("walk bridge contract", manual=True)
+            if start is not None:                                  # 1008: 시험이 정책 시작을 직접 한다(공중 시작 경로)
+                try:
+                    start(link, trial)
+                    body(link)
+                    done["ok"] = True
+                finally:
+                    session.close("walk bridge contract")
+                return
             link.H.tick(5)                                         # 센서 흐름(정책은 아직 비활성 — 디버그 토픽 없음)
             link.feed_console()
             ok, _msg = c.act_bridge_cmd("stand", {"hang_arm": False, "touchdown_start": False})      # 콘솔의 기존 stand 경로
@@ -194,12 +204,17 @@ def run_session(bench, tmp_path, monkeypatch, key, guard, body):
 
 CASES = [(key, guard) for key in WALK_KEYS for guard in ("safe", "data")]
 #: 1008: 합성 키별 KE 감지기 갇힘 해소 (requiet, 접촉 요구) — 여기 따로 적은 기대값(브리지 명세를 읽어 오지 않는다)
-REQUIET = {"stand_kew3_g21a_g24ra_w3s3d15800": (None, "both"), "stand_kew3q_g21a_g24ra_w3s3d15800": ((2.0, 0.3), "both")}
+REQUIET = {"stand_kew3_g21a_g24ra_w3s3d15800": (None, "both"), "stand_kew3q_g21a_g24ra_w3s3d15800": ((2.0, 0.3), "both"),
+           "stand_kew3qa_g21a_g24ra_w3s3d15800": ((2.0, 0.3), "both")}       # 1008 오후 셋째 합성 키(+ 공중·착지 정책): 서기 KE·감지기 설정은 둘째 합성 키와 같다
+#: 1008 오후: 공중 정책 시작(stand + hang_arm)을 받는 걷기 키 — 여기 따로 적은 기대값(콘솔 WALK_KEYS·브리지 명세를 읽어 오지 않는다)
+AIR_START_KEY = "stand_kew3qa_g21a_g24ra_w3s3d15800"
 
 
 def test_walk_keys_and_console_bridge_argv_are_pinned():
-    """1008: 이 계약 시험이 도는 걷기 키 = 1007 의 두 키 + 둘째 합성 키(갇힘 해소). 콘솔이 만드는 브리지 인자는 두 합성 키가 같다(키 이름만 다름)."""
-    assert list(WALK_KEYS) == ["stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800"]
+    """1008: 이 계약 시험이 도는 걷기 키 = 1007 의 두 키 + 둘째 합성 키(갇힘 해소). 콘솔이 만드는 브리지 인자는 두 합성 키가 같다(키 이름만 다름).
+    1008 오후: + 셋째 합성 키(둘째 합성 키 + 공중·착지 구간 서기 정책 · 공중 정책 시작). 인자는 다른 합성 키와 같다."""
+    assert list(WALK_KEYS) == ["stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800", AIR_START_KEY]
+    assert [k for k in WALK_KEYS if WALK_KEYS[k].get("air_start")] == [AIR_START_KEY] and "공중 정책 시작 가능" in WALK_KEYS[AIR_START_KEY]["label"]
     assert [k for k, _g in CASES] == [k for k in WALK_KEYS for _ in range(2)] and set(REQUIET) == {k for k in WALK_KEYS if WALK_KEYS[k]["composite"]}
     assert c.bridge_live_argv("stand_w3s3d_15800")[2:] == ["--live", "--checkpoint", "stand_w3s3d_15800", "--experimental-w3", "--w3-heading-loop", "off"]
     for key in REQUIET:
@@ -380,6 +395,103 @@ def test_recovery_mode_lock_in_walk_panel_and_requiet_release(bench, tmp_path, m
         assert node.core.active and not link.H.stop_alls
 
     run_session(bench, tmp_path, monkeypatch, key, "safe", body)
+
+
+def _console_stand(link, trial):
+    """콘솔의 단계 'stand' 를 실제 경로로 낸다(dispatch_action → TrialState 게이트 → 발행 → 브리지 노드). 공중(무접촉)에서 시작한다.
+    프로세스 목록 검사(pgrep)는 시험에서 돌리지 않는다 — 신선도만 맞춰 둔다."""
+    link.H.force_contact = (False, False)
+    link.H.tick(5)                                                 # 센서 흐름(정책은 아직 비활성 — 디버그 토픽 없음)
+    link.feed_console()
+    c.PROCESS_HEALTH["ts"] = link.clock.t
+    with patch.object(c, "poll_processes", lambda: None):
+        return link.req("stand")
+
+
+def test_air_mode_stand_from_console_starts_policy_in_the_air_on_real_bridge_node(bench, tmp_path, monkeypatch):
+    """1008 공중 방식(콘솔 ↔ 실제 브리지 노드): 공중 정책 시작 키에서 콘솔의 stand 는 hang_arm 으로 나가고 브리지가 받는다 —
+    매달린 채(무접촉) 러너가 AIR 모드(공중·착지 정책)로 구동되고(HangGuard PRE_CONTACT), 콘솔의 stand 단계는 단계별 공중 절차와 같은 응답 확인으로 완료된다.
+    AIR 동안 걷기 패널은 사유("공중·착지 정책 구간…")와 함께 잠겨 있고(콘솔이 발행하지 않는다), 직접 보낸 켜기도 브리지가 거부한다.
+    착지(양발 접촉)·정착 뒤 러너가 서기 KE 로 넘기면 패널이 정착 대기를 거쳐 열리고, 걷기 버튼이 수락돼 서기 복귀까지 간다.
+    **계약·순서 검증이다 — 스텁 정책·가정 접촉이라 실물 공중 거동·착지 성공을 증명하지 않는다.**"""
+    key = AIR_START_KEY
+    short = min((m for m in c.walk_moves() if m["enabled"]), key=lambda m: m["dur_s"])
+
+    def start(link, trial):
+        node, b = link.node, link.b
+        run = node.core.runner
+        assert trial.mode == "air" and trial.checkpoint == key, "공중 정책 시작 키의 TrialState 기본 방식이 air 가 아님"
+        assert run.has_air and run.mode == "ke"
+        code, res = _console_stand(link, trial)
+        assert code == 200 and res["ok"] and link.sent == [{"cmd": "stand", "hang_arm": True}], (code, res, link.sent)
+        assert node.core.active and node.hang_guard.hang_mode and node.hang_guard.state == b.HangGuard.PRE_CONTACT and run.mode == "air"
+        link.tick(0.2)
+        assert "stand" in trial.completed and not trial.fault and trial.pending is None, (trial.pending, trial.fault, trial.last_result)
+        link.tick(2.6)                                             # 인계 워밍업 + 온셋 블렌딩 — 그동안도 매달린 채
+
+    def body(link):
+        node, b = link.node, link.b
+        run = node.core.runner
+        snap = c.console_snapshot()
+        assert snap["bridge"]["hang_state"] == b.HangGuard.PRE_CONTACT and snap["bridge"]["armed"] and snap["foot"]["contact"] == [False, False]
+        assert snap["trial"]["mode"] == "air" and "정책 제어" in snap["trial"]["phase"] and c.TRIAL.commander() == "policy"
+        assert snap["trial"]["allowed"]["policy_on"]["label"] == "정책 ON(공중에서 바로 구동)"
+        dbg = json.loads(node._pubs[b.BRIDGE_DEBUG_TOPIC].msgs[-1])
+        assert dbg["kew3"]["mode"] == "air" and dbg["c5"]["mode"] == 0 and run.mode == "air" and run.last_step_kind == 3
+        w = link.walk()
+        assert w["session"] and w["mode"] == "air" and not w["available"] and not w["bridge"]["standing"] and not w["bridge"]["walking"], w
+        assert "공중·착지 정책 구간(착지 정착 뒤 KE 인계 대기)" in w["reason"], w["reason"]
+        n_sent = len(link.sent)
+        code, res = link.req("w3_move", move=short["name"])
+        assert code == 409 and "공중·착지 정책 구간" in res["message"] and len(link.sent) == n_sent, (code, res)     # 콘솔이 발행하지 않는다
+        link.publish("bridge", {"cmd": "step", "enable": True, "req_id": "direct", "seq": 2 ** 40, "vx": short["vx"]})   # 콘솔을 우회한 켜기 → 브리지가 거부
+        ack = json.loads(node._pubs[b.BRIDGE_ACK_TOPIC].msgs[-1])
+        assert ack["req_id"] == "direct" and not ack["accepted"] and "양발 접촉" in ack["why"] and ack["kew3"]["mode"] == "air", ack
+        assert not run._w3_clock.want
+        link.tick(0.5)
+        assert run.mode == "air" and run.n_to_w3 == 0 and node.core.active and not link.H.stop_alls
+        # 착지(지그를 내림): 양발 접촉·조용함 → 러너가 KE 로 넘긴다 → 콘솔의 정착 대기 뒤 걷기 버튼이 열리고 수락된다
+        link.H.force_contact = (True, True)
+        link.tick(0.5)
+        w = link.walk()
+        assert run.mode == "air" and w["mode"] == "air" and not w["available"] and "공중·착지 정책 구간" in w["reason"], w["reason"]   # 닿았어도 인계 전에는 잠김
+        t_ke = link.until(lambda w: run.mode == "ke", 1.0, "착지 정착 뒤 KE 인계")
+        assert 0.4 <= t_ke <= 0.6 and run.n_air_to_ke == 1 and node.hang_guard.state == b.HangGuard.CONTACT_ACQUIRED, t_ke      # 양발 접촉 연속 1.0 s(앞의 0.5 s 포함)
+        link.tick()
+        w = link.walk()
+        assert w["mode"] == "ke" and not w["available"] and "공중·착지 정책 구간" not in w["reason"], w["reason"]
+        link.H.force_contact = None                               # 가정 접촉 모형(서기 = 양발, 걷는 중 = 위상에 따라 한발)
+        link.until(lambda w: w["available"], 4.0, "KE 인계·정착 뒤 걷기 버튼 열림")
+        code, res = link.req("w3_move", move=short["name"])
+        link.tick()
+        assert code == 200 and res["ok"] and link.walk()["current"]["stage"] == "walking", (code, res, link.walk()["current"])
+        link.until(lambda w: w["current"]["stage"] == "done", 6.0, "서기 복귀")
+        assert node.core.active and not link.H.stop_alls and not c.TRIAL.fault and link.walk()["mode"] == "ke" and run.n_air_to_ke == 1
+
+    run_session(bench, tmp_path, monkeypatch, key, "safe", body, start=start)
+
+
+@pytest.mark.parametrize("key", [k for k in WALK_KEYS if k != AIR_START_KEY])
+def test_bridge_refuses_hang_arm_for_other_walk_keys_even_if_console_state_says_air(bench, tmp_path, monkeypatch, key):
+    """공중 정책 시작을 받지 않는 걷기 키: 콘솔의 시험 설정은 공중 방식을 거부한다(다른 시험). 그 문을 우회해 콘솔 상태가 air 가 되더라도
+    (시험에서 직접 바꿔 넣음) **브리지가 hang_arm 을 거부**한다 — 정책은 시작되지 않고, 콘솔의 stand 단계는 응답 확인 시간 초과로 실패·고장 래치된다."""
+    def start(link, trial):
+        node = link.node
+        assert trial.mode == "ground"
+        trial.mode = "air"                                         # (시험 전용: 설정 게이트를 우회한 상태)
+        code, res = _console_stand(link, trial)
+        assert code == 200 and link.sent == [{"cmd": "stand", "hang_arm": True}], (code, res, link.sent)
+        assert not node.core.active and node._launches == 0 and getattr(node.core.runner, "mode", "ke") == "ke", "브리지가 hang_arm 을 받아 정책을 시작함"
+        ack = json.loads(node._pubs[link.b.BRIDGE_ACK_TOPIC].msgs[-1])
+        assert ack["cmd"] == "stand" and not ack["accepted"], ack
+        why = next((m for _lv, m in node._log.lines if "hang_arm 불가" in m), None)
+        # 거부 사유에 허용 키가 적힌다 — 합성 플래그로 뜬 세션(합성 키)에는 공중 정책 시작 키, W3 단독 세션(합성 플래그 없음)에는 '없음'
+        assert why is not None and ((AIR_START_KEY in why) if WALK_KEYS[key]["composite"] else ("없음" in why and AIR_START_KEY not in why)), why
+        link.tick(8.5)                                             # stand 응답 확인 상한 8 s
+        assert "stand" not in trial.completed and trial.fault and "정책 제어 시작" in trial.fault, (trial.fault, trial.last_result)
+        assert not node.core.active and link.b.BRIDGE_DEBUG_TOPIC in node._pubs and not node._pubs[link.b.BRIDGE_DEBUG_TOPIC].msgs
+
+    run_session(bench, tmp_path, monkeypatch, key, "safe", lambda link: None, start=start)
 
 
 def test_non_walk_session_has_no_ack_topic_and_console_refuses(bench, tmp_path, monkeypatch):

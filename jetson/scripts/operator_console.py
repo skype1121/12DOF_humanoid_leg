@@ -41,9 +41,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 try:
     from .console_state import TrialState, LABELS, EVENTS, CONTROL, POLICY_ON_STEPS, finite
     from .console_state import WALK_KEYS, WALK_KIND, WALK_SAFE, WALK_ACK_TIMEOUT_S
+    from .console_state import default_mode, walk_air_start, POLICY_ON_LABEL_AIR
 except ImportError:
     from console_state import TrialState, LABELS, EVENTS, CONTROL, POLICY_ON_STEPS, finite
     from console_state import WALK_KEYS, WALK_KIND, WALK_SAFE, WALK_ACK_TIMEOUT_S
+    from console_state import default_mode, walk_air_start, POLICY_ON_LABEL_AIR
 
 # --- 1007 걷기 조작(시간 제한 걷기 버튼) 모듈 ---
 # 버튼 값의 단일 원본 = rl_walking/deploy/w3_deploy.W3_MOVES·w3_move_cmd, 명령 순번 = w3_cmd.next_seq(파일 잠금 단조 seq, CLI 와 같은 파일).
@@ -98,8 +100,17 @@ CKPT_CHOICES = ["stand_crouch_g12", "stand_crouch_g21a", "stand_c5_g21a_g24ra", 
 #   화면 드롭다운·기본값·시험 설정·정책 로드·계약 검사가 받는 키 = CKPT_MENU(아래) 뿐이다. 그 밖의 키는 서버가 거부한다.
 #   위 CKPT_CHOICES 와 걷기 키 목록은 "콘솔이 기동 인자를 아는 키"로만 남긴다(0929 와 같은 방식: 브리지 CHECKPOINTS 등록·정책 파일은 그대로 —
 #   과거 기록 재현·selftest 용. 고를 수는 없다). 다시 늘리려면 CKPT_MENU_KEYS 에 키를 더한다.
-CKPT_MENU_KEYS = ("stand_kew3q_g21a_g24ra_w3s3d15800",)
+# 1008 오후 승윤님 결정: 정책을 **공중(매달린 상태)에서 구동한 채** 내린다 → 남기는 정책 = 종전 합성 키(서기 KE + 걷기 W3 + 갇힘 해소)에
+#   공중·착지 구간 서기 정책(G21h — 매달림 시작 학습)을 더한 stand_kew3qa_g21a_g24ra_w3s3d15800(브리지에서 공중 정책 시작 hang_arm 을 받는 유일한 걷기 키).
+#   공중에서 시작하면 공중·착지 정책이 맡다가 착지가 가라앉은 뒤 서기 KE 로 넘어가고, 지면에서 시작하면 종전의 stand_kew3q_… 와 같은 동작이다.
+#   종전의 stand_kew3q_… 는 다른 키들처럼 "아는 키"로만 남는다(지면 시작 학습 — 시뮬 AIR1: 공중 구동 뒤 착지 낙상 40–62 %, reports/gen_w3/AIR_START_1008.md).
+#   G21h 를 서기 정책 전체로 바꾼 구성은 지면 회복이 기준 미달이라 기각됐다(같은 문서 §9) — 그래서 공중·착지 구간에만 쓴다. 시뮬 통과는 실물 성공 확률이 아니다(실물 미검증).
+#   **이 키를 메뉴에 두는 것은 3 단 구성의 시뮬 평가(AIR2 — 같은 문서 §10, 이 변경 시점에는 사전 등록만·미실행)가 기준을 채운다는 전제다 —
+#   미달이면 이 줄을 종전 키(stand_kew3q_…)로 되돌린다**(그러면 방식 기본값도 종전 "ground" 로 돌아간다 — MODE_DEFAULT 는 이 키에서 나온다).
+CKPT_MENU_KEYS = ("stand_kew3qa_g21a_g24ra_w3s3d15800",)
 CKPT_DEFAULT = CKPT_MENU_KEYS[0]
+#: 시험 방식 기본값 — 기본 정책이 공중 정책 시작을 받는 키면 "air"(공중에서 정책 시작 → 착지), 아니면 종전대로 "ground". 새 TrialState 가 같은 규칙으로 시작한다.
+MODE_DEFAULT = default_mode(CKPT_DEFAULT)
 
 # 1007 걷기 실험 키(콘솔 걷기 조작 패널) — 기본 선택지(CKPT_CHOICES)·기본값은 그대로 두고 **뒤에** 덧붙인다.
 #   키 목록 = console_state.WALK_KEYS(selftest 가 w3_deploy·브리지 원본과 대조). 브리지는 아래 실험 플래그를 붙여야만 이 키를 등록한다
@@ -109,6 +120,8 @@ WALK_BRIDGE_ARGS = {
     "stand_kew3_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
     # 1008 둘째 합성 키(첫 합성 키 + KE 감지기 갇힘 해소 = 시뮬 합성 평가 구성 · 실물 미검증) — 첫 합성 키와 같은 실험 플래그. 위 두 키의 인자는 그대로다.
     "stand_kew3q_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
+    # 1008 오후 셋째 합성 키(둘째 합성 키 + 공중·착지 구간 서기 정책 G21h — 공중 정책 시작을 받는 키 · 실물 미검증) — 같은 실험 플래그. 위 세 키의 인자는 그대로다.
+    "stand_kew3qa_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
 }
 #: 정책 로드(--live)에만 더 붙는 인자. 헤딩 고리는 기본 off — 시뮬 판정: 왕복에서 기준 미달(reports/gen_w3/HEADING_SESSION_1007.md §7).
 #: 셀프테스트 게이트에는 붙이지 않는다: 브리지 --selftest 의 'W3 감시 2 차 대비책'·'헤딩 고리 고장 판별 분리' 항목은 고리 설정이 켜진 채로만
@@ -170,6 +183,7 @@ def bridge_selftest_argv(ckpt):
 #: 버튼 값(vx·vy·wz·기한)이나 정책이 바뀌면 이 숫자는 낡는다 — 다시 재서 고치거나 지운다. 비활성 버튼에는 보이지 않는다.
 #: 1008: X14 는 KE 감지기 갇힘 해소를 켠 구성(= 걷기 키 stand_kew3q_…)으로 쟀다. 이 표는 걷기 키 전부에 같은 값으로 보인다(키별 표 아님) —
 #: 갇힘 해소가 꺼진 첫 합성 키·W3 단독 키의 표시는 종전 그대로 두었다(따로 둘지는 이 변경의 범위 밖).
+#: 1008 오후 넷째 걷기 키(stand_kew3qa_… — 공중·착지 정책 추가): KE 로 넘어간 뒤의 서기·걷기 정책이 stand_kew3q_… 와 같으므로 같은 표를 쓴다(다시 재지는 않았다).
 WALK_SIM_REF = {"fwd1": "+4.8 cm", "fwd3": "+16 cm", "turn_l": "+17.6°", "turn_r": "−13.8°", "left1": "+4.4 cm"}
 WALK_SIM_REF_NOTE = "X14 시뮬 중앙값 · 실물 미확인"
 
@@ -1901,10 +1915,11 @@ def dispatch_action(payload):
                 return 400, {"ok": False, "message": ckpt_menu_reason(payload.get("checkpoint"))}
             if not payload["checkpoint"].startswith("stand"):
                 return 400, {"ok": False, "message": "이 콘솔은 기립 시험용입니다. 보행 정책은 별도 절차가 필요합니다"}
-            if payload["checkpoint"] in WALK_KEYS and payload["mode"] == "air":
+            if payload["checkpoint"] in WALK_KEYS and payload["mode"] == "air" and not walk_air_start(payload["checkpoint"]):
                 # 1007: W3 키는 지면 시작 학습뿐이라 브리지가 hang_arm(공중 정책 시작)을 거부한다 — 시작이 조용히 막히기 전에 여기서 알린다
-                # 1008: 남긴 정책이 이 경우다. 시뮬 대조평가(AIR1, reports/gen_w3/AIR_START_1008.md)에서 공중 구동은 기준 미달이라 거부를 풀지 않았다.
-                #   운영자가 다음에 할 일(공중에서 인계하되 정책은 착지 뒤 시작 = '정책 ON')을 문구에 적는다.
+                # 1008: 시뮬 대조평가(AIR1, reports/gen_w3/AIR_START_1008.md)에서 G21a 서기의 공중 구동은 기준 미달이라 그 키들의 거부는 풀지 않았다.
+                #   운영자가 다음에 할 일(공중에서 인계하되 정책은 착지 뒤 시작 = 접지 방식의 '정책 ON')을 문구에 적는다.
+                # 1008 오후: 공중 정책 시작을 받는 걷기 키(WALK_KEYS 의 air_start = 브리지 명세에 공중·착지 정책 air 가 있는 합성 키)는 통과한다.
                 return 400, {"ok": False, "message": "이 정책은 공중 정책 시작(hang_arm)을 받지 않습니다 — 지면 시작으로만 학습됐고 브리지가 거부합니다. "
                                                      "공중에서 인계하려면 방식을 '접지 후 정책 인계'로 두고 '정책 ON'(robotctl policy-on — 착지 확인 뒤 정책 시작)을 쓰세요"}
         if walk_action:
@@ -2038,6 +2053,9 @@ def dispatch_action(payload):
 #: 를 **기존 액션 함수·기존 게이트(TrialState.reason)·기존 응답 확인(TrialState.update)** 그대로 순서대로 실행한다.
 #: 단계 하나라도 거부·실패·시간 초과면 즉시 멈추고 고장 래치(회수 절차로) — 자동 재시도 없음.
 #: 정책은 브리지 착지 게이트가 양발 착지를 확인한 뒤에만 구동된다(그 전엔 stage8 이 하던 수평 홀드 명령 유지).
+#: 1008 오후 — 시험 방식이 '공중'(TRIAL.mode "air")이면 마지막 단계만 다르다: stand 를 touchdown_start 대신 **hang_arm** 으로 보낸다
+#:   (정책이 공중에서 바로 구동 — 브리지 HangGuard 행잉 모드 + 러너 AIR 모드: 공중·착지 정책이 맡다가 착지 정착 뒤 서기 KE 로 인계). 순서·게이트·응답 확인(stand 의 완료 판정 =
+#:   단계별 공중 절차와 같은 TrialState.update 분기)은 같다. 선행조건(_policy_on_reason)도 같다. 접지 방식은 한 글자도 바뀌지 않는다.
 POLICY_ON_WORKER = None
 POLICY_ON_STEP_TIMEOUT_S = 90.0      # 단계 응답 확인 상한(각 단계 고유 시간 초과는 TrialState.update 가 먼저 판정)
 POLICY_ON_SUB_WAIT_S = 10.0          # 정책 로드 뒤 브리지 명령 토픽 구독 연결 대기 상한(DDS 발견) — 넘으면 그대로 진행(stand 8 s 확인이 판정)
@@ -2061,13 +2079,18 @@ def start_policy_on(record_warning=""):
     TRIAL.macro = {"action": "policy_on", "step": None, "started": now()}
     TRIAL.policy_on = True
     TRIAL.revision += 1
-    TRIAL.emit("policy_on_start", checkpoint=TRIAL.checkpoint)
-    SESSION.event("policy_on_start", checkpoint=TRIAL.checkpoint, trial=TRIAL.number)
+    air = TRIAL.mode == "air"            # 1008: 공중 방식 — 기록에도 남긴다(접지 방식의 기록 필드는 종전 그대로)
+    _air_kw = {"air_start": True} if air else {}
+    TRIAL.emit("policy_on_start", checkpoint=TRIAL.checkpoint, **_air_kw)
+    SESSION.event("policy_on_start", checkpoint=TRIAL.checkpoint, trial=TRIAL.number, **_air_kw)
     if AUTO_LEVEL.get("on"):
         # 자동 수평은 접지 상태 힙 트림 적분기 — 인계 뒤엔 자세 유지 스크립트가 없어 의미가 없다(robotctl handoff 와 같이 끈다)
         AUTO_LEVEL.update(on=False, status="off(정책 ON)")
     POLICY_ON_WORKER = threading.Thread(target=_policy_on_worker, args=(TRIAL,), name="policy_on", daemon=True)
     POLICY_ON_WORKER.start()
+    if air:
+        return (200, {"ok": True, "message": "정책 ON 시작(공중 방식) — 인계·기준점·ARM·정책 로드·정책 시작을 기존 게이트로 순서 진행"
+                      " (정책이 공중에서 바로 구동됩니다 — 다리가 움직일 수 있습니다. 착지를 기다리지 않습니다)" + record_warning})
     return (200, {"ok": True, "message": "정책 ON 시작 — 인계·기준점·ARM·정책 로드·착지 대기를 기존 게이트로 순서 진행"
                   " (정책은 양발 착지 확인 뒤에만 구동)" + record_warning})
 
@@ -2113,7 +2136,10 @@ def _policy_on_worker(trial):
             trial.macro["step"] = step
             trial.begin(step, now())
             pending = trial.pending
-            effective = {"checkpoint": trial.checkpoint, "hang_arm": False, "touchdown_start": True}
+            # 접지 방식(종전): 착지 자동 인수(touchdown_start) — 정책은 착지 확인 뒤 시작. 공중 방식(1008): hang_arm — 정책이 공중에서 바로 구동.
+            # 둘을 섞지 않는다(브리지도 동시 지정을 거부한다). 방식은 제어 시작 뒤에는 바꿀 수 없으므로(configure 게이트) 순서기 도중에 달라지지 않는다.
+            effective = ({"checkpoint": trial.checkpoint, "hang_arm": True, "touchdown_start": False} if trial.mode == "air"
+                         else {"checkpoint": trial.checkpoint, "hang_arm": False, "touchdown_start": True})
             SESSION.event("policy_on_step", step=step, trial=trial.number)
         try:
             ok, msg = DEMO_SOURCE.act(step, effective) if DEMO else ACTIONS[step][0](effective)
@@ -2149,8 +2175,12 @@ def _policy_on_worker(trial):
         trial.macro = None
         trial.completed.add("policy_on")
         trial.revision += 1
-        trial.emit("policy_on_armed", message="착지 대기 — 양발 착지 확인 뒤 정책 자동 시작")
-        SESSION.event("policy_on_armed", trial=trial.number)
+        if trial.mode == "air":           # 1008 공중 방식: 정책은 이미 공중에서 돌고 있다 — '착지 대기'라고 적지 않는다
+            trial.emit("policy_on_armed", message="공중 정책 구동 중 — 지그를 내리면 착지, 정착 뒤 서기 KE 로 자동 인계(그 전에는 걷기 불가)", air_start=True)
+            SESSION.event("policy_on_armed", trial=trial.number, air_start=True)
+        else:
+            trial.emit("policy_on_armed", message="착지 대기 — 양발 착지 확인 뒤 정책 자동 시작")
+            SESSION.event("policy_on_armed", trial=trial.number)
         console_snapshot()
 
 
@@ -2308,7 +2338,13 @@ def selftest_walk(directory):
     assert CKPT_CHOICES == ["stand_crouch_g12", "stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr_g21a_g24ra",
                             "stand_c5krh_g21a_g24ra", "stand_crouch_g12_ema0", "stand_crouch_g11a"]
     # 1008 정리: 고를 수 있는 정책 = 합성 키 하나(기본값도 그것). 그 밖의 아는 키는 정책 로드·시험 설정에서 사유를 대고 거부된다.
-    assert CKPT_MENU_KEYS == ("stand_kew3q_g21a_g24ra_w3s3d15800",) and CKPT_MENU == list(CKPT_MENU_KEYS) and CKPT_DEFAULT == CKPT_MENU[0]
+    # 1008 오후: 그 한 키 = 공중 정책 시작을 받는 합성 키(종전 합성 키 + 공중·착지 구간 서기 정책 G21h). 종전 메뉴 키(stand_kew3q_…)는 "아는 키"로 내려갔다.
+    assert CKPT_MENU_KEYS == ("stand_kew3qa_g21a_g24ra_w3s3d15800",) and CKPT_MENU == list(CKPT_MENU_KEYS) and CKPT_DEFAULT == CKPT_MENU[0]
+    assert "stand_kew3q_g21a_g24ra_w3s3d15800" in CKPT_ALL and "stand_kew3q_g21a_g24ra_w3s3d15800" not in CKPT_MENU
+    # 시험 방식 기본값: 공중 정책 시작을 받는 키만 "air", 그 밖(정리된 키·모르는 키)은 종전대로 "ground"
+    assert walk_air_start(CKPT_DEFAULT) and MODE_DEFAULT == "air" == default_mode(CKPT_DEFAULT) == TrialState(CKPT_DEFAULT).mode == TRIAL.mode
+    assert [k for k in CKPT_ALL if walk_air_start(k)] == [CKPT_DEFAULT] and all(default_mode(k) == "ground" == TrialState(k).mode
+                                                                             for k in [x for x in CKPT_ALL if x != CKPT_DEFAULT] + ["stand_v7", None])
     _flags = ["--experimental-w3", "--experimental-kew3"]
     started = []
     with patch.object(RUN, "start", side_effect=lambda key, argv, cwd=None: (started.append((key, list(argv))), (True, "mock"))[1]):
@@ -2342,6 +2378,14 @@ def selftest_walk(directory):
             assert ("정리된 정책" in res["message"]) == (k in CKPT_ALL), (k, res)
         code, res = bn.req("configure", mode="ground", checkpoint=CKPT_DEFAULT)
         assert code == 200 and res["ok"] and TRIAL.checkpoint == CKPT_DEFAULT, (code, res)
+        assert TRIAL.mode == "ground"
+        code, res = bn.req("configure", mode="air", checkpoint=CKPT_DEFAULT)       # 1008 오후: 남긴 정책은 공중 방식을 받는다(공중 정책 시작 키)
+        assert code == 200 and res["ok"] and TRIAL.mode == "air" and bn.state()["trial"]["mode"] == "air", (code, res)
+        assert bn.state()["trial"]["allowed"]["policy_on"]["label"] == POLICY_ON_LABEL_AIR == "정책 ON(공중에서 바로 구동)"
+        code, res = bn.req("configure", mode="ground", checkpoint=CKPT_DEFAULT)
+        assert code == 200 and bn.state()["trial"]["allowed"]["policy_on"]["label"] == LABELS["policy_on"] == "정책 ON(착지 자동 인수)"
+        for bad_mode in ("hang", "", None):
+            assert bn.req("configure", mode=bad_mode, checkpoint=CKPT_DEFAULT)[0] == 400 and TRIAL.mode == "ground"
     started = []
     # 아래부터는 "콘솔이 기동 인자를 아는 키" 전부의 인자를 종전대로 고정한다(메뉴를 시험용으로 넓혀서) — 메뉴에 다시 올릴 때 인자가 달라져 있지 않게.
     with patch.dict(globals(), CKPT_MENU=list(CKPT_ALL)), \
@@ -2360,7 +2404,8 @@ def selftest_walk(directory):
         # 걷기 키: 실험 플래그는 정책 로드·셀프테스트 게이트 양쪽, 헤딩 고리 off 는 정책 로드에만(브리지 selftest 의 고리 항목은 off 에서 실패한다)
         expect = {W.W3S3D_CKPT_KEY: ["--experimental-w3"],
                   "stand_kew3_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
-                  "stand_kew3q_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"]}       # 1008 둘째 합성 키(허용된 추가)
+                  "stand_kew3q_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],       # 1008 둘째 합성 키(허용된 추가)
+                  "stand_kew3qa_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"]}      # 1008 오후 셋째 합성 키(공중 정책 시작 — 허용된 추가)
         for k, flags in expect.items():
             act_bridge_live({"checkpoint": k})
             ACTIONS["selftest"][0]({"checkpoint": k})
@@ -2369,10 +2414,13 @@ def selftest_walk(directory):
     src = Path(__file__).with_name("rl_bridge_node.py").read_text(encoding="utf-8")
     kew3 = re.search(r'^KEW3_CKPT_KEY = "([A-Za-z0-9_]+)"', src, re.M)
     kew3q = re.search(r'^KEW3Q_CKPT_KEY = "([A-Za-z0-9_]+)"', src, re.M)
+    kew3qa = re.search(r'^KEW3QA_CKPT_KEY = "([A-Za-z0-9_]+)"', src, re.M)
     # 1008: 걷기 키 = 1007 의 두 키(이름·순서·표시·인자 불변) + 허용된 추가 한 키(둘째 합성 키 — 갇힘 해소). 그 밖의 키가 끼면 실패.
-    assert kew3 and kew3q and set(WALK_KEYS) == {W.W3S3D_CKPT_KEY, kew3[1], kew3q[1]} == set(WALK_BRIDGE_ARGS) == set(expect) and WALK_CKPTS == list(WALK_KEYS)
-    assert list(WALK_KEYS) == [W.W3S3D_CKPT_KEY, kew3[1], kew3q[1]] == list(expect) \
-        == ["stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800"], list(WALK_KEYS)
+    # 1008 오후: + 허용된 추가 한 키(셋째 합성 키 — 공중·착지 정책 G21h·공중 정책 시작). 앞의 세 키는 이름·순서·표시·인자 그대로다.
+    assert kew3 and kew3q and kew3qa and set(WALK_KEYS) == {W.W3S3D_CKPT_KEY, kew3[1], kew3q[1], kew3qa[1]} == set(WALK_BRIDGE_ARGS) == set(expect) \
+        and WALK_CKPTS == list(WALK_KEYS)
+    assert list(WALK_KEYS) == [W.W3S3D_CKPT_KEY, kew3[1], kew3q[1], kew3qa[1]] == list(expect) \
+        == ["stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3s3d15800"], list(WALK_KEYS)
     assert WALK_KEYS[W.W3S3D_CKPT_KEY]["composite"] is False and WALK_KEYS[kew3[1]]["composite"] is True
     assert WALK_KEYS[W.W3S3D_CKPT_KEY] == {"composite": False, "label": "걷기 실험 · W3 단독"}
     assert WALK_KEYS[kew3[1]] == {"composite": True, "label": "걷기 실험 · 서기 KE + 걷기 W3 합성"}
@@ -2380,11 +2428,29 @@ def selftest_walk(directory):
     # 둘째 합성 키의 표시 이름: 무엇이 다른지(갇힘 해소)·시뮬 평가 구성임·실물 미검증을 적는다. 앞의 두 키 표시에는 그 문구가 없다.
     assert all(s in WALK_KEYS[kew3q[1]]["label"] for s in ("서기 KE + 걷기 W3 합성 + 갇힘 해소(시뮬 평가 구성)", "실물 미검증")), WALK_KEYS[kew3q[1]]["label"]
     assert not any("갇힘 해소" in WALK_KEYS[k]["label"] for k in (W.W3S3D_CKPT_KEY, kew3[1]))
+    assert WALK_KEYS[kew3q[1]] == {"composite": True, "label": "걷기 실험 · 서기 KE + 걷기 W3 합성 + 갇힘 해소(시뮬 평가 구성) · 실물 미검증"}
+    # 넷째 걷기 키(브리지 셋째 합성 키): 합성·공중 정책 시작. 표시 이름에 무엇이 다른지(+ 공중·착지 정책 G21h)·공중 정책 시작 가능·실물 미검증을 적는다.
+    # air_start 표시는 이 키에만 있다(앞의 세 항목에는 그 키 자체가 없다 = False 로 읽힘).
+    assert WALK_KEYS[kew3qa[1]] == {"composite": True, "air_start": True,
+                                    "label": "걷기 실험 · 서기 KE + 걷기 W3 합성 + 갇힘 해소 + 공중·착지 정책(G21h) · 공중 정책 시작 가능 · 실물 미검증"}
+    assert WALK_BRIDGE_ARGS[kew3qa[1]] == WALK_BRIDGE_ARGS[kew3q[1]] == WALK_BRIDGE_ARGS[kew3[1]]
+    assert [k for k in WALK_KEYS if "air_start" in WALK_KEYS[k]] == [kew3qa[1]] == [k for k in WALK_KEYS if walk_air_start(k)] and not walk_air_start("stand_v7")
     assert len({v["label"] for v in WALK_KEYS.values()}) == len(WALK_KEYS), "걷기 키의 표시 이름이 겹친다(드롭다운에서 구분 불가)"
     # 합성 키 ↔ 명세 = 브리지 KEW3_SPECS 원문: 두 키 모두 걷기 W3S3d, 갇힘 해소(requiet)는 둘째 키에만
     specs = re.findall(r'(KEW3Q?_CKPT_KEY): KeW3Spec\(w3=_W3\.([A-Z0-9_]+), ke="([a-z0-9_]+)", handoff="carry", settle_quiet_s=0\.5(\)|,\s*requiet=\(2\.0, 0\.3, "both"\)\))', src)
     assert [s[:3] for s in specs] == [("KEW3_CKPT_KEY", "W3S3D_CKPT_KEY", "stand_c5kr_g21a_g24ra"), ("KEW3Q_CKPT_KEY", "W3S3D_CKPT_KEY", "stand_c5kr_g21a_g24ra")], specs
     assert specs[0][3] == ")" and "requiet" in specs[1][3], specs
+    # 1008 오후: 셋째 합성 키의 명세 = 둘째 합성 키의 명세(걷기 W3S3d·서기 stand_c5kr_g21a_g24ra·갇힘 해소) + 공중·착지 구간 서기 정책 air="stand_crouch_g21h".
+    # 브리지 명세에서 air 가 있는 키(= hang_arm 을 받는 키)는 그 하나이고, 콘솔의 air_start 표시(WALK_KEYS)와 같은 키다 —
+    # 콘솔이 공중 방식을 받아 놓고 브리지가 hang_arm 을 거부하는(또는 그 반대) 어긋남을 여기서 잡는다.
+    spec_block = src.split("\nKEW3_SPECS = {", 1)[1].split("\nKEW3_KEYS = ", 1)[0]
+    air_specs = re.findall(r'(KEW3[A-Z]*_CKPT_KEY): KeW3Spec\((?:[^()]|\([^()]*\))*?air="([a-z0-9_]+)"\)', spec_block)
+    assert air_specs == [("KEW3QA_CKPT_KEY", "stand_crouch_g21h")] and spec_block.count("air=") == 1, (air_specs, spec_block.count("air="))
+    assert re.search(r'KEW3QA_CKPT_KEY: KeW3Spec\(w3=_W3\.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0\.5,\s*'
+                     r'requiet=\(2\.0, 0\.3, "both"\), air="stand_crouch_g21h"\)', spec_block), "브리지 셋째 합성 키 명세가 기대와 다름"
+    assert re.search(r'^CHECKPOINTS\["stand_crouch_g21h"\] = G21H_EXPORTED$', src, re.M), "브리지에 공중·착지 서기 키(stand_crouch_g21h) 등록이 없음"
+    assert not re.search(r'^(CHECKPOINTS|C5_PAIRS|C5_EXTRA)\["stand_c5kr_g21h_g24ra"\]', src, re.M), "기각된 G21h KE 키가 브리지에 등록돼 있음"
+    assert len(re.findall(r'KEW3[A-Z]*_CKPT_KEY: KeW3Spec\(', spec_block)) == 3 == sum(1 for k in WALK_KEYS if WALK_KEYS[k]["composite"]), "브리지 합성 키 수 ≠ 콘솔 합성 걷기 키 수"
     assert all(k.startswith("stand") for k in WALK_KEYS) and not set(WALK_KEYS) & set(CKPT_CHOICES) and CKPT_ALL[:len(CKPT_CHOICES)] == CKPT_CHOICES
     for flag in ("--experimental-w3", "--experimental-kew3", "--w3-heading-loop"):
         assert f'ap.add_argument("{flag}"' in src, flag
@@ -2395,9 +2461,11 @@ def selftest_walk(directory):
         assert (f'<option value="{k}">{k} — {html.escape(WALK_KEYS[k]["label"])}</option>' in page) == (k in CKPT_MENU), k      # 드롭다운에는 남긴 정책만
     assert page.count("<option") - page.count("<option value=\"\"") >= 1 and not any(f"<option>{k}</option>" in page for k in CKPT_CHOICES), "정리된 정책이 드롭다운에 남아 있다"
     out.append(f"②a 정책 메뉴(1008): 고를 수 있는 정책 {CKPT_MENU} 하나 · 그 밖의 아는 키 {len(CKPT_ALL) - len(CKPT_MENU)} 개는 정책 로드·시험 설정 거부(사유 표시) · "
-               "키 없는 요청은 남긴 정책으로 · 걷기 모듈 적재 실패 시 거부(옛 정책으로 넘어가지 않음)")
+               "키 없는 요청은 남긴 정책으로 · 걷기 모듈 적재 실패 시 거부(옛 정책으로 넘어가지 않음)"
+               f" · 시험 방식 기본값 {MODE_DEFAULT}(남긴 정책 = 공중 정책 시작 키)·공중/접지 설정 둘 다 수락·정책 ON 이름이 방식을 따름")
     out.append(f"② 브리지 기동 인자: 기존 {len(CKPT_CHOICES)} 키 live·selftest 종전과 같음 · 걷기 키 {len(expect)} 개에만 실험 플래그(정책 로드에는 헤딩 고리 off 추가, 셀프테스트 게이트에는 없음) · 키·토픽 = w3_deploy·브리지 원본"
-               f" · 1007 두 키 불변 + 1008 추가 {kew3q[1]}(첫 합성 키와 같은 인자, 브리지 명세에 갇힘 해소)")
+               f" · 1007 두 키 불변 + 1008 추가 {kew3q[1]}(첫 합성 키와 같은 인자, 브리지 명세에 갇힘 해소)"
+               f" + 1008 오후 추가 {kew3qa[1]}(같은 인자, 브리지 명세에 공중·착지 정책 air — 콘솔 air_start 표시와 같은 키 하나)")
 
     # ③ 텔레메트리(실제 경로): 응답은 순서대로 쌓였다가 한 번만 꺼내지고, 디버그의 w3·w3_sup·kew3 는 그대로 실린다(없으면 None)
     tel = Telemetry()
@@ -2429,7 +2497,23 @@ def selftest_walk(directory):
     assert probe.walk.bridge_status(probe)["standing"] is True
     probe.view = dict(probe.view, bridge=dict(b, kew3={"mode": "w3", "block": None}))
     assert probe.walk.bridge_status(probe)["standing"] is False and probe.walk.bridge_status(probe)["walking"] is True
-    out.append("③ 텔레메트리: 응답 순서대로 1 회만 전달·비객체 무시 · 디버그 w3/w3_sup/kew3/guard_mode 그대로(걷기 세션이 아니면 None) · 끊긴 프레임은 서기 근거 아님 · 발행은 브리지 명령 토픽 1 회")
+    # 1008 오후: 공중 정책 시작 키의 공중·착지 구간(kew3.mode "air")은 서기도 걷기도 아니다 — 걷기 버튼 사유에 그 구간임이 보인다
+    air_block = "공중·착지 정책 구간 — 착지가 가라앉아 KE 로 넘어간 뒤에 켤 것"
+    probe_air = TrialState(kew3qa[1])
+    probe_air.completed = set(probe_air.flow())
+    probe_air.view = {"server_time": 5000.0, "fresh": {"status": True, "imu": True, "foot": True, "bridge": True}, "received": {"bridge": 5000.0, "status": 5000.0},
+                      "stage8": {"armed": True, "running": True, "feedback_ok": True},
+                      "bridge": dict(b, checkpoint=kew3qa[1], loaded_checkpoint=kew3qa[1], blend=1.0, kew3={"mode": "air", "block": air_block, "n_air_to_ke": 0}),
+                      "foot": {"contact": [True, True]}, "imu": {"gyro": [0.0, 0.0, 0.0]}, "procs": {"bridge": {"alive": True}, "stage8": {"alive": True}},
+                      "process_check_ok": True, "session": {"active": True}, "external_controls": [], "walk_error": None}
+    st_air = probe_air.walk.bridge_status(probe_air)
+    assert st_air["mode"] == "air" and st_air["standing"] is False and st_air["walking"] is False, st_air
+    why_air = probe_air.reason("w3_move")
+    assert why_air and "공중·착지 정책 구간(착지 정착 뒤 KE 인계 대기)" in why_air, why_air
+    probe_air.view = dict(probe_air.view, bridge=dict(probe_air.view["bridge"], kew3={"mode": "ke", "block": None, "n_air_to_ke": 1}))
+    assert probe_air.walk.bridge_status(probe_air)["standing"] is True and "공중·착지" not in str(probe_air.reason("w3_move"))
+    out.append("③ 텔레메트리: 응답 순서대로 1 회만 전달·비객체 무시 · 디버그 w3/w3_sup/kew3/guard_mode 그대로(걷기 세션이 아니면 None) · 끊긴 프레임은 서기 근거 아님 · 발행은 브리지 명령 토픽 1 회"
+               " · 합성 러너 mode air(공중·착지 구간)는 서기·걷기 아님 + 걷기 버튼 사유 표시")
 
     for key in WALK_CKPTS:
         composite = WALK_KEYS[key]["composite"]
@@ -2657,11 +2741,17 @@ def selftest_walk(directory):
             assert m["state"] == "interrupted" and m.get("ended_by") == "walk" and "걷기" in m["reason"], m
             assert "회수 필요" not in bn.state()["trial"]["phase"]
         with WalkBench(directory, key) as bn:
+            before = (TRIAL.mode, TRIAL.checkpoint)    # 시험대의 처음 상태 = 기본 정책·기본 방식
             code, res = bn.req("configure", mode="air", checkpoint=key)
-            assert code == 400 and "접지" in res["message"], (code, res)
+            if walk_air_start(key):                    # 1008 오후: 공중 정책 시작을 받는 키만 공중 방식 설정을 받는다
+                assert code == 200 and res["ok"] and TRIAL.mode == "air" and TRIAL.checkpoint == key, (key, code, res)
+            else:                                      # 그 밖의 걷기 키는 종전대로 사유를 대고 거부(시험 설정 불변)
+                assert code == 400 and "접지" in res["message"] and "공중 정책 시작(hang_arm)을 받지 않습니다" in res["message"], (key, code, res)
+                assert (TRIAL.mode, TRIAL.checkpoint) == before == (MODE_DEFAULT, CKPT_DEFAULT), (key, TRIAL.mode, TRIAL.checkpoint)
     out.append(f"⑤–⑩ 걷기 키 {len(WALK_CKPTS)} 개 각각: 중복 클릭·재전송 1 회 발행 · 진행 중 같은/다른 버튼 거부 · 새로고침 뒤 상태 유지 · 브리지 거부 사유 표시 뒤 새 seq · "
                "응답 없음(재전송 없음·서기 확인까지 차단·남의 응답 무시·늦은 기한 종료 응답 수용·디버그로 끝 확인·기한 미확인 경고) · "
-               "정지 래치 중 거부·재무장·걷는 중 정지 래치 중단 · 걷기 끄기 · estop 중단 · 오래된 요청·확인 없음·모르는 버튼·공중 방식 거부 · 서기 관찰 종료 사유")
+               "정지 래치 중 거부·재무장·걷는 중 정지 래치 중단 · 걷기 끄기 · estop 중단 · 오래된 요청·확인 없음·모르는 버튼·공중 방식 거부"
+               "(공중 정책 시작 키만 수락) · 서기 관찰 종료 사유")
 
     # ⑪ 걷기 키가 아닌 시험: 걷기 버튼·끄기·정지 래치·재무장 모두 거부, 발행 0
     with WalkBench(directory, CKPT_CHOICES[0]) as bn:
@@ -2720,6 +2810,73 @@ def selftest_walk(directory):
         assert code == 500 and not res["ok"] and "재전송하지 않습니다" in res["message"] and len(bn.sent) == 1, (code, res)
     out.append("⑬ 걷기 패널 내부 오류 가두기: 걷기 버튼만 잠금 + 오류 표시 · 시험 고장 래치 없음 · 다른 조작·걷기 끄기 정상 · 명령 처리 오류는 500 으로 알림(재전송 없음)")
     return out
+
+
+def selftest_policy_on_modes(directory):
+    """1008 정책 ON 순서기 — 시험 방식별 마지막 단계(오프라인: DEMO 합성 응답, ROS·서브프로세스 없음. 계약·순서 확인이며 실물 동작 증명이 아니다).
+    접지 방식 = stand 를 touchdown_start 로(종전 그대로 — 착지 확인 뒤 정책 시작, 화면 '착지 대기', 명령 주체 = 홀드)
+    공중 방식 = stand 를 hang_arm 으로(정책이 공중에서 바로 구동 — '착지 대기' 없음, 명령 주체 = 정책). 단계 순서·하위 단계 게이트·stand 완료 판정은 같다.
+    표시 이름도 방식을 따른다(공중 = '정책 ON(공중에서 바로 구동)'). 반환 = 결과 한 줄."""
+    from unittest.mock import patch
+    try:
+        from .console_demo import Demo
+    except ImportError:
+        from console_demo import Demo
+    seen = {}
+    for mode in ("ground", "air"):
+        demo, calls = Demo(), []
+        real_act = demo.act
+        demo.act = lambda action, payload, _r=real_act, _c=calls: (_c.append((action, dict(payload))), _r(action, payload))[1]
+        session = SessionLog()
+        with patch.dict(globals(), DEMO=True, DEMO_SOURCE=demo, TRIAL=TrialState(CKPT_DEFAULT), SESSION=session,
+                        SESSION_DIR=os.path.join(directory, f"policy-on-{mode}"), TEL=Telemetry(), RUN=Runner(), BUSY=False,
+                        REQUESTS=collections.OrderedDict(), PROCESS_HEALTH={"ts": now(), "external": [], "error": None}, POLICY_ON_WORKER=None):
+            try:
+                def req(action, **extra):
+                    st = console_snapshot()["trial"]
+                    return dispatch_action({"action": action, "boot_id": st["boot_id"], "revision": st["revision"],
+                                            "request_id": uuid.uuid4().hex, "confirmed": True, **extra})
+                code, res = req("configure", mode=mode, checkpoint=CKPT_DEFAULT)
+                assert code == 200 and res["ok"] and TRIAL.mode == mode, (mode, code, res)
+                for action in TRIAL.flow():
+                    code, res = req(action)
+                    console_snapshot()
+                    assert code == 200 and res["ok"] and action in TRIAL.completed, (mode, action, code, res, TRIAL.pending, TRIAL.fault)
+                    if action == "gain_ramp":
+                        break
+                assert demo.contact == [False, False], "시나리오 점검: 매달린 상태(무접촉)"
+                label = console_snapshot()["trial"]["allowed"]["policy_on"]
+                assert label["enabled"] and label["label"] == (POLICY_ON_LABEL_AIR if mode == "air" else LABELS["policy_on"]), (mode, label)
+                del calls[:]
+                code, res = req("policy_on")
+                assert code == 200 and res["ok"] and ("공중에서 바로 구동" in res["message"]) is (mode == "air") \
+                    and ("착지 확인 뒤에만" in res["message"]) is (mode == "ground"), (mode, code, res)
+                worker = POLICY_ON_WORKER
+                assert worker is not None
+                worker.join(timeout=30)
+                assert not worker.is_alive(), f"{mode}: 정책 ON 순서기가 끝나지 않음"
+                snap = console_snapshot()["trial"]
+                assert not TRIAL.fault and TRIAL.macro is None and set(POLICY_ON_STEPS) | {"policy_on"} <= TRIAL.completed, (mode, TRIAL.fault, sorted(TRIAL.completed))
+                assert [a for a, _ in calls] == list(POLICY_ON_STEPS), (mode, [a for a, _ in calls])        # 기존 단계를 순서대로, 한 번씩(두 방식 모두)
+                stand = dict(calls)["stand"]
+                armed = [e for e in TRIAL.history if e.get("event") == "policy_on_armed"]
+                assert len(armed) == 1, (mode, TRIAL.history)
+                if mode == "air":
+                    assert stand == {"checkpoint": CKPT_DEFAULT, "hang_arm": True, "touchdown_start": False}, stand
+                    assert bridge_cmd_payload("stand", {k: stand[k] for k in ("hang_arm", "touchdown_start")}) == {"cmd": "stand", "hang_arm": True}
+                    assert "착지 대기" not in snap["phase"] and "정책 제어" in snap["phase"] and TRIAL.commander() == "policy", (snap["phase"], TRIAL.commander())
+                    assert "공중 정책 구동" in armed[0]["message"] and armed[0].get("air_start") is True and demo.start_gate is None, armed
+                else:
+                    assert stand == {"checkpoint": CKPT_DEFAULT, "hang_arm": False, "touchdown_start": True}, stand
+                    assert bridge_cmd_payload("stand", {k: stand[k] for k in ("hang_arm", "touchdown_start")}) == {"cmd": "stand", "touchdown_start": True}
+                    assert "착지 대기" in snap["phase"] and TRIAL.commander() == "hold", (snap["phase"], TRIAL.commander())
+                    assert armed[0] == {"event": "policy_on_armed", "trial": TRIAL.number, "message": "착지 대기 — 양발 착지 확인 뒤 정책 자동 시작"}, armed
+                assert req("policy_on")[0] == 409 and req("stand")[0] == 409                                 # 중복 실행·단계 재실행 거부(두 방식 모두)
+                seen[mode] = (stand, snap["phase"], label["label"])
+            finally:
+                session.close()
+    return (f"접지 방식: stand {seen['ground'][0]} → '{seen['ground'][1]}'(이름 '{seen['ground'][2]}') · "
+            f"공중 방식: stand {seen['air'][0]} → '{seen['air'][1]}'(이름 '{seen['air'][2]}') · 두 방식 모두 단계 {len(POLICY_ON_STEPS)} 개 순서대로 1 회씩·중복 실행 거부")
 
 
 def selftest_walk_report():
@@ -3038,6 +3195,7 @@ def selftest():
         # 1005 정책 ON: 종전 stand payload 불변 · touchdown_start 는 순서기만 · 착지 대기 브리지 홀드는 '정책' 아님 · 선행조건
         assert bridge_cmd_payload("stand", {"hang_arm": False, "touchdown_start": False}) == {"cmd": "stand"}
         assert bridge_cmd_payload("stand", {"touchdown_start": True}) == {"cmd": "stand", "touchdown_start": True}
+        assert bridge_cmd_payload("stand", {"hang_arm": True, "touchdown_start": False}) == {"cmd": "stand", "hang_arm": True}   # 1008 공중 방식의 정책 ON
         assert "policy_on" in LABELS and "policy_on" in CONFIRM_ACTIONS and tuple(POLICY_ON_STEPS) == ("ground", "handoff", "baseline", "arm", "bridge", "stand")
         _tp = TrialState(CKPT_DEFAULT); _tp.completed.update({"arm", "bridge", "stand"})
         _S8 = {"armed": True, "running": True}; _FR = {"status": True, "bridge": True, "imu": True, "foot": True}
@@ -3055,11 +3213,28 @@ def selftest():
             assert publish.call_count == 2
         page = render_page()
         assert "<!--CKPT_OPTIONS-->" not in page
+        # 1008 오후: 정책 ON 의 화면 문구는 시험 방식을 따른다 — 접지 방식의 버튼·설명·확인 문구는 종전 글자 그대로, 공중 방식은 '공중에서 바로 구동'
+        for piece in ('<button data-action="policy_on" id="policyOnBtn">정책 ON (착지 자동 인수)</button>',
+                      '<small id="policyOnNote">공중 수평 자세(kp150)에서 한 번 — 인계·기준점·ARM·정책 로드를 같은 게이트로 진행, 정책은 양발 착지 확인 뒤에만 시작</small>',
+                      "const confirmations={policy_on:'정책 ON: 매달린 수평 자세에서 접지 마커→인계→기준점→ARM→정책 로드→착지 대기를 기존 게이트·응답 확인으로 자동 진행합니다",
+                      "function confirmText(action){return action==='policy_on'&&state?.trial.mode==='air'?POLICY_ON_AIR.confirm:confirmations[action]}",
+                      "text('confirmText',custom?.text||confirmText(action))",
+                      "정책이 공중에서 바로 구동됩니다 — 착지를 기다리지 않으므로 다리가 움직일 수 있습니다",
+                      "text('policyOnBtn',t.mode==='air'?(t.allowed.policy_on?.label||'정책 ON(공중에서 바로 구동)'):POLICY_ON_GROUND.label)",
+                      "text('policyOnNote',t.mode==='air'?POLICY_ON_AIR.note:POLICY_ON_GROUND.note)",
+                      "w.mode==='air'?'공중·착지 정책(착지 정착 뒤 KE 인계)'"):
+            assert piece in page, f"콘솔 페이지에 없음: {piece[:60]}"
         assert f'<option value="{CKPT_DEFAULT}">' in page and page.count("<option value=\"stand_") == len(CKPT_MENU) == 1
         src = Path(__file__).with_name("rl_bridge_node.py").read_text(encoding="utf-8")
         body = src.split("CHECKPOINTS = {", 1)[1].split("\n}\n", 1)[0]
         known = set(re.findall(r'^\s+"([A-Za-z0-9_]+)": os\.path\.join', body, re.M))
         assert set(CKPT_CHOICES) <= known, "console checkpoint not in bridge"
+    with tempfile.TemporaryDirectory(prefix="console-selftest-policy-on-") as directory:
+        import contextlib
+        import io
+        with contextlib.redirect_stdout(io.StringIO()):      # 임시 세션을 여닫는 안내 줄은 삼킨다(실패는 예외로 그대로 나온다)
+            line = selftest_policy_on_modes(directory)
+    print("[PASS] 정책 ON 방식별 마지막 단계(1008): " + line)
     print("[PASS] 모터 오류 기록(1007): " + _selftest_errlog())
     print("console selftest: ALL PASS (offline only; hardware not exercised)")
     return 0

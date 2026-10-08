@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """robotctl — ssh 터미널에서 운영 콘솔(8800) API 로 로봇을 조작한다 (0915, 사진 촬영·무테더 운용용).
 
-표준 절차(1008 — 공중에서 인계):  robotctl prep  →  robotctl level  →  robotctl policy-on  →  (화면 '착지 대기' 뒤 지그 내림)  →  걷기는 콘솔 패널
+표준 절차(1008 — 공중에서 인계):  robotctl prep  →  robotctl level  →  robotctl policy-on  →  (지그 내림 — 아래)  →  걷기는 콘솔 패널
+  시험 방식 air(1008 오후 기본값 — 남긴 정책이 공중 정책 시작을 받는다): policy-on 이 끝나면 정책이 **공중에서 이미 구동 중** → 지그를 천천히 내린다
+                               (공중 ~ 착지는 공중·착지 정책이 맡고, 착지가 가라앉으면 브리지가 서기 KE 로 넘긴다 — 걷기는 그 뒤)
+  시험 방식 ground: policy-on 뒤 화면 '착지 대기'(정책 미구동·수평 자세 유지) → 지그를 내리면 양발 착지 확인 뒤 정책이 시작한다
 
 모든 명령은 콘솔 서버의 선행조건·허용 규칙을 그대로 통과한다(우회 없음). 버튼 대신 타이핑일 뿐이다.
 
   robotctl status            현재 상태 한 줄
   robotctl config air|ground [CKPT]   시험 방식·정책 설정 (제어 시작 전). 1008: 고를 수 있는 정책은 합성 키 하나(기본값) — 그 밖의 키는 서버가 거부.
-                             air(공중 정책 시작 = hang_arm)는 남긴 정책에서 거부된다(지면 시작 학습 · 시뮬 AIR1 착지 실패 다수) → ground 만
+                             1008 오후: 남긴 정책(종전 합성 키 + 공중·착지 구간 정책 G21h)은 air 를 다시 받는다.
+                               air    = 공중 정책 시작(hang_arm): 정책이 공중에서 바로 구동된 채 내린다(기본값 · 착지 정착 뒤 서기 KE 로 자동 인계)
+                               ground = 착지 자동 인수(touchdown start): 공중에서 인계하되 정책은 양발 착지 확인 뒤 시작
+                             공중 정책 시작을 받지 않는 정책(지면 시작 학습 · 시뮬 AIR1 착지 실패 다수)에서는 air 를 서버가 거부한다.
   robotctl watch             1초마다 상태 (Ctrl-C 로 종료)
   robotctl motors            12모터 CAN 응답 일괄 점검(0토크 폴링, ~/rl_calib/ping_all.py) — 제어 스택이 살아 있으면 거부
   robotctl joints            12관절 실제각·명령·오차·신선도 표 (읽기 전용)
@@ -31,8 +37,11 @@
   robotctl ground            접지 확인 (발을 바닥에 대고 서게 할 때만)
   robotctl handoff [-y]      제어 인계 → 기준점 → ARM → 정책 로드 (선택 정책은 콘솔 설정; 자동 수평은 먼저 끔)
   robotctl stand [-y]        정책 시작 (인계·ARM·정책 로드 뒤)
-  robotctl policy-on [-y]    [1005 단순화] 공중 수평 자세(hang·level 뒤)에서 한 번: 인계→기준점→ARM→정책 로드→착지 대기를
-                             콘솔이 기존 게이트로 진행. 정책은 양발 착지 확인 뒤에만 시작 → 그 다음 지그 해제
+                             ※ 위 세 명령은 단계별 절차다. 1008 오후부터 기본 방식이 air 라, **지면에서 서게 하려면 먼저 robotctl config ground**.
+                               방식 air 에서는 ground = 공중 인계 조건 확인(접촉 검사 없음), stand = 정책이 공중에서 바로 구동(hang_arm) — 확인 문구가 그렇게 묻는다.
+  robotctl policy-on [-y]    [1005 단순화] 공중 수평 자세(hang·level 뒤)에서 한 번: 인계→기준점→ARM→정책 로드→(방식별 마지막 단계)를
+                             콘솔이 기존 게이트로 진행. 방식 ground: 착지 대기 — 정책은 양발 착지 확인 뒤에만 시작 → 그 다음 지그 해제
+                             방식 air(1008 오후): **정책이 공중에서 바로 구동**(다리가 움직일 수 있음) → 구동 확인 뒤 지그를 천천히 내림
   robotctl down [-y]         회수: 줄 지지 확인 → 제어 프로세스 종료 → 토크 해제
   robotctl estop             정지 요청
   robotctl new               새 시험 준비 (회수·토크 해제 뒤)
@@ -120,6 +129,8 @@ def line(st):
         parts.append(f"자동수평 {al.get('status')} off{al.get('offset', 0):+.1f}")
     if b.get("live"):
         parts.append(f"정책 LIVE {b.get('loaded_checkpoint')}")
+    if (b.get("kew3") or {}).get("mode") == "air":      # 1008 오후(표시 전용): 공중 정책 시작 세션의 공중·착지 구간 — 착지가 가라앉으면 사라진다(서기 KE 인계)
+        parts.append("공중·착지 정책 구간(KE 인계 전·걷기 불가)")
     sg = b.get("start_gate") or {}
     if sg.get("state") and sg.get("state") != "POLICY":
         parts.append(f"착지 대기({sg.get('state')}: {sg.get('why')})")
@@ -339,8 +350,14 @@ def cmd_handoff(a):
     if (st.get("auto_level") or {}).get("on"):
         act("auto_level_off", quiet=True)
     im = st.get("imu") or {}
-    print(f"현재 fwd {im.get('fwd', 0):+.1f}° lat {im.get('lat', 0):+.1f}° | 선택 정책 {st['trial'].get('checkpoint')}", flush=True)
-    if not confirm("제어 인계: 발이 바닥에 있고 줄이 느슨하며 몸통이 거의 수평인가요?", a.yes):
+    air = st["trial"].get("mode") == "air"      # 1008 오후: 방식 air 의 단계별 절차 = 공중 인계(뒤의 stand 가 공중에서 정책을 구동한다)
+    print(f"현재 fwd {im.get('fwd', 0):+.1f}° lat {im.get('lat', 0):+.1f}° | 선택 정책 {st['trial'].get('checkpoint')}"
+          + (" | 방식 air(공중 정책 시작)" if air else ""), flush=True)
+    if air:
+        if not confirm("제어 인계(공중 방식): 줄(지그)이 로봇을 지지하고 발이 바닥에서 떨어져 있으며 수평 자세(level)가 적용됐나요? "
+                       "(지면에 세운 채 인계하려면 취소하고 robotctl config ground 먼저)", a.yes):
+            die("취소")
+    elif not confirm("제어 인계: 발이 바닥에 있고 줄이 느슨하며 몸통이 거의 수평인가요?", a.yes):
         die("취소")
     for action, tmo in (("handoff", 20), ("baseline", 20), ("arm", 20), ("bridge", 60)):
         print(f"▶ {state()['trial']['allowed'][action]['label']}", flush=True)
@@ -352,7 +369,11 @@ def cmd_handoff(a):
 
 def cmd_stand(a):
     st = state()
-    if not confirm(f"정책 시작({st['trial'].get('checkpoint')}): 줄 느슨·손 떼기 확인?", a.yes):
+    if st["trial"].get("mode") == "air":         # 1008 오후: 방식 air 의 stand = 공중 정책 시작(hang_arm) — 줄이 받친 채, 다리 주변에 사람 없이
+        if not confirm(f"정책 시작(공중 방식 · {st['trial'].get('checkpoint')}): 정책이 공중에서 바로 구동됩니다(다리가 움직일 수 있음). "
+                       "줄(지그)이 로봇을 지지하고 다리 주변에 사람이 없나요?", a.yes):
+            die("취소")
+    elif not confirm(f"정책 시작({st['trial'].get('checkpoint')}): 줄 느슨·손 떼기 확인?", a.yes):
         die("취소")
     if act("stand"):
         wait_completed("stand", 15)
@@ -360,12 +381,21 @@ def cmd_stand(a):
 
 
 def cmd_policy_on(a):
-    """1005 단순화 기동: 서버 순서기가 기존 단계를 같은 게이트로 실행 — 클라이언트는 요청 1회 + 관찰만."""
+    """1005 단순화 기동: 서버 순서기가 기존 단계를 같은 게이트로 실행 — 클라이언트는 요청 1회 + 관찰만.
+    1008 오후: 콘솔의 시험 방식(state()["trial"]["mode"])에 따라 마지막 단계가 다르다 — 확인 문구·완료 안내가 그 방식을 따른다.
+      ground(접지 방식): 착지 자동 인수 — 정책은 양발 착지 확인 뒤에만 시작한다(종전 문구 그대로).
+      air(공중 방식)   : 정책이 **공중에서 바로** 구동된다(stand + hang_arm). 착지를 기다리지 않으므로 다리가 움직일 수 있다."""
     st = state()
     im = st.get("imu") or {}
-    print(f"현재 fwd {im.get('fwd', 0):+.1f}° lat {im.get('lat', 0):+.1f}° | 선택 정책 {st['trial'].get('checkpoint')}", flush=True)
-    if not confirm("정책 ON: 줄(지그)이 로봇을 지지하고 발이 바닥에서 떨어져 있으며 수평 자세(level)가 적용됐나요? "
-                   "정책은 착지 확인 뒤에만 시작합니다", a.yes):
+    air = st["trial"].get("mode") == "air"
+    print(f"현재 fwd {im.get('fwd', 0):+.1f}° lat {im.get('lat', 0):+.1f}° | 선택 정책 {st['trial'].get('checkpoint')}"
+          + (" | 방식 air(공중 정책 시작)" if air else ""), flush=True)
+    if air:
+        if not confirm("정책 ON(공중 방식): 줄(지그)이 로봇을 지지하고 발이 바닥에서 떨어져 있으며 수평 자세(level)가 적용됐고 "
+                       "다리 주변에 사람이 없나요? 정책이 공중에서 바로 구동됩니다(착지를 기다리지 않음 — 다리가 움직일 수 있습니다)", a.yes):
+            die("취소")
+    elif not confirm("정책 ON: 줄(지그)이 로봇을 지지하고 발이 바닥에서 떨어져 있으며 수평 자세(level)가 적용됐나요? "
+                     "정책은 착지 확인 뒤에만 시작합니다", a.yes):
         die("취소")
     if not act("policy_on"):
         sys.exit(1)
@@ -378,6 +408,10 @@ def cmd_policy_on(a):
             die(f"정책 ON 중단: {t['fault']}")
         return False
     wait_until(done, 180, "정책 ON")
+    if air:
+        print("✓ 정책이 공중에서 구동 중 — 이제 지그를 천천히 내리세요(착지가 가라앉으면 서기 KE 로 자동 인계 — 걷기는 그 뒤에). "
+              "'robotctl watch' 로 관찰, 문제 시 robotctl estop", flush=True)
+        return
     print("✓ 착지 대기 — 정책 미구동·수평 자세 유지 중. 이제 지그를 해제하세요(양발 착지 0.3 s·정착 뒤 정책 자동 시작). "
           "'robotctl watch' 로 관찰, 문제 시 robotctl estop", flush=True)
 

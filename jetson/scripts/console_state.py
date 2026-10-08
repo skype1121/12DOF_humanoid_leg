@@ -36,7 +36,9 @@ PREP = ("can_up", "sensors", "boot_pose", "selftest", "stage8", "hang_stand", "g
 CONTROL = ("stage8", "hang_stand", "bridge", "stage8_arm", "stage8_baseline")
 #: 1005 단순화 기동: '정책 ON' 한 번이 서버 안에서 기존 단계를 같은 게이트·같은 응답 확인으로 순서대로 실행한다.
 #: 정책은 착지 확인 전까지 구동되지 않는다(브리지 stand touchdown_start — 착지 전 홀드 유지). 기존 단계별 절차는 그대로 남는다.
+#: 1008: 시험 방식이 '공중'(mode "air")이면 마지막 stand 를 hang_arm 으로 보낸다 — 정책이 공중에서 바로 구동된다(착지 대기 없음). 접지 방식은 위 그대로다.
 POLICY_ON_STEPS = ("ground", "handoff", "baseline", "arm", "bridge", "stand")
+POLICY_ON_LABEL_AIR = "정책 ON(공중에서 바로 구동)"   # 공중 방식에서 화면·robotctl 에 보이는 이름(접지 방식은 LABELS["policy_on"] 그대로)
 POLICY_ON_LEVEL_TOL_DEG = 5.0     # 홀드 자세 vs 수평 기준 자세(level_pose) 허용 편차 — '수평 자세 적용 누락' 검출용
 POLICY_ON_RAMP_TOL_DEG = 0.5      # 개별 조정 램프 완료(요청 vs 적용) 허용 편차
 
@@ -104,11 +106,32 @@ def finite(value):
 #: 1008: 셋째 걷기 키(브리지의 둘째 합성 키) = 첫 합성 키와 같은 구성에 KE 감지기 갇힘 해소(회복 모드 중 조용한 양발 서기 2 s → 기준 재설정·서기 복귀)만 켠 것 —
 #:   **시뮬 합성 평가가 돌린 구성이 이 키다**(첫 합성 키는 그 옵션이 꺼져 있다 — 회복 모드에 갇히면 걷기 켜기가 계속 거부될 수 있다). 실물 미검증.
 #:   **뒤에** 덧붙였다 — 앞의 두 키(이름·표시·순서)는 그대로다. 어느 키를 쓸지는 사용자가 정한다.
+#: 1008 오후: 넷째 걷기 키(브리지의 셋째 합성 키) = 셋째 걷기 키(서기 KE·걷기 W3·갇힘 해소 그대로)에 **공중·착지 구간 서기 정책**(G21h — 매달림 시작을
+#:   학습 분포에 넣은 서기)을 더한 3 단 러너(AIR → KE ⇄ W3). 공중에서 시작하면(stand + hang_arm) 공중·착지 정책이 맡다가 착지가 가라앉으면 브리지 러너가
+#:   스스로 서기 KE 로 넘긴다(디버그 kew3.mode "air" → "ke"). 지면에서 시작하면 셋째 걷기 키와 같은 동작이다.
+#:   air_start = 공중 정책 시작(시험 방식 '공중')을 받는 키. **이 표시가 없는 키는 False 로 읽는다(.get)** — 앞의 세 항목은 그대로다.
+#:   브리지 명세(KEW3_SPECS 의 air 가 있는 키)와 같은 키여야 한다(콘솔 selftest 가 브리지 원문과 대조). 승윤님 결정(1008): 정책을 공중에서 구동한 채 내린다 —
+#:   앞의 세 키는 지면 시작으로만 학습돼 브리지가 hang_arm 을 거부한다(시뮬 AIR1: 착지 낙상 40–62 %). 실물 미검증.
 WALK_KEYS = {
     "stand_w3s3d_15800": {"composite": False, "label": "걷기 실험 · W3 단독"},
     "stand_kew3_g21a_g24ra_w3s3d15800": {"composite": True, "label": "걷기 실험 · 서기 KE + 걷기 W3 합성"},
     "stand_kew3q_g21a_g24ra_w3s3d15800": {"composite": True, "label": "걷기 실험 · 서기 KE + 걷기 W3 합성 + 갇힘 해소(시뮬 평가 구성) · 실물 미검증"},
+    "stand_kew3qa_g21a_g24ra_w3s3d15800": {"composite": True, "air_start": True,
+                                           "label": "걷기 실험 · 서기 KE + 걷기 W3 합성 + 갇힘 해소 + 공중·착지 정책(G21h) · 공중 정책 시작 가능 · 실물 미검증"},
 }
+
+
+def walk_air_start(checkpoint):
+    """이 정책 키가 공중 정책 시작(stand + hang_arm)을 받는 걷기 키인가 — WALK_KEYS 의 air_start(없으면 False)."""
+    return bool(WALK_KEYS.get(checkpoint, {}).get("air_start"))
+
+
+def default_mode(checkpoint):
+    """시험 방식의 기본값: 공중 정책 시작을 받는 걷기 키면 "air"(공중에서 정책 시작 → 착지), 그 밖은 종전대로 "ground"(접지 후 정책 인계).
+    새 TrialState 가 이 값으로 시작한다. '새 시험 준비'는 앞 시험의 방식을 그대로 넘기고, '시험 설정'은 운영자가 고른 값을 쓴다."""
+    return "air" if walk_air_start(checkpoint) else "ground"
+
+
 WALK_KIND = {"w3_move": "move", "w3_off": "off", "w3_stop": "stop", "w3_rearm": "rearm"}
 WALK_SAFE = {"w3_off", "w3_stop"}      # 안전 방향(걷기 끄기·정지 래치) — 단계·고장 래치·앞 요청과 무관하게 받는다
 WALK_ACK_TIMEOUT_S = 2.0               # 응답 대기 [s]. 넘으면 '응답 없음' — 같은 명령을 다시 보내지 않는다
@@ -444,6 +467,9 @@ class WalkState:
             return f"정지 래치({sup.get('latch_reason')}) — 재무장 뒤에만 걷기 가능"
         if want or ge:
             return "지금 걷는 중입니다(want/ge 1) — 서기 복귀 뒤에"
+        if WALK_KEYS[ck]["composite"] and kew3.get("mode") == "air":
+            # 1008: 공중 정책 시작 세션의 공중·착지 구간 — 착지가 가라앉아 브리지 러너가 KE 로 넘길 때까지 걷기 불가(브리지도 러너 게이트·감독기로 거부한다)
+            return "공중·착지 정책 구간(착지 정착 뒤 KE 인계 대기) — 서기(KE) 인계 뒤에"
         if WALK_KEYS[ck]["composite"] and kew3.get("mode") != "ke":
             return "합성 러너가 아직 걷기 정책(W3) 모드입니다 — 서기(KE) 인계 뒤에"
         if WALK_KEYS[ck]["composite"] and kew3.get("block"):
@@ -515,7 +541,7 @@ class WalkState:
                 "cmd": b.get("cmd") if st["fresh"] and isinstance(b.get("cmd"), list) else None,
                 "heading_loop": (bool(w3c.get("hl_on")) and w3c.get("hl") is not None) if w3c is not None else None,
             },
-            # 합성 키: 지금 도는 러너("ke" 서기 | "w3" 걷기). W3 단독 키는 서기·걷기가 같은 정책이라 늘 "w3".
+            # 합성 키: 지금 도는 러너("ke" 서기 | "w3" 걷기 | 1008 "air" 공중·착지 구간 — 공중 정책 시작 키만). W3 단독 키는 서기·걷기가 같은 정책이라 늘 "w3".
             "mode": st["mode"] if st["composite"] else ("w3" if st["w3"] is not None else None),
             "composite": st["composite"],
             "kew3": st["kew3"],
@@ -530,7 +556,7 @@ class TrialState:
         self.boot_id = uuid.uuid4().hex
         self.revision = 0
         self.number = 1
-        self.mode = "ground"
+        self.mode = default_mode(checkpoint)   # 1008: 공중 정책 시작을 받는 키면 "air", 그 밖은 종전대로 "ground"
         self.checkpoint = checkpoint
         self.completed = set()
         self.pending = None
@@ -551,6 +577,7 @@ class TrialState:
         self._pose_stamps = None
         self.macro = None        # 1005 정책 ON 자동 순서 진행 상태 {action, step, started} — 진행 중 다른 조작 차단
         self.policy_on = False   # 1005 이 시험이 '정책 ON(착지 자동 인수)' 경로인지 — 접지 마커·stand 의 접촉 게이트를 브리지 착지 게이트가 대신한다
+        #                          (1008 공중 방식의 정책 ON 에서도 True — 그때 접촉 게이트는 방식 자체가 요구하지 않고, 브리지는 HangGuard 행잉 모드 + 러너 AIR 모드로 받는다)
         self.walk = WalkState()  # 1007 걷기 버튼 수명 상태기(W3 세션에서만 움직인다) — 시험마다 새로
 
     def emit(self, event, **data):
@@ -1097,6 +1124,7 @@ class TrialState:
         allowed = {k: {"enabled": self.reason(k) is None, "reason": self.reason(k), "label": v} for k, v in LABELS.items()}
         if self.mode == "air":
             allowed["ground"]["label"] = "공중 인계 조건 확인"
+            allowed["policy_on"]["label"] = POLICY_ON_LABEL_AIR     # 1008: 공중 방식의 정책 ON 은 착지를 기다리지 않는다 — 이름으로 드러낸다
         if self.support or self.fault or self.measurement["state"] == "interrupted":
             next_action = next((k for k in ("support_confirm", "stack_down", "release", "session_end")
                                 if k not in self.completed and (k != "support_confirm" or not self.support)), None)

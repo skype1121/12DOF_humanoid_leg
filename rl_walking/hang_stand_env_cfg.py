@@ -3952,6 +3952,8 @@ class Biped12HangStandG21h2EnvCfg(Biped12HangStandG21hEnvCfg):
     바뀌는 것: 매달림 에피소드 비율 0.5 → 0.7 · 공중 유지 2–8 → 2–20 s · 방출 1–4 → 1.5–8 s · 매달림 에피소드의 절반은 줄 길이 모형(`cable_frac` 0.5 — 강성 줄을
     풀어 내린다. 매달린 동안 가라앉지 않고 앵커 축 진자 흔들림이 생긴다) · 에피소드 20 → 36 s · 보상 `hang_swing`(지지비 > 0.5 인 동안 몸통 롤·피치 각속도 제곱합, −1.0) 추가 ·
     속도 밀기(`push_robot`)는 지지가 풀린 env 에만(`push_unsupported`), 매달림에는 작은 초기 흔들림(±0.1 m/s).
+    1008 15:58 추가: 매달림 목표 피치 ±8°(2 점 현수 — 실물 매달림 피치 −1 ~ +5° 를 덮는다) · 매달린 동안(지지비 > 0.5 ∧ 무접촉) 기본자세 유지 벌점 `hang_pose`(−4.0) ·
+    같은 동안 몸통 수평·피치 밴드 벌점 상쇄(`hang_flat_relief`·`hang_band_relief` — 줄이 정하는 기울기는 다리로 고칠 수 없다). 시작 = G21h-12299.
     지면 에피소드(30 %)의 지지·외란·게이트·보상 항은 G21a 그대로다(에피소드 길이만 36 s). 시작 = G21h-12299 이어 학습. 관측·행동 계약 불변.
     이 정책은 3 단 러너의 AIR 구간(공중 ~ 착지 정착)에만 쓴다 — 착지 뒤의 서기·회복·걷기는 종전 구성이 맡는다.
     ★ **준비만 해 둔 환경이다 — 학습한 적 없다(1008 15:10).** AIR3(§13)이 미달일 때만 쓴다. 쓰기 전에 check_hang_mix 를 이 태스크로 다시 돌려 ALL PASS 를 확인할 것
@@ -3959,6 +3961,7 @@ class Biped12HangStandG21h2EnvCfg(Biped12HangStandG21hEnvCfg):
 
     P_HANG = 0.7
     W_HANG_SWING = -1.0
+    W_HANG_POSE = -4.0
 
     def __post_init__(self):
         super().__post_init__()
@@ -3968,3 +3971,12 @@ class Biped12HangStandG21h2EnvCfg(Biped12HangStandG21hEnvCfg):
         # 속도 밀기(push_robot)는 지지가 풀린 env 에만 — 매달린 몸에 몇 초마다 속도를 더하면 흔들림이 쌓인다(같은 함수·같은 범위, 대상만 거른다)
         self.events.push_robot.func = mdp_hang.push_unsupported
         self.rewards.hang_swing = RewTerm(func=mdp_hang.hang_swing, weight=float(self.W_HANG_SWING), params={"r_min": 0.5})
+        # 1008 15:58 추가(AIR4 탐색 뒤 — AIR_START_1008.md §14): 기운 채 매달림 + 공중에서는 자세 유지가 정답이 되게 하는 세 항
+        self.events.hang_mix_reset.params.update({"pitch0_deg_range": (-8.0, 8.0)})
+        self.rewards.hang_pose = RewTerm(func=mdp_hang.hang_pose, weight=float(self.W_HANG_POSE), params={"r_min": 0.5})
+        self.rewards.hang_flat_relief = RewTerm(func=mdp_hang.hang_flat_relief, weight=-float(self.rewards.flat_orientation_l2.weight), params={"r_min": 0.5})
+        _tp = dict(self.rewards.torso_pitch_band.params)       # G8 이후 state_gated(func=torso_pitch_band, params={...}) 로 싸여 있다 — 안쪽 인자를 그대로 쓴다
+        _tp = dict(_tp.get("params") or {}) if "func" in _tp else _tp
+        _bp = {k: v for k, v in _tp.items() if k in ("band_rad", "fwd_band_rad")}
+        assert "band_rad" in _bp, f"torso_pitch_band 인자를 못 찾음: {self.rewards.torso_pitch_band.params}"
+        self.rewards.hang_band_relief = RewTerm(func=mdp_hang.hang_band_relief, weight=-float(self.rewards.torso_pitch_band.weight), params=dict(_bp, r_min=0.5))

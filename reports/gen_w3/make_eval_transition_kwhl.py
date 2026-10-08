@@ -407,4 +407,35 @@ rep("""    _AIR["pre_air"] = (float(args_cli.precheck_s) + float(args_cli.level_
         _hp["two_point_yaw"] = True                           # AIR3: 2 줄 현수의 요(비틀림) 복원 — 종전 모형은 행동 0 에서도 몸이 자전했다
     print(f"[air_start] 지지 모형 정정: 고정 보정 {'켬' if _AIR['fix'] else '끔'} · 요 복원 {'켬' if _AIR['yaw'] else '끔'}", flush=True)
     _AIR["pre_air"] = (float(args_cli.precheck_s) + float(args_cli.level_s)) <= _AIR["hold"] + 1e-9      # 인계가 방출 시작보다 먼저 = 공중에서 정책 시작""")
+# 1008 AIR4: 매달림 피치 오프셋(p0:lo,hi [deg] — 2 점 현수의 목표 피치) · 공중 폭주 차단 설정(--kw_air_guard) · 러너의 공중 |a| 통계를 kwloop npz 에 저장
+rep("""    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3), "model": "force", "k": None, "fix": 0, "yaw": 0}""",
+    """    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3), "model": "force", "k": None, "fix": 0, "yaw": 0, "p0": None}""")
+rep("""        elif _k in ("fix", "yaw"):
+            assert _v in ("0", "1"), _v; _AIR[_k] = int(_v)""", """        elif _k in ("fix", "yaw"):
+            assert _v in ("0", "1"), _v; _AIR[_k] = int(_v)
+        elif _k == "p0":
+            _a, _, _b = _v.partition(","); _AIR["p0"] = (float(_a), float(_b or _a))""")
+rep("""    if _AIR["yaw"]:
+        _hp["two_point_yaw"] = True""", """    if _AIR["p0"] is not None:
+        _hp["two_point_pitch0_deg_range"] = tuple(_AIR["p0"])   # AIR4: 기운 채 매달림(실물 매달림 피치 −1 ~ +5° — 시뮬 기본은 +0.9 ~ +2.1° 뿐이었다)
+        print(f"[air_start] 매달림 목표 피치 {_AIR['p0']}° (2 점 현수)", flush=True)
+    if _AIR["yaw"]:
+        _hp["two_point_yaw"] = True""")
+rep("""parser.add_argument("--kw_composite_key", type=str, default="",""", """parser.add_argument("--kw_air_guard", type=str, default="", help="AIR4: 합성 러너의 공중 폭주 차단 문턱 덮어쓰기 — 'off' = 끔(정책의 맨 거동 관찰용) / 숫자 = 목표 이탈각 문턱 [deg]. '' = 러너 기본값")
+parser.add_argument("--kw_composite_key", type=str, default="",""")
+rep("""    if args_cli.kw_requiet:                               # 배포 감지기(c5_switch.SwitchDetector)의 갇힘 해소 옵션 — 생성자 인자와 같은 검증을 거쳐 설정""",
+    """    if args_cli.kw_air_guard:
+        for R in KWR:
+            R.air_guard_deg = None if args_cli.kw_air_guard == "off" else float(args_cli.kw_air_guard)
+        print(f"[runner_loop] 공중 폭주 차단 문턱 덮어쓰기: {args_cli.kw_air_guard}", flush=True)
+    print(f"[runner_loop] 공중 폭주 차단: 목표 이탈 문턱 {getattr(KWR[0], 'air_guard_deg', '없음(구판 러너)')}° · 무접촉 {getattr(KWR[0], 'air_guard_s', '-')} s 뒤 · 되돌림 {getattr(KWR[0], 'air_guard_rate_deg', '-')}°/틱", flush=True)
+    if args_cli.kw_requiet:                               # 배포 감지기(c5_switch.SwitchDetector)의 갇힘 해소 옵션 — 생성자 인자와 같은 검증을 거쳐 설정""")
+rep("""    _npk.savez_compressed(os.path.join(DATA, "log_picture", f"kwloop_{args_cli.out_tag}.npz"), t=_npk.asarray(kw_t_tl, _npk.float32), kind=_kk,""",
+    """    _npk.savez_compressed(os.path.join(DATA, "log_picture", f"kwair_{args_cli.out_tag}.npz"),
+                          amax=_npk.asarray([float(getattr(R, "air_act_max", float("nan"))) for R in KWR], _npk.float32),
+                          dev=_npk.asarray([float(getattr(R, "air_dev_max", float("nan"))) for R in KWR], _npk.float32),
+                          amax_all=_npk.asarray([float(getattr(R, "air_act_max_all", float("nan"))) for R in KWR], _npk.float32),
+                          n_hold=_npk.asarray([int(getattr(R, "n_air_hold", 0)) for R in KWR], _npk.int32),
+                          hold=_npk.asarray([bool(getattr(R, "air_hold", False)) for R in KWR]), n_air_to_ke=_npk.asarray([int(getattr(R, "n_air_to_ke", 0)) for R in KWR], _npk.int32))
+    _npk.savez_compressed(os.path.join(DATA, "log_picture", f"kwloop_{args_cli.out_tag}.npz"), t=_npk.asarray(kw_t_tl, _npk.float32), kind=_kk,""")
 open(P + ".tmp", "w", encoding="utf-8").write(src); os.replace(P + ".tmp", P); print("kwhl patch applied", len(src.splitlines()))

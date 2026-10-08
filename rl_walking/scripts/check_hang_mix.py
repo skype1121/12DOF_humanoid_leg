@@ -13,7 +13,7 @@ import sys
 
 from isaaclab.app import AppLauncher
 
-REPO = "/home/ryu/humanoid_leg_test1"
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))      # 이 파일이 있는 트리(작업 트리에서 돌리면 그 트리의 코드)
 sys.path.insert(0, REPO)
 parser = argparse.ArgumentParser()
 parser.add_argument("--task", type=str, default="Biped12-HangStand-G21h-v0")

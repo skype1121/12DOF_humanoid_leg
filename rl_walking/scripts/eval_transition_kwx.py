@@ -194,6 +194,7 @@ parser.add_argument("--kw_effort_scales", type=str, default="", help="X13: 토�
 parser.add_argument("--kw_rec_export", type=str, default="", help="X16: KE 회복 정책의 exported 폴더 경로 덮어쓰기('' = 등록된 G24Ra-21793)")
 parser.add_argument("--kw_unload", type=float, default=0.0, help="X18: 인계 뒤 링크마다 자기 무게의 이 비율(0–0.9)을 위로 받친다(부분지지의 이상화, 1 s 램프). --dist 와 함께 쓰지 않는다")
 parser.add_argument("--contact_pert", type=str, default="", help="X19: 접촉 관측 교란 'delay:N;flip:p;t0:x'(관측 비트만, 물리·채점 불변). '' = 끔")
+parser.add_argument("--kw_air_guard", type=str, default="", help="AIR4: 합성 러너의 공중 폭주 차단 문턱 덮어쓰기 — 'off' = 끔(정책의 맨 거동 관찰용) / 숫자 = 목표 이탈각 문턱 [deg]. '' = 러너 기본값")
 parser.add_argument("--kw_composite_key", type=str, default="", help="확인 실행: 브리지 합성 키(예 stand_kew3qa_g21a_g24ra_w3s3d15800)로 러너를 만든다 — 평가용 덮어쓰기 없이 배포 등록 그대로")
 parser.add_argument("--kw_air_exported", type=str, default="", help="AIR2: 공중·착지 구간 서기 정책 폴더(exported_N). 주면 합성 러너에 air_runner 를 달고, 공중 인계 팔에서 start_air() 로 시작")
 parser.add_argument("--kw_ke_key", type=str, default="", help="합성 러너의 KE 키(브리지 C5_PAIRS 에 등록된 것). '' = stand_c5kr_g21a_g24ra(종전). 새 서기 정책을 브리지에 등록한 뒤의 확인 실행용 — 덮어쓰기 없이 등록 그대로 쓴다")
@@ -308,7 +309,7 @@ if args_cli.ramp_off:
     _hp["ramp_rate_range"] = (0.0, 0.0); _hp["ramp_cap_range"] = (0.0, 0.0); print("[ramp_off] 준정적 롤 토크 램프 0 (RNG 소비 유지, 진단)", flush=True)
 _AIR = None
 if args_cli.air_start:
-    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3), "model": "force", "k": None, "fix": 0, "yaw": 0}
+    _AIR = {"clear": (0.05, 0.15), "hold": 5.0, "rel": 4.0, "tp": (0.1, 0.3), "model": "force", "k": None, "fix": 0, "yaw": 0, "p0": None}
     for _it in args_cli.air_start.split(";"):
         _k, _, _v = _it.strip().partition(":")
         if _k == "clear":
@@ -323,6 +324,8 @@ if args_cli.air_start:
             _a, _, _b = _v.partition(","); _AIR["k"] = (float(_a), float(_b or _a))
         elif _k in ("fix", "yaw"):
             assert _v in ("0", "1"), _v; _AIR[_k] = int(_v)
+        elif _k == "p0":
+            _a, _, _b = _v.partition(","); _AIR["p0"] = (float(_a), float(_b or _a))
         elif _k:
             raise SystemExit(f"--air_start: 모르는 항목 {_k!r}")
     _hp["r0_range"] = (1.0, 1.0); _hp["hold_range"] = (_AIR["hold"], _AIR["hold"]); _hp["release_range"] = (_AIR["rel"], _AIR["rel"])
@@ -338,6 +341,9 @@ if args_cli.air_start:
             _hp["cbl_k_range"] = tuple(_AIR["k"])
     if _AIR["fix"]:
         _hp["hold_fix"] = True                                # AIR3: 지지력의 제어 주기 고정 보정(행동 0 대조에서 종전 모형이 흔들림을 키우는 것을 확인 — AIR_START_1008.md §11)
+    if _AIR["p0"] is not None:
+        _hp["two_point_pitch0_deg_range"] = tuple(_AIR["p0"])   # AIR4: 기운 채 매달림(실물 매달림 피치 −1 ~ +5° — 시뮬 기본은 +0.9 ~ +2.1° 뿐이었다)
+        print(f"[air_start] 매달림 목표 피치 {_AIR['p0']}° (2 점 현수)", flush=True)
     if _AIR["yaw"]:
         _hp["two_point_yaw"] = True                           # AIR3: 2 줄 현수의 요(비틀림) 복원 — 종전 모형은 행동 0 에서도 몸이 자전했다
     print(f"[air_start] 지지 모형 정정: 고정 보정 {'켬' if _AIR['fix'] else '끔'} · 요 복원 {'켬' if _AIR['yaw'] else '끔'}", flush=True)
@@ -1136,6 +1142,11 @@ if KWL:
     if args_cli.kw_safety:
         print(f"[runner_loop] X19b 감독기 문턱 덮어쓰기: {args_cli.kw_safety} → {_KW_SAFETY}", flush=True)
     KWS = [_W3D.W3Supervisor(_KW_SAFETY, cmd_limits=_BR.W3_CMD_LIMITS[_KW_KEYS[0]]) for _ in range(N)]
+    if args_cli.kw_air_guard:
+        for R in KWR:
+            R.air_guard_deg = None if args_cli.kw_air_guard == "off" else float(args_cli.kw_air_guard)
+        print(f"[runner_loop] 공중 폭주 차단 문턱 덮어쓰기: {args_cli.kw_air_guard}", flush=True)
+    print(f"[runner_loop] 공중 폭주 차단: 목표 이탈 문턱 {getattr(KWR[0], 'air_guard_deg', '없음(구판 러너)')}° · 무접촉 {getattr(KWR[0], 'air_guard_s', '-')} s 뒤 · 되돌림 {getattr(KWR[0], 'air_guard_rate_deg', '-')}°/틱", flush=True)
     if args_cli.kw_requiet:                               # 배포 감지기(c5_switch.SwitchDetector)의 갇힘 해소 옵션 — 생성자 인자와 같은 검증을 거쳐 설정
         _rqs_ = args_cli.kw_requiet.split(","); _rq_ = (float(_rqs_[0]), float(_rqs_[1])) + ((_rqs_[2],) if len(_rqs_) > 2 else ())
         from rl_walking.deploy.c5_switch import SwitchDetector as _SDk
@@ -2494,6 +2505,12 @@ if args_cli.trace_all > 0 and "_TALL" in dir():
 if KWL:
     import collections as _colk
     _kk = _npk.stack(kw_kind_tl, 0) if kw_kind_tl else _npk.zeros((0, N), _npk.int8)
+    _npk.savez_compressed(os.path.join(DATA, "log_picture", f"kwair_{args_cli.out_tag}.npz"),
+                          amax=_npk.asarray([float(getattr(R, "air_act_max", float("nan"))) for R in KWR], _npk.float32),
+                          dev=_npk.asarray([float(getattr(R, "air_dev_max", float("nan"))) for R in KWR], _npk.float32),
+                          amax_all=_npk.asarray([float(getattr(R, "air_act_max_all", float("nan"))) for R in KWR], _npk.float32),
+                          n_hold=_npk.asarray([int(getattr(R, "n_air_hold", 0)) for R in KWR], _npk.int32),
+                          hold=_npk.asarray([bool(getattr(R, "air_hold", False)) for R in KWR]), n_air_to_ke=_npk.asarray([int(getattr(R, "n_air_to_ke", 0)) for R in KWR], _npk.int32))
     _npk.savez_compressed(os.path.join(DATA, "log_picture", f"kwloop_{args_cli.out_tag}.npz"), t=_npk.asarray(kw_t_tl, _npk.float32), kind=_kk,
                           want=_npk.stack(kw_want_tl, 0) if kw_want_tl else _npk.zeros((0, N), bool), ge=_npk.stack(kw_ge_tl, 0) if kw_ge_tl else _npk.zeros((0, N), bool),
                           pre_pass=pre_pass.cpu().numpy(), fell=fell.cpu().numpy(), t_fall_post=t_fall_post.cpu().numpy(), events=json.dumps(kw_events), rej=json.dumps(kw_rej),

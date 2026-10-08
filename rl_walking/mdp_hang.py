@@ -63,6 +63,8 @@ def _state(env):
               "tp_yaw_on": z(), "yaw0": z(), "tp_yaw_c": z(),
               # 1008: 지지력의 제어 주기 고정(sample-and-hold) 보정 — mid 가 1 인 env 에만(기본 0 = 종전). _hold_fix 주석 참고
               "mid": z(),
+              # 1008: 2 점 현수의 목표 피치 [rad](두 줄 길이 차 = 기운 채 매달림). 기본 0 = 종전
+              "tp_p0": z(),
               "released_t": torch.full((N,), -1.0, device=dev),   # r 가 0 에 닿은 시각 (−1 = 아직)
               "touch_t": torch.full((N,), -1.0, device=dev),      # 양발 첫 동시 접촉 시각
               # 0911 케이블 지지 모델 (cable_on=True 일 때 _cable_apply 사용)
@@ -152,7 +154,7 @@ def _cable_apply(env, st, ids, asset_cfg):
         forces=F_b.unsqueeze(1), torques=None, positions=hook_b.unsqueeze(1),
         body_ids=asset_cfg.body_ids, env_ids=ids, is_global=False)
     if bool((st["tp_d"][ids] > 0).any()):   # 0913 앞뒤 2점 현수 피치 구속 (cap = T·d/2)
-        _ty = _two_point_pitch_torque(asset.data.projected_gravity_b[ids], asset.data.root_ang_vel_b[ids], st["tp_kp"][ids], st["tp_kd"][ids], T * st["tp_d"][ids] * 0.5)
+        _ty = _two_point_pitch_torque(asset.data.projected_gravity_b[ids], asset.data.root_ang_vel_b[ids], st["tp_kp"][ids], st["tp_kd"][ids], T * st["tp_d"][ids] * 0.5, st["tp_p0"][ids])
         _tau = torch.stack([torch.zeros_like(_ty), _ty, torch.zeros_like(_ty)], dim=-1)
         _yo = st["tp_yaw_on"][ids] > 0.5
         if bool(_yo.any()):                                  # 1008 요 복원(켠 env 만 — 기본 꺼짐 = 종전)
@@ -197,7 +199,7 @@ def _apply(env, st, ids, asset_cfg):
     _yz = -st["yaw_c"][ids] * w[:, 2]                                   # 0914 요 감쇠(기본 0)
     tau = tau + torch.stack([torch.zeros_like(_yz), torch.zeros_like(_yz), _yz], dim=-1)
     # 0913 앞뒤 2점 현수 피치 구속 (tp_d>0 일 때만; cap = Fz·d/2 — 줄이 풀리면(Fz→0) 자동 소멸)
-    _ty = _two_point_pitch_torque(pgv, w, st["tp_kp"][ids], st["tp_kd"][ids], Fz * st["tp_d"][ids] * 0.5)
+    _ty = _two_point_pitch_torque(pgv, w, st["tp_kp"][ids], st["tp_kd"][ids], Fz * st["tp_d"][ids] * 0.5, st["tp_p0"][ids])
     tau = tau + torch.stack([torch.zeros_like(_ty), _ty, torch.zeros_like(_ty)], dim=-1)
     _yo = st["tp_yaw_on"][ids] > 0.5
     if bool(_yo.any()):                                      # 1008 요 복원(켠 env 만 — 기본 꺼짐 = 종전)
@@ -556,7 +558,8 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
                        cbl_slack_range=(0.05, 0.15), cable_force_mode=False, anchor_vx_range=(0.0, 0.0), anchor_vy_range=(0.0, 0.0), ramp_roll_torque=(0.0, 0.0, 0.0),
                        ramp_rate_range=None, ramp_cap_range=None, ramp_start_range=None, ramp_sign_random=False,
                        two_point_d_range=(0.0, 0.0), two_point_kp_range=(200.0, 200.0), two_point_kd_range=(10.0, 10.0),
-                       yaw_damp=0.0, cable_no_ramp=False, two_point_yaw=False, two_point_yaw_c_range=(0.05, 0.3), hold_fix=False):
+                       yaw_damp=0.0, cable_no_ramp=False, two_point_yaw=False, two_point_yaw_c_range=(0.05, 0.3), hold_fix=False,
+                       two_point_pitch0_deg_range=(0.0, 0.0)):
     """mode="reset": 에피소드마다 지지 스케줄·로프 기하를 새로 뽑고 첫 지지력을 즉시 건다.
     cable_no_ramp(1008, 기본 False = 종전): 길이 제약 케이블의 '첫 1 s 장력 램프인'을 끈다 — 공중 매달림 시작에서는 램프 동안 몸이 떨어진다.
     two_point_d_range: 0913 승윤님 확인 '줄은 몸통 앞·뒤 2점' — 두 줄이 팽팽한 동안 피치를 구속한다(롤은 진자 그대로).
@@ -587,6 +590,7 @@ def hang_support_reset(env, env_ids, r0_range=(0.5, 0.7), hold_range=(0.5, 2.0),
     st["yaw_c"][ids] = float(yaw_damp)   # 0914: 공중 롤 응답 기준 시험에서 요 회전(0913 sig4 오염 원인) 억제용
     st["tp_d"][ids] = U(*two_point_d_range); st["tp_kp"][ids] = U(*two_point_kp_range); st["tp_kd"][ids] = U(*two_point_kd_range)
     st["mid"][ids] = 1.0 if hold_fix else 0.0                # 1008: 고정 보정은 hold_fix 를 켠 호출만(기본 꺼짐 = 종전)
+    st["tp_p0"][ids] = torch.deg2rad(U(*two_point_pitch0_deg_range)) if tuple(two_point_pitch0_deg_range) != (0.0, 0.0) else 0.0      # 기본 (0, 0) = 종전(난수도 뽑지 않는다)
     st["tp_yaw_on"][ids] = 0.0                               # 1008: 요 복원은 two_point_yaw 를 켠 호출(평가기 공중 시작)·hang_mix_reset(two_point_yaw) 만 켠다
     if two_point_yaw:
         st["tp_yaw_on"][ids] = 1.0; st["tp_yaw_c"][ids] = U(*two_point_yaw_c_range)
@@ -847,9 +851,12 @@ def _two_point_yaw_torque_b(quat, w_b, T, d, L, yaw0, c):
     return _quat_inv(quat, torch.stack([zw, zw, tz], dim=-1))
 
 
-def _two_point_pitch_torque(pg, w, kp, kd, cap):
-    """앞뒤 2점 현수의 피치 구속 토크 τ_y [Nm] (body y축; 앞기울임 pitch=atan2(pg_x,−pg_z)>0 → 음의 토크). |τ| ≤ cap = T·d/2, cap<=0 이면 0."""
+def _two_point_pitch_torque(pg, w, kp, kd, cap, p0=None):
+    """앞뒤 2점 현수의 피치 구속 토크 τ_y [Nm] (body y축; 앞기울임 pitch=atan2(pg_x,−pg_z)>0 → 음의 토크). |τ| ≤ cap = T·d/2, cap<=0 이면 0.
+    p0(1008, 기본 None = 0): 두 줄의 길이 차로 몸이 기운 채 매달리는 경우의 목표 피치 [rad] — 실물 매달림 피치(IMU fwd)는 −1 ~ +5° 로 흩어진다."""
     pitch = torch.atan2(pg[:, 0], -pg[:, 2])
+    if p0 is not None:
+        pitch = pitch - p0
     cap = cap.clamp(min=0.0)
     return (-kp * pitch - kd * w[:, 1]).clamp(-cap, cap)
 
@@ -3289,7 +3296,7 @@ def hang_mix_reset(env, env_ids, p_hang: float = 0.5, clearance_range=(0.03, 0.1
                    hook_z_range=(0.25, 0.40), two_point_d_range=(0.1, 0.3), two_point_kp: float = 200.0, two_point_kd: float = 10.0,
                    dist_shift_s: float = 1.0, asset_cfg=None, cable_frac: float = 0.0, anchor_xy: float = 0.05, anchor_h_range=(1.0, 1.6),
                    cbl_k_range=(1500.0, 3000.0), cbl_c_range=(20.0, 120.0), cbl_slack_extra=(0.03, 0.08), sway_v: float = 0.0,
-                   two_point_yaw: bool = False, hold_fix: bool = False):
+                   two_point_yaw: bool = False, hold_fix: bool = False, pitch0_deg_range=(0.0, 0.0)):
     """mode="reset". **hang_support_reset·disturbance 뒤에 정의할 것**(이벤트는 정의 순서로 돈다 — 둘이 만든 일정을 여기서 덮어쓴다).
     asset_cfg 는 **base 링크로 풀린** SceneEntityCfg 여야 한다(이벤트 params 로 주면 매니저가 푼다). 안 풀린 채(body_ids = 전체)면 지지력이
     전 링크에 걸린다 — 1008 기전 확인에서 잡은 버그. 아래에서 한 번 더 막는다."""
@@ -3304,6 +3311,7 @@ def hang_mix_reset(env, env_ids, p_hang: float = 0.5, clearance_range=(0.03, 0.1
     st["pz"][ids] = 0.0
     st["cbl_env"][ids] = False
     st["tp_yaw_on"][ids] = 0.0
+    st["tp_p0"][ids] = 0.0
     hang = torch.rand(n, device=env.device) < float(p_hang)
     if not bool(hang.any()):
         return
@@ -3331,6 +3339,8 @@ def hang_mix_reset(env, env_ids, p_hang: float = 0.5, clearance_range=(0.03, 0.1
     st["tp_kp"][hid] = float(two_point_kp)
     st["tp_kd"][hid] = float(two_point_kd)
     st["mid"][ids] = 1.0 if hold_fix else 0.0               # 기본 꺼짐 = G21h 가 학습한 그대로
+    if tuple(pitch0_deg_range) != (0.0, 0.0):                # 1008 G21h2: 기운 채 매달림(2 점 현수 목표 피치) — 기본 (0, 0) = G21h 가 학습한 그대로(난수도 안 뽑는다)
+        st["tp_p0"][hid] = torch.deg2rad(U(pitch0_deg_range))
     if two_point_yaw:                                        # 기본 꺼짐 = G21h 가 학습한 그대로
         st["tp_yaw_on"][hid] = 1.0; st["yaw0"][hid] = _yaw_of(quat); st["tp_yaw_c"][hid] = U((0.05, 0.3))      # 2 줄 현수의 요 복원(감쇠는 가정 범위)
     st["dst_t0"][hid] = st["dst_t0"][hid] + (st["t_hold"][hid] + st["t_rel"][hid] + float(dist_shift_s)).unsqueeze(1)
@@ -3389,6 +3399,35 @@ def push_unsupported(env, env_ids, velocity_range: dict, asset_cfg=None):
         return
     kw = {} if asset_cfg is None else {"asset_cfg": asset_cfg}
     _vmdp.push_by_setting_velocity(env, ids, velocity_range=velocity_range, **kw)
+
+
+def _in_air(env, r_min: float = 0.5, threshold: float = 5.0, sensor_cfg=None) -> torch.Tensor:
+    """매달려 있는가(float 0/1): 지지비 > r_min ∧ 두 발 다 접촉력 ≤ threshold [N]. 지면 에피소드(지지비 0)·착지 뒤에는 0."""
+    st = _state(env)
+    sensor_cfg = sensor_cfg or _feet_cfg()
+    f = env.scene.sensors[sensor_cfg.name].data.net_forces_w[:, sensor_cfg.body_ids, :]
+    none = (torch.norm(f, dim=-1) <= threshold).all(dim=1)
+    return ((st["r"] > r_min) & none).to(torch.float32)
+
+
+def hang_pose(env, r_min: float = 0.5, threshold: float = 5.0, asset_cfg=None) -> torch.Tensor:
+    """매달린 동안 관절이 기본자세에서 벗어난 정도 Σ(q − q0)² [rad²] — 공중에서는 자세를 그대로 들고 있는 것이 정답이다(1008 G21h2).
+    왜: 매달린 몸의 기울기는 줄이 정한다 — 다리로 고칠 수 없다. 그런데 G21h-12299 는 매달림 피치가 학습 범위(+0.9 ~ +2.1°)를 2° 만 벗어나도 다리를 20–40° 움직였고
+    (몸통 수평 보상을 다리 질량 이동으로 조금이라도 얻으려는 해), 그 자세로 착지한 12 % 가 힙이 44° 꺾인 채 서서 KE 로 넘어가지 못했다(AIR_START_1008.md §14)."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    return _in_air(env, r_min, threshold) * torch.sum((asset.data.joint_pos - asset.data.default_joint_pos) ** 2, dim=1)
+
+
+def hang_flat_relief(env, r_min: float = 0.5, threshold: float = 5.0, asset_cfg=None) -> torch.Tensor:
+    """매달린 동안의 flat_orientation_l2 와 같은 값(Σ pg_xy²) — 가중을 flat_orientation_l2 의 반대 부호로 줘서 공중에서는 몸통 수평 벌점을 상쇄한다(고칠 수 없는 것을 벌주지 않는다)."""
+    asset = env.scene[(asset_cfg or _base_cfg()).name]
+    return _in_air(env, r_min, threshold) * torch.sum(asset.data.projected_gravity_b[:, :2] ** 2, dim=1)
+
+
+def hang_band_relief(env, band_rad: float = 0.087, fwd_band_rad: float | None = None, r_min: float = 0.5, threshold: float = 5.0, asset_cfg=None) -> torch.Tensor:
+    """매달린 동안의 torso_pitch_band 와 같은 값 — 가중을 torso_pitch_band 의 반대 부호로 줘서 공중에서는 피치 밴드 벌점을 상쇄한다."""
+    val = torso_pitch_band(env, band_rad=band_rad, fwd_band_rad=fwd_band_rad, asset_cfg=asset_cfg)
+    return _in_air(env, r_min, threshold) * val * (1.0 - _state(env)["rec_open"]).to(val.dtype)      # 원 항이 state_gated(회복 게이트 닫힌 동안만)라 같은 게이트를 곱한다
 
 
 def hang_swing(env, r_min: float = 0.5, asset_cfg=None) -> torch.Tensor:

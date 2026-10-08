@@ -489,7 +489,9 @@ CKPT_REQUIRE_ENV_YAML = {"stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr
 # 메인 세션 평가 1008 — kew3_runner 커밋 67a008aa·AIR_START_1008.md §9). 그래서 그 KE 키(stand_c5kr_g21h_g24ra)는 등록하지 않는다.
 # 파일이 없으면 다른 미배포 세대처럼 selftest '정책 500틱' 에서 SKIP, 기동 --checkpoint 로(직접 또는 합성 키의 air 로) 고르면 필수 파일 FAIL.
 # ---------------------------------------------------------------------------
-G21H_EXPORTED = os.path.join(REPO, "logs/rsl_rl/biped12_stage4/2026-10-08_13-16-02_g21h_s1_from_11300/exported")
+# 1008 16:20: 정책 파일 = **G21h2**(G21h-12299 이어 학습 — 기운 채 매달림 ±8°·긴 매달림·줄 길이 모형·정정한 지지 모형 + 공중 자세 유지 보상, AIR_START_1008.md §14.4).
+# G21h-12299 는 매달림 피치가 학습 범위(+0.9 ~ +2.1°)를 벗어나면 공중에서 다리를 20–40° 움직였고 12 % 가 착지 뒤 KE 로 넘어가지 못해 탈락했다(§14.3) — 키 이름은 그대로 둔다(공중·착지 서기 세대).
+G21H_EXPORTED = os.path.join(REPO, "logs/rsl_rl/biped12_stage4/2026-10-08_16-04-12_g21h2_s1_from_12299/exported")
 CHECKPOINTS["stand_crouch_g21h"] = G21H_EXPORTED
 CKPT_DEFAULT_POSE["stand_crouch_g21h"] = [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
 CKPT_GAIT_FREQ["stand_crouch_g21h"] = 1.1
@@ -1374,7 +1376,7 @@ class BridgeCore:
 
     def kew3_snapshot(self, bb=None):
         """1007 합성 러너 상태(디버그·응답·selftest 공용, 기록 전용) — 합성 키가 아니면 None.
-        mode 지금 도는 러너("ke"|"w3" — 1008 공중·착지 정책이 있는 키는 "air" 도, 그 키에만 n_air_to_ke 가 더 실린다) ·
+        mode 지금 도는 러너("ke"|"w3" — 1008 공중·착지 정책이 있는 키는 "air" 도, 그 키에만 n_air_to_ke·air_hold(공중 폭주 차단 래치)·n_air_hold·air_dev(매달린 동안 목표 이탈 최대 °) 가 더 실린다) ·
         n_to_w3/n_to_ke 전환 횟수(프로세스 수명 누계 — stand 재시작으로 지워지지 않는다) · event 이번 틱 전환 사건 ·
         ticks 현 모드 체류 틱 · want 러너가 받은 gait_enable 요청 · block 켜기 차단 사유(KE 회복 모드) 또는 None ·
         since_latch_s/settle_s W3 → KE 정착 대기 진행(래치가 꺼진 뒤 경과·조용한 양발 서기 연속 시간, 대기 중이 아니면 None).
@@ -2213,7 +2215,7 @@ def _selftest_g21h(required=()):
     import numpy as np
     A, H = "stand_crouch_g21a", "stand_crouch_g21h"
     assert CHECKPOINTS[H] == G21H_EXPORTED and G21H_EXPORTED != CHECKPOINTS[A], "G21h 경로"
-    assert G21H_EXPORTED.endswith(os.path.join("biped12_stage4", "2026-10-08_13-16-02_g21h_s1_from_11300", "exported")), G21H_EXPORTED
+    assert G21H_EXPORTED.endswith(os.path.join("biped12_stage4", "2026-10-08_16-04-12_g21h2_s1_from_12299", "exported")), G21H_EXPORTED
     v5 = [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
     assert CKPT_DEFAULT_POSE[H] == CKPT_DEFAULT_POSE[A] == v5 and CKPT_DEFAULT_POSE[H] is not CKPT_DEFAULT_POSE[A], "G21h 기본자세 ≠ G21a(CROUCH_V5) 또는 목록 객체 공유"
     assert CKPT_GAIT_FREQ[H] == CKPT_GAIT_FREQ[A] == 1.1, "G21h 클록 ≠ G21a(1.1 Hz)"
@@ -2567,7 +2569,8 @@ def _selftest_air_start():
         assert np.array_equal(np.asarray(S3.outs), np.asarray(S2.outs)), "지면 시작: 셋째 키 목표각 ≠ 둘째 키(같은 스텁 정책이면 비트 동일해야 한다)"
         assert "air" not in [r["mode"] for r in S3.rows] and c3.runner.n_air_to_ke == 0
         b3, b2 = c3.c5_view().blackbox(), c2.c5_view().blackbox()
-        assert dict(b3["kew3"]) == dict(b2["kew3"], n_air_to_ke=0) and "n_air_to_ke" not in b2["kew3"], (b3["kew3"], b2["kew3"])
+        assert dict(b3["kew3"]) == dict(b2["kew3"], n_air_to_ke=0, air_hold=False, n_air_hold=0, air_dev=0.0) and "n_air_to_ke" not in b2["kew3"] \
+            and "air_hold" not in b2["kew3"], (b3["kew3"], b2["kew3"])
         assert json.dumps({k: v for k, v in b3.items() if k != "kew3"}) == json.dumps({k: v for k, v in b2.items() if k != "kew3"}), "지면 시작: 블랙박스 KE 필드가 둘째 키와 다름"
         # 공중 시작 세션 뒤 같은 러너로 지면 재시작 → 처음부터 KE(AIR 가 남지 않는다) · 공중 러너 없는 키·코어에 start_air 는 거부
         S.stand(hang_arm=False)
@@ -2605,7 +2608,7 @@ def _selftest_air_start():
         assert i_rej < i_td < i_rst < i_core < i_air < i_act, "stand 처리 순서: hang_arm 규칙 → touchdown 동시 거부 → 리셋 → core.reset → 공중 시작(실패하면 시작 거부) → 활성화"
         assert src.count("self.core." + "start_air(") == 1, "노드에서 start_air 를 부르는 곳이 stand 처리 1 곳이 아님"
         assert src.count("det_" + "hold") == 0, "브리지가 C5Runner 의 감지기 정지 스위치를 건드린다 — 공중 구간은 공중·착지 러너(AIR 모드)가 맡는다"
-        notes.append("지면 시작: 처음부터 KE·서기/회복 왕복/걷기 왕복 전 구간 목표각·모드가 둘째 키와 비트 동일(블랙박스는 n_air_to_ke 0 하나만 더)·"
+        notes.append("지면 시작: 처음부터 KE·서기/회복 왕복/걷기 왕복 전 구간 목표각·모드가 둘째 키와 비트 동일(블랙박스는 공중 러너 필드 n_air_to_ke 0·air_hold False·n_air_hold 0·air_dev 0 만 더)·"
                      "공중 세션 뒤 지면 재시작에 AIR 잔류 없음·공중 러너 없는 코어의 start_air 거부 / 노드 연결(stand 처리 순서·start_air 1 곳·실패 시 시작 거부) 소스 확인")
 
         # ── 실모델(셋째 키의 정책 파일이 다 있으면) ──
@@ -2621,14 +2624,20 @@ def _selftest_air_start():
                 a, b_ = Sa.tick(BOTH, **kw), Sb.tick(BOTH, **kw)
                 assert a == b_ and a["mode"] == "ke", f"실모델 지면 시작 틱 {k}: {a} ≠ {b_}"
             assert np.array_equal(np.asarray(Sa.outs), np.asarray(Sb.outs)) and rr.det.n_on >= 1, "실모델 지면 시작: 셋째 키 ≠ 둘째 키"
+            # 실모델의 공중 대본은 자이로 펄스를 0.3 rad/s 로 줄이고 기울기 계단을 뺀다(AIR_REAL). 이 selftest 의 가짜 플랜트(관절 = 직전 목표·관절속도 0·중력 고정)에서
+            # 0.9 rad/s 0.6 s 펄스는 서기 정책들의 last_action 자기 고리를 발산시킨다(G21h-12299: 2 s 뒤 비유한 · 지면 기준 G21a 도 |a| 80 넘게) —
+            # 그 입력은 아래 '공중 폭주 차단' 확인에서 따로 쓴다. 스텁(tanh — |a| ≤ 1) 구간의 대본(AIR_INPUTS)은 그대로다.
+            AIR_REAL = [((0.0, 0.0, 0.0), 1.0)] * 100 + [((0.0, 0.3, 0.0), 1.0)] * 30 + [((0.0, 0.0, 0.0), 1.0)] * 60      # 기울기 계단(+5°)도 뺀다 — 공중의 고정 피치는 아래 차단 확인에서
+            n_air0_real = rr.n_air_to_ke
             Sr = Session(cr)
             Sr.stand(hang_arm=True)
             assert rr.mode == "air"
-            for gy, pd in AIR_INPUTS:
+            for gy, pd in AIR_REAL:
                 assert Sr.tick(NONE, pitch=pd, gyro=gy)["mode"] == "air"
+            assert not rr.air_hold and rr.air_dev_max < rr.air_guard_deg * 2.0 / 3.0, f"실모델 공중 대본(조용): 폭주 차단 여유 부족 — 목표 이탈 최대 {rr.air_dev_max:.1f}° (문턱 {rr.air_guard_deg:g}°)"
             cs = BridgeCore(AIR_KEY); cs.reset(); cs.heading_hold = False; cs.cmd = (0.0, 0.0, 0.0)
             q = pose.copy()
-            for k, (gy, pd) in enumerate(AIR_INPUTS):
+            for k, (gy, pd) in enumerate(AIR_REAL):
                 o = cs.tick(gy, quat(pd), q, np.zeros(12, np.float32), NONE)
                 assert np.array_equal(o, Sr.outs[k]), f"실모델 공중 구간 틱 {k}: 합성 러너(AIR) ≠ {AIR_KEY} 단독 러너"
                 q = np.asarray(o, dtype=np.float32)
@@ -2638,6 +2647,29 @@ def _selftest_air_start():
                 assert Sr.n - nr <= 60, "실모델: 양발 접촉·조용함 뒤에도 KE 인계 없음"
             for _ in range(60):
                 assert Sr.tick(BOTH, gyro=(0.02, 0.01, 0.0))["mode"] == "ke"
+            dev_quiet = float(rr.air_dev_max)
+            # 공중 폭주 차단(실모델): 큰 자이로 펄스(0.9 rad/s 0.6 s — 이 가짜 플랜트에서 서기 정책의 행동이 발산하는 입력)에도 목표가 유한하고 기본자세에서 멀리 가지 않는다.
+            # 정책이 스스로 유계면(차단 무발동) 그대로 통과, 발산하면 차단이 직전 목표에 고정한다 — 어느 쪽이든 Session.tick 이 유한·슬루를 매 틱 확인한다.
+            Sg = Session(cr)
+            Sg.stand(hang_arm=True)
+            n_hold0 = rr.n_air_hold
+            for gy, pd in AIR_INPUTS + [((0.0, 0.0, 0.0), 1.0)] * 150:
+                assert Sg.tick(NONE, pitch=pd, gyro=gy)["mode"] == "air"
+            dev_g = float(np.degrees(np.abs(np.asarray(Sg.outs) - pose[None, :]).max()))
+            assert dev_g <= rr.air_guard_deg + 1e-3, f"실모델 공중 큰 펄스: 목표가 기본자세에서 {dev_g:.0f}° 벗어남(폭주 차단 실패, 문턱 {rr.air_guard_deg:g}°)"
+            held = bool(rr.air_hold)
+            if held:
+                assert rr.n_air_hold == n_hold0 + 1 and "폭주" in runner_enable_block(rr) and cr.kew3_snapshot()["air_hold"] is True
+                k_h = next(i for i in range(1, len(Sg.outs)) if Sg.rows[i]["event"] == "air_hold")
+                dv = [float(np.degrees(np.abs(o - pose).max())) for o in Sg.outs[k_h:]]
+                assert all(b_ <= a_ + 1e-4 for a_, b_ in zip(dv, dv[1:])) and dv[-1] < 1e-2, f"차단 뒤 기본자세로 되돌아가 유지하지 않음(끝 {dv[-1]:.2f}°)"
+                for _ in range(200):                      # 차단 뒤에는 양발이 닿아 4 s 가 지나도 KE 로 넘기지 않는다(기본자세 유지)
+                    assert Sg.tick(BOTH, gyro=(0.02, 0.01, 0.0))["mode"] == "air"
+                assert float(np.degrees(np.abs(Sg.outs[-1] - pose).max())) < 1e-2 and rr.n_air_to_ke == n_air0_real + 1, "차단 뒤 인계"
+            Sz = Session(cr); Sz.stand(hang_arm=False)     # 다음 시작(지면)은 깨끗하다
+            assert rr.mode == "ke" and not rr.air_hold and Sz.tick(BOTH)["mode"] == "ke"
+            notes.append(f"공중 폭주 차단(실모델): 조용한 공중 대본의 목표 이탈 최대 {dev_quiet:.1f}°(문턱 {rr.air_guard_deg:g}°) · 큰 펄스·기울기 계단에서 "
+                         + (f"차단 발동(최대 {dev_g:.0f}°) → 기본자세로 되돌려 유지·착지해도 인계 없음·다음 시작 정상" if held else f"정책이 유계(차단 무발동, 최대 {dev_g:.0f}°)"))
             notes.append(f"실모델 {K3}: 지면 시작 {len(Sa.outs)} 틱 = {K2} 실모델과 비트 동일 / 공중 시작 {len(AIR_INPUTS)} 틱 = {AIR_KEY} 단독 러너와 비트 동일 → "
                          f"양발 접촉·조용함 {(Sr.n - 60 - nr) * TICK_SEC:.2f}s 에 KE 인계(전 구간 유한·슬루) [{rr.backend}]")
         else:

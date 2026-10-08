@@ -130,7 +130,7 @@ def line(st):
     if b.get("live"):
         parts.append(f"정책 LIVE {b.get('loaded_checkpoint')}")
     if (b.get("kew3") or {}).get("mode") == "air":      # 1008 오후(표시 전용): 공중 정책 시작 세션의 공중·착지 구간 — 착지가 가라앉으면 사라진다(서기 KE 인계)
-        parts.append("공중·착지 정책 구간(KE 인계 전·걷기 불가)")
+        parts.append("★공중 폭주 차단 — 기본자세 유지 중(정지 후 다시 시작)" if (b.get("kew3") or {}).get("air_hold") else "공중·착지 정책 구간(KE 인계 전·걷기 불가)")
     sg = b.get("start_gate") or {}
     if sg.get("state") and sg.get("state") != "POLICY":
         parts.append(f"착지 대기({sg.get('state')}: {sg.get('why')})")

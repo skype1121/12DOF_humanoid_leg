@@ -2510,6 +2510,11 @@ def selftest_walk(directory):
     assert st_air["mode"] == "air" and st_air["standing"] is False and st_air["walking"] is False, st_air
     why_air = probe_air.reason("w3_move")
     assert why_air and "공중·착지 정책 구간(착지 정착 뒤 KE 인계 대기)" in why_air, why_air
+    # 1008: 공중 폭주 차단 래치(kew3.air_hold) — 걷기 버튼 사유가 '차단·다시 시작'으로 바뀐다(인계 대기 문구가 아니다)
+    probe_air.view = dict(probe_air.view, bridge=dict(probe_air.view["bridge"], kew3={"mode": "air", "block": "공중 폭주 차단(기본자세 유지 중) — 정지한 뒤 처음부터 다시 시작할 것",
+                                                                                      "n_air_to_ke": 0, "air_hold": True, "n_air_hold": 1, "air_dev": 29.8}))
+    why_hold = probe_air.reason("w3_move")
+    assert why_hold and "공중 폭주 차단" in why_hold and "다시 시작" in why_hold and "인계 대기" not in why_hold, why_hold
     probe_air.view = dict(probe_air.view, bridge=dict(probe_air.view["bridge"], kew3={"mode": "ke", "block": None, "n_air_to_ke": 1}))
     assert probe_air.walk.bridge_status(probe_air)["standing"] is True and "공중·착지" not in str(probe_air.reason("w3_move"))
     out.append("③ 텔레메트리: 응답 순서대로 1 회만 전달·비객체 무시 · 디버그 w3/w3_sup/kew3/guard_mode 그대로(걷기 세션이 아니면 None) · 끊긴 프레임은 서기 근거 아님 · 발행은 브리지 명령 토픽 1 회"

@@ -7,7 +7,10 @@ LOCK=/tmp/claude-1000/-home-ryu-humanoid-leg-test1/e53dc80b-9c62-45a7-a400-3cd12
 mkdir -p $HERE/logs $HERE/out; cd $R
 export OMNI_KIT_ACCEPT_EULA=YES PYTHONPATH=$R EVAL_DATA_REPO=$R
 U=$R/rl_walking/assets/biped12_final3_hiprpla.urdf:left_hip_a_joint,right_hip_a_joint,left_hip_r_joint,right_hip_r_joint
-BASE="--headless --task Biped12-HangStand-G11a-v0 --precheck_s 3 --enc_obs v2 --contact_real --contact_ver v2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --ke 2026-10-02_21-23-08_g21a:model_11300.pt --ke_mode direct --runner_loop --kw_requiet 2.0,0.3 --trace_all 128 --lock_joints left_hip_r_joint,right_hip_r_joint --lock_band_deg 0 --lock_obs_zero --link_urdf $U"
+BASE="--headless --task Biped12-HangStand-G11a-v0 --precheck_s 3 --enc_obs v2 --contact_real --contact_ver v2 --load_run 2026-10-07_00-11-12_w3S3d_from_s2d --checkpoint model_15800.pt --last_action_ema 0.27 --obs_ema joint_vel:0.25 --sw_on 3.0,0.5 --sw_off 1.5,0.3,1.0,0.4 --sw_ref_tau 10 --sw_ref_init_s 1.5 --switch_to 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt --sw_off_contact any --sw_rec_vx 0.03 --sw_rec_vx_s 1 --cue_dir_imu --sw_early_imu 0.6,6,0.4,0.2 --sw_refrac 1.5,6,1.0 --early_gate 5,1.0 --det_from_obs --det_filt 0.33 --ke 2026-10-02_21-23-08_g21a:model_11300.pt --ke_mode direct --runner_loop --kw_requiet 2.0,0.3 "
+# 1010: TR_BODY=ob 이면 고정·질량 변경 없음(원래 몸 대조). TR_EXTRA = 추가 인자(공중 시작 등). TR_TRACE = 추적 env 수(기본 128)
+[ "${TR_BODY:-nb}" = nb ] && BASE="$BASE --lock_joints left_hip_r_joint,right_hip_r_joint --lock_band_deg 0 --lock_obs_zero --link_urdf $U"
+BASE="$BASE --trace_all ${TR_TRACE:-128} ${TR_EXTRA:-}"
 BAD='PxgCudaDeviceMemoryAllocator failed|CUDA error|CUBLAS_STATUS_ALLOC|out of memory|PhysX error|fail to launch|Create Stream|Failed to fetch|Traceback'
 while IFS=$'\t' read -r TAG NE DL SEED AFT W3X RECX SCR; do
   [ -z "$TAG" ] && continue

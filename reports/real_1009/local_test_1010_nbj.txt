@@ -1,0 +1,52 @@
+== 준비: 저장소 /home/ryu/humanoid_leg_test1 · 정책 /home/ryu/humanoid_leg_test1 · 작업 폴더 /tmp/claude-1000/-home-ryu-humanoid-leg-test1/f0e513e9-71ac-45c3-820b-1b06b07d54af/scratchpad/dep5/work
+   가짜 젯슨 selftest 환경: 젯슨 모사 환경 /tmp/claude-1000/-home-ryu-humanoid-leg-test1/f0e513e9-71ac-45c3-820b-1b06b07d54af/scratchpad/head1008/jetenv_all (사용자 site 차단)
+[PASS] T0 bash -n (배포 스크립트·이 시험)
+[PASS] T0 매니페스트가 현재 트리와 일치(make_head_manifest.py --check) — [check] 산출물이 현재 트리와 일치
+[PASS] T0 numpy 1.21.5 정적 점검 — numpy 1.21.5 정적 점검: 파일 91 개 · 위반 0 건
+[PASS] T1 가짜 젯슨 홈 생성 — humanoid_repo: 인벤토리 173 파일 중 md5 재현 129 · 자리표시/대역 1 ['config/robot_12dof_hardware_map.json'] · 생략 43(로컬에 없는 구판 정책)
+   처음 스냅샷: 파일 152 개 · 폴더 40 개
+[PASS] T2 dry-run: 종료 0 · 예상 밖 0 · 가짜 젯슨 무변경 — 이미 새 판과 같음 52 · 바뀔 파일(백업 뒤 덮어씀) 18 · 새로 생길 파일 62 · ★예상 밖 0
+[PASS] T3 금지 파일 강제(배포 스크립트): 금지 경로 14 종을 계획서에 넣으면 --apply 가 중단·무변경
+[PASS] T3 금지 파일 규칙(생성기 forbidden_reason): 금지 15 종 거부 · 정상 9 종 통과
+[PASS] T3 실제 계획서(132 항목)에 config/·calib_data/·.json·rl_calib·맵·영점·보정 데이터 경로 0 건
+[PASS] T4 제어 프로세스(stage8·브리지·hang_stand) 생존 시 --apply·--rollback 거부·무변경
+[PASS] T5 콘솔 활성 세션·상태 읽기 실패 시 --apply 거부·무변경
+[PASS] T6 예상 밖 md5(덮어쓸 파일의 로컬 수정본·확인 대상 변경·사라진 파일) 시 --apply 거부·무변경
+[PASS] T7 디스크 여유 부족 시 --apply 거부·무변경
+[PASS] T8 selftest 실패(추론 백엔드 없는 환경) → 자동 롤백 → 처음과 동일 — 12 항목 실패, RESTORED 18 DELETED 62 LEFT 0 BAD 0
+[PASS] T9 --apply: 종료 0 · BKDONE new=0 kept=18 create=62 bad=0 · INDONE n=80 bad=0 · selftest PASS 23/23 · 가짜 젯슨에서 md5sum -c 통과
+[PASS] T9 적용 뒤 ~/rl_calib·config(하드웨어맵)·jetson/calib_data 무변경(37 파일 md5 동일)
+[PASS] T9 selftest 가 가짜 젯슨에 __pycache__·임시 파일·~/logs 기록을 남기지 않음
+   환경: python 3.10.12 · numpy 1.21.5 · onnxruntime 1.15.1 · torch 없음
+   환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/exported
+   환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stage4/2026-09-28_23-19-13_g11a/exported
+   환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported
+   환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported
+   환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stage4/2026-10-08_16-04-12_g21h2_s1_from_12299/exported
+   환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported
+   환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported
+   환경: 추론 백엔드 onnx ← logs/rsl_rl/biped12_stepb0/2026-10-10_03-05-58_w3s3dnbj_s2_deploy16299/exported
+   · 러너: [PASS] 모델 추론: 모델 로드+추론 OK (백엔드=onnx, 2026-10-08_16-04-12_g21h2_s1_from_12299 관측 320→출력 12 유한, 첫 틱 /Δ/max=0.0698 rad ≤ 슬루)
+[PASS] T9b 대조군(새 블랙박스 필드 옵션이 차이를 가리지 않는가): 새 필드 밖 블랙박스 값 1 개 변이 = 검출 · 새 필드 이름의 키를 발행에 끼운 변이 = 검출 · 기준 판에 그 키가 있으면 비교 거부
+[PASS] T9b 대조군: 젯슨 판 브리지를 두 번 돌리면 발행이 같다 — 결과: 같음 27 · 다름 0
+[PASS] T9b 브리지 발행·블랙박스 젯슨 판 ↔ 새 판(서기 g21a·g12·g12_ema0·g11a·v18b, 공중 시작, 회복 c5·kr·krh × live/dry × 가드 data/safe) — 결과: 같음 27 · 다름 0 · 새 판 블랙박스에만 있는 기록 필드(뺀 줄 수): err_raw 16, errlog_fail 0, fb_age_max_joint 11191, fb_age_max_s 11191, fb_age_over 40, s8_warn 16 · 경우 27 · 발행 24590 건 · 블랙박스 11304 줄 · 백엔드 onnx
+[PASS] T9b stage8 CAN 프레임 젯슨 판 ↔ 새 판(콘솔 기동 인자 --can-channel can1 --wait-takeover, 인수 대기 없는 기동) — 결과: 프레임·공통 status 전부 같음 · 프레임 39056 · status 7393 · 새 판에만 있는 status 키 ['fb_after_send', 'latency_options', 'mech_fixed_joints', 'mech_fixed_target_drops', 'send_counts', 'tick_timing']
+[PASS] T9b 비교 도구가 가짜 젯슨 트리에 아무것도 쓰지 않음
+[PASS] T10 재적용: 복사 생략·selftest 통과·백업 매니페스트 불변
+[PASS] T11 --verify: 젯슨 = 매니페스트 · selftest 통과
+[PASS] T12 --restart-console: 제어 프로세스(stage8) 생존 시 거부(재기동 0 회)
+[PASS] T12 --restart-console: 이 매니페스트의 selftest 통과 기록이 없으면 거부
+[PASS] T12 --restart-console(적용 뒤 단독·유휴): 재기동 1 회 기록
+[PASS] T13 --rollback --restart-console: RESTORED 18 DELETED 62 LEFT 0 BAD 0 → **처음 스냅샷과 동일**(파일 md5 152 개·폴더 목록)
+[PASS] T13 롤백 뒤 단독 --restart-console 은 거부(적용 상태가 아님)
+[PASS] T15 --add-policy: PADD_DONE 4 · 젯슨 추론 확인 POLICY_OK backend=onnx obs=320 · md5 기록
+[PASS] T15 --add-policy: 젯슨에 다른 내용의 파일이 있으면 거부(덮어쓰지 않음)
+[PASS] T15 --remove-policy: 기록과 md5 가 다른 파일은 지우지 않고 알린다
+[PASS] T15 --remove-policy: PRM done 1 0 → 처음 스냅샷과 동일
+[PASS] T16 로컬 원본이 계획서와 다르면 --apply 거부·무변경
+[PASS] T16 같은 상황에서 --rollback 은 막히지 않는다(로컬 게이트도 생략) — RESTORED 18 DELETED 0 LEFT 0 BAD 0
+[PASS] T14 롤백 뒤 재적용: 원본 백업 재사용(BKDONE new=0 kept=18 create=62 bad=0)
+[PASS] T14 부분 적용 상태에서 재실행: 남은 3 파일만 처리·원본 백업을 새 판으로 덮어쓰지 않음
+[PASS] T14 다시 롤백(로컬 트리가 계획서와 달라진 상태에서) → RESTORED 18 DELETED 62 LEFT 0 BAD 0 → 처음 스냅샷과 동일
+== 결과: PASS 37 · FAIL 0 — 로그 /tmp/claude-1000/-home-ryu-humanoid-leg-test1/f0e513e9-71ac-45c3-820b-1b06b07d54af/scratchpad/dep5/work/logs
+   가짜 젯슨 홈 삭제(로그·스냅샷은 /tmp/claude-1000/-home-ryu-humanoid-leg-test1/f0e513e9-71ac-45c3-820b-1b06b07d54af/scratchpad/dep5/work 에 남김). --keep 으로 보존

@@ -106,6 +106,20 @@ for nm, dim in zip(om.active_terms["policy"], om.group_obs_term_dim["policy"]):
             for j in range(12):
                 (cols_lock if j in LID else cols_other).append(off + f * 12 + j)
     off += d
+CMDS = []
+DST = {}      # 1010: 실제로 뽑힌 외란 힘(범주·종류별) — 리셋마다 바뀌는 표를 주기적으로 읽어 모은다
+def _dst_sample():
+    from rl_walking import mdp_hang as _mh
+    try:
+        hs = _mh._state(u); cat = _mh._g22(u)["cat"]; kind = hs["dst_kind"]; F = hs["dst_F"]; hold = hs["dst_hold"]
+    except Exception as _e:
+        return
+    for cn, cv in (("앞", 1), ("뒤", 2), ("무외란", 0)):
+        for kn, kv in (("램프", 1), ("충격", 2)):
+            m = (cat == cv).unsqueeze(1) & (kind == kv)
+            if bool(m.any()):
+                DST.setdefault((cn, kn), []).append(torch.stack([F[m], hold[m]], -1).cpu())
+    DST.setdefault("cat", []).append(cat.clone().cpu())
 obs = env.get_observations()
 with torch.inference_mode():
     for k in range(args.steps):
@@ -117,6 +131,14 @@ with torch.inference_mode():
         a_lock_s += float(a[:, LID].abs().mean()); a_oth_s += float(a[:, OID].abs().mean()); a_oth_max = max(a_oth_max, float(a[:, OID].abs().max()))
         a_lock_big += float((a[:, LID].abs() > 4.0).float().mean())
         ep_before = u.episode_length_buf.clone()
+        if k % 250 == 0:
+            _dst_sample()
+        if k % 50 == 0:      # 1010 명령 분포(걷기 태스크)
+            try:
+                _c = u.command_manager.get_command("base_velocity").clone().cpu(); _g = u._ge_cmd.clone().cpu() if hasattr(u, "_ge_cmd") else None
+                CMDS.append(torch.cat([_c[:, :3], (_g.float().unsqueeze(1) if _g is not None else torch.full((N, 1), float("nan")))], 1))
+            except Exception:
+                pass
         obs, rew, dones, _ = env.step(a)
         n_fin = n_fin and bool(torch.isfinite(rew).all()) and bool(torch.isfinite(a).all())
         rew_sum += float(rew.mean()); rterm += rm._step_reward.mean(0)
@@ -136,6 +158,18 @@ P("[roll] 종료 사유별 건수(100 env·s 당): " + " · ".join(f"{k} {v} ({1
 fall = sum(v for k, v in term_n.items() if k != "time_out")
 P(f"[roll] 낙상류 종료(time_out 제외) {fall} 건 = 100 env·s 당 {100.0 * fall / envsec:.3f} · 끝난 에피소드 {len(ep_len_done)} 개 평균 길이 {(sum(ep_len_done) / max(1, len(ep_len_done))) * u.step_dt:.2f} s")
 P("[roll] 보상 항별 스텝 평균(가중·dt 적용 뒤): " + " · ".join(f"{nm} {float(v) / args.steps:+.5f}" for nm, v in zip(rm.active_terms, rterm)))
+for _key in [x for x in DST if x != "cat"]:
+    _x = torch.cat(DST[_key]); _imp = _x[:, 0] * _x[:, 1]
+    P(f"[외란] {_key[0]} {_key[1]}: 표본 {len(_x)} · 힘 최소 {float(_x[:, 0].min()):.2f} 최대 {float(_x[:, 0].max()):.2f} 평균 {float(_x[:, 0].mean()):.2f} N · 유지/지속 {float(_x[:, 1].min()):.2f}–{float(_x[:, 1].max()):.2f} s"
+      + (f" · 충격량 최대 {float(_imp.max()):.2f} N·s · 8 N·s 초과 비율 {100 * float((_imp > 8.0).float().mean()):.1f} %" if _key[1] == "충격" else ""))
+if "cat" in DST:
+    _c = torch.cat(DST["cat"]); P(f"[외란] 범주 비율: 무외란 {100 * float((_c == 0).float().mean()):.1f} % · 앞 {100 * float((_c == 1).float().mean()):.1f} % · 뒤 {100 * float((_c == 2).float().mean()):.1f} %")
+if CMDS:
+    _C = torch.cat(CMDS); _ge = _C[:, 3] > 0.5; _n = float(len(_C)); _st = _C[_ge]
+    _f = lambda m: 100.0 * float(m.float().sum()) / max(1.0, float(_ge.sum()))
+    _vx = _st[:, 0]; _vy = _st[:, 1]; _wz = _st[:, 2]; _z = (_vx.abs() < 1e-6) & (_vy.abs() < 1e-6) & (_wz.abs() < 1e-6)
+    P(f"[명령] 표본 {int(_n)} · STEP(ge 요청) {100 * float(_ge.float().mean()):.1f} % · STEP 안: 제자리 {_f(_z):.1f} % · 앞 {_f(_vx > 1e-6):.1f} % (vx {float(_vx[_vx > 1e-6].min()) if bool((_vx > 1e-6).any()) else float('nan'):.3f}–{float(_vx.max()):.3f}) · "
+      f"뒤 {_f(_vx < -1e-6):.1f} % (vx {float(_vx.min()):.3f}–{float(_vx[_vx < -1e-6].max()) if bool((_vx < -1e-6).any()) else float('nan'):.3f}) · 옆 {_f(_vy.abs() > 1e-6):.1f} % · 회전 {_f(_wz.abs() > 1e-6):.1f} % (|wz| 최대 {float(_wz.abs().max()):.3f}) · STAND env 의 |명령| 최대 {float(_C[~_ge][:, :3].abs().max()) if bool((~_ge).any()) else 0.0:.3f}")
 P(f"[lock] 고정 관절 |q−θ| 최대: 전 env {float(dev_max.max()):.4f}° · env 중앙값 {float(dev_max.median()):.4f}° · 99 % {float(torch.quantile(dev_max, 0.99)):.4f}° · 관절 속도 최대 {vel_max:.3f} rad/s")
 P(f"[obs] 정책 관측의 고정 관절 열(joint_pos·joint_vel·joint_vel_ema × 이력) |값| 최대 {obs_lock_abs:.3e} · 다른 관절 열 |값| 최대 {obs_other_abs:.3f} · 정책이 낸 고정 관절 행동 |a| 최대 {act_lock_abs:.3f}")
 P(f"[lock] 평균: |q−θ| {dev_s / args.steps:.4f}° · |관절 속도| {vel_s / args.steps:.4f} rad/s · |PD 토크| {tau_lock_s / args.steps:.3f} N·m (최대 {tau_lock_max:.2f}) · 정책 행동 |a| 평균 고정 관절 {a_lock_s / args.steps:.3f} / 다른 관절 {a_oth_s / args.steps:.3f} · 다른 관절 |a| 최대 {a_oth_max:.1f} · 고정 관절 |a|>4 비율 {100 * a_lock_big / args.steps:.3f} %")

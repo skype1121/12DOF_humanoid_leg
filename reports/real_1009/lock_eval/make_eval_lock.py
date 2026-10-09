@@ -130,6 +130,11 @@ if _LOCK_IDS:
 else:
     P("[고정] 없음(대조군)")
 P(f"[고정 관측] --lock_obs_zero {'켬: 열 ' + str(len(_LZ_COLS)) + ' 개를 정책 입력 직전 0 으로 (0 으로 하기 전 값의 |최대| ' + format(_LZ_SEEN, '.4f') + ')' if _LZ_COLS else '끔(정책이 시뮬 값을 봄)'}")
+if _LOCK_IDS:
+    _gx = pre_pass & (post_n > 0)
+    _lxc = torch.cat([_v[_m & pre_pass] for _v, _m in _lx_cmd]) if _lx_cmd else torch.zeros(0, device=dev)
+    P(f"[굳은 관절 제외] 토크 포화(사전검사 통과 env 평균, ≥95 %): 굳은 관절 뺀 어느 관절이든 {100 * float((_lx_sat[_gx] / post_n[_gx]).mean()) if _gx.any() else float('nan'):.2f} % 틱 · 전 관절 {100 * float((sat[_gx] / post_n[_gx]).mean()) if _gx.any() else float('nan'):.2f} % 틱"
+      + (f" · 굳은 관절 명령각 |명령−고정각| 첫 외란 뒤 2 s(생존 틱 {int(_lxc.numel())}): 중앙 {float(_lxc.median()):.2f}° · 99 % {float(_lxc.quantile(0.99)):.2f}° · 평균 {float(_lxc.mean()):.2f}°" if _lxc.numel() else " · 굳은 관절 명령각: 외란 없음"))
 if policy2 is not None:
     _lzF = pre_pass & fell & (_lz_mode_fall >= 0); _lzR = _lzF & (_lz_mode_fall > 0.5); _lzS = _lzF & (_lz_mode_fall < 0.5)
     _lzS0 = _lzS & (_lz_rec_ticks_fall <= 0); _lzS1 = _lzS & (_lz_rec_ticks_fall > 0)
@@ -157,6 +162,7 @@ if args_cli.lock_obs_zero:      # 1010: 기구 고정 관절 관측 열 = 0 (실
     _LZ_PRE = float(obs["policy"][:, _LZ_COLS].abs().max())
     print(f"[lock_obs_zero] 고정 관절 관측 열 {len(_LZ_COLS)} 개(joint_pos·joint_vel·joint_vel_ema × 이력) 를 정책 입력 직전에 0 으로 · 0 으로 하기 전 첫 관측의 |값| 최대 {_LZ_PRE:.4f}", flush=True)
 _LZ_SEEN = 0.0
+_lx_sat = torch.zeros(N, device=dev); _lx_cmd = []; _LX_OTH = [_j for _j in range(len(robot.data.joint_names)) if _j not in _LOCK_IDS]      # 1010: 굳은 관절을 뺀 토크 포화·굳은 관절 명령각
 """
 src = rep(src, A5, B5)
 
@@ -165,6 +171,14 @@ B6 = """        if _LZ_COLS:
             _LZ_SEEN = max(_LZ_SEEN, float(obs["policy"][:, _LZ_COLS].abs().max())); obs["policy"][:, _LZ_COLS] = 0.0
 """ + A6
 src = rep(src, A6, B6)
+
+A7 = "        tq = robot.data.applied_torque.abs(); sat[a_] += (tq[a_] >= 0.95 * _eff[a_]).any(1).float()\n"
+B7 = A7 + """        if _LOCK_IDS:      # 1010: 굳은 관절의 헛토크(한계와 내부 상쇄)를 뺀 포화 · 밀기 뒤 2 s 의 굳은 관절 명령각
+            _lx_sat[a_] += (tq[a_][:, _LX_OTH] >= 0.95 * _eff[a_][:, _LX_OTH]).any(1).float()
+            if dists and dists[0].t0 <= t_rel < dists[0].t0 + 2.0:
+                _lx_cmd.append((torch.rad2deg((cmd[:, _LOCK_IDS] - _LOCK_TGT).abs()).amax(1).clone(), a_.clone()))
+"""
+src = rep(src, A7, B7)
 
 dst = os.path.join(R, "rl_walking/scripts/eval_ground_recovery_lock.py")
 open(dst, "w", encoding="utf-8").write(src)

@@ -14,3 +14,36 @@ for _stage in ("G24RaNB",):
             "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
         },
     )
+
+# 1010 2세대: G24RaNB + 앞 외란 힘 범위 상한 확대(단일 변경) — 위 등록과 같은 에이전트 설정
+gym.register(
+    id="Biped12-HangStand-G24RaNBf-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandG24RaNBfEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)
+
+# 1010 2단계(종종걸음): 걷기 태스크 W3S3d + 새 몸 — 기준선 평가용(에이전트 설정은 W3 계열과 같은 것)
+gym.register(
+    id="Biped12-HangStand-W3S3dNB-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)
+
+# 1010 종종걸음 학습 태스크: W3S3dNB + 명령 혼합(제자리 0.5·앞뒤 0.5·옆 0·회전 0)
+gym.register(
+    id="Biped12-HangStand-W3S3dNBj-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)

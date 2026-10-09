@@ -161,3 +161,89 @@ class Biped12HangStandG24RaNBEnvCfg(Biped12HangStandG24RaEnvCfg):
                         "noise": (float(nz.n_min), float(nz.n_max)) if nz is not None else None}
             t.func = nb_obs_fixed_zero
             t.noise = None
+
+
+# ───────────────────────── 1010 2세대: 앞 외란 힘 범위 상한만 평가 조건까지 확대 (G24RaNBf) ─────────────────────────
+NBF_FRONT_RAMP_N = (10.0, 15.0)     # 종전 R3 앞 램프 10–12 N → 상한 15 N(평가 앞 램프 15 N)
+NBF_FRONT_IMP_N = (15.0, 40.0)      # 종전 R3 앞 충격 15–18 N(= 램프 범위 × 1.5) → 상한 40 N(평가 앞 40 N × 0.2 s)
+
+
+def nbf_disturbance_reset(env, env_ids, base: dict, front_ramp_N=NBF_FRONT_RAMP_N, front_imp_N=NBF_FRONT_IMP_N):
+    """mode="reset": 원 함수 mdp_hang.disturbance_reset_g22r(G24R-a 인자 그대로)를 부른 뒤, **앞 범주 env 의 힘 크기만** 다시 뽑는다.
+    램프(kind 1) ~ U(front_ramp_N), 충격(kind 2) ~ U(front_imp_N). 범주 비율·횟수·시각·상승/유지/지속 시간·방향·뒤 범주·무외란 범주는 원 함수 값 그대로.
+    하한은 종전과 같다(램프 10 N, 충격 15 N). 충격 지속 0.2–0.4 s 도 그대로라 충격량 상한은 7.2 → 16 N·s 가 된다(평가 8 N·s)."""
+    from . import mdp_hang as _mh
+    _mh.disturbance_reset_g22r(env, env_ids, **base)
+    hs = _mh._state(env); g = _mh._g22(env)
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    if len(ids) == 0:
+        return
+    kind = hs["dst_kind"][ids]; F = hs["dst_F"][ids]; front = (g["cat"][ids] == 1).unsqueeze(1)
+    U = lambda r: torch.empty_like(F).uniform_(float(r[0]), float(r[1]))  # noqa: E731
+    F = torch.where(front & (kind == 1), U(front_ramp_N), F)
+    F = torch.where(front & (kind == 2), U(front_imp_N), F)
+    hs["dst_F"][ids] = F
+
+
+@configclass
+class Biped12HangStandG24RaNBfEnvCfg(Biped12HangStandG24RaNBEnvCfg):
+    """G24R-a-NBf (1010): G24RaNB + **앞 외란 힘 범위 상한만 확대**(앞 램프 10–12 → 10–15 N, 앞 충격 15–18 → 15–40 N) 단일 변경.
+    하한·뒤·무외란 비율·시간·다른 이벤트·보상·질량·고정·관측 전부 G24RaNB 와 같다. 사전 등록 reports/real_1009/NEWBODY_TRAIN.md §9."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        d = self.events.disturbance
+        d.params = {"base": dict(d.params), "front_ramp_N": NBF_FRONT_RAMP_N, "front_imp_N": NBF_FRONT_IMP_N}      # base = 원 함수 인자 그대로
+        d.func = nbf_disturbance_reset
+
+
+# ───────────────────────── 1010 2단계(종종걸음): 새 몸을 W3 걷기 태스크에 얹기 ─────────────────────────
+from .hang_stand_env_cfg import Biped12HangStandW3S3dEnvCfg  # noqa: E402
+
+
+def nb_apply_newbody(cfg):
+    """환경 설정 cfg 에 새 몸 세 가지(네 링크 inertial · hip_r 물리 고정 θ~U(±2°) · 고정 관절 관측 열 0)를 얹는다.
+    Biped12HangStandG24RaNBEnvCfg.__post_init__ 과 같은 내용(그 클래스는 그대로 둔다). 주의: reset 의 stance_asym 이 hip_r 에 넣는 발 요 ±5° 는
+    마지막 reset 항 nb_lock_reset 이 θ 로 덮는다 → 새 몸에서 발 요 어긋남 = 고정각 θ(±2°)뿐이다(G24RaNB 도 같다)."""
+    ev = cfg.events
+    for k in ("nb_link_inertials", "nb_lock_startup", "nb_lock_reset"):
+        assert getattr(ev, k, None) is None, f"이벤트 이름 충돌 {k}"
+    ev.nb_link_inertials = EventTerm(func=nb_apply_link_inertials, mode="startup", params={"urdf_path": NB_URDF, "links": NB_LINKS})
+    ev.nb_lock_startup = EventTerm(func=nb_lock_joints_startup, mode="startup",
+                                   params={"joint_names": NB_LOCK_JOINTS, "offset_deg": NB_LOCK_OFFSET_DEG, "band_deg": 0.0})
+    ev.nb_lock_reset = EventTerm(func=nb_lock_joints_reset, mode="reset", params={})
+    P = cfg.observations.policy
+    for name in ("joint_pos", "joint_vel", "joint_vel_ema"):
+        t = getattr(P, name)
+        nz = t.noise
+        if nz is not None:
+            assert getattr(nz, "operation", "add") == "add" and "uniform" in str(nz.func), f"{name}: 가산 균일 잡음만 옮길 수 있음 ({nz})"
+        t.params = {"func": t.func, "params": dict(t.params or {}), "joint_names": NB_LOCK_JOINTS,
+                    "noise": (float(nz.n_min), float(nz.n_max)) if nz is not None else None}
+        t.func = nb_obs_fixed_zero
+        t.noise = None
+
+
+@configclass
+class Biped12HangStandW3S3dNBEnvCfg(Biped12HangStandW3S3dEnvCfg):
+    """W3S3d-NB (1010): 현 걷기 후보의 학습 태스크 W3S3d + 새 몸(nb_apply_newbody)만. 명령·보상·커리큘럼·지연·관측/행동 차원 불변.
+    용도: 현 걷기 정책(W3S3d-15800)을 새 몸에 그대로 넣은 기준선 평가(eval_w3_nb.py). 학습용 변형은 reports/real_1009/NEWBODY_WALK.md."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        nb_apply_newbody(self)
+
+
+NBJ_MIX3 = (0.5, 0.5, 0.0, 0.0)     # STEP 중 (제자리, 앞뒤, 옆, 회전) — 원 W3S3d (0.25, 0.2, 0.25, 0.3)
+
+
+@configclass
+class Biped12HangStandW3S3dNBjEnvCfg(Biped12HangStandW3S3dNBEnvCfg):
+    """W3S3d-NBj (1010 '종종걸음'): W3S3dNB + **명령 혼합만 변경** — STEP 중 제자리 0.5·앞뒤 0.5(앞 0.03–0.10·뒤 0.03–0.06 반반, 원 설정)·옆 0·회전 0.
+    STAND 30 %·보상·참조·관측·지연·커리큘럼 항·질량·고정은 W3S3dNB 와 같다(회전 보상 w3_turn·w3_ytrack 은 wz = 0 에서 0).
+    사전 기준·계획 reports/real_1009/NEWBODY_WALK.md. W3S3d-15800 에서 이어 학습."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        p = dict(self.events.w3_cmd.params); p["mix3"] = NBJ_MIX3
+        self.events.w3_cmd.params = p

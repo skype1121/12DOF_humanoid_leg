@@ -1594,6 +1594,60 @@ def main():
     except Exception as e:  # noqa: BLE001
         fails += 1
         print(f"[FAIL] 셋째 합성 키 기동 거부: {type(e).__name__}: {e}")
+    try:   # 1010 구성 불일치 가드(노드 경로): 걷기 키의 요구 기구 구성 ↔ 맵의 mech_fixed 선언 — 네 조합
+        HR = ("left_hip_r_joint", "right_hip_r_joint")
+        OLD, NEW = b._W3.W3S3D_CKPT_KEY, b._W3.W3NBJ_CKPT_KEY
+        res = {}
+
+        def body_scn(tag):
+            def driver(node):
+                H = Harness(node, b, ck)
+                H.tick(5)
+                st = H.cmd({"cmd": "stand"})
+                H.tick(int(2.6 / b.TICK_SEC))
+                on = H.cmd({"cmd": "step", "enable": True, "req_id": "op", "seq": 1, "vx": 0.06})
+                H.tick(50)
+                dbg = [json.loads(m) for m in node._pubs[b.BRIDGE_DEBUG_TOPIC].msgs]
+                res[tag] = {"stand": bool(st["accepted"]), "on": bool(on["accepted"]), "why": str(on.get("why")), "active": bool(node.core.active),
+                            "ge": bool(node.core.runner._w3_clock.want), "block": node.w3_body_block,
+                            "dbg_block": [d.get("w3_body_block") for d in dbg if "w3_body_block" in d][-1:] , "dbg_has": any("w3_body_block" in d for d in dbg)}
+                H.cmd({"cmd": "step", "enable": False, "req_id": "op", "seq": 2})
+                H.tick(60)
+            return driver
+
+        def with_map(fixed):
+            base = b.load_frame_map              # _patch 가 건 load_safe
+
+            def load():
+                f = base()
+                f.mech_fixed = tuple(fixed)
+                return f
+            return base, load
+
+        rcs = {}
+        for tag, key, fixed in (("old_none", OLD, ()), ("old_decl", OLD, HR), ("new_decl", NEW, HR), ("new_none", NEW, ()), ("new_half", NEW, HR[:1])):
+            ck = FakeClock()
+            _patch(b, ck)
+            base, load = with_map(fixed)
+            b.load_frame_map = load
+            try:
+                rcs[tag] = _run_main(b, ["--live", "--force-frame", "--force-gains", "--experimental-w3", "--checkpoint", key], body_scn(tag))
+            finally:
+                b.load_frame_map = base
+        assert rcs == {"old_none": 0, "old_decl": 0, "new_decl": 0, "new_none": 2, "new_half": 2}, rcs
+        assert "new_none" not in res and "new_half" not in res, "거부된 기동인데 노드가 돌았다"
+        a0, a1, a2 = res["old_none"], res["old_decl"], res["new_decl"]
+        assert a0["stand"] and a0["on"] and a0["ge"] and a0["block"] is None and not a0["dbg_has"], a0            # 원래 몸 키 × 선언 없음 = 종전(새 필드 없음)
+        assert a1["stand"] and a1["active"] and not a1["on"] and not a1["ge"] and "구성 불일치" in a1["why"] and "걷기 켜기 거부" in a1["why"], a1   # 서기는 되고 걷기만 거부
+        assert a1["block"] == a1["why"] and a1["dbg_block"] == [a1["why"]], a1                                     # 사유가 응답·디버그에 같은 문장으로
+        assert a2["stand"] and a2["on"] and a2["ge"] and a2["block"] is None and not a2["dbg_has"], a2            # 새 몸 키 × 좌우 hip_r 선언 = 걷기 켜짐
+        print("[PASS] 구성 불일치 가드(1010): 원래 몸 걷기 키 × 선언 없음 = 종전(걷기 켜짐·새 필드 없음) · 원래 몸 걷기 키 × hip_r 선언 = 서기 시작·걷기 켜기 거부(사유 응답·디버그) · "
+              "새 몸 키 × 선언 = 걷기 켜짐 · 새 몸 키 × 선언 없음/한쪽만 = --live 거부(exit 2)")
+    except Exception as e:  # noqa: BLE001
+        fails += 1
+        import traceback
+        traceback.print_exc()
+        print(f"[FAIL] 1010 구성 불일치 가드: {type(e).__name__}: {e}")
     print("w3 node selftest:", "ALL PASS" if fails == 0 else f"{fails} FAILED")
     return 0 if fails == 0 else 1
 

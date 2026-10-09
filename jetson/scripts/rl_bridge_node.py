@@ -91,7 +91,9 @@ from rl_walking.deploy.policy_runner import (  # noqa: E402
 from rl_walking.deploy.c5_switch import C5Runner, SwitchDetector  # noqa: E402 — 1004 C5(서기+회복 전환), 미배포
 from rl_walking.deploy import deploy_chain as _DC  # noqa: E402 — 배포 경로 상수·함수의 단일 원본 (판정 스크립트와 공유)
 from rl_walking.deploy import hturn2 as _H2  # noqa: E402 — 1006 HTURN2 실험 플래그(기본 꺼짐, 순수 numpy 상수·함수)
-from jetson.scripts.mech_fixed import fixed_from_map as _mech_fixed_from_map  # noqa: E402 — 1009 기구 고정 관절 선언의 단일 원본(stdlib)
+if os.path.dirname(os.path.abspath(__file__)) not in sys.path:   # 같은 폴더의 단일 파일 모듈(jetson/ 패키지 파일은 배포 대상 아님)
+    sys.path.insert(1, os.path.dirname(os.path.abspath(__file__)))
+from mech_fixed import fixed_from_map as _mech_fixed_from_map  # noqa: E402 — 1009 기구 고정 관절 선언의 단일 원본(stdlib)
 from rl_walking.deploy import w3_deploy as _W3  # noqa: E402 — 1006 W3 실험 플래그(기본 꺼짐, 순수 numpy 상수·함수)
 
 RATE_HZ = 50.0

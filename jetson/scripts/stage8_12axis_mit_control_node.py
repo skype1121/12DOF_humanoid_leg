@@ -47,7 +47,10 @@ from robot_runtime.dof12_mapping import (  # noqa: E402
     get_joint_name_to_motor_id,
     validate_12dof_mapping,
 )
-from jetson.scripts.mech_fixed import load_fixed as load_mech_fixed  # noqa: E402
+# 같은 폴더의 단일 파일 모듈로 가져온다 — jetson/ 패키지 파일(__init__)은 배포 대상이 아니다
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(1, str(Path(__file__).resolve().parent))
+from mech_fixed import load_fixed as load_mech_fixed  # noqa: E402
 
 
 COMMAND_TOPIC = "/humanoid/stage8_12axis_mit_command"

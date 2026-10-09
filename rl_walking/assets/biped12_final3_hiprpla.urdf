@@ -1,6 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
-<!-- 변형본(1009): hip_r 링크(모터+하우징)를 PLA 통짜 출력물 211.23 g 로 대체. 원본 biped12_final3.urdf 의 좌·우 hip_r 링크 inertial 만 교체.
-     무게중심·관성 = 링크 메시(483.9 cm3)를 균일 밀도로 본 계산값(가정). 관절 정의·메시·나머지 링크는 원본과 동일. -->
+<!-- 변형본(1009 정정판): hip_r 모터(실측 611 g)와 그 원통 하우징(실측 288 g)을 PLA 통짜 출력물(211.23 g)로 대체.
+     원본 biped12_final3.urdf 에서 좌·우 hip_a 링크(− 하우징 + 출력물)와 hip_r 링크(− 모터)의 inertial 만 바꿨다.
+     빠지는·더해지는 물체는 원통 근사(가정). 생성: reports/real_1009/make_hiprpla_urdf.py. 관절 정의·메시는 원본과 동일. -->
 <robot name="biped12">
   <link name="base">
     <inertial>
@@ -66,9 +67,9 @@
   </joint>
   <link name="left_hip_a_joint">
     <inertial>
-      <origin xyz="0.000188614447 -0.0151611602 -0.0237355934" rpy="0 0 0" />
-      <mass value="0.96740276" />
-      <inertia ixx="0.00203175836" ixy="-1.77856838e-05" ixz="1.66296892e-06" iyy="0.000881160889" iyz="-6.6248374e-05" izz="0.00217041168" />
+      <origin xyz="-0.000572293956 -0.00716173429 -0.0240575908" rpy="0 0 0" />
+      <mass value="0.89063276" />
+      <inertia ixx="1.067729862e-03" ixy="-8.609904400e-05" ixz="4.412756444e-06" iyy="4.847245221e-04" iyz="-9.515687532e-05" izz="1.201048830e-03" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -94,9 +95,9 @@
   </joint>
   <link name="left_hip_r_joint">
     <inertial>
-      <origin xyz="-0.002904 -0.032247 0.00018" rpy="0 0 0" />
-      <mass value="0.21123" />
-      <inertia ixx="1.431833e-03" ixy="-7.721334e-05" ixz="5.133204e-08" iyy="1.856144e-04" iyz="1.310034e-06" izz="1.399089e-03" />
+      <origin xyz="-0.00190535171 -0.0251582396 0.000310502742" rpy="0 0 0" />
+      <mass value="0.32534972" />
+      <inertia ixx="1.666737025e-03" ixy="1.195618631e-04" ixz="9.736508468e-09" iyy="1.835232060e-04" iyz="-2.692704053e-06" izz="1.634368627e-03" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -346,9 +347,9 @@
   </joint>
   <link name="right_hip_a_joint">
     <inertial>
-      <origin xyz="-0.000245529258 -0.0151611602 -0.0237364394" rpy="0 0 0" />
-      <mass value="0.96740276" />
-      <inertia ixx="0.00203175225" ixy="2.08059953e-05" ixz="9.38493023e-08" iyy="0.000881130871" iyz="-6.61745651e-05" izz="0.00217038777" />
+      <origin xyz="0.000510473251 -0.00716173429 -0.0240585097" rpy="0 0 0" />
+      <mass value="0.89063276" />
+      <inertia ixx="1.068017187e-03" ixy="8.867891074e-05" ixz="-2.638827923e-06" iyy="4.853654218e-04" iyz="-9.508961333e-05" izz="1.201402403e-03" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -374,9 +375,9 @@
   </joint>
   <link name="right_hip_r_joint">
     <inertial>
-      <origin xyz="0.002891 -0.032247 0.00032" rpy="0 0 0" />
-      <mass value="0.21123" />
-      <inertia ixx="1.431840e-03" ixy="7.744070e-05" ixz="1.436407e-07" iyy="1.856371e-04" iyz="-3.751581e-06" izz="1.399106e-03" />
+      <origin xyz="0.00206760483 -0.0251582375 -0.000525371744" rpy="0 0 0" />
+      <mass value="0.32534972" />
+      <inertia ixx="1.666595202e-03" ixy="-1.229173558e-04" ixz="-3.978605136e-07" iyy="1.831716122e-04" iyz="1.529304106e-05" izz="1.634158923e-03" />
     </inertial>
     <visual>
       <origin xyz="0.01985 -0.158275 0" rpy="0 0 0" />

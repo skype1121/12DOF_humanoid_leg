@@ -668,6 +668,12 @@ KEW3_SPECS = {KEW3_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a
                                        requiet=(2.0, 0.3, "both")),
               KEW3QA_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5,
                                         requiet=(2.0, 0.3, "both"), air="stand_crouch_g21h")}
+#: 1010 넷째 합성 키(**실물 미검증 · 젯슨 미배포**): 셋째 합성 키에서 걷기만 새 몸 종종걸음(W3S3dNBj seed 2 -16299)으로 바꾼 것. 서기 KE·갇힘 해소·공중·착지 정책은 그대로.
+#: 새 몸(hip_r 양쪽 기구 고정 — 하드웨어맵 mech_fixed) 전용이다. 걷기 명령은 제자리·앞 0.03–0.06 만(옆·회전·뒤는 범위 (0, 0) 이라 감독기가 거부).
+#: 시뮬 근거 reports/real_1009/NEWBODY_WALK.md §9·§11(전환 왕복 낙상 1.9 %, 헤딩 고리 끔). 앞의 세 키(이름·명세·순서)는 그대로다 — **뒤에** 덧붙였다.
+KEW3NBJ_CKPT_KEY = "stand_kew3qa_g21a_g24ra_w3nbj2_16299"
+KEW3_SPECS[KEW3NBJ_CKPT_KEY] = KeW3Spec(w3=_W3.W3NBJ_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5,
+                                        requiet=(2.0, 0.3, "both"), air="stand_crouch_g21h")
 KEW3_KEYS = tuple(KEW3_SPECS)
 KEW3_CKPTS = {}            # 켜졌을 때만 {합성 키: KeW3Spec}
 
@@ -2239,7 +2245,7 @@ def _selftest_g21h(required=()):
     # 기각된 구성: G21h 를 서기 정책 전체로 쓴 KE(지면 회복 기준 미달) — 그 키·그 조합이 레지스트리에 없어야 한다. G21h 는 합성 키의 공중·착지 구간(명세 air)에만 쓴다
     assert "stand_c5kr_g21h_g24ra" not in CHECKPOINTS and not any("g21h" in k for k in list(C5_PAIRS) + list(C5_EXTRA)), "기각된 G21h KE 키가 등록돼 있음"
     assert not any(v[0] == H for v in C5_PAIRS.values()) and [k for k in CHECKPOINTS if "g21h" in k] == [H], "G21h 를 서기로 쓰는 C5 키 또는 다른 G21h 키가 있음"
-    assert [k for k, sp in KEW3_SPECS.items() if sp.air == H] == [KEW3QA_CKPT_KEY] and all(sp.ke != H and sp.w3 != H for sp in KEW3_SPECS.values())
+    assert [k for k, sp in KEW3_SPECS.items() if sp.air == H] == [KEW3QA_CKPT_KEY, KEW3NBJ_CKPT_KEY] and all(sp.ke != H and sp.w3 != H for sp in KEW3_SPECS.values())
     need = [k for k in required if k == H]
     have_yml = os.path.isfile(_ckpt_env_yaml(H))
     have_pol = os.path.exists(os.path.join(G21H_EXPORTED, "policy.pt")) or os.path.exists(os.path.join(G21H_EXPORTED, "policy.onnx"))
@@ -2333,9 +2339,12 @@ def _selftest_air_start():
         RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32 = 1, None, _W3.W3_HL_DEFAULT, None, None, False
         IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = 0.0, 0.0            # 기울기 수치를 대본 그대로(장착 편향 보정은 이 시험 대상이 아님)
         # ── (e) 키·명세 ──
-        assert KEW3_KEYS == (K1, K2, K3) == ("stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800",
-                                             "stand_kew3qa_g21a_g24ra_w3s3d15800"), KEW3_KEYS
-        s1, s2, s3 = (KEW3_SPECS[k] for k in KEW3_KEYS)
+        assert KEW3_KEYS[:3] == (K1, K2, K3) == ("stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800",
+                                                 "stand_kew3qa_g21a_g24ra_w3s3d15800"), KEW3_KEYS
+        # 1010 넷째 키(새 몸 종종걸음): 셋째 명세에서 걷기 키만 다르다 — 앞의 세 키는 그대로
+        assert KEW3_KEYS[3:] == (KEW3NBJ_CKPT_KEY,) == ("stand_kew3qa_g21a_g24ra_w3nbj2_16299",), KEW3_KEYS
+        assert KEW3_SPECS[KEW3NBJ_CKPT_KEY] == KEW3_SPECS[K3]._replace(w3=_W3.W3NBJ_CKPT_KEY) and _W3.W3NBJ_CKPT_KEY != _W3.W3S3D_CKPT_KEY
+        s1, s2, s3 = (KEW3_SPECS[k] for k in KEW3_KEYS[:3])
         assert s1.air is None and s2.air is None and s3.air == AIR_KEY, (s1.air, s2.air, s3.air)
         assert s3 == s2._replace(air=AIR_KEY) and s3.ke == s2.ke == "stand_c5kr_g21a_g24ra" and s3.requiet == s2.requiet == (2.0, 0.3, "both"), s3
         assert KeW3Spec(w3="w", ke="k", handoff="carry", settle_quiet_s=0.5) == KeW3Spec("w", "k", "carry", 0.5, None, None), "명세 기본값(requiet None·air None)"
@@ -2361,12 +2370,12 @@ def _selftest_air_start():
                 _kew3_unregister()
         assert not EXPERIMENTAL_KEW3 and not KEW3_CKPTS
         enable_experimental_kew3()
-        assert [k for k, s in KEW3_CKPTS.items() if s.air is not None] == [K3], "공중·착지 정책이 있는 등록 키가 셋째 합성 키 하나가 아님"
+        assert [k for k, s in KEW3_CKPTS.items() if s.air is not None] == [K3, KEW3NBJ_CKPT_KEY], "공중·착지 정책이 있는 등록 키가 셋째·넷째 합성 키가 아님"
         assert CHECKPOINTS[K3] == CHECKPOINTS[K2] == CHECKPOINTS["stand_crouch_g21a"] and CKPT_DEFAULT_POSE[K3] == CKPT_DEFAULT_POSE[K2], "셋째 키의 이름 기반 계약 ≠ 둘째 키(KE 서기 = G21a)"
         assert _ckpt_policy_dirs(K3) == _ckpt_policy_dirs(K2) + [CHECKPOINTS[AIR_KEY]] and len(_ckpt_policy_dirs(K2)) == 3
         assert _kew3_expand_required((K3,)) == (K3, s3.w3, s3.ke, AIR_KEY) and _kew3_expand_required((K2,)) == (K2, s2.w3, s2.ke)
         rejected = w3_keys + [K1, K2]
-        assert _W3.W3S3D_CKPT_KEY in rejected and set(rejected) | {K3} == set(W3_CKPTS), (rejected, sorted(W3_CKPTS))
+        assert _W3.W3S3D_CKPT_KEY in rejected and _W3.W3NBJ_CKPT_KEY in rejected and set(rejected) | {K3, KEW3NBJ_CKPT_KEY} == set(W3_CKPTS), (rejected, sorted(W3_CKPTS))
         for k in rejected:
             why = hang_arm_reject(k, True)
             assert why and "hang_arm 불가" in why and K3 in why and K1 not in why and K2 not in why, (k, why)
@@ -4667,7 +4676,7 @@ def _selftest_kew3(key=None):
         assert spec.handoff == "carry" and spec.settle_quiet_s == 0.5 and spec.w3 == _W3.W3S3D_CKPT_KEY and C5_EXTRA[spec.ke]["det"]["early"] is not None
         # 1008: 합성 키 = 정확히 셋(등록 순서 = 명세 순서). 첫 키의 이름·명세는 그대로(requiet 없음), 둘째 키는 requiet 하나만 다르다.
         # 셋째 키(공중 정책 시작)는 둘째 키에 공중·착지 서기 정책 air 하나만 더한 것 — 앞의 두 키는 air None(hang_arm 거부 그대로).
-        assert KEW3_KEYS == (KEW3_CKPT_KEY, KEW3Q_CKPT_KEY, KEW3QA_CKPT_KEY) == (
+        assert KEW3_KEYS[3:] == (KEW3NBJ_CKPT_KEY,) and KEW3_KEYS[:3] == (KEW3_CKPT_KEY, KEW3Q_CKPT_KEY, KEW3QA_CKPT_KEY) == (
             "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3s3d15800"), KEW3_KEYS
         assert KEW3_SPECS[KEW3QA_CKPT_KEY] == KEW3_SPECS[KEW3Q_CKPT_KEY]._replace(air="stand_crouch_g21h"), KEW3_SPECS[KEW3QA_CKPT_KEY]
         assert KEW3_SPECS[KEW3_CKPT_KEY].air is None and KEW3_SPECS[KEW3Q_CKPT_KEY].air is None

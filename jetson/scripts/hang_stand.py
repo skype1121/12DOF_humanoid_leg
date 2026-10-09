@@ -38,6 +38,8 @@
     무부하 스톨가드로 보호 (m5 상한 41.1°는 스윕 미완 의심 — 실측으로 확인).
   - 게인 상한 kp150/kd5 (하드웨어맵 승인값, kd5=실물 상한 규칙)
   - 제어 시계는 monotonic (NTP 스텝 보정에 면역)
+  - 기구 고정(1009): 하드웨어맵에 "mech_fixed": true 로 선언된 모터는 송신·읽기·가드·상태·핸드오프
+    파일 대상에서 뺀다("모터 N 기구 고정 — 제외" 출력). 살아 있는 모터의 가드(이탈·피드백 두절·폴트)는 그대로다.
 
 사용: python3 hang_stand.py [--hold 900] [--channel can1]
 """
@@ -55,6 +57,7 @@ import can  # noqa: E402
 
 from ak_mit_command import pack_ak_mit_command  # noqa: E402
 from ak_mit_decoder import decode_ak_mit_feedback  # noqa: E402
+from mech_fixed import load_fixed, note as fixed_note  # noqa: E402
 
 ENTER = bytes([0xFF] * 7 + [0xFC])
 EXIT = bytes([0xFF] * 7 + [0xFD])
@@ -219,6 +222,24 @@ def load_stand_zero():
     if missing:
         raise SystemExit(f"[중단] 하드웨어맵에 모터 {missing} stand_zero 없음")
     return zero
+
+
+def live_ids(ids, fixed):
+    """제어 대상 모터 = ids 에서 기구 고정 제외 (선언 없으면 그대로). 트림 채널 모터가 고정이면 중단."""
+    for ch, cfg in TRIM_CH.items():
+        hit = sorted(m for m in cfg["gain"] if m in fixed)
+        if hit:
+            raise SystemExit(f"[중단] 트림 채널 {ch} 의 모터 {hit} 가 기구 고정으로 선언됨 — "
+                             f"이 조합은 지원하지 않습니다(하드웨어맵 mech_fixed 확인)")
+    return [m for m in ids if m not in fixed]
+
+
+def load_fixed_ids():
+    """하드웨어맵의 기구 고정 모터 ID 집합 — 맵·선언 오류는 중단(추측하지 않는다)."""
+    try:
+        return set(load_fixed(HW_MAP)[1])
+    except Exception as e:
+        raise SystemExit(f"[중단] 하드웨어맵 기구 고정 선언 읽기 실패 {HW_MAP}: {e}")
 
 
 def load_map_extras():
@@ -421,6 +442,13 @@ def main():
 
     zero = load_stand_zero()
     motor_of, direction = load_map_extras()
+    # 기구 고정 모터는 이 뒤 모든 루프(ENTER·시작각 읽기·명령·가드·상태·핸드오프·릴리즈)에서 빠진다.
+    global IDS
+    fixed = load_fixed_ids()
+    IDS = live_ids(IDS, fixed)
+    if fixed:
+        say(f"[기구 고정] {fixed_note(sorted(fixed))} (대상 {len(IDS)}모터)")
+    fixed_names = [n for n, m in sorted(motor_of.items(), key=lambda kv: kv[1]) if m in fixed]
     joint_of = {m: n for n, m in motor_of.items()}
     soft_lim = load_joint_soft_limits(motor_of)   # 관절 프레임(좌우 대칭) 소프트 한계; None 이면 ROM 폴백
     if soft_lim is not None:
@@ -802,7 +830,7 @@ def main():
                           "게인램프" if gain_t0 and kp < KP_MAX - 1e-6 else
                           "에어유지" if gain_t0 is None else
                           "하중유지" if grounded else "운용대기")
-                write_status(STATUS_FILE, {
+                _st = {
                     "ts": time.time(), "phase": _phase, "kp": kp, "kd": kd_send if "kd_send" in dir() else kd, "grounded": grounded,
                     "joint_trim_enabled": bool(gain_t0 is not None and kp >= KP_MAX - 1e-6),
                     "trim": {ch: trim[ch]["cur"] for ch in trim},
@@ -815,7 +843,16 @@ def main():
                     "joint_tau_est": {joint_of[m]: FB_TAU.get(m) for m in IDS},          # 0919 진단용(모터 프레임, 미검증)
                     "joint_vel_rad_s": {joint_of[m]: FB_VEL.get(m) for m in IDS},
                     "gait": {"on": gait["on"], "active": gait_amp > 0.0, "amp": round(gait_amp, 3),
-                             "freq_hz": gait["freq_hz"], "hip_deg": gait["hip_deg"], "knee_deg": gait["knee_deg"], "ankle_deg": gait["ankle_deg"]}})
+                             "freq_hz": gait["freq_hz"], "hip_deg": gait["hip_deg"], "knee_deg": gait["knee_deg"], "ankle_deg": gait["ankle_deg"]}}
+                if fixed_names:
+                    # 기구 고정 관절: 관절 0° 에 굳어 있다 — 조정 요청은 따르지 않으므로 req·cur·위치·명령 모두 0 으로 적고 표지를 단다
+                    # (콘솔의 수평 자세 확인이 12 관절을 본다: 기준이 0° 가 아니면 거기서 불일치로 드러난다). 오차·토크·속도는 싣지 않는다.
+                    _st["mech_fixed"] = list(fixed_names)
+                    for _n in fixed_names:
+                        _st["joint_trim"][_n] = {"req": 0.0, "cur": 0.0, "frozen": False, "mech_fixed": True}
+                        _st["joint_pos_deg"][_n] = 0.0
+                        _st["joint_cmd_deg"][_n] = 0.0
+                write_status(STATUS_FILE, _st)
             if now - t_show >= 1.0:
                 t_show = now
                 errs = {m: pos[m] - cmd_of(m, frac) for m in IDS}

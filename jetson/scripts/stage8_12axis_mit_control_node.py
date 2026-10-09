@@ -43,9 +43,11 @@ from robot_runtime.dof12_mapping import (  # noqa: E402
     get_isaac_dof_index,
     get_joint_config,
     get_joint_name_to_isaac_dof_index,
+    default_config_path,
     get_joint_name_to_motor_id,
     validate_12dof_mapping,
 )
+from jetson.scripts.mech_fixed import load_fixed as load_mech_fixed  # noqa: E402
 
 
 COMMAND_TOPIC = "/humanoid/stage8_12axis_mit_command"
@@ -209,6 +211,17 @@ DEFAULT_LIMIT_GAIN_BY_JOINT = {
 # Stage8 accepts all 12 joint commands, while REAL_CAN_WRITE_ENABLED remains
 # False by default so actual CAN writes stay blocked unless changed on Jetson.
 ALLOWED_JOINTS = list(JOINT_NAMES_12DOF)
+
+#: 기구 고정 관절 (1009) — 하드웨어맵 관절 항목의 선택 필드 "mech_fixed": true 로 **명시 선언**한 관절.
+#: 모터를 떼고 관절 0°(= 모터 프레임 stand_zero_deg)에 굳힌 관절이라 CAN 에 응답하지 않는다. 이 관절만:
+#:   - CAN 송신 전부 생략(FC 폴링·MIT 명령·인수 홀드),
+#:   - 피드백 합성(실측 = stand_zero_deg, 나이 0, 신선·유효, 속도·토크 0) → 기준점·ARM·가드가 12 관절 그대로 돈다,
+#:   - 들어온 목표는 검증만 하고 버린다(항상 stand_zero_deg 에 있다).
+#: 선언이 없으면 빈 집합 = 종전과 완전히 같은 동작. 선언되지 않은 관절의 무응답·stale 가드는 그대로다(완화 없음).
+#: 선언 값이 bool 이 아니면 여기서 ValueError(기동 차단). 원본: jetson/scripts/mech_fixed.py
+MECH_FIXED_JOINTS = frozenset(load_mech_fixed(default_config_path())[0])
+#: FC 폴링(읽기 요청) 대상 — 기구 고정 관절 제외. 선언 없으면 12 관절 그대로(종전 순서).
+POLL_JOINTS = [joint for joint in JOINT_NAMES_12DOF if joint not in MECH_FIXED_JOINTS]
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +460,10 @@ class Stage8TwelveAxisMitControlCore:
         self._takeover_start = None
         self._waiting_takeover = bool(WAIT_TAKEOVER) and self.takeover_hold is None
         self._wait_warn_time = None
-        self.latest_actual_deg_by_joint = {}
+        # 기구 고정 관절의 실측 = stand_zero_deg 합성(모터 프레임). 나이·신선도는 _joint_feedback_age_sec 가 합성한다.
+        self.latest_actual_deg_by_joint = {
+            joint: float(STAND_ZERO_DEG_BY_JOINT[joint]) for joint in MECH_FIXED_JOINTS}
+        self.mech_fixed_target_drops = 0   # 고정 관절로 들어와 버린 목표 수 (status 노출)
         self.latest_feedback_by_joint = {}
         self.latest_feedback_time_by_joint = {}
         self.latest_feedback_time = None
@@ -627,6 +643,8 @@ class Stage8TwelveAxisMitControlCore:
             hold = {}
             for mid_s, v in data["motors"].items():
                 joint = JOINT_BY_CAN_ID[int(mid_s)]
+                if joint in MECH_FIXED_JOINTS:
+                    continue   # 기구 고정 — 홀드 송신 대상이 아니다(파일에 있어도 쓰지 않는다)
                 deg = float(v["deg"])
                 kp = min(500.0, max(0.0, float(v["kp"])))
                 kd = min(5.0, max(0.0, float(v["kd"])))
@@ -648,8 +666,10 @@ class Stage8TwelveAxisMitControlCore:
                         f"state_file_backstop:{joint}:{dev:.1f}deg")
                     return None
                 hold[joint] = (deg, kp, kd)
-            if len(hold) != len(JOINT_NAMES_12DOF):
-                self.last_takeover_event = f"state_file_incomplete:{len(hold)}/12"
+            # 기구 고정 관절을 뺀 전부가 있어야 수락 (선언 없으면 종전대로 12/12)
+            need = len(JOINT_NAMES_12DOF) - len(MECH_FIXED_JOINTS)
+            if len(hold) != need:
+                self.last_takeover_event = f"state_file_incomplete:{len(hold)}/{need}"
                 return None
             return hold
         except (KeyError, TypeError, ValueError):
@@ -886,6 +906,8 @@ class Stage8TwelveAxisMitControlCore:
         for joint in JOINT_NAMES_12DOF:
             if joint not in self.baseline_deg_by_joint:
                 continue
+            if joint in MECH_FIXED_JOINTS:
+                continue   # 기구 고정 — 모터 없음, 송신 생략(상대 명령은 0 그대로)
             joint_stale = (REAL_CAN_WRITE_ENABLED
                            and not self._joint_feedback_is_fresh(joint))
             if joint_stale:
@@ -994,7 +1016,9 @@ class Stage8TwelveAxisMitControlCore:
             joint for joint in JOINT_NAMES_12DOF
             if joint not in available
         ]
-        if not available:
+        # 기구 고정 관절은 합성 피드백으로 항상 available 이다 — '실측 전무' 거부는 살아 있는 관절로만 판정
+        # (선언 없으면 종전과 같은 식). 종전 거부가 고정 관절 때문에 통과로 바뀌지 않게 한다.
+        if not [joint for joint in available if joint not in MECH_FIXED_JOINTS]:
             if not self._feedback_is_fresh():
                 self.feedback_stale_reason = self._feedback_stale_reason()
                 return self._reject("feedback_stale:all_baseline_missing")
@@ -1133,6 +1157,11 @@ class Stage8TwelveAxisMitControlCore:
                     f"SZ{STAND_ZERO_DEG_BY_JOINT[joint]:.1f}deg|="
                     f"{dev:.1f}deg > {dev_limit:.1f}deg")
 
+        if joint in MECH_FIXED_JOINTS:
+            # 기구 고정 — 검증은 위에서 그대로 거쳤고(불량 목표는 종전대로 거부), 통과한 목표는 버린다.
+            # 거부가 아니므로 last_reject_reason 은 건드리지 않는다.
+            self.mech_fixed_target_drops += 1
+            return None
         self.desired_relative_deg_by_joint[joint] = target_deg
         return None
 
@@ -1159,6 +1188,8 @@ class Stage8TwelveAxisMitControlCore:
         return max(0.0, self.now_fn() - self.latest_feedback_time)
 
     def _joint_feedback_age_sec(self, joint):
+        if joint in MECH_FIXED_JOINTS:
+            return 0.0   # 기구 고정 — 합성 피드백(항상 신선). 살아 있는 관절의 나이 판정에는 영향 없음
         timestamp = self.latest_feedback_time_by_joint.get(joint)
         if timestamp is None:
             return None
@@ -1200,6 +1231,8 @@ class Stage8TwelveAxisMitControlCore:
                 value = _number_or_none(joint_data.get("actual_deg"))
                 if value is not None:
                     actuals[joint] = value
+        for joint in MECH_FIXED_JOINTS:
+            actuals.pop(joint, None)   # 기구 고정 — 합성값(stand_zero_deg)을 외부 값으로 덮지 않는다
         return actuals
 
     def _maybe_write_frame(self, motor_id, frame_bytes):
@@ -1254,14 +1287,14 @@ class Stage8TwelveAxisMitControlCore:
     def _request_next_readonly_feedback(self):
         if self.can_bus is None or not READ_ONLY_CAN_ENABLED:
             return False
-        if not JOINT_NAMES_12DOF:
+        if not POLL_JOINTS:
             return False
         now = self.now_fn()
         if now < self._readonly_request_backoff_until:
             return False
         if now - self._last_readonly_request_time < CAN_FEEDBACK_REQUEST_PERIOD_SEC:
             return False
-        joint = JOINT_NAMES_12DOF[self._next_readonly_request_index % len(JOINT_NAMES_12DOF)]
+        joint = POLL_JOINTS[self._next_readonly_request_index % len(POLL_JOINTS)]
         self._next_readonly_request_index += 1
         sent = self._send_readonly_feedback_request(CAN_ID_BY_JOINT[joint])
         if sent:
@@ -1272,7 +1305,7 @@ class Stage8TwelveAxisMitControlCore:
         sent = 0
         if self.can_bus is None or not READ_ONLY_CAN_ENABLED:
             return sent
-        for joint in JOINT_NAMES_12DOF:
+        for joint in POLL_JOINTS:
             if self._send_readonly_feedback_request(CAN_ID_BY_JOINT[joint]):
                 sent += 1
         return sent
@@ -1343,6 +1376,11 @@ class Stage8TwelveAxisMitControlCore:
                 f"frame_shape_reject:arb{int(message.arbitration_id)}:d0_{mid}")
             return False
         joint = JOINT_BY_CAN_ID[mid]
+        if joint in MECH_FIXED_JOINTS:
+            # 기구 고정으로 선언된 모터 ID 의 프레임 — 모터가 없어야 하는 자리다. 합성값을 덮지 않고 버린다(계수·사유 노출).
+            self.can_rx_ignored_count += 1
+            self.can_decode_error = f"mech_fixed_frame_ignored:arb{mid}"
+            return False
 
         now = self.now_fn()
         # 점프 필터: 직전 피드백이 신선(0.5s 내)한데 한 프레임에 60°+ 점프는
@@ -1549,16 +1587,21 @@ class Stage8TwelveAxisMitControlCore:
     def _takeover_status(self):
         """인수홀드 수명 상태 — status 노출 (최종점검 S5·S7: 무음 이탈 금지)."""
         holding = self.takeover_hold is not None
-        return {
+        out = {
             "waiting": self._waiting_takeover,
             "holding": holding,
-            "hold_joint_count": len(self.takeover_hold) if holding else 0,
+            # 기구 고정 관절은 홀드 송신은 없지만 제자리에 굳어 있다 — 12 관절 기준 계수에 포함하고
+            # 그중 몇 개가 고정인지 아래에 따로 적는다(선언이 있을 때만 필드 추가).
+            "hold_joint_count": (len(self.takeover_hold) + len(MECH_FIXED_JOINTS)) if holding else 0,
             "hold_age_sec": (self.now_fn() - self._takeover_start
                              if holding and self._takeover_start is not None
                              else None),
             "ever_streamed": self._ever_streamed,
             "last_event": self.last_takeover_event,
         }
+        if MECH_FIXED_JOINTS:
+            out["hold_mech_fixed_count"] = len(MECH_FIXED_JOINTS) if holding else 0
+        return out
 
     def _warn(self, reason):
         if reason not in self.warnings:
@@ -1597,7 +1640,8 @@ class Stage8TwelveAxisMitControlCore:
                 "latest_actual_deg": self.latest_actual_deg_by_joint.get(joint),
                 "feedback_age_sec": self._joint_feedback_age_sec(joint),
                 "feedback_stale": not self._joint_feedback_is_fresh(joint),
-                "feedback_valid": joint in self.latest_feedback_by_joint,
+                "feedback_valid": (joint in self.latest_feedback_by_joint
+                                   or joint in MECH_FIXED_JOINTS),
                 "desired_relative_deg": self.desired_relative_deg_by_joint[joint],
                 "commanded_relative_deg": self.commanded_relative_deg_by_joint[joint],
                 "preview": preview_data,
@@ -1611,6 +1655,15 @@ class Stage8TwelveAxisMitControlCore:
                         "feedback_temperature_raw": feedback.temperature_raw,
                         "feedback_error_raw": feedback.error_raw,
                         "feedback_error_ok": feedback.error_ok,
+                    }
+                )
+            elif joint in MECH_FIXED_JOINTS:
+                # 합성값임을 구분하는 표지 + 속도·토크 0 (온도·오류 바이트는 모터가 없어 싣지 않는다)
+                joint_status[joint].update(
+                    {
+                        "mech_fixed": True,
+                        "feedback_velocity_rad_s": 0.0,
+                        "feedback_torque_est": 0.0,
                     }
                 )
 
@@ -1637,6 +1690,8 @@ class Stage8TwelveAxisMitControlCore:
             "feedback_age_sec": self._feedback_age_sec(),
             "feedback_stale_reason": None if self._feedback_is_fresh() else self._feedback_stale_reason(),
             "allowed_joints": list(ALLOWED_JOINTS),
+            "mech_fixed_joints": [joint for joint in JOINT_NAMES_12DOF if joint in MECH_FIXED_JOINTS],
+            "mech_fixed_target_drops": self.mech_fixed_target_drops,
             "joint_count": len(JOINT_NAMES_12DOF),
             "armed": self.armed,
             "running": self.running,
@@ -1863,6 +1918,9 @@ def main():
     print(f"[Stage8-12Axis] latency options = {latency_options_status()}")
     print(f"[Stage8-12Axis] REAL_CAN_WRITE_ENABLED = {REAL_CAN_WRITE_ENABLED}")
     print(f"[Stage8-12Axis] ALLOWED_JOINTS = {ALLOWED_JOINTS}")
+    if MECH_FIXED_JOINTS:
+        print("[Stage8-12Axis] 기구 고정(송신 제외·피드백 합성) = "
+              f"{[(CAN_ID_BY_JOINT[j], j) for j in JOINT_NAMES_12DOF if j in MECH_FIXED_JOINTS]}")
     print("[Stage8-12Axis] 12-axis MIT control node started")
     try:
         rclpy.spin(node.node)

@@ -91,6 +91,7 @@ from rl_walking.deploy.policy_runner import (  # noqa: E402
 from rl_walking.deploy.c5_switch import C5Runner, SwitchDetector  # noqa: E402 — 1004 C5(서기+회복 전환), 미배포
 from rl_walking.deploy import deploy_chain as _DC  # noqa: E402 — 배포 경로 상수·함수의 단일 원본 (판정 스크립트와 공유)
 from rl_walking.deploy import hturn2 as _H2  # noqa: E402 — 1006 HTURN2 실험 플래그(기본 꺼짐, 순수 numpy 상수·함수)
+from jetson.scripts.mech_fixed import fixed_from_map as _mech_fixed_from_map  # noqa: E402 — 1009 기구 고정 관절 선언의 단일 원본(stdlib)
 from rl_walking.deploy import w3_deploy as _W3  # noqa: E402 — 1006 W3 실험 플래그(기본 꺼짐, 순수 numpy 상수·함수)
 
 RATE_HZ = 50.0
@@ -882,7 +883,7 @@ class FrameMap:
     """
 
     def __init__(self, path, dir_by_joint, sz_by_joint, motor_id_by_joint,
-                 gains_by_joint, roll_comp=None, pitch_comp=None, guard_mode="safe"):
+                 gains_by_joint, roll_comp=None, pitch_comp=None, guard_mode="safe", mech_fixed=()):
         self.path = path
         self.dir_by_joint = dir_by_joint            # {관절: ±1}
         self.sz_by_joint = sz_by_joint              # {관절: 모터 프레임 deg}
@@ -891,6 +892,7 @@ class FrameMap:
         self.roll_comp = roll_comp                  # 느린 기울기 롤 보정기 설정 dict 또는 None(=OFF)
         self.pitch_comp = pitch_comp                # 앞뒤 균형 복원항 설정 dict 또는 None(=OFF)
         self.guard_mode = guard_mode                # "safe"(기본) | "data"(발진·리프트 가드 기록만)
+        self.mech_fixed = tuple(mech_fixed)         # 1009 기구 고정 관절명(맵 "mech_fixed": true) — 없으면 () = 종전 그대로
 
     def motor_deg_to_joint_rad(self, joint, motor_deg):
         """입력 변환: 모터 인코더 절대각 deg → URDF 관절각 rad."""
@@ -935,14 +937,17 @@ def load_frame_map():
                     json.dumps(full.get("roll_comp"), sort_keys=True, ensure_ascii=False),
                     json.dumps(full.get("pitch_comp"), sort_keys=True, ensure_ascii=False),
                     json.dumps(full.get("guard_mode"), sort_keys=True, ensure_ascii=False),
-                    json.dumps(full.get("imu_mount_bias_deg"), sort_keys=True, ensure_ascii=False))
+                    json.dumps(full.get("imu_mount_bias_deg"), sort_keys=True, ensure_ascii=False),
+                    # 1009: 기구 고정 선언도 사본 일치 검사에 포함 — stage8(저장소 사본)과 hang_stand·boot_pose_check
+                    # (~/rl_calib 사본)이 서로 다른 모터 집합을 살아 있다고 보는 경로 차단. 선언 형식 오류는 ValueError.
+                    json.dumps(list(_mech_fixed_from_map(full)[0])))
         sigs = {p: _frame_sig(p) for p in existing}
         first = sigs[existing[0]]
         for p in existing[1:]:
             if sigs[p] != first:
                 raise ValueError(
                     "하드웨어맵 사본 불일치 — direction/stand_zero_deg/roll_comp/pitch_comp/"
-                    "guard_mode/imu_mount_bias_deg "
+                    "guard_mode/imu_mount_bias_deg/mech_fixed "
                     "중 하나가 서로 다름:\n  "
                     + "\n  ".join(existing)
                     + "\n  구맵 사본을 동기화한 뒤 재기동하세요 (기동 차단)")
@@ -1018,8 +1023,16 @@ def load_frame_map():
     if sorted(mid_by.values()) != list(range(1, 13)):
         raise ValueError(
             f"하드웨어맵 motor_id 이상 (1..12 전단사 아님): {mid_by} ({path})")
+    # 1009 기구 고정 관절(선택 필드 "mech_fixed": true, 기본 없음 = 종전 그대로). 형식 오류는 ValueError(기동 차단).
+    _fixed = _mech_fixed_from_map(_full)[0]
+    _unknown = [n for n in _fixed if n not in JOINT_ORDER]
+    if _unknown:
+        raise ValueError(f"하드웨어맵 mech_fixed 선언 관절이 12 관절에 없음: {_unknown} ({path})")
+    if _fixed:
+        print(f"[FrameMap] 기구 고정 {len(_fixed)} 개 — {[(mid_by[n], n) for n in _fixed]}: 이 관절의 송출 목표는 "
+              "관절 0° 로 덮는다(정책 입력은 그대로). 살아 있는 관절의 가드는 종전 그대로")
     return FrameMap(path, dir_by, sz_by, mid_by, gains_by, roll_comp=_rc_cfg,
-                    pitch_comp=_pc_cfg, guard_mode=_gm)
+                    pitch_comp=_pc_cfg, guard_mode=_gm, mech_fixed=_fixed)
 
 
 def projected_gravity(quat_wxyz):
@@ -3188,8 +3201,12 @@ class OscGuard:
 
 
 def frame_check_verdict(path=FRAME_JOURNAL, max_age_s=FRAME_MAX_AGE_DEFAULT_S,
-                        now=None):
+                        now=None, mech_fixed_ids=()):
     """프레임 게이트 판정 — None=통과, str=거부 사유.
+
+    mech_fixed_ids(1009): 하드웨어맵에 기구 고정으로 선언된 모터 ID — 모터가 없어 boot_pose_check 가
+    저널에 쓰지 않으므로 판정에서 명시적으로 뺀다(거부 사유에 "기구 고정 [..] 제외" 표기).
+    나머지 모터는 종전과 같은 조건(전수·최신 판정·신선)을 그대로 요구한다. 기본 () = 12모터 전부.
 
     boot_pose_check 저널의 motor_ts(모터별 '✓ 일치' 검증 시각)를 근거로,
     12모터 전부 검증 관측이 있고 최고령 관측이 max_age_s 이내면 통과.
@@ -3204,27 +3221,30 @@ def frame_check_verdict(path=FRAME_JOURNAL, max_age_s=FRAME_MAX_AGE_DEFAULT_S,
     except (json.JSONDecodeError, ValueError):
         return f"저널 파손({path}) — boot_pose_check 재실행으로 재생성"
     mts = (j.get("motor_ts") or {}) if isinstance(j, dict) else {}
-    missing = [m for m in range(1, 13) if str(m) not in mts]
+    fixed = sorted({int(m) for m in mech_fixed_ids})
+    ids = [m for m in range(1, 13) if m not in fixed]
+    ex = f" (기구 고정 {fixed} 제외)" if fixed else ""
+    missing = [m for m in ids if str(m) not in mts]
     if missing:
-        return f"모터 {missing} 프레임 미검증 — boot_pose_check 12/12 필요"
+        return f"모터 {missing} 프레임 미검증 — boot_pose_check {len(ids)}/{len(ids)} 필요{ex}"
     now = time.time() if now is None else now
     try:
         run_ts = float(j.get("ts"))
-        ages = {m: now - float(mts[str(m)]) for m in range(1, 13)}
+        ages = {m: now - float(mts[str(m)]) for m in ids}
     except (TypeError, ValueError):
         return "저널 ts/motor_ts 형식 이상 — boot_pose_check 재실행으로 재생성"
     # 최신 판정에서의 전수 검증 요구 (적대리뷰 A5): 저널은 '✓ 일치' 모터만 병합
     # 갱신하므로, 최근 판정에서 어긋난 모터는 옛 ts를 유지한 채 신선해 보일 수
     # 있음. 모든 모터가 '마지막 실행'(j.ts)에서 검증됐을 것을 요구해 차단.
-    stale_run = [m for m in range(1, 13) if float(mts[str(m)]) < run_ts - 1.0]
+    stale_run = [m for m in ids if float(mts[str(m)]) < run_ts - 1.0]
     if stale_run:
         return (f"모터 {stale_run} 가 최신 판정에서 미검증 (직전 실행에서 시프트/"
-                f"무응답 의심) — boot_pose_check 12/12 재통과 필요")
+                f"무응답 의심) — boot_pose_check {len(ids)}/{len(ids)} 재통과 필요{ex}")
     worst = max(ages, key=lambda m: ages[m])
     if ages[worst] > max_age_s:
         return (f"프레임 검증 만료 — 모터{worst} 마지막 검증 "
                 f"{ages[worst] / 60:.0f}분 전 (허용 {max_age_s / 60:.0f}분). "
-                f"boot_pose_check 재실행 후 기동")
+                f"boot_pose_check 재실행 후 기동{ex}")
     if min(ages.values()) < -60.0:
         return "저널 타임스탬프가 미래 — 시계 이상 의심, 재판정 필요"
     return None
@@ -3268,10 +3288,85 @@ def _selftest_frame_gate():
     # ts 자체가 없는 구형 저널 → 형식 이상 거부
     p = write({"motor_ts": fresh})
     cases.append(("ts 결측 거부", frame_check_verdict(p, 3600.0, now) is not None))
+    # 1009 기구 고정: 선언된 모터(3·9)만 저널에 없어도 통과, 선언 없으면 종전대로 거부(대조),
+    # 선언이 있어도 살아 있는 모터의 결측·만료·최신판정 미검증은 그대로 거부(가드 완화 없음)
+    no39 = {k: v for k, v in fresh.items() if k not in ("3", "9")}
+    p = write({"ts": now - 60.0, "motor_ts": no39})
+    cases.append(("고정 선언 3·9 제외 통과", frame_check_verdict(p, 3600.0, now, mech_fixed_ids=(3, 9)) is None))
+    v = frame_check_verdict(p, 3600.0, now)
+    cases.append(("고정 선언 없음 3·9 결측 거부", v is not None and "3" in v and "9" in v and "기구 고정" not in v))
+    v = frame_check_verdict(p, 3600.0, now, mech_fixed_ids=(3,))
+    cases.append(("고정 3 만 선언 → 9 결측 거부", v is not None and "[9]" in v and "기구 고정 [3] 제외" in v))
+    p = write({"ts": now - 60.0, "motor_ts": {k: v for k, v in no39.items() if k != "11"}})
+    v = frame_check_verdict(p, 3600.0, now, mech_fixed_ids=(3, 9))
+    cases.append(("고정 선언 + 산 모터 결측 거부", v is not None and "[11]" in v and "기구 고정 [3, 9] 제외" in v))
+    p = write({"ts": now - 60.0, "motor_ts": {**no39, "6": now - 1800.0}})
+    v = frame_check_verdict(p, 3600.0, now, mech_fixed_ids=(3, 9))
+    cases.append(("고정 선언 + 산 모터 최신판정 미검증 거부", v is not None and "[6]" in v and "최신" in v))
+    p = write({"ts": now - 7200.0, "motor_ts": {**no39, "7": now - 7200.0}})
+    v = frame_check_verdict(p, 3600.0, now, mech_fixed_ids=(3, 9))
+    cases.append(("고정 선언 + 산 모터 만료 거부", v is not None and "모터7" in v))
+    # 고정 모터의 옛 항목(낡은 ts)이 저널에 남아 있어도 판정에 끼지 않는다
+    p = write({"ts": now - 60.0, "motor_ts": {**fresh, "3": now - 99999.0, "9": "abc"}})
+    cases.append(("고정 모터 옛 항목 무시", frame_check_verdict(p, 3600.0, now, mech_fixed_ids=(3, 9)) is None))
     bad = [n for n, ok in cases if not ok]
     if bad:
         raise AssertionError(f"프레임 게이트 케이스 실패: {bad}")
     return f"판정 케이스 {len(cases)}/{len(cases)} 통과"
+
+
+def _selftest_mech_fixed_map():
+    """1009 기구 고정 선언 — 맵 로드·사본 일치 검사(임시 사본 2 개, 실제 맵은 읽기만)."""
+    import tempfile
+    global HARDWARE_MAP_PATHS
+    src = next(p for p in HARDWARE_MAP_PATHS if os.path.isfile(p))
+    with open(src, encoding="utf-8") as f:
+        base = json.load(f)
+    fixed = ("left_hip_r_joint", "right_hip_r_joint")
+
+    def copy(d, name, flags):
+        m = json.loads(json.dumps(base))
+        for c in m["joints"].values():      # 원본 맵에 이미 선언이 있어도 이 검사는 같은 출발점에서 한다
+            c.pop("mech_fixed", None)
+        for j, v in flags.items():
+            m["joints"][j]["mech_fixed"] = v
+        path = os.path.join(d, name)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(m, f)
+        return path
+
+    def load(a, b):
+        global HARDWARE_MAP_PATHS
+        HARDWARE_MAP_PATHS = (a, b)
+        return load_frame_map()
+
+    def rejected(a, b, word):
+        try:
+            load(a, b)
+        except ValueError as e:
+            return word in str(e)
+        return False
+
+    saved, bias = HARDWARE_MAP_PATHS, list(IMU_MOUNT_BIAS_DEG)
+    try:
+        with tempfile.TemporaryDirectory(prefix="mech-fixed-map-") as d:
+            none_a, none_b = copy(d, "a0.json", {}), copy(d, "b0.json", {})
+            fix_a, fix_b = copy(d, "a1.json", {j: True for j in fixed}), copy(d, "b1.json", {j: True for j in fixed})
+            one = copy(d, "c1.json", {fixed[0]: True})
+            off = copy(d, "d0.json", {j: False for j in fixed})
+            bad = copy(d, "e.json", {fixed[0]: 1})
+            assert load(none_a, none_b).mech_fixed == (), "선언 없음인데 고정 관절이 생김"
+            fm = load(fix_a, fix_b)
+            assert fm.mech_fixed == fixed and [fm.motor_id_by_joint[j] for j in fm.mech_fixed] == [3, 9], fm.mech_fixed
+            assert fm.gain_mismatches() == load(none_a, none_b).gain_mismatches(), "고정 선언이 게인 게이트 입력을 바꿈"
+            assert load(none_a, off).mech_fixed == (), "false 선언 = 선언 없음과 같아야 함"
+            assert rejected(fix_a, none_b, "사본 불일치") and rejected(none_a, fix_b, "사본 불일치"), "한쪽만 고정 선언인데 통과"
+            assert rejected(fix_a, one, "사본 불일치"), "고정 집합이 다른데 통과"
+            assert rejected(bad, bad, "mech_fixed"), "bool 아닌 선언 값이 통과"
+    finally:
+        HARDWARE_MAP_PATHS = saved
+        IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = bias
+    return "선언 없음 = () · 양쪽 선언 = 모터 3·9 · false = 없음 · 한쪽만/집합 다름 = 사본 불일치 거부 · bool 아닌 값 거부"
 
 
 def _selftest_stand_lpf():
@@ -5161,6 +5256,7 @@ def run_selftest(required=()):
              ("수치 앵커", _selftest_anchors),
              ("게인 정책", _selftest_gains),
              ("프레임 게이트", _selftest_frame_gate),
+             ("기구 고정 선언·맵 사본 일치(1009)", _selftest_mech_fixed_map),
              ("중력 게이트", _selftest_grav_gate),
              ("IMU 장착 편향", _selftest_imu_mount),
              ("롤 보정기", _selftest_roll_comp),
@@ -5594,7 +5690,10 @@ def main():
             print(f"[거부] --frame-max-age 비정상: {args.frame_max_age}",
                   file=sys.stderr)
             return 2
-        why = frame_check_verdict(max_age_s=args.frame_max_age)
+        _fixed_ids = sorted(frames.motor_id_by_joint[j] for j in frames.mech_fixed)
+        if _fixed_ids:
+            print(f"[프레임 게이트] 기구 고정 {_fixed_ids} 제외 — 나머지 {12 - len(_fixed_ids)} 모터로 판정", file=sys.stderr)
+        why = frame_check_verdict(max_age_s=args.frame_max_age, mech_fixed_ids=_fixed_ids)
         if why and not args.force_frame:
             print(f"[거부] --live 기동 불가: 프레임 게이트 — {why}\n"
                   "       미검증 프레임 라이브는 배수 시프트를 그대로 명령하게 "
@@ -5623,6 +5722,9 @@ def main():
             self.roll_comp = RollComp(frames.roll_comp)   # 느린 기울기 롤 보정기 — 맵 키 없으면 OFF(no-op)
             self.pitch_comp = RollComp(frames.pitch_comp)  # 앞뒤 균형 복원항 — 맵 키 없으면 OFF(no-op)
             self.guard_mode = getattr(frames, "guard_mode", "safe")
+            # 1009 기구 고정 관절(맵 선언) — 송출 목표를 관절 0° 로 덮을 JOINT_ORDER 인덱스. 없으면 빈 목록 = 종전 그대로.
+            self.mech_fixed = [j for j in JOINT_ORDER if j in getattr(frames, "mech_fixed", ())]
+            self._mech_fixed_idx = [JOINT_ORDER.index(j) for j in self.mech_fixed]
             self.live = bool(args.live)
             self.joint_deg = {}         # {관절: '모터 인코더 프레임' deg} — 변환 전 원본
             self.joint_ts = 0.0
@@ -6200,6 +6302,8 @@ def main():
                    "foot_raw_sum": self.foot_raw_sum, "last_reject_reason": self.reject_reason}
             if self.guard_mode != "safe":
                 dbg["guard_mode"] = self.guard_mode
+            if self.mech_fixed:            # 1009 기구 고정 선언이 있을 때만 필드 추가(종전 스키마 불변)
+                dbg["mech_fixed"] = list(self.mech_fixed)
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             dbg.update(self.errlog.fields(now, self.fb_age))   # 1007 블랙박스 전용 — 발행한 뒤에 덧붙인다(디버그 토픽 내용 불변)
             self._bb_write(dbg)
@@ -6429,6 +6533,9 @@ def main():
             if self.core.ckpt_name.startswith("stand") or self.core.hturn2:   # 1006 HTURN2: 평가 조건(LPF β0.27) 그대로
                 self.tgt_filt = lpf_step(self.tgt_filt, targets_rad)
                 targets_rad = self.tgt_filt
+            # 1009 기구 고정: 정책이 내는 고정 관절 목표를 관절 0° 로 덮는다 — 타깃 발진 가드·감시·송출 앞.
+            # 정책 입력(관측·last_action)과 LPF 상태는 건드리지 않는다(새 리스트). 선언 없으면 no-op.
+            targets_rad = self._pin_mech_fixed(targets_rad)
             # 타깃 측 발진 가드 (0803 분석: 두 발진 모두 타깃이 몸을 80~100ms
             # 선행 — 정책 출력 감시가 절반 진폭·0.3~1.2s 조기 컷. 러너 슬루
             # 4°/틱=3.5rad/s 상한이라 정상 타깃은 과속 트립 불가)
@@ -6479,6 +6586,7 @@ def main():
                     pc_off, pc_gate = self.pitch_comp.update(
                         self.core.last_grav, contact2, self.core.active, rc_landed)
                     targets_rad = self.pitch_comp.add_to(targets_rad, pc_off)
+            targets_rad = self._pin_mech_fixed(targets_rad)   # 1009: 보정기가 고정 관절에 더한 몫도 0° 로 되돌린다(선언 없으면 no-op)
             if self.core.w3mon is not None:   # 1007 감시 C: 최종 송출 목표(LPF·보정 뒤, 블렌딩 전 관절 프레임)와 엔코더 → 실효 지연 추정
                 self.core.w3mon.track(targets_rad, qpos)
             # 출력 변환: 관절 프레임 rad → 모터 인코더 프레임 deg
@@ -6587,6 +6695,8 @@ def main():
                                  "ff_hip_r": (None if _r.last_ff is None else [round(v, 5) for v in _r.last_ff]),
                                  "hh_target_deg": round(math.degrees(self.core.hh_target), 2),
                                  "hh_ref": (None if not self.core.hh_ref_set else round(self.core.hh.ref, 5))}
+            if self.mech_fixed:            # 1009 기구 고정 선언이 있을 때만 필드 추가(종전 스키마 불변): 목표 0° 로 덮인 관절(피드백은 stage8 합성값)
+                dbg["mech_fixed"] = list(self.mech_fixed)
             if self.core.w3:               # 1006 W3 실험 경로에서만 필드 추가(종전 스키마 불변)
                 dbg["w3"] = self.core.runner._w3_clock.snapshot()
             if self.core.w3cmd:            # 1007 W3 명령 채널 키에서만: 리드 발·헤딩 고리 상태(정책이 받은 wz 는 obs[32])
@@ -6645,6 +6755,15 @@ def main():
                         return
                     tg[j] = q - b            # 폴백: 실측 자세 유지
             self.pub_cmd.publish(String(data=self._targets_msg(tg)))
+
+        def _pin_mech_fixed(self, targets_rad):
+            """기구 고정 관절의 목표를 관절 0° 로 덮은 **새 리스트**(JOINT_ORDER 순, rad). 고정 선언이 없으면 받은 객체 그대로."""
+            if not self._mech_fixed_idx:
+                return targets_rad
+            out = list(targets_rad)
+            for i in self._mech_fixed_idx:
+                out[i] = 0.0
+            return out
 
         def _targets_msg(self, targets):
             """SET_JOINT_TARGETS + 순번·발행 시각·출처 (0930). stage8 은 targets 만 쓰고 나머지는 지연 기록용."""

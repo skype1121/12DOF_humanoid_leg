@@ -20,6 +20,11 @@ v2.2 (2026-09-06, 배포 계약 감사 A3):
     종료는 절대 하지 않는다 — 콘솔이 띄운 것은 콘솔이 내린다. --force '<사유>' 로만 우회.
   - CAN·디코더 import 를 main() 안으로 — --selftest 는 CAN 없는 PC 에서도 돈다.
 
+v2.3 (2026-10-09, 기구 고정):
+  - 하드웨어맵에 "mech_fixed": true 로 선언된 모터는 대상에서 빼고 "모터 N 기구 고정 — 제외" 로 알린다.
+    판정(RELEASE_VERDICT·종료코드)은 살아 있는 모터만으로 낸다. 맵·선언을 못 읽으면 경고하고
+    **12모터 전부** 대상으로 진행한다 — 회수 도구는 어떤 경우에도 실행을 거부하지 않는다.
+
 사용: python3 release_all.py [--channel can1] [--fast] [--force '<사유>'] | --selftest
 """
 import argparse
@@ -35,6 +40,7 @@ sys.path.insert(0, "/home/mama/rl_calib")
 ENTER = bytes([0xFF] * 7 + [0xFC])
 EXIT = bytes([0xFF] * 7 + [0xFD])
 IDS = list(range(1, 13))
+HW_MAP = "/home/mama/rl_calib/robot_12dof_hardware_map.json"
 KP_SOFT = 12.0     # 홀드 시작 게인 — 스윙만 잡을 저강성 (하중 지지 불가 수준)
 KD_SOFT = 0.8
 RAMP_S = 2.0
@@ -83,6 +89,18 @@ def gate_or_die(force_reason=None):
     raise SystemExit(GATE_EXIT_CODE)
 
 
+def live_ids(path=None, ids=None):
+    """(릴리즈 대상 모터, 제외된 기구 고정 모터). 맵·선언 읽기 실패 = 경고 후 전부 대상(회수는 막지 않는다)."""
+    ids = list(IDS if ids is None else ids)
+    try:
+        from mech_fixed import load_fixed
+        fixed = set(load_fixed(path or HW_MAP)[1])
+    except Exception as e:  # noqa: BLE001 — 어떤 실패도 릴리즈를 막지 않는다
+        print(f"[release_all] ⚠ 기구 고정 선언 읽기 실패({type(e).__name__}: {e}) — 12모터 전부 대상으로 진행")
+        return ids, []
+    return [m for m in ids if m not in fixed], [m for m in ids if m in fixed]
+
+
 def selftest():
     """CAN·ROS 불필요 — 가짜 stage8 프로세스(exec -a 위장)로 게이트 거부·통과 검증.
     종료는 내가 띄운 명시 PID 만 (pkill 금지 원칙)."""
@@ -126,6 +144,10 @@ def main():
     if a.selftest:
         return selftest()
     gate_or_die(a.force)   # 스택 종료 선행 강제 (v2.2)
+    global IDS
+    IDS, skipped = live_ids()
+    if skipped:
+        print(f"[release_all] 모터 {skipped} 기구 고정 — 제외 (대상 {len(IDS)}모터)")
 
     import can  # noqa: E402 — 게이트 통과 후에만 버스를 연다
     from ak_mit_command import pack_ak_mit_command  # noqa: E402
@@ -226,7 +248,7 @@ def main():
         #   버스에 응답 노드가 0 이면 CAN 으로 토크를 **걸 수도 해제할 수도** 없다 — 별도 판정으로 알린다.
         n_seen = len(pos)
         if fail == 0:
-            print("[release_all] 12모터 소프트 릴리즈+MIT 해제 완료 — 무토크")
+            print(f"[release_all] {len(IDS)}모터 소프트 릴리즈+MIT 해제 완료 — 무토크")
             print("RELEASE_VERDICT=OK seen=%d fail=0" % n_seen)
             verdict_code = 0
         elif n_seen == 0:

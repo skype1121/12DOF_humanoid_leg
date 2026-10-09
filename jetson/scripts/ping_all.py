@@ -4,6 +4,8 @@
 0토크 MIT 폴링으로 모터를 절대 움직이지 않고 응답만 확인한다.
 버스오프가 나면 무암호 sudo(can1 down/up)로 스스로 복구하며 계속 훑는다.
 전원/커넥터 문제로 죽은 모터를 콕 집어준다 — 특히 버스를 끌어내리는 범인 격리용.
+기구 고정(1009): 하드웨어맵에 "mech_fixed": true 로 선언된 모터는 점검 대상에서 빼고
+"모터 N 기구 고정 — 제외" 로 명시한다. 종료코드는 살아 있는 모터만으로 판정한다.
 """
 import argparse
 import subprocess
@@ -19,13 +21,30 @@ ENTER_MIT = bytes([0xFF] * 7 + [0xFC])
 EXIT_MIT = bytes([0xFF] * 7 + [0xFD])
 import json
 JOINT = {}
+HW_MAP = "/home/mama/rl_calib/robot_12dof_hardware_map.json"
 try:
-    _hw = json.load(open("/home/mama/rl_calib/robot_12dof_hardware_map.json"))
+    _hw = json.load(open(HW_MAP))
     for _j, _c in (_hw.get("joints") or _hw).items():
         if isinstance(_c, dict) and "motor_id" in _c:
             JOINT[int(_c["motor_id"])] = _c.get("ui_label") or _j
 except Exception:
     pass
+
+
+def load_fixed_ids(path=None):
+    """기구 고정 모터 ID 집합. 맵·선언을 못 읽으면 경고하고 빈 집합 — 그러면 빠진 모터는
+    종전대로 '무응답'(종료코드 1)으로 드러난다(조용히 통과시키지 않는다)."""
+    try:
+        from mech_fixed import load_fixed
+        return set(load_fixed(path or HW_MAP)[1])
+    except Exception as e:  # noqa: BLE001 — 진단 도구는 맵 없이도 돈다
+        print(f"⚠ 기구 고정 선언 읽기 실패({type(e).__name__}: {e}) — 선언 없음으로 진행", flush=True)
+        return set()
+
+
+def split_ids(ids, fixed):
+    """요청 ID 목록 → (점검 대상, 제외된 고정 ID). 순서 보존."""
+    return [m for m in ids if m not in fixed], [m for m in ids if m in fixed]
 
 
 def bus_state(ch):
@@ -94,6 +113,8 @@ def main():
         else:
             ids.append(int(part))
 
+    ids, skipped = split_ids(ids, load_fixed_ids())
+
     st0 = bus_state(a.channel)
     if st0 in ("BUS-OFF", "STOPPED", "?"):
         recover(a.channel)
@@ -128,6 +149,7 @@ def main():
     if a.json:
         print(json.dumps({
             "ok": ok, "dead": dead, "busoff_recover": busoff_hits,
+            **({"mech_fixed": skipped} if skipped else {}),
             "bus_state": bus_state(a.channel),
             "motors": {str(m): (None if fb is None else {
                 "pos_deg": round(fb.position_deg, 2), "temp": fb.temperature_raw,
@@ -137,6 +159,8 @@ def main():
         print(f"모터 CAN 응답 점검 ({a.channel})   버스: {bus_state(a.channel)}"
               + (f"   ⚠ 버스오프복구 {busoff_hits}회" if busoff_hits else ""))
         print("-" * 60)
+        for m in skipped:
+            print(f"  {m:>2} {JOINT.get(m, '?'):12s}  모터 {m} 기구 고정 — 제외")
         for m, label, fb in rows:
             if fb is None:
                 print(f"  {m:>2} {label:12s}  ✗ 무응답")
@@ -146,7 +170,8 @@ def main():
                       f"온도 {fb.temperature_raw:>2}  {e}")
         print("-" * 60)
         print(f"응답 {len(ok)}/{len(ids)}"
-              + (f"   ✗ 무응답: {dead}" if dead else "   ✓ 전원·통신 정상"))
+              + (f"   ✗ 무응답: {dead}" if dead else "   ✓ 전원·통신 정상")
+              + (f"   (기구 고정 {skipped} 제외)" if skipped else ""))
     try:
         bus.shutdown()
     except Exception:

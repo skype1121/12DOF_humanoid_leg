@@ -28,6 +28,9 @@
 불가 — 발을 기준 자세와 같은 상태(자유 늘어짐 or 평평)로 두고 실행할 것.
 저널: '✓ 일치'로 검증된 모터의 관측만 병합 갱신 (시프트·폴트·불안정 읽기는
 저널에 절대 안 들어감 — 어긋난 프레임이 다음 실행의 기준이 되는 것 차단).
+기구 고정(1009): 하드웨어맵에 "mech_fixed": true 로 선언된 모터는 폴링·판정·저널에서 제외하고
+"모터 N 기구 고정 — 제외" 로 명시한다. 종료코드는 살아 있는 모터만으로 판정 — 선언되지 않은
+모터의 무응답은 종전대로 실패다 (원본: mech_fixed.py).
 """
 import argparse
 import json
@@ -42,6 +45,7 @@ import can  # noqa: E402
 
 from ak_mit_command import pack_ak_mit_command  # noqa: E402
 from ak_mit_decoder import decode_ak_mit_feedback  # noqa: E402
+from mech_fixed import fixed_from_map, note as fixed_note  # noqa: E402
 
 ENTER_MIT = bytes([0xFF] * 7 + [0xFC])
 EXIT_MIT = bytes([0xFF] * 7 + [0xFD])
@@ -79,6 +83,29 @@ def load_hw():
             out[int(c["motor_id"])] = {"joint": j,
                                        "stand_zero": c.get("stand_zero_deg")}
     return out
+
+
+def load_fixed_ids():
+    """하드웨어맵의 기구 고정 모터 ID 집합 — 선언 형식 오류는 중단(추측하지 않는다)."""
+    try:
+        return set(fixed_from_map(load_json_guarded(HW_MAP, "하드웨어맵"))[1])
+    except ValueError as e:
+        raise SystemExit(f"[중단] 하드웨어맵 기구 고정 선언 오류: {e}")
+
+
+def live_ids(fixed):
+    """폴링·판정 대상 모터 — 1..12 에서 기구 고정 제외 (선언 없으면 종전 12개)."""
+    return [m for m in range(1, 13) if m not in fixed]
+
+
+def journal_merge(old, trusted, now, fixed):
+    """저널 병합 — '✓ 일치' 검증분만 갱신, 기구 고정 모터 항목은 남기지 않는다(이월도 안 함)."""
+    drop = {str(m) for m in fixed}
+    pos = {k: v for k, v in dict(old.get("pos_deg", {}) or {}).items() if k not in drop}
+    mts = {k: v for k, v in dict(old.get("motor_ts", {}) or {}).items() if k not in drop}
+    pos.update(trusted)
+    mts.update({m: now for m in trusted})
+    return pos, mts
 
 
 def load_ref(spec, hwinfo):
@@ -176,6 +203,8 @@ def main():
                          f"저널은 자동 관리되므로 다른 경로를 쓸 것")
 
     hwinfo = load_hw()
+    fixed = load_fixed_ids()
+    ids = live_ids(fixed)
     ref, ref_desc = load_ref(a.ref, hwinfo)
     if not ref:
         raise SystemExit("[중단] 기준표가 비어 있음 — 파일 형식 확인 "
@@ -191,11 +220,13 @@ def main():
                          f"({type(e).__name__}: {e}) — can_up.sh로 캔업 후 재실행")
     print(f"[boot_pose_check] 기준: {ref_desc}")
     print("전제: 로봇이 지금 '기준표를 캡처했던 자세'에 있어야 판정 유효\n")
+    if fixed:
+        print(f"[기구 고정] {fixed_note(sorted(fixed))} (폴링·판정·저널 대상 아님)\n")
 
     readings, exit_fail = {}, []
     interrupted = False
     try:
-        for m in range(1, 13):
+        for m in ids:
             if stop:
                 interrupted = True
                 break
@@ -207,7 +238,7 @@ def main():
             time.sleep(0.02)
             readings[m] = poll_stats(bus, m)
     finally:
-        for m in range(1, 13):
+        for m in ids:
             try:
                 bus.send(can.Message(arbitration_id=m, data=EXIT_MIT,
                                      is_extended_id=False))
@@ -224,6 +255,9 @@ def main():
           f"{'k':>3} {'잔차':>7}  판정")
     for m in range(1, 13):
         joint = hwinfo.get(m, {}).get("joint", "?")
+        if m in fixed:
+            print(f"{m:>4} {joint:24s} 기구 고정 — 제외")
+            continue
         st = readings.get(m)
         if st is None:
             unchecked.append(m)
@@ -307,25 +341,30 @@ def main():
                   f"프레임 상태를 모르므로 stand_zero 보정값은 산출 불가.")
             print("  → 직립 정렬 후 --ref stand로 재실행하거나 --save로 재앵커")
     if not problems:
-        print("[OK] 12모터 전수 검사·프레임 일치 — 기립 등 다음 단계 진행 가능")
+        if fixed:
+            print(f"[OK] {len(ids)}모터 전수 검사·프레임 일치 ({fixed_note(sorted(fixed))}) — "
+                  f"기립 등 다음 단계 진행 가능")
+        else:
+            print("[OK] 12모터 전수 검사·프레임 일치 — 기립 등 다음 단계 진행 가능")
 
     if a.save:
         out = {str(m): {"joint": hwinfo.get(m, {}).get("joint", "?"),
                         "median_deg": readings[m]["med"]}
                for m in readings if readings[m]["med"] is not None}
-        missing = sorted(set(range(1, 13)) - {int(k) for k in out})
+        missing = sorted(set(ids) - {int(k) for k in out})
         out["_meta"] = {"captured_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                         "ref_compared": a.ref, "tool": "boot_pose_check",
                         "partial_missing": missing,
+                        **({"mech_fixed": sorted(fixed)} if fixed else {}),
                         "suspect_faulted": faulted, "suspect_unstable": unstable}
         try:
             save_json_atomic(a.save, out)
             if missing or faulted or unstable:
-                print(f"[저장⚠] 기준표({12 - len(missing)}/12, 결측 {missing}, "
+                print(f"[저장⚠] 기준표({len(ids) - len(missing)}/{len(ids)}, 결측 {missing}, "
                       f"의심 {sorted(set(faulted + unstable))}) → {a.save} — "
                       f"완전·클린판 재캡처 권장")
             else:
-                print(f"[저장] 새 기준표(12/12 클린) → {a.save}")
+                print(f"[저장] 새 기준표({len(ids)}/{len(ids)} 클린) → {a.save}")
         except OSError as e:
             io_fail = True
             print(f"[저장실패] {a.save}: {e}")
@@ -343,10 +382,7 @@ def main():
                     old = {}
             except Exception:
                 old = {}
-            pos = dict(old.get("pos_deg", {}) or {})
-            mts = dict(old.get("motor_ts", {}) or {})
-            pos.update(trusted)
-            mts.update({m: now for m in trusted})
+            pos, mts = journal_merge(old, trusted, now, fixed)
             try:
                 save_json_atomic(JOURNAL, {"ts": now, "pos_deg": pos,
                                            "motor_ts": mts})

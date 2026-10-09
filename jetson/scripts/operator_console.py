@@ -987,6 +987,9 @@ class Telemetry:
             "armed": bool(st.get("armed")), "holding": bool(tk.get("holding")),
             "waiting": bool(tk.get("waiting")), "baseline": n_base,
             "hold_age": tk.get("hold_age_sec"), "hold_joint_count": tk.get("hold_joint_count", 0),
+            # 1009 기구 고정 관절(stage8 이 하드웨어맵 선언에서 읽어 보고) — 이 관절의 '신선'·기준점은 합성값이다. 표시 전용.
+            "mech_fixed": ([str(x) for x in st.get("mech_fixed_joints")]
+                           if isinstance(st.get("mech_fixed_joints"), list) else []),
             "last_event": tk.get("last_event"), "running": bool(st.get("running")),
             "last_command": st.get("last_command"), "accepted": st.get("accepted") is True,
             "command_seq": st.get("command_seq"), "errors": st.get("errors", []),

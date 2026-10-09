@@ -59,14 +59,22 @@ def conflicting_processes():
 
 
 def read_pose(n=15):
-    """12모터 제로토크 폴링 — boot_pose_check 의 검증된 경로를 그대로 쓴다."""
+    """12모터 제로토크 폴링 — boot_pose_check 의 검증된 경로를 그대로 쓴다.
+
+    기구 고정(하드웨어맵 "mech_fixed": true) 모터는 폴링하지 않고 결과에도 넣지 않는다 —
+    판정·쓰기 대상이 아니므로 그 관절의 stand_zero_deg 는 어떤 모드로도 바뀌지 않는다."""
     import can
     import boot_pose_check as bpc
     hw = bpc.load_hw()
+    # 이 파일은 저장소 사본으로도 돌지만 boot_pose_check 는 ~/rl_calib 사본을 쓴다 — 그쪽이 구판(고정 선언
+    # 미지원)이면 종전대로 12모터 전부 폴링한다. 그 경우 선언된 고정 모터는 '무응답'(쓰기 차단)으로 드러난다.
+    fixed = bpc.load_fixed_ids() if hasattr(bpc, "load_fixed_ids") else set()
+    if fixed:
+        print(f"[기구 고정] 모터 {sorted(fixed)} 기구 고정 — 제외 (판정·영점 쓰기 대상 아님)")
     bus = can.interface.Bus(channel="can1", interface="socketcan")
     out = {}
     try:
-        for mid in range(1, 13):
+        for mid in [m for m in range(1, 13) if m not in fixed]:
             try:
                 bus.send(can.Message(arbitration_id=mid, data=bpc.ENTER_MIT,
                                      is_extended_id=False))

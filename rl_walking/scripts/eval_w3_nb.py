@@ -331,6 +331,7 @@ _nb_jn = list(robot.data.joint_names); _nb_lock = [_nb_jn.index(n) for n in ("le
 _nb_oth = [j for j in range(len(_nb_jn)) if j not in _nb_lock]; _nb_st = getattr(U, "_nb_lock", None)
 _nb_tgt = _nb_st["tgt"] if _nb_st is not None else torch.zeros(N, 2, device=dev)
 _nb = {"n": 0.0, "sat_any": 0.0, "sat_oth": 0.0, "sat_j": torch.zeros(len(_nb_jn), device=dev), "dev_max": 0.0, "hipr_abs": [], "tau_lock": 0.0}
+_nb_vb = torch.zeros(N, 2, device=dev); _nb_vn = torch.zeros(N, device=dev)      # 1010: 몸통 프레임 속도(채점 구간, env 별 시간 평균)
 # 발 상태(N,2) [L,R]
 prev_c = None
 st_xy0 = None; st_lifts = fz(N); st_last_lift = torch.full((N,), float("nan"), device=dev); st_qrun = fz(N); st_settle = torch.full((N,), float("nan"), device=dev)
@@ -417,6 +418,9 @@ for i in range(steps):
             _nb["dev_max"] = max(_nb["dev_max"], float(torch.rad2deg(_nbd.max())))
             _nb["hipr_abs"].append(torch.rad2deg(_nbd.amax(1)).float().cpu())
         _nb["tau_lock"] += float(_nbq[:, _nb_lock].mean(1).sum())
+    if t > a.warmup:
+        _nbl_ = alive & ~dones.bool()
+        _nb_vb[_nbl_] += robot.data.root_lin_vel_b[_nbl_, :2]; _nb_vn[_nbl_] += 1.0
     if isinstance(obs, tuple):
         obs = obs[0]
     if TR is not None or MON is not None:                                   # 1007 대비책 신호(이 틱 끝 상태)
@@ -997,8 +1001,11 @@ _nbm = robot.root_physx_view.get_masses().sum(-1)
 J["nb"] = {"locked": _nb_st is not None, "sat_any_pct": 100 * _nb["sat_any"] / _nbn, "sat_excl_hipr_pct": 100 * _nb["sat_oth"] / _nbn,
            "sat_joint_pct": {n: round(100 * float(v) / _nbn, 3) for n, v in zip(_nb_jn, _nb["sat_j"])},
            "hipr_dev_max_deg": _nb["dev_max"], "hipr_abs_from_lock_p50_p99_deg": [float(_nbh.median()), float(_nbh.quantile(0.99))],
+           "fwd_body_mps": float((_nb_vb[alive, 0] / _nb_vn[alive].clamp(min=1.0)).mean()) if bool(alive.any()) else float("nan"),
+           "lat_body_mps": float((_nb_vb[alive, 1] / _nb_vn[alive].clamp(min=1.0)).mean()) if bool(alive.any()) else float("nan"),
            "hipr_tau_mean_nm": _nb["tau_lock"] / _nbn, "mass_mean_kg": float(_nbm.mean()), "mass_min_max_kg": [float(_nbm.min()), float(_nbm.max())]}
 _nbl = (f"[새 몸 계측] 고정 {'있음' if _nb_st is not None else '없음'} · 전체 질량 {J['nb']['mass_mean_kg']:.4f} kg · 토크 포화 틱(생존 env, ≥95 %): 전 관절 {J['nb']['sat_any_pct']:.2f} % · hip_r 뺀 {J['nb']['sat_excl_hipr_pct']:.2f} % · "
+        f"몸통 프레임 속도(채점 구간·끝까지 산 env 시간 평균) 앞 {J['nb']['fwd_body_mps']:+.4f} 옆 {J['nb']['lat_body_mps']:+.4f} m/s · "
         f"hip_r |각 − 고정각| 최대 {_nb['dev_max']:.3f}° 중앙 {J['nb']['hipr_abs_from_lock_p50_p99_deg'][0]:.3f}° 99 % {J['nb']['hipr_abs_from_lock_p50_p99_deg'][1]:.3f}° · hip_r |토크| 평균 {J['nb']['hipr_tau_mean_nm']:.2f} N·m · 관절별 포화 % {J['nb']['sat_joint_pct']}")
 print(_nbl, flush=True); open(os.path.join(out_dir, f"w3eval_{a.out_tag}.txt"), "a").write(_nbl + "\n")
 json.dump(J, open(os.path.join(out_dir, f"w3eval_{a.out_tag}.json"), "w"), ensure_ascii=False, indent=1)

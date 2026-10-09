@@ -4,10 +4,11 @@
 jetson/scripts/__init__.py	verify	session	repo	85f774809979ff4267f7368820276d2a	41	85f774809979ff4267f7368820276d2a	-
 jetson/scripts/console_demo.py	send	session	repo	8bcd50e639020e2073685b24dc787328	15935	6f305da7d8f52dd80c5e887ad0067dcb	젯슨 구판 = 98ecfc9b 2026-09-22
 jetson/scripts/console_state.py	send	session	repo	d4bf8d03bb9a4cabe76674f034bbee44	81024	446a7c2bf5df35f3fe5069a53e2f7aa4	젯슨 구판 = 432d1176 2026-10-03
-jetson/scripts/console_ui.html	send	session	repo	9c902322363fe5805eb5a7d93bf5e110	55093	9f6a963dea7d265d4cedc32e7fd2fb9f	젯슨 구판 = 432d1176 2026-10-03
-jetson/scripts/operator_console.py	send	session	repo	3dd9f6c4c83e2a6fefee501f6e919e8c	232085	90b7ef283a9da1450de34d3f3da09cc2	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
-jetson/scripts/rl_bridge_node.py	send	session	repo	2c4bed9ecd115d43950417bbf79dd162	479455	15dcabf224f9bbfdc01f1017c93d101a	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
-jetson/scripts/stage8_12axis_mit_control_node.py	send	session	repo	18e1ec3e7e22d952fe97869df7e5c224	91128	2509bd9998a5177e42dcf8d66bc833b6	젯슨 구판 = c93b45d1 2026-09-30
+jetson/scripts/console_ui.html	send	session	repo	2140181c8f267d08962e4c36aab683fc	55408	9f6a963dea7d265d4cedc32e7fd2fb9f	젯슨 구판 = 432d1176 2026-10-03
+jetson/scripts/mech_fixed.py	send	session	repo	514777eb3c17c5f49180b1655873bfef	4784	-	-
+jetson/scripts/operator_console.py	send	session	repo	653a75c65abd69acfbdd25250b828c57	232412	90b7ef283a9da1450de34d3f3da09cc2	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
+jetson/scripts/rl_bridge_node.py	send	session	repo	d1d7e65d05183ecaab62e70a6fef04ef	488392	15dcabf224f9bbfdc01f1017c93d101a	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
+jetson/scripts/stage8_12axis_mit_control_node.py	send	session	repo	308f7211c2173bd8c0a0f1e038d3bdae	96032	2509bd9998a5177e42dcf8d66bc833b6	젯슨 구판 = c93b45d1 2026-09-30
 jetson/scripts/w3_cmd.py	send	session	repo	e06de3d422841c127aa93ac3b774638e	9569	-	-
 protocols/__init__.py	verify	session	repo	3820717ce5c7b02b864108ca81604e25	50	3820717ce5c7b02b864108ca81604e25	-
 protocols/ak_mit_command.py	verify	session	repo	52543d3db24888770e348d59a82279e2	3873	52543d3db24888770e348d59a82279e2	-
@@ -27,12 +28,12 @@ robot_runtime/__init__.py	verify	session	repo	0ba2afc767e0244e6260304703234553	1
 robot_runtime/dof12_mapping.py	verify	session	repo	f1b3db6c9cff4c22030aefc626fcc5c0	10924	f1b3db6c9cff4c22030aefc626fcc5c0	-
 robot_runtime/joint_limits.py	verify	session	repo	63d466c99d7144d4032655ab1201aa1a	2126	63d466c99d7144d4032655ab1201aa1a	-
 jetson/scripts/analyze_fall.py	verify	tool	repo	a9efae45f942d9af948478c23422a522	37232	a9efae45f942d9af948478c23422a522	-
-jetson/scripts/boot_pose_check.py	verify	tool	repo	cf24508e46fc65b88cd7ab3287f4273d	17306	cf24508e46fc65b88cd7ab3287f4273d	-
+jetson/scripts/boot_pose_check.py	send	tool	repo	7c60e6beac548438f99683a566bb5e20	19167	cf24508e46fc65b88cd7ab3287f4273d	젯슨 구판 = d822b8d8 2026-09-06
 jetson/scripts/latency_check.py	send	tool	repo	35a134e91c6e8126d216d27be73c6d20	25224	-	-
 jetson/scripts/posture_probe.py	verify	tool	repo	353446713251bed28bd9ca99060889b9	13863	353446713251bed28bd9ca99060889b9	-
 jetson/scripts/robotctl.py	send	tool	repo	61327e6bba0b6ce3733b7ec96f8dcf62	31612	f761802ca67a8091321b387c5d644c04	젯슨 구판 = 83faa61b 2026-09-19
 jetson/scripts/selftest_w3_bridge_node.py	send	tool	repo	6a27719b841ed7d758e5c86c69b30c24	97562	-	-
-jetson/scripts/zero_anchor.py	verify	tool	repo	003409156a5a061b510aa35a85b3ea68	14301	003409156a5a061b510aa35a85b3ea68	-
+jetson/scripts/zero_anchor.py	send	tool	repo	bc3519aef65bb04f212c9f098df0e065	15069	003409156a5a061b510aa35a85b3ea68	젯슨 구판 = 7b6f5538 2026-09-18
 jetson/scripts/zero_kinematic_check.py	verify	tool	repo	bbec70cdb75ea81fbbf0ba8db00c42dc	11446	bbec70cdb75ea81fbbf0ba8db00c42dc	-
 tests/test_console_walk.py	send	test	repo	7339e13de01e32c8b7c7e9bc85607be5	33298	-	-
 tests/test_console_walk_bridge.py	send	test	repo	3282c2f1235e2dfff5ecb5ff0df32850	37053	-	-
@@ -58,18 +59,18 @@ jetson/scripts/cop_from_pads.py	verify	sync	repo	c16ae314f533e6b542433a71c8a7270
 jetson/scripts/foot_force_adapter_node.py	verify	sync	repo	9b13d6980c6af7f1e41f03c4d6ea82ea	37617	9b13d6980c6af7f1e41f03c4d6ea82ea	-
 jetson/scripts/ground_stand.py	send	sync	repo	32b32fbda75012f71eb590ac756731e9	23137	-	-
 jetson/scripts/hang_leg_swing.py	send	sync	repo	7ab4917366f6c9a43e8220f67df90c6f	14018	-	-
-jetson/scripts/hang_stand.py	verify	sync	repo	2692298a55e0e2a6ccc4428e5f7ddaeb	50126	2692298a55e0e2a6ccc4428e5f7ddaeb	-
+jetson/scripts/hang_stand.py	send	sync	repo	b28a04de64e63865ddba2a1b59957516	52518	2692298a55e0e2a6ccc4428e5f7ddaeb	젯슨 구판 = 8984f8c7 2026-09-29
 jetson/scripts/imu_adapter_node.py	verify	sync	repo	7feaf579995474710d9c7df0805393bc	16092	7feaf579995474710d9c7df0805393bc	-
 jetson/scripts/imu_mount_calib.py	send	sync	repo	7c3bd93c943b24c6de722d514585b405	25150	b8aa00e948775e334b87c6e404dfc628	젯슨 구판 = 29b984d2 2026-07-27
 jetson/scripts/level_pose_retarget.py	send	sync	repo	e71d340b73aa8cb248cc0722dcf91086	3805	-	-
 jetson/scripts/obs_dryrun.py	verify	sync	repo	abc2c00951449016d4352456c0270ae8	30746	abc2c00951449016d4352456c0270ae8	-
-jetson/scripts/ping_all.py	send	sync	repo	18c4b94ae43cd9f7e2624e7137a32b06	5594	-	-
+jetson/scripts/ping_all.py	send	sync	repo	589dd074b1c424963ca7a854ec9abb63	6925	-	-
 jetson/scripts/pitch_sweep.py	verify	sync	repo	79d0dac532d49afdf7257e648b954000	6561	79d0dac532d49afdf7257e648b954000	-
 jetson/scripts/play_probe.py	send	sync	repo	6b06ae5e1cac641c17f27b187968a3f4	46233	-	-
 jetson/scripts/plot_trial_recon.py	send	sync	repo	78a9ca9509a33b9ab48fd4932e4c9b38	25298	-	-
 jetson/scripts/pose_hold.py	send	sync	repo	16f57ffd01698b644455a9070543e134	8611	83e4f59954c8360cce980ecd98b25bd5	젯슨 구판 = 9c4750d3 2026-07-27
 jetson/scripts/propose_ankle_r_direction_fix.py	verify	sync	repo	e899f2458a8eb66d9ad4eb3a1f1c72fd	2729	e899f2458a8eb66d9ad4eb3a1f1c72fd	-
-jetson/scripts/release_all.py	verify	sync	repo	e06b80d1bce2046fe5c6d4f9dfeb9d40	11426	e06b80d1bce2046fe5c6d4f9dfeb9d40	-
+jetson/scripts/release_all.py	send	sync	repo	7c44c40df9f79b5ccd6c43c767b69682	12744	e06b80d1bce2046fe5c6d4f9dfeb9d40	젯슨 구판 = 38e7402f 2026-09-22
 jetson/scripts/sensors_up.sh	send	sync	repo	3b372a2b7439ada08aba349d632797df	4763	73fec1f34e9d548ad2ab25754a68990d	젯슨 구판 = 54425ab0 2026-09-13
 jetson/scripts/set_pitch_comp.py	verify	sync	repo	1a9fe7384f4c74b5fa80b49d526f6374	6702	1a9fe7384f4c74b5fa80b49d526f6374	-
 jetson/scripts/sign_check.py	verify	sync	repo	483b4e547a94008d2b3ad289d499097b	7706	483b4e547a94008d2b3ad289d499097b	-
@@ -126,5 +127,5 @@ deploy/cand/head_1008/selftest_w3_node_refs.py	send	ref	repo	40edb00b9d06bde97f3
 deploy/cand/head_1008/OPERATOR_COMMANDS.md	send	record	repo	3dfbf67297c795daa17b53b1a9f29c7d	31707	-	-
 reports/night_1007/jetson/parity_ref.npz	send	parity	repo	425e48cf21a4768bf956787086a8033a	1128300	-	러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime)
 reports/night_1007/jetson_parity.py	send	parity	repo	029cb8b23c4e7bef35b5e9eb01cc574c	10754	-	러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime)
-deploy/head_1008.md5	send	record	repo	181d53c4555401e3860c3a1dc6b1abfa	9656	-	매니페스트(젯슨에서 md5sum -c)
-deploy/head_1008.VERSION	send	record	repo	087de0ca93531ca07b20e1c126d44bcc	657	-	버전 기록
+deploy/head_1008.md5	send	record	repo	2c549517ad3e2ae226abd83a99284807	9719	-	매니페스트(젯슨에서 md5sum -c)
+deploy/head_1008.VERSION	send	record	repo	8d3d5482c8ac06cbaee2d58c2cfef0f7	657	-	버전 기록

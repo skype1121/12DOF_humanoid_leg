@@ -5,10 +5,10 @@
 
 ```
 package: head_1008
-source_commit: 8e67b87ab409ae6aaaea83d1d0ac4cc4ee89c469 2026-10-08T22:46:07+09:00
+source_commit: 70d395a5f00701b93fee64cbba2df7bbe1008361 2026-10-09T22:44:44+09:00
 source_uncommitted: none
-manifest: deploy/head_1008.md5 md5 181d53c4555401e3860c3a1dc6b1abfa
-files: 127 (send 71 incl. this file and the manifest, verify 56)
+manifest: deploy/head_1008.md5 md5 2c549517ad3e2ae226abd83a99284807
+files: 128 (send 76 incl. this file and the manifest, verify 52)
 jetson_inventory: deploy/cand/head_1008/jetson_inventory_before_md5.txt md5 35a129c9f16a082e1cb6d3ba9cb13855
 note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드(콘솔·브리지·stage8·러너·도구·시험)를 마지막으로 바꾼 커밋,
       source_uncommitted = 생성 시점에 그 커밋과 달랐던 실행 코드 파일(none 이어야 커밋과 일치).
@@ -18,9 +18,9 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 
 | 구분 | 파일 수 | 크기 합 |
 |---|---|---|
-| 전송 — 변경(젯슨에 구판이 있음) | 14 | 1137 KB |
-| 전송 — 신규(젯슨에 없음) | 55 (+ 매니페스트·VERSION 2) | 8019 KB |
-| 확인만(젯슨과 같음 — 복사하지 않음) | 56 | 13343 KB |
+| 전송 — 변경(젯슨에 구판이 있음) | 18 | 1249 KB |
+| 전송 — 신규(젯슨에 없음) | 56 (+ 매니페스트·VERSION 2) | 8025 KB |
+| 확인만(젯슨과 같음 — 복사하지 않음) | 52 | 13253 KB |
 | 삭제 | 0 | — |
 
 묶음: session = 콘솔·브리지·stage8 의 import 사슬 · tool = 운영 도구·selftest · test = 오프라인 단위 시험 · sync = 저장소 사본 맞춤 · policy = 정책 파일 · ref = selftest 기준 원문 · record = 기록·문서
@@ -30,16 +30,20 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | 경로 | 묶음 | 젯슨 md5 | 새 md5 | 젯슨 판의 출처 | 쓰는 진입점 |
 |---|---|---|---|---|---|
 | `jetson/scripts/analyze_cop_transfer.py` | sync | `4182c582` | `b9ed7cac` | eb15a99a 2026-09-11 | - |
+| `jetson/scripts/boot_pose_check.py` | tool | `cf24508e` | `7c60e6be` | d822b8d8 2026-09-06 | boot_pose_check.py, zero_anchor.py |
 | `jetson/scripts/console_demo.py` | session | `6f305da7` | `8bcd50e6` | 98ecfc9b 2026-09-22 | operator_console.py |
 | `jetson/scripts/console_state.py` | session | `446a7c2b` | `d4bf8d03` | 432d1176 2026-10-03 | operator_console.py, robotctl.py |
-| `jetson/scripts/console_ui.html` | session | `9f6a963d` | `9c902322` | 432d1176 2026-10-03 | - |
+| `jetson/scripts/console_ui.html` | session | `9f6a963d` | `2140181c` | 432d1176 2026-10-03 | - |
+| `jetson/scripts/hang_stand.py` | sync | `2692298a` | `b28a04de` | 8984f8c7 2026-09-29 | hang_stand.py |
 | `jetson/scripts/imu_mount_calib.py` | sync | `b8aa00e9` | `7c3bd93c` | 29b984d2 2026-07-27 | - |
-| `jetson/scripts/operator_console.py` | session | `90b7ef28` | `3dd9f6c4` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | operator_console.py |
+| `jetson/scripts/operator_console.py` | session | `90b7ef28` | `653a75c6` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | operator_console.py |
 | `jetson/scripts/pose_hold.py` | sync | `83e4f599` | `16f57ffd` | 9c4750d3 2026-07-27 | - |
-| `jetson/scripts/rl_bridge_node.py` | session | `15dcabf2` | `2c4bed9e` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
+| `jetson/scripts/release_all.py` | sync | `e06b80d1` | `7c44c40d` | 38e7402f 2026-09-22 | release_all.py |
+| `jetson/scripts/rl_bridge_node.py` | session | `15dcabf2` | `d1d7e65d` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
 | `jetson/scripts/robotctl.py` | tool | `f761802c` | `61327e6b` | 83faa61b 2026-09-19 | robotctl.py |
 | `jetson/scripts/sensors_up.sh` | sync | `73fec1f3` | `3b372a2b` | 54425ab0 2026-09-13 | - |
-| `jetson/scripts/stage8_12axis_mit_control_node.py` | session | `2509bd99` | `18e1ec3e` | c93b45d1 2026-09-30 | stage8_12axis_mit_control_node.py |
+| `jetson/scripts/stage8_12axis_mit_control_node.py` | session | `2509bd99` | `308f7211` | c93b45d1 2026-09-30 | stage8_12axis_mit_control_node.py |
+| `jetson/scripts/zero_anchor.py` | tool | `00340915` | `bc3519ae` | 7b6f5538 2026-09-18 | zero_anchor.py |
 | `rl_walking/__init__.py` | session | `51ed3c5e` | `2413781a` | 6761a690 2026-09-29 | kew3_runner.py, operator_console.py, posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, w3_cmd.py |
 | `rl_walking/deploy/c5_switch.py` | session | `11cf9641` | `eaf66687` | 332dcf38 2026-10-05 | c5_switch.py, kew3_runner.py, posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
 | `rl_walking/deploy/policy_runner_stage4.py` | session | `21b2416e` | `bdbe69eb` | b9cd2816 2026-10-03 | c5_switch.py, kew3_runner.py, policy_runner_stage4.py, posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py |
@@ -64,7 +68,8 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `jetson/scripts/hang_leg_swing.py` | sync | `7ab49173` | 14018 | - |
 | `jetson/scripts/latency_check.py` | tool | `35a134e9` | 25224 | latency_check.py |
 | `jetson/scripts/level_pose_retarget.py` | sync | `e71d340b` | 3805 | - |
-| `jetson/scripts/ping_all.py` | sync | `18c4b94a` | 5594 | ping_all.py |
+| `jetson/scripts/mech_fixed.py` | session | `514777eb` | 4784 | boot_pose_check.py, hang_stand.py, ping_all.py, posture_probe.py |
+| `jetson/scripts/ping_all.py` | sync | `589dd074` | 6925 | ping_all.py |
 | `jetson/scripts/play_probe.py` | sync | `6b06ae5e` | 46233 | - |
 | `jetson/scripts/plot_trial_recon.py` | sync | `78a9ca95` | 25298 | - |
 | `jetson/scripts/selftest_w3_bridge_node.py` | tool | `6a27719b` | 97562 | selftest_w3_bridge_node.py |
@@ -110,22 +115,18 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 |---|---|---|
 | `jetson/scripts/__init__.py` | session | `85f77480` |
 | `jetson/scripts/analyze_fall.py` | tool | `a9efae45` |
-| `jetson/scripts/boot_pose_check.py` | tool | `cf24508e` |
 | `jetson/scripts/can_up.sh` | sync | `42f27f3a` |
 | `jetson/scripts/cop_from_pads.py` | sync | `c16ae314` |
 | `jetson/scripts/foot_force_adapter_node.py` | sync | `9b13d698` |
-| `jetson/scripts/hang_stand.py` | sync | `2692298a` |
 | `jetson/scripts/imu_adapter_node.py` | sync | `7feaf579` |
 | `jetson/scripts/obs_dryrun.py` | sync | `abc2c009` |
 | `jetson/scripts/pitch_sweep.py` | sync | `79d0dac5` |
 | `jetson/scripts/posture_probe.py` | tool | `35344671` |
 | `jetson/scripts/propose_ankle_r_direction_fix.py` | sync | `e899f245` |
-| `jetson/scripts/release_all.py` | sync | `e06b80d1` |
 | `jetson/scripts/set_pitch_comp.py` | sync | `1a9fe738` |
 | `jetson/scripts/sign_check.py` | sync | `483b4e54` |
 | `jetson/scripts/static_march.py` | sync | `194e79b6` |
 | `jetson/scripts/stiffness_log.py` | sync | `b65f0a4e` |
-| `jetson/scripts/zero_anchor.py` | tool | `00340915` |
 | `jetson/scripts/zero_kinematic_check.py` | tool | `bbec70cd` |
 | `jetson/scripts/zero_torque_read.py` | sync | `fd7eec04` |
 | `logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/exported/policy.onnx` | policy | `c577a65a` |
@@ -193,8 +194,8 @@ HEAD 의 `jetson/` 아래에 있지만 계획에 없는 것: `jetson/calib_data/
 | 진입점 | 저장소 안 의존 | 저장소 밖 모듈(제3자·젯슨 전용) |
 |---|---|---|
 | `jetson/scripts/operator_console.py` | `jetson/scripts/__init__.py`, `jetson/scripts/console_demo.py`, `jetson/scripts/console_state.py`, `jetson/scripts/w3_cmd.py`, `rl_walking/__init__.py`, `rl_walking/deploy/__init__.py`, `rl_walking/deploy/w3_deploy.py` | gymnasium, numpy, rclpy, std_msgs |
-| `jetson/scripts/rl_bridge_node.py` | `rl_walking/__init__.py`, `rl_walking/deploy/__init__.py`, `rl_walking/deploy/c5_switch.py`, `rl_walking/deploy/deploy_chain.py`, `rl_walking/deploy/hturn2.py`, `rl_walking/deploy/kew3_runner.py`, `rl_walking/deploy/leg_odometry.py`, `rl_walking/deploy/policy_runner.py`, `rl_walking/deploy/policy_runner_stage4.py`, `rl_walking/deploy/w3_contingency.py`, `rl_walking/deploy/w3_deploy.py`, `robot_runtime/__init__.py`, `robot_runtime/joint_limits.py` | gymnasium, numpy, onnxruntime, rclpy, std_msgs, torch |
-| `jetson/scripts/stage8_12axis_mit_control_node.py` | `protocols/__init__.py`, `protocols/ak_mit_command.py`, `protocols/ak_mit_decoder.py`, `robot_runtime/__init__.py`, `robot_runtime/dof12_mapping.py`, `robot_runtime/joint_limits.py` | can, rclpy, std_msgs |
+| `jetson/scripts/rl_bridge_node.py` | `jetson/scripts/mech_fixed.py`, `rl_walking/__init__.py`, `rl_walking/deploy/__init__.py`, `rl_walking/deploy/c5_switch.py`, `rl_walking/deploy/deploy_chain.py`, `rl_walking/deploy/hturn2.py`, `rl_walking/deploy/kew3_runner.py`, `rl_walking/deploy/leg_odometry.py`, `rl_walking/deploy/policy_runner.py`, `rl_walking/deploy/policy_runner_stage4.py`, `rl_walking/deploy/w3_contingency.py`, `rl_walking/deploy/w3_deploy.py`, `robot_runtime/__init__.py`, `robot_runtime/joint_limits.py` | gymnasium, numpy, onnxruntime, rclpy, std_msgs, torch |
+| `jetson/scripts/stage8_12axis_mit_control_node.py` | `jetson/scripts/mech_fixed.py`, `protocols/__init__.py`, `protocols/ak_mit_command.py`, `protocols/ak_mit_decoder.py`, `robot_runtime/__init__.py`, `robot_runtime/dof12_mapping.py`, `robot_runtime/joint_limits.py` | can, rclpy, std_msgs |
 
 ### 운영 도구·selftest
 
@@ -203,10 +204,10 @@ HEAD 의 `jetson/` 아래에 있지만 계획에 없는 것: `jetson/calib_data/
 | `jetson/scripts/robotctl.py` | `jetson/scripts/console_state.py` | 없음 |
 | `jetson/scripts/w3_cmd.py` | `rl_walking/__init__.py`, `rl_walking/deploy/__init__.py`, `rl_walking/deploy/w3_deploy.py` | gymnasium, numpy, rclpy, std_msgs |
 | `jetson/scripts/latency_check.py` | 없음 | rclpy, std_msgs |
-| `jetson/scripts/selftest_w3_bridge_node.py` | `jetson/scripts/rl_bridge_node.py`, `rl_walking/__init__.py`, `rl_walking/deploy/__init__.py`, `rl_walking/deploy/c5_switch.py`, `rl_walking/deploy/deploy_chain.py`, `rl_walking/deploy/hturn2.py`, `rl_walking/deploy/kew3_runner.py`, `rl_walking/deploy/leg_odometry.py`, `rl_walking/deploy/policy_runner.py`, `rl_walking/deploy/policy_runner_stage4.py`, `rl_walking/deploy/w3_contingency.py`, `rl_walking/deploy/w3_deploy.py`, `robot_runtime/__init__.py`, `robot_runtime/joint_limits.py` | gymnasium, numpy, onnxruntime, rclpy, std_msgs, torch |
-| `jetson/scripts/posture_probe.py` | `jetson/scripts/rl_bridge_node.py`, `rl_walking/__init__.py`, `rl_walking/deploy/__init__.py`, `rl_walking/deploy/c5_switch.py`, `rl_walking/deploy/deploy_chain.py`, `rl_walking/deploy/hturn2.py`, `rl_walking/deploy/kew3_runner.py`, `rl_walking/deploy/leg_odometry.py`, `rl_walking/deploy/policy_runner.py`, `rl_walking/deploy/policy_runner_stage4.py`, `rl_walking/deploy/w3_contingency.py`, `rl_walking/deploy/w3_deploy.py`, `robot_runtime/__init__.py`, `robot_runtime/joint_limits.py` | gymnasium, numpy, onnxruntime, rclpy, std_msgs, torch |
-| `jetson/scripts/zero_kinematic_check.py` | `jetson/scripts/rl_bridge_node.py`, `rl_walking/__init__.py`, `rl_walking/deploy/__init__.py`, `rl_walking/deploy/c5_switch.py`, `rl_walking/deploy/deploy_chain.py`, `rl_walking/deploy/hturn2.py`, `rl_walking/deploy/kew3_runner.py`, `rl_walking/deploy/leg_odometry.py`, `rl_walking/deploy/policy_runner.py`, `rl_walking/deploy/policy_runner_stage4.py`, `rl_walking/deploy/w3_contingency.py`, `rl_walking/deploy/w3_deploy.py`, `robot_runtime/__init__.py`, `robot_runtime/joint_limits.py` | gymnasium, numpy, onnxruntime, rclpy, std_msgs, torch |
-| `jetson/scripts/zero_anchor.py` | `jetson/scripts/boot_pose_check.py` | ak_mit_command, ak_mit_decoder, can |
+| `jetson/scripts/selftest_w3_bridge_node.py` | `jetson/scripts/mech_fixed.py`, `jetson/scripts/rl_bridge_node.py`, `rl_walking/__init__.py`, `rl_walking/deploy/__init__.py`, `rl_walking/deploy/c5_switch.py`, `rl_walking/deploy/deploy_chain.py`, `rl_walking/deploy/hturn2.py`, `rl_walking/deploy/kew3_runner.py`, `rl_walking/deploy/leg_odometry.py`, `rl_walking/deploy/policy_runner.py`, `rl_walking/deploy/policy_runner_stage4.py`, `rl_walking/deploy/w3_contingency.py`, `rl_walking/deploy/w3_deploy.py`, `robot_runtime/__init__.py`, `robot_runtime/joint_limits.py` | gymnasium, numpy, onnxruntime, rclpy, std_msgs, torch |
+| `jetson/scripts/posture_probe.py` | `jetson/scripts/mech_fixed.py`, `jetson/scripts/rl_bridge_node.py`, `rl_walking/__init__.py`, `rl_walking/deploy/__init__.py`, `rl_walking/deploy/c5_switch.py`, `rl_walking/deploy/deploy_chain.py`, `rl_walking/deploy/hturn2.py`, `rl_walking/deploy/kew3_runner.py`, `rl_walking/deploy/leg_odometry.py`, `rl_walking/deploy/policy_runner.py`, `rl_walking/deploy/policy_runner_stage4.py`, `rl_walking/deploy/w3_contingency.py`, `rl_walking/deploy/w3_deploy.py`, `robot_runtime/__init__.py`, `robot_runtime/joint_limits.py` | gymnasium, numpy, onnxruntime, rclpy, std_msgs, torch |
+| `jetson/scripts/zero_kinematic_check.py` | `jetson/scripts/mech_fixed.py`, `jetson/scripts/rl_bridge_node.py`, `rl_walking/__init__.py`, `rl_walking/deploy/__init__.py`, `rl_walking/deploy/c5_switch.py`, `rl_walking/deploy/deploy_chain.py`, `rl_walking/deploy/hturn2.py`, `rl_walking/deploy/kew3_runner.py`, `rl_walking/deploy/leg_odometry.py`, `rl_walking/deploy/policy_runner.py`, `rl_walking/deploy/policy_runner_stage4.py`, `rl_walking/deploy/w3_contingency.py`, `rl_walking/deploy/w3_deploy.py`, `robot_runtime/__init__.py`, `robot_runtime/joint_limits.py` | gymnasium, numpy, onnxruntime, rclpy, std_msgs, torch |
+| `jetson/scripts/zero_anchor.py` | `jetson/scripts/boot_pose_check.py`, `jetson/scripts/mech_fixed.py` | ak_mit_command, ak_mit_decoder, can |
 | `jetson/scripts/analyze_fall.py` | 없음 | numpy |
 | `rl_walking/deploy/kew3_runner.py` | `rl_walking/__init__.py`, `rl_walking/deploy/__init__.py`, `rl_walking/deploy/c5_switch.py`, `rl_walking/deploy/hturn2.py`, `rl_walking/deploy/leg_odometry.py`, `rl_walking/deploy/policy_runner.py`, `rl_walking/deploy/policy_runner_stage4.py`, `rl_walking/deploy/w3_deploy.py`, `robot_runtime/__init__.py`, `robot_runtime/joint_limits.py` | gymnasium, numpy, onnxruntime, torch |
 | `rl_walking/deploy/c5_switch.py` | `rl_walking/deploy/__init__.py`, `rl_walking/deploy/hturn2.py`, `rl_walking/deploy/leg_odometry.py`, `rl_walking/deploy/policy_runner.py`, `rl_walking/deploy/policy_runner_stage4.py`, `rl_walking/deploy/w3_deploy.py`, `robot_runtime/__init__.py`, `robot_runtime/joint_limits.py` | numpy, onnxruntime, torch |
@@ -217,11 +218,11 @@ HEAD 의 `jetson/` 아래에 있지만 계획에 없는 것: `jetson/calib_data/
 
 | 진입점 | 저장소 안 의존 | 저장소 밖 모듈(제3자·젯슨 전용) |
 |---|---|---|
-| `jetson/scripts/hang_stand.py` | 없음 | ak_mit_command, ak_mit_decoder, can |
-| `jetson/scripts/boot_pose_check.py` | 없음 | ak_mit_command, ak_mit_decoder, can |
-| `jetson/scripts/release_all.py` | 없음 | ak_mit_command, ak_mit_decoder, can |
+| `jetson/scripts/hang_stand.py` | `jetson/scripts/mech_fixed.py` | ak_mit_command, ak_mit_decoder, can |
+| `jetson/scripts/boot_pose_check.py` | `jetson/scripts/mech_fixed.py` | ak_mit_command, ak_mit_decoder, can |
+| `jetson/scripts/release_all.py` | `jetson/scripts/mech_fixed.py` | ak_mit_command, ak_mit_decoder, can |
 | `jetson/scripts/stage8_cmd.py` | 없음 | rclpy, std_msgs |
-| `jetson/scripts/ping_all.py` | 없음 | ak_mit_command, ak_mit_decoder, can |
+| `jetson/scripts/ping_all.py` | `jetson/scripts/mech_fixed.py` | ak_mit_command, ak_mit_decoder, can |
 | `jetson/scripts/imu_adapter_node.py` | 없음 | rclpy, sensor_msgs, std_msgs |
 | `jetson/scripts/foot_force_adapter_node.py` | 없음 | rclpy, std_msgs |
 
@@ -234,18 +235,18 @@ HEAD 의 `jetson/` 아래에 있지만 계획에 없는 것: `jetson/calib_data/
 |---|---|---|---|
 | `ak_mit_command.py` | `protocols/ak_mit_command.py` | `52543d3d` | `52543d3d` |
 | `ak_mit_decoder.py` | `protocols/ak_mit_decoder.py` | `23d9de66` | `23d9de66` |
-| `boot_pose_check.py` | `jetson/scripts/boot_pose_check.py` | `cf24508e` | `cf24508e` |
+| `boot_pose_check.py` | `jetson/scripts/boot_pose_check.py` | `7c60e6be` | `cf24508e` |
 | `can_channel` | 없음 — **젯슨 정본·저장소 사본 없음** | - | - |
 | `can_up.sh` | `jetson/scripts/can_up.sh` | `42f27f3a` | `42f27f3a` |
 | `foot_force_adapter_node.py` | `jetson/scripts/foot_force_adapter_node.py` | `9b13d698` | `9b13d698` |
-| `hang_stand.py` | `jetson/scripts/hang_stand.py` | `2692298a` | `2692298a` |
+| `hang_stand.py` | `jetson/scripts/hang_stand.py` | `b28a04de` | `2692298a` |
 | `imu_adapter_node.py` | `jetson/scripts/imu_adapter_node.py` | `7feaf579` | `7feaf579` |
 | `imu_mount_calib.json` | `config/imu_mount_calib.json` (배포 금지 — 젯슨 정본) | `1617b7e8` | `1617b7e8` |
 | `joint_limits_12dof.json` | `config/joint_limits_12dof.json` (배포 금지 — 젯슨 정본) | `648bcb7f` | `648bcb7f` |
 | `last_pose_journal.json` | 없음 — **젯슨 정본·저장소 사본 없음** | - | - |
 | `level_pose.json` | 없음 — **젯슨 정본·저장소 사본 없음** (날짜 붙은 옛 사본 `jetson/calib_data/level_pose_0914.json`, `jetson/calib_data/level_pose_0918.json` 은 있으나 실행본과의 일치는 미확인) | - | - |
-| `ping_all.py` | `jetson/scripts/ping_all.py` | `18c4b94a` | 없음 |
-| `release_all.py` | `jetson/scripts/release_all.py` | `e06b80d1` | `e06b80d1` |
+| `ping_all.py` | `jetson/scripts/ping_all.py` | `589dd074` | 없음 |
+| `release_all.py` | `jetson/scripts/release_all.py` | `7c44c40d` | `e06b80d1` |
 | `robot_12dof_hardware_map.json` | `config/robot_12dof_hardware_map.json` (배포 금지 — 젯슨 정본) | `0630c018` | `41b68a6f` |
 | `sensors_up.sh` | `jetson/scripts/sensors_up.sh` | `3b372a2b` | `73fec1f3` |
 | `stack_down.sh` | `jetson/scripts/stack_down.sh` | `7f8f7925` | 없음 |

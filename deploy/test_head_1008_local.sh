@@ -63,6 +63,8 @@ if [ $QUICK -eq 0 ]; then    # 기존 세션 동작 비교(T9b)의 기준 = 손�
   rm -rf "$WORK/fake_ref"; python3 deploy/cand/head_1008/make_fake_jetson.py --out "$WORK/fake_ref" --policy-root "$POLICY_ROOT" ${HWMAP:+--hwmap "$HWMAP"} >> "$LOGD/make_fake.log" 2>&1
 fi
 snap "$WORK/snap_start.txt"
+# 롤백이 되돌릴 파일 수 = 전송 대상 중 가짜 젯슨에 이미 있던 것(묶음 구성이 바뀌어도 맞게 — 숫자를 박아 두지 않는다)
+NBK=$(awk -F'\t' '!/^#/ && $2 == "send" {print $1}' deploy/head_1008.plan | while read -r p; do [ -e "$FH/humanoid_repo/$p" ] && echo x; done | wc -l)
 echo "   처음 스냅샷: 파일 $(grep -c '^[0-9a-f]\{32\} ' "$WORK/snap_start.txt") 개 · 폴더 $(grep -c '^\./\|^\.$' "$WORK/snap_start.txt") 개"
 
 dep t2_dryrun; rc=$?
@@ -124,7 +126,7 @@ cp "$WORK/state_orig.json" "$FH/.fake/state.json"
 chk $? "T5 콘솔 활성 세션·상태 읽기 실패 시 --apply 거부·무변경"
 
 # --- T6 젯슨 파일이 인벤토리와 다르면(로컬 수정본) 거부
-f1=$FH/humanoid_repo/jetson/scripts/operator_console.py; f2=$FH/humanoid_repo/jetson/scripts/hang_stand.py; f3=$FH/humanoid_repo/jetson/scripts/robotctl.py
+f1=$FH/humanoid_repo/jetson/scripts/operator_console.py; f2=$FH/humanoid_repo/jetson/scripts/analyze_fall.py; f3=$FH/humanoid_repo/jetson/scripts/robotctl.py
 cp -p "$f1" "$WORK/f1.orig"; echo "# jetson local hotfix" >> "$f1"; dep t6_unexp_send --apply; rc1=$?; cp -p "$WORK/f1.orig" "$f1"
 cp -p "$f2" "$WORK/f2.orig"; echo "# jetson local hotfix" >> "$f2"; dep t6_unexp_verify --apply; rc2=$?; cp -p "$WORK/f2.orig" "$f2"
 mv "$f3" "$WORK/f3.orig"; dep t6_missing --apply; rc3=$?; mv "$WORK/f3.orig" "$f3"
@@ -236,13 +238,13 @@ awk -F'\t' 'BEGIN{OFS="\t"} !/^#/ && $2 == "send" && $1 ~ /operator_console\.py$
 HEAD1008_PLAN="$WORK/plan_drift.plan" dep t16_apply_drift --apply; r1=$?
 [ $r1 -ne 0 ] && has t16_apply_drift '로컬 파일이 계획서와 다름' && same_as_start; chk $? "T16 로컬 원본이 계획서와 다르면 --apply 거부·무변경"
 HEAD1008_PLAN="$WORK/plan_drift.plan" dep t16_rollback_drift --rollback; r2=$?
-[ $r2 -eq 0 ] && has t16_rollback_drift '로컬 원본을 쓰지 않으므로 계속한다' && has t16_rollback_drift 'RESTORED 14' && same_as_start
+[ $r2 -eq 0 ] && has t16_rollback_drift '로컬 원본을 쓰지 않으므로 계속한다' && has t16_rollback_drift "RESTORED $NBK " && same_as_start
 chk $? "T16 같은 상황에서 --rollback 은 막히지 않는다(로컬 게이트도 생략) — $(grep -o 'RESTORED.*' "$LOGD/t16_rollback_drift.log" | head -1)"
 
 if [ $QUICK -eq 0 ]; then
   # --- T14 롤백 뒤 재적용(백업 재사용) → 부분 적용 상태 복구 → 롤백
   dep t14_apply2 --apply; rc=$?
-  [ $rc -eq 0 ] && has t14_apply2 'new=0 kept=14' && has t14_apply2 '배포 완료'; chk $? "T14 롤백 뒤 재적용: 원본 백업 재사용($(grep -o 'BKDONE.*' "$LOGD/t14_apply2.log"))"
+  [ $rc -eq 0 ] && has t14_apply2 "new=0 kept=$NBK " && has t14_apply2 '배포 완료'; chk $? "T14 롤백 뒤 재적용: 원본 백업 재사용($(grep -o 'BKDONE.*' "$LOGD/t14_apply2.log"))"
   cp -p "$FH/humanoid_repo_bak_1008/files/jetson/scripts/rl_bridge_node.py" "$FH/humanoid_repo/jetson/scripts/rl_bridge_node.py"   # 중단된 적용 흉내: 하나는 옛 판,
   rm -f "$FH/humanoid_repo/rl_walking/deploy/w3_deploy.py" "$FH/humanoid_repo/jetson/scripts/w3_cmd.py"                           # 둘은 아직 안 생김
   dep t14_partial_dry; has t14_partial_dry '바뀔 파일(백업 뒤 덮어씀) 1 · 새로 생길 파일 2' ; r1=$?

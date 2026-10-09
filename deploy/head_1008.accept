@@ -1,6 +1,13 @@
-# head_1008 재적용 허용 목록(1008 밤 갱신) — 젯슨에 있는 직전 배포본(매니페스트 b6d9793c…, 1008 17:17–17:24 적용·확인)의 md5.
-# 이번 변경(정책 ON 순서기의 IMU 미수신 재전송 · 브리지 계약 검사 통과 기록 재사용)으로 덮어쓸 파일만 적는다.
-a976fb13c9008a7d92633df7ee542975  jetson/scripts/operator_console.py
-8938e7901e34f269ad611b7eb553aea7  jetson/scripts/rl_bridge_node.py
-b6d9793c095182ea3b4da1d469355844  deploy/head_1008.md5
-013a27a6c8e69635213b42d3891cd400  deploy/head_1008.VERSION
+# head_1008 재적용 허용 목록(1009 갱신) — 젯슨에 있는 직전 배포본(매니페스트 181d53c4…, 1008 22:58–23:05 적용·확인)의 md5.
+# 이번 변경(기구 고정 관절 지원: 하드웨어맵 "mech_fixed" 선언 관절의 송신 제외·피드백 합성)으로 덮어쓸 파일만 적는다.
+cf24508e46fc65b88cd7ab3287f4273d  jetson/scripts/boot_pose_check.py
+9c902322363fe5805eb5a7d93bf5e110  jetson/scripts/console_ui.html
+2692298a55e0e2a6ccc4428e5f7ddaeb  jetson/scripts/hang_stand.py
+3dd9f6c4c83e2a6fefee501f6e919e8c  jetson/scripts/operator_console.py
+18c4b94ae43cd9f7e2624e7137a32b06  jetson/scripts/ping_all.py
+e06b80d1bce2046fe5c6d4f9dfeb9d40  jetson/scripts/release_all.py
+2c4bed9ecd115d43950417bbf79dd162  jetson/scripts/rl_bridge_node.py
+18e1ec3e7e22d952fe97869df7e5c224  jetson/scripts/stage8_12axis_mit_control_node.py
+003409156a5a061b510aa35a85b3ea68  jetson/scripts/zero_anchor.py
+181d53c4555401e3860c3a1dc6b1abfa  deploy/head_1008.md5
+087de0ca93531ca07b20e1c126d44bcc  deploy/head_1008.VERSION

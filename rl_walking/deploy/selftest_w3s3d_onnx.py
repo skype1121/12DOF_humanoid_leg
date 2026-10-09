@@ -12,6 +12,8 @@ import numpy as np
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 EXP = os.path.join(REPO, "logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported")
 NPZ = os.path.join(REPO, "log_picture/w3parity_rec_w3s3d_15800_d3.npz")
+if len(sys.argv) == 3:      # 1010: selftest_w3s3d_onnx.py <exported 폴더> <기록 npz> — 다른 W3 키(새 몸 종종걸음 등) 대조. 인자 없으면 종전 그대로
+    EXP, NPZ = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2])
 
 
 def main():

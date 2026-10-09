@@ -668,6 +668,12 @@ KEW3_SPECS = {KEW3_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a
                                        requiet=(2.0, 0.3, "both")),
               KEW3QA_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5,
                                         requiet=(2.0, 0.3, "both"), air="stand_crouch_g21h")}
+#: 1010 넷째 합성 키(**실물 미검증 · 젯슨 미배포**): 셋째 합성 키에서 걷기만 새 몸 종종걸음(W3S3dNBj seed 2 -16299)으로 바꾼 것. 서기 KE·갇힘 해소·공중·착지 정책은 그대로.
+#: 새 몸(hip_r 양쪽 기구 고정 — 하드웨어맵 mech_fixed) 전용이다. 걷기 명령은 제자리·앞 0.03–0.06 만(옆·회전·뒤는 범위 (0, 0) 이라 감독기가 거부).
+#: 시뮬 근거 reports/real_1009/NEWBODY_WALK.md §9·§11(전환 왕복 낙상 1.9 %, 헤딩 고리 끔). 앞의 세 키(이름·명세·순서)는 그대로다 — **뒤에** 덧붙였다.
+KEW3NBJ_CKPT_KEY = "stand_kew3qa_g21a_g24ra_w3nbj2_16299"
+KEW3_SPECS[KEW3NBJ_CKPT_KEY] = KeW3Spec(w3=_W3.W3NBJ_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5,
+                                        requiet=(2.0, 0.3, "both"), air="stand_crouch_g21h")
 KEW3_KEYS = tuple(KEW3_SPECS)
 KEW3_CKPTS = {}            # 켜졌을 때만 {합성 키: KeW3Spec}
 
@@ -839,6 +845,45 @@ def runner_enable_gate(dec, runner):
     if why is None:
         return dec
     return {"accepted": False, "why": f"러너 선행조건: {why}", "action": "none", "want": None, "cmd": None, "hl": None}
+
+
+def w3_walk_key(checkpoint):
+    """정책 키 → 그 키가 쓰는 걷기(W3) 하위 키. 합성 키는 명세의 w3, W3 단독 키는 자신, 걷기가 없는 키(서기·회복 전용)는 None.
+    등록 여부(실험 플래그)와 무관하게 명세 원본(KEW3_SPECS·w3_deploy.W3_SPECS)으로 본다."""
+    if checkpoint in KEW3_SPECS:
+        return KEW3_SPECS[checkpoint].w3
+    return checkpoint if checkpoint in _W3.W3_SPECS else None
+
+
+def body_config_verdict(checkpoint, mech_fixed):
+    """1010 구성 불일치 가드 — (라이브 기동 거부 사유 | None, 걷기 켜기 거부 사유 | None).
+    mech_fixed = 하드웨어맵이 기구 고정으로 선언한 관절명들. 걷기 하위 키의 요구 구성(w3_deploy.W3_REQUIRED_MECH_FIXED)과 대조한다.
+      · 걷기가 없는 키(서기·회복 전용): (None, None) — 종전 그대로(새 몸에서도 서기는 계속 가능해야 한다).
+      · 요구가 있는 걷기 키(새 몸 전용): 선언이 요구와 **정확히 같은 집합**이 아니면 라이브 기동 거부(걷기도 거부).
+      · 요구가 없는 걷기 키(원래 몸 학습): 선언이 하나라도 있으면 걷기 켜기만 거부 — 서기·회복(합성 키의 KE, W3 단독 키의 서기)은 그대로.
+    선언이 없는 구성에서 요구 없는 키는 (None, None) = 종전과 같은 동작. 가드는 거부만 더한다(기존 가드·문턱을 건드리지 않는다)."""
+    wk = w3_walk_key(checkpoint)
+    if wk is None:
+        return None, None
+    req = tuple(_W3.W3_REQUIRED_MECH_FIXED.get(wk, ())); have = tuple(mech_fixed)
+    if req:
+        if set(have) != set(req):
+            why = (f"구성 불일치: 정책 {checkpoint} 의 걷기 {wk} 는 기구 고정 관절 {sorted(req)} 구성 전용인데 "
+                   f"하드웨어맵 선언은 {sorted(have) if have else '없음'} — 맵의 mech_fixed 선언과 실제 기구를 확인하거나 원래 몸용 정책을 고를 것")
+            return why, why
+        return None, None
+    if have:
+        return None, (f"구성 불일치: 하드웨어맵이 {sorted(have)} 를 기구 고정으로 선언했는데 정책 {checkpoint} 의 걷기 {wk} 는 원래 몸(기구 고정 없음)에서 학습 — "
+                      "걷기 켜기 거부(서기·회복은 계속 동작). 시뮬에서 이 걷기는 새 몸에서 뒤로 간다. 새 몸 걷기 키를 고를 것")
+    return None, None
+
+
+def body_config_gate(dec, why):
+    """1010: 감독기가 수락한 '켜기'(set_want True)를 구성 불일치 사유로 거부한다. why None(종전 전부)이면 dec 그대로.
+    끄기·정지·명령 변경은 건드리지 않는다(안전 방향만 더함). 감독기는 이 seq 를 이미 소비했다(재시도는 새 seq — 다른 게이트와 같은 규칙)."""
+    if why is None or dec.get("action") != "set_want" or not dec.get("want"):
+        return dec
+    return {"accepted": False, "why": why, "action": "none", "want": None, "cmd": None, "hl": None}
 
 
 def w3_monitor_latch(sup, why):
@@ -2239,7 +2284,7 @@ def _selftest_g21h(required=()):
     # 기각된 구성: G21h 를 서기 정책 전체로 쓴 KE(지면 회복 기준 미달) — 그 키·그 조합이 레지스트리에 없어야 한다. G21h 는 합성 키의 공중·착지 구간(명세 air)에만 쓴다
     assert "stand_c5kr_g21h_g24ra" not in CHECKPOINTS and not any("g21h" in k for k in list(C5_PAIRS) + list(C5_EXTRA)), "기각된 G21h KE 키가 등록돼 있음"
     assert not any(v[0] == H for v in C5_PAIRS.values()) and [k for k in CHECKPOINTS if "g21h" in k] == [H], "G21h 를 서기로 쓰는 C5 키 또는 다른 G21h 키가 있음"
-    assert [k for k, sp in KEW3_SPECS.items() if sp.air == H] == [KEW3QA_CKPT_KEY] and all(sp.ke != H and sp.w3 != H for sp in KEW3_SPECS.values())
+    assert [k for k, sp in KEW3_SPECS.items() if sp.air == H] == [KEW3QA_CKPT_KEY, KEW3NBJ_CKPT_KEY] and all(sp.ke != H and sp.w3 != H for sp in KEW3_SPECS.values())
     need = [k for k in required if k == H]
     have_yml = os.path.isfile(_ckpt_env_yaml(H))
     have_pol = os.path.exists(os.path.join(G21H_EXPORTED, "policy.pt")) or os.path.exists(os.path.join(G21H_EXPORTED, "policy.onnx"))
@@ -2333,9 +2378,12 @@ def _selftest_air_start():
         RUNNER_EMA_FRESH, W3_MON_CFG, W3_HL_CFG, W3_HF_CFG, C5_SETTLE, C5_IMU_F32 = 1, None, _W3.W3_HL_DEFAULT, None, None, False
         IMU_MOUNT_BIAS_DEG[0], IMU_MOUNT_BIAS_DEG[1] = 0.0, 0.0            # 기울기 수치를 대본 그대로(장착 편향 보정은 이 시험 대상이 아님)
         # ── (e) 키·명세 ──
-        assert KEW3_KEYS == (K1, K2, K3) == ("stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800",
-                                             "stand_kew3qa_g21a_g24ra_w3s3d15800"), KEW3_KEYS
-        s1, s2, s3 = (KEW3_SPECS[k] for k in KEW3_KEYS)
+        assert KEW3_KEYS[:3] == (K1, K2, K3) == ("stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800",
+                                                 "stand_kew3qa_g21a_g24ra_w3s3d15800"), KEW3_KEYS
+        # 1010 넷째 키(새 몸 종종걸음): 셋째 명세에서 걷기 키만 다르다 — 앞의 세 키는 그대로
+        assert KEW3_KEYS[3:] == (KEW3NBJ_CKPT_KEY,) == ("stand_kew3qa_g21a_g24ra_w3nbj2_16299",), KEW3_KEYS
+        assert KEW3_SPECS[KEW3NBJ_CKPT_KEY] == KEW3_SPECS[K3]._replace(w3=_W3.W3NBJ_CKPT_KEY) and _W3.W3NBJ_CKPT_KEY != _W3.W3S3D_CKPT_KEY
+        s1, s2, s3 = (KEW3_SPECS[k] for k in KEW3_KEYS[:3])
         assert s1.air is None and s2.air is None and s3.air == AIR_KEY, (s1.air, s2.air, s3.air)
         assert s3 == s2._replace(air=AIR_KEY) and s3.ke == s2.ke == "stand_c5kr_g21a_g24ra" and s3.requiet == s2.requiet == (2.0, 0.3, "both"), s3
         assert KeW3Spec(w3="w", ke="k", handoff="carry", settle_quiet_s=0.5) == KeW3Spec("w", "k", "carry", 0.5, None, None), "명세 기본값(requiet None·air None)"
@@ -2361,12 +2409,12 @@ def _selftest_air_start():
                 _kew3_unregister()
         assert not EXPERIMENTAL_KEW3 and not KEW3_CKPTS
         enable_experimental_kew3()
-        assert [k for k, s in KEW3_CKPTS.items() if s.air is not None] == [K3], "공중·착지 정책이 있는 등록 키가 셋째 합성 키 하나가 아님"
+        assert [k for k, s in KEW3_CKPTS.items() if s.air is not None] == [K3, KEW3NBJ_CKPT_KEY], "공중·착지 정책이 있는 등록 키가 셋째·넷째 합성 키가 아님"
         assert CHECKPOINTS[K3] == CHECKPOINTS[K2] == CHECKPOINTS["stand_crouch_g21a"] and CKPT_DEFAULT_POSE[K3] == CKPT_DEFAULT_POSE[K2], "셋째 키의 이름 기반 계약 ≠ 둘째 키(KE 서기 = G21a)"
         assert _ckpt_policy_dirs(K3) == _ckpt_policy_dirs(K2) + [CHECKPOINTS[AIR_KEY]] and len(_ckpt_policy_dirs(K2)) == 3
         assert _kew3_expand_required((K3,)) == (K3, s3.w3, s3.ke, AIR_KEY) and _kew3_expand_required((K2,)) == (K2, s2.w3, s2.ke)
         rejected = w3_keys + [K1, K2]
-        assert _W3.W3S3D_CKPT_KEY in rejected and set(rejected) | {K3} == set(W3_CKPTS), (rejected, sorted(W3_CKPTS))
+        assert _W3.W3S3D_CKPT_KEY in rejected and _W3.W3NBJ_CKPT_KEY in rejected and set(rejected) | {K3, KEW3NBJ_CKPT_KEY} == set(W3_CKPTS), (rejected, sorted(W3_CKPTS))
         for k in rejected:
             why = hang_arm_reject(k, True)
             assert why and "hang_arm 불가" in why and K3 in why and K1 not in why and K2 not in why, (k, why)
@@ -3315,6 +3363,53 @@ def _selftest_frame_gate():
     if bad:
         raise AssertionError(f"프레임 게이트 케이스 실패: {bad}")
     return f"판정 케이스 {len(cases)}/{len(cases)} 통과"
+
+
+def _selftest_body_config():
+    """1010 구성 불일치 가드(body_config_verdict·body_config_gate): 네 조합(새 몸 키 × 선언 유/무, 원래 몸 걷기 키 × 선언 유/무) + 서기 전용 키 + 부분·초과 선언 + 게이트.
+    노드 경로(기동 거부 exit 2·걷기 켜기 응답)는 jetson/scripts/selftest_w3_bridge_node.py 의 '구성 불일치 가드' 시나리오가 본다."""
+    HR = ("left_hip_r_joint", "right_hip_r_joint")
+    NEW_W3, NEW_KW = _W3.W3NBJ_CKPT_KEY, KEW3NBJ_CKPT_KEY
+    OLD_W3, OLD_KW = _W3.W3S3D_CKPT_KEY, (KEW3_CKPT_KEY, KEW3Q_CKPT_KEY, KEW3QA_CKPT_KEY)
+    assert _W3.W3_REQUIRED_MECH_FIXED == {NEW_W3: HR}, _W3.W3_REQUIRED_MECH_FIXED
+    assert w3_walk_key(NEW_KW) == NEW_W3 and w3_walk_key(NEW_W3) == NEW_W3 and all(w3_walk_key(k) == OLD_W3 for k in OLD_KW) and w3_walk_key(OLD_W3) == OLD_W3
+    assert all(w3_walk_key(k) is None for k in ("stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra", "stand_crouch_g21h", "stand_v18b", "march_v5b"))
+    # ① 새 몸 키 × 선언 없음 → 라이브 기동 거부(걷기도 거부)
+    for k in (NEW_W3, NEW_KW):
+        live, walk = body_config_verdict(k, ())
+        assert live and walk and "구성 불일치" in live and "기구 고정" in live and "없음" in live, (k, live)
+    # ② 새 몸 키 × 선언(좌우 hip_r) → 통과
+    for k in (NEW_W3, NEW_KW):
+        assert body_config_verdict(k, HR) == (None, None) == body_config_verdict(k, HR[::-1]), k
+    # ③ 원래 몸 걷기 키 × 선언 → 기동은 허용, 걷기 켜기만 거부
+    for k in (OLD_W3,) + OLD_KW + (_W3.W3_CKPT_KEY,):
+        live, walk = body_config_verdict(k, HR)
+        assert live is None and walk and "걷기 켜기 거부" in walk and "서기·회복은 계속" in walk, (k, live, walk)
+    # ④ 원래 몸 걷기 키 × 선언 없음 → 종전 그대로
+    for k in (OLD_W3,) + OLD_KW + (_W3.W3_CKPT_KEY,):
+        assert body_config_verdict(k, ()) == (None, None), k
+    # 서기·회복 전용 키: 선언이 있든 없든 건드리지 않는다
+    for k in ("stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_crouch_g21h", "stand_v18b"):
+        assert body_config_verdict(k, ()) == (None, None) == body_config_verdict(k, HR), k
+    # 더 막는 쪽: 부분 선언(한쪽만)·초과 선언(다른 관절까지)·다른 관절 선언은 새 몸 키에서 전부 거부, 원래 몸 걷기 키는 선언이 하나라도 있으면 걷기 거부
+    for bad in (HR[:1], HR + ("left_knee_joint",), ("left_knee_joint",)):
+        assert body_config_verdict(NEW_KW, bad)[0] is not None, bad
+        assert body_config_verdict(KEW3QA_CKPT_KEY, bad) [1] is not None and body_config_verdict(KEW3QA_CKPT_KEY, bad)[0] is None, bad
+    # 게이트: 켜기만 거부, 끄기·정지·명령 변경·사유 없음은 그대로(같은 객체)
+    on = {"accepted": True, "why": "ok", "action": "set_want", "want": True, "cmd": (0.06, 0.0, 0.0), "hl": False}
+    off = dict(on, want=False); chg = dict(on, action="set_cmd"); stop = dict(on, action="stop")
+    why = body_config_verdict(KEW3QA_CKPT_KEY, HR)[1]
+    g = body_config_gate(on, why)
+    assert g == {"accepted": False, "why": why, "action": "none", "want": None, "cmd": None, "hl": None}
+    assert body_config_gate(off, why) is off and body_config_gate(chg, why) is chg and body_config_gate(stop, why) is stop and body_config_gate(on, None) is on
+    with open(__file__, encoding="utf-8") as _f:
+        src = _f.read()
+    # 노드 연결(소스 대조 — 바늘 문자열은 이 줄 자신과 겹치지 않게 이어 붙인다)
+    n1 = "dec = body_config_" + "gate(dec, self.w3_body_block)"; n2 = "self.w3_body_" + "block = _body_walk_why"
+    n3 = "_body_live_why, _body_walk_why = body_config_" + "verdict(args.checkpoint"; n4 = "--live 기동 불가: {_body_" + "live_why}"
+    assert src.count(n1) == 1 and src.count(n2) == 1, "노드 연결(걷기 켜기 게이트·사유 보관) 누락"
+    assert src.count(n3) == 1 and src.count(n4) == 1, "기동 거부 연결 누락"
+    return "네 조합(새 몸 키 × 선언 없음 = 라이브 거부 · 새 몸 키 × 좌우 hip_r 선언 = 통과 · 원래 몸 걷기 키 × 선언 = 걷기 켜기만 거부 · 원래 몸 걷기 키 × 선언 없음 = 종전) · 서기 전용 키 무관 · 부분·초과 선언 거부 · 게이트는 켜기만"
 
 
 def _selftest_mech_fixed_map():
@@ -4667,7 +4762,7 @@ def _selftest_kew3(key=None):
         assert spec.handoff == "carry" and spec.settle_quiet_s == 0.5 and spec.w3 == _W3.W3S3D_CKPT_KEY and C5_EXTRA[spec.ke]["det"]["early"] is not None
         # 1008: 합성 키 = 정확히 셋(등록 순서 = 명세 순서). 첫 키의 이름·명세는 그대로(requiet 없음), 둘째 키는 requiet 하나만 다르다.
         # 셋째 키(공중 정책 시작)는 둘째 키에 공중·착지 서기 정책 air 하나만 더한 것 — 앞의 두 키는 air None(hang_arm 거부 그대로).
-        assert KEW3_KEYS == (KEW3_CKPT_KEY, KEW3Q_CKPT_KEY, KEW3QA_CKPT_KEY) == (
+        assert KEW3_KEYS[3:] == (KEW3NBJ_CKPT_KEY,) and KEW3_KEYS[:3] == (KEW3_CKPT_KEY, KEW3Q_CKPT_KEY, KEW3QA_CKPT_KEY) == (
             "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3s3d15800"), KEW3_KEYS
         assert KEW3_SPECS[KEW3QA_CKPT_KEY] == KEW3_SPECS[KEW3Q_CKPT_KEY]._replace(air="stand_crouch_g21h"), KEW3_SPECS[KEW3QA_CKPT_KEY]
         assert KEW3_SPECS[KEW3_CKPT_KEY].air is None and KEW3_SPECS[KEW3Q_CKPT_KEY].air is None
@@ -5259,6 +5354,7 @@ def run_selftest(required=()):
              ("게인 정책", _selftest_gains),
              ("프레임 게이트", _selftest_frame_gate),
              ("기구 고정 선언·맵 사본 일치(1009)", _selftest_mech_fixed_map),
+             ("구성 불일치 가드 — 걷기 키의 요구 기구 구성 ↔ 맵 선언(1010)", _selftest_body_config),
              ("중력 게이트", _selftest_grav_gate),
              ("IMU 장착 편향", _selftest_imu_mount),
              ("롤 보정기", _selftest_roll_comp),
@@ -5675,6 +5771,15 @@ def main():
 
     # 프레임 변환 상수 — 하드웨어맵 결함 시 여기서 하드 페일 (드라이런 포함 기동 차단)
     frames = load_frame_map()
+    # 1010 구성 불일치 가드: 정책 키의 요구 기구 구성 ↔ 맵의 mech_fixed 선언. 요구 없는 키·선언 없는 맵은 (None, None) = 종전 그대로
+    _body_live_why, _body_walk_why = body_config_verdict(args.checkpoint, getattr(frames, "mech_fixed", ()))
+    if _body_live_why is not None:
+        if args.live:
+            print(f"[거부] --live 기동 불가: {_body_live_why}", file=sys.stderr)
+            return 2
+        print(f"[경고] 드라이런: {_body_live_why} (--live 는 거부된다)", file=sys.stderr)
+    elif _body_walk_why is not None:
+        print(f"[경고] {_body_walk_why}", file=sys.stderr)
     if args.live:
         bad = frames.gain_mismatches()
         if bad and not args.force_gains:
@@ -5727,6 +5832,8 @@ def main():
             # 1009 기구 고정 관절(맵 선언) — 송출 목표를 관절 0° 로 덮을 JOINT_ORDER 인덱스. 없으면 빈 목록 = 종전 그대로.
             self.mech_fixed = [j for j in JOINT_ORDER if j in getattr(frames, "mech_fixed", ())]
             self._mech_fixed_idx = [JOINT_ORDER.index(j) for j in self.mech_fixed]
+            # 1010 구성 불일치 가드: 걷기 켜기 거부 사유(없으면 None = 종전 그대로). 기동 때 한 번 정한다(맵·키는 실행 중 안 바뀐다)
+            self.w3_body_block = _body_walk_why
             self.live = bool(args.live)
             self.joint_deg = {}         # {관절: '모터 인코더 프레임' deg} — 변환 전 원본
             self.joint_ts = 0.0
@@ -6034,6 +6141,7 @@ def main():
                                     **({"cmd_now": tuple(self.core.cmd)} if self.core.w3cmd else {}))
             dec = w3_monitor_gate(dec, self.core.w3mon)   # 1007 감시(--w3-monitor 일 때만): 켜기 거부만 더한다
             dec = runner_enable_gate(dec, self.core.runner)   # 1007 합성 러너: KE 회복 모드 중 켜기 거부(사유는 응답 why). 종전 러너는 dec 그대로
+            dec = body_config_gate(dec, self.w3_body_block)   # 1010 구성 불일치: 원래 몸 걷기 키 × 기구 고정 맵 → 켜기 거부(사유는 응답 why). 없으면 dec 그대로
             act = dec["action"]
             if act in ("estop", "stop"):
                 self._on_cmd_base({"cmd": act})        # 종전 경로(estop = STOP_ALL 즉시·비활성 / stop = ge 0)
@@ -6306,6 +6414,8 @@ def main():
                 dbg["guard_mode"] = self.guard_mode
             if self.mech_fixed:            # 1009 기구 고정 선언이 있을 때만 필드 추가(종전 스키마 불변)
                 dbg["mech_fixed"] = list(self.mech_fixed)
+                if self.w3_body_block is not None:      # 1010: 걷기 켜기 거부 사유(구성 불일치일 때만 — 없으면 필드 자체가 없다)
+                    dbg["w3_body_block"] = self.w3_body_block
             self.pub_dbg.publish(String(data=json.dumps(dbg)))
             dbg.update(self.errlog.fields(now, self.fb_age))   # 1007 블랙박스 전용 — 발행한 뒤에 덧붙인다(디버그 토픽 내용 불변)
             self._bb_write(dbg)
@@ -6699,6 +6809,8 @@ def main():
                                  "hh_ref": (None if not self.core.hh_ref_set else round(self.core.hh.ref, 5))}
             if self.mech_fixed:            # 1009 기구 고정 선언이 있을 때만 필드 추가(종전 스키마 불변): 목표 0° 로 덮인 관절(피드백은 stage8 합성값)
                 dbg["mech_fixed"] = list(self.mech_fixed)
+                if self.w3_body_block is not None:      # 1010: 걷기 켜기 거부 사유(구성 불일치일 때만 — 없으면 필드 자체가 없다)
+                    dbg["w3_body_block"] = self.w3_body_block
             if self.core.w3:               # 1006 W3 실험 경로에서만 필드 추가(종전 스키마 불변)
                 dbg["w3"] = self.core.runner._w3_clock.snapshot()
             if self.core.w3cmd:            # 1007 W3 명령 채널 키에서만: 리드 발·헤딩 고리 상태(정책이 받은 wz 는 obs[32])

@@ -404,9 +404,30 @@ class W3HeadingLoop:
 
 
 #: 브리지 W3 키 명세 — 키 → (run 상대 경로, 모델, 태스크, W3Config, 명령 채널 범위|None). None = 명령 (0,0,0) 고정(W3-A).
+# ------------------------------------------------------------------ 1010 새 몸 종종걸음 W3S3dNBj seed 2 -16299 (**실물 미검증 · 젯슨 미배포**)
+#: 새 몸 = 골반 회전 hip_r 양쪽을 0° 에 굳힌 구성(하드웨어맵 mech_fixed, 16.26 kg). 근거 reports/real_1009/NEWBODY_WALK.md §9·§11.
+#: run_rel 은 학습 run 자체가 아니라 그 아래 **배포 계약 폴더**(deploy_16299/{exported, params/env.yaml})다 — 학습 run 의 env.yaml 은 관측 감싸개
+#: (nb_obs_fixed_zero) 때문에 브리지 계약 파서가 관측 필터를 못 읽는다(reports/real_1009/newbody/make_deploy_contract.py 가 풀어 쓴 사본을 만든다).
+#: 굳은 관절의 관측 0 은 러너가 아니라 stage8 의 기구 고정 합성 피드백이 만든다 → **하드웨어맵에 mech_fixed 선언이 있는 구성에서만 쓴다.**
+W3NBJ_CKPT_KEY = "stand_w3s3dnbj2_16299"
+W3NBJ_RUN_REL = "logs/rsl_rl/biped12_stepb0/2026-10-10_03-05-58_w3s3dnbj_s2_from_15800/deploy_16299"
+W3NBJ_MODEL = "model_16299.pt"
+W3NBJ_TASK = "Biped12-HangStand-W3S3dNBj-v0"
+#: 위상·리드 발 규칙은 W3S3d 와 같다(학습 env.yaml events.w3_gait.params 동일). 명령은 제자리·앞·뒤만 학습했다(옆·회전 범주 0).
+W3NBJ_CONFIG = W3S3D_CONFIG
+#: 명령 한계: 앞 0.03–0.06(시뮬 판정이 0.06 까지 — 학습은 0.10 까지지만 재지 않았다) · 뒤·옆·회전 = 0 만(범위 (0, 0) → 0 이 아닌 값은 전부 거부).
+#: 뒤는 학습 분포에 있으나 판정하지 않아 닫아 둔다. 0 은 언제나 허용(제자리).
+W3NBJ_CMD_LIMITS = W3CmdLimits(vx_fwd=(0.03, 0.06), vx_back=(0.0, 0.0), vy=(0.0, 0.0), wz=(0.0, 0.0))
+#: 1010 걷기 키의 **요구 기구 구성** — {걷기 키: 기구 고정(하드웨어맵 "mech_fixed": true)이어야 하는 관절 집합}. 여기 없는 걷기 키 = 기구 고정이 없는 구성(원래 몸)에서 학습.
+#: 브리지가 기동·걷기 켜기에서 맵 선언과 대조한다(rl_bridge_node.body_config_verdict): 요구가 있는 키는 선언이 **정확히 이 집합**일 때만 --live,
+#: 요구가 없는 걷기 키는 맵에 기구 고정 선언이 하나라도 있으면 걷기 켜기 거부(서기·회복은 그대로). 근거: 시뮬에서 원래 몸 걷기 정책은 새 몸에서 뒤로 간다
+#: (앞 0.06 명령에 −0.032 m/s, reports/real_1009/NEWBODY_WALK.md §4), 새 몸 걷기 정책은 굳은 관절 관측 0(stage8 합성 피드백)으로만 학습됐다.
+W3_REQUIRED_MECH_FIXED = {W3NBJ_CKPT_KEY: ("left_hip_r_joint", "right_hip_r_joint")}
+
 W3_SPECS = {
     W3_CKPT_KEY: (W3_RUN_REL, W3_MODEL, W3_TASK, W3_DEFAULT, None),
     W3S3D_CKPT_KEY: (W3S3D_RUN_REL, W3S3D_MODEL, W3S3D_TASK, W3S3D_CONFIG, W3S3D_CMD_LIMITS),
+    W3NBJ_CKPT_KEY: (W3NBJ_RUN_REL, W3NBJ_MODEL, W3NBJ_TASK, W3NBJ_CONFIG, W3NBJ_CMD_LIMITS),
 }
 W3_KEYS = tuple(W3_SPECS)
 

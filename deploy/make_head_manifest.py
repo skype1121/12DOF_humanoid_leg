@@ -81,7 +81,8 @@ RECORD_FILES = [f"{CAND}/OPERATOR_COMMANDS.md"]
 #: 1008 오후: 공중·착지 서기 정책(G21h) 단독 키와 그것을 쓰는 셋째 합성 키 — G21h 정책 폴더(exported + params/env.yaml)가 새로 실린다.
 POLICY_KEYS = ["stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra", "stand_w3s3d_15800",
                "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800",
-               "stand_crouch_g21h", "stand_kew3qa_g21a_g24ra_w3s3d15800"]
+               "stand_crouch_g21h", "stand_kew3qa_g21a_g24ra_w3s3d15800",
+               "stand_w3s3dnbj2_16299", "stand_kew3qa_g21a_g24ra_w3nbj2_16299"]      # 1010 새 몸 종종걸음(배포 계약 폴더 deploy_16299)
 #: 진입점별 import 사슬 표에만 쓰는 목록(젯슨에서 ~/rl_calib 사본으로 도는 것 — 저장소 사본 기준으로 사슬을 적는다)
 ENTRY_CALIB = ["jetson/scripts/hang_stand.py", "jetson/scripts/boot_pose_check.py", "jetson/scripts/release_all.py",
                "jetson/scripts/stage8_cmd.py", "jetson/scripts/ping_all.py", "jetson/scripts/imu_adapter_node.py",

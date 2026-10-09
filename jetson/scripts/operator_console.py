@@ -107,7 +107,8 @@ CKPT_CHOICES = ["stand_crouch_g12", "stand_crouch_g21a", "stand_c5_g21a_g24ra", 
 #   G21h 를 서기 정책 전체로 바꾼 구성은 지면 회복이 기준 미달이라 기각됐다(같은 문서 §9) — 그래서 공중·착지 구간에만 쓴다. 시뮬 통과는 실물 성공 확률이 아니다(실물 미검증).
 #   **이 키를 메뉴에 두는 것은 3 단 구성의 시뮬 평가(AIR2 — 같은 문서 §10, 이 변경 시점에는 사전 등록만·미실행)가 기준을 채운다는 전제다 —
 #   미달이면 이 줄을 종전 키(stand_kew3q_…)로 되돌린다**(그러면 방식 기본값도 종전 "ground" 로 돌아간다 — MODE_DEFAULT 는 이 키에서 나온다).
-CKPT_MENU_KEYS = ("stand_kew3qa_g21a_g24ra_w3s3d15800",)
+# 1010: 새 몸(hip_r 기구 고정) 종종걸음 키를 **선택지로만** 더한다 — 기본값(첫 항목)은 그대로다. 기구가 고정된 구성에서만 고를 것(하드웨어맵 mech_fixed).
+CKPT_MENU_KEYS = ("stand_kew3qa_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3nbj2_16299")
 CKPT_DEFAULT = CKPT_MENU_KEYS[0]
 #: 시험 방식 기본값 — 기본 정책이 공중 정책 시작을 받는 키면 "air"(공중에서 정책 시작 → 착지), 아니면 종전대로 "ground". 새 TrialState 가 같은 규칙으로 시작한다.
 MODE_DEFAULT = default_mode(CKPT_DEFAULT)
@@ -122,6 +123,8 @@ WALK_BRIDGE_ARGS = {
     "stand_kew3q_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
     # 1008 오후 셋째 합성 키(둘째 합성 키 + 공중·착지 구간 서기 정책 G21h — 공중 정책 시작을 받는 키 · 실물 미검증) — 같은 실험 플래그. 위 세 키의 인자는 그대로다.
     "stand_kew3qa_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
+    # 1010 넷째 합성 키(새 몸 종종걸음 — hip_r 기구 고정 구성 전용 · 실물 미검증) — 같은 실험 플래그. 위 네 키의 인자는 그대로다.
+    "stand_kew3qa_g21a_g24ra_w3nbj2_16299": ["--experimental-w3", "--experimental-kew3"],
 }
 #: 정책 로드(--live)에만 더 붙는 인자. 헤딩 고리는 기본 off — 시뮬 판정: 왕복에서 기준 미달(reports/gen_w3/HEADING_SESSION_1007.md §7).
 #: 셀프테스트 게이트에는 붙이지 않는다: 브리지 --selftest 의 'W3 감시 2 차 대비책'·'헤딩 고리 고장 판별 분리' 항목은 고리 설정이 켜진 채로만
@@ -2391,12 +2394,15 @@ def selftest_walk(directory):
                             "stand_c5krh_g21a_g24ra", "stand_crouch_g12_ema0", "stand_crouch_g11a"]
     # 1008 정리: 고를 수 있는 정책 = 합성 키 하나(기본값도 그것). 그 밖의 아는 키는 정책 로드·시험 설정에서 사유를 대고 거부된다.
     # 1008 오후: 그 한 키 = 공중 정책 시작을 받는 합성 키(종전 합성 키 + 공중·착지 구간 서기 정책 G21h). 종전 메뉴 키(stand_kew3q_…)는 "아는 키"로 내려갔다.
-    assert CKPT_MENU_KEYS == ("stand_kew3qa_g21a_g24ra_w3s3d15800",) and CKPT_MENU == list(CKPT_MENU_KEYS) and CKPT_DEFAULT == CKPT_MENU[0]
+    # 1010: 새 몸 종종걸음 키는 선택지로만 뒤에 붙었다 — 기본값은 첫 항목 그대로
+    assert CKPT_MENU_KEYS == ("stand_kew3qa_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3nbj2_16299") and CKPT_MENU == list(CKPT_MENU_KEYS) \
+        and CKPT_DEFAULT == CKPT_MENU[0] == "stand_kew3qa_g21a_g24ra_w3s3d15800"
     assert "stand_kew3q_g21a_g24ra_w3s3d15800" in CKPT_ALL and "stand_kew3q_g21a_g24ra_w3s3d15800" not in CKPT_MENU
     # 시험 방식 기본값: 공중 정책 시작을 받는 키만 "air", 그 밖(정리된 키·모르는 키)은 종전대로 "ground"
     assert walk_air_start(CKPT_DEFAULT) and MODE_DEFAULT == "air" == default_mode(CKPT_DEFAULT) == TrialState(CKPT_DEFAULT).mode == TRIAL.mode
-    assert [k for k in CKPT_ALL if walk_air_start(k)] == [CKPT_DEFAULT] and all(default_mode(k) == "ground" == TrialState(k).mode
-                                                                             for k in [x for x in CKPT_ALL if x != CKPT_DEFAULT] + ["stand_v7", None])
+    _nbj = "stand_kew3qa_g21a_g24ra_w3nbj2_16299"      # 1010 새 몸 종종걸음 키(공중 정책 시작을 받는 둘째 키)
+    assert [k for k in CKPT_ALL if walk_air_start(k)] == [CKPT_DEFAULT, _nbj] and default_mode(_nbj) == "air" \
+        and all(default_mode(k) == "ground" == TrialState(k).mode for k in [x for x in CKPT_ALL if x not in (CKPT_DEFAULT, _nbj)] + ["stand_v7", None])
     _flags = ["--experimental-w3", "--experimental-kew3"]
     started = []
     with patch.object(RUN, "start", side_effect=lambda key, argv, cwd=None: (started.append((key, list(argv))), (True, "mock"))[1]):
@@ -2457,7 +2463,8 @@ def selftest_walk(directory):
         expect = {W.W3S3D_CKPT_KEY: ["--experimental-w3"],
                   "stand_kew3_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
                   "stand_kew3q_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],       # 1008 둘째 합성 키(허용된 추가)
-                  "stand_kew3qa_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"]}      # 1008 오후 셋째 합성 키(공중 정책 시작 — 허용된 추가)
+                  "stand_kew3qa_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],      # 1008 오후 셋째 합성 키(공중 정책 시작 — 허용된 추가)
+                  "stand_kew3qa_g21a_g24ra_w3nbj2_16299": ["--experimental-w3", "--experimental-kew3"]}    # 1010 넷째 합성 키(새 몸 종종걸음 — 허용된 추가)
         for k, flags in expect.items():
             act_bridge_live({"checkpoint": k})
             ACTIONS["selftest"][0]({"checkpoint": k})
@@ -2467,12 +2474,17 @@ def selftest_walk(directory):
     kew3 = re.search(r'^KEW3_CKPT_KEY = "([A-Za-z0-9_]+)"', src, re.M)
     kew3q = re.search(r'^KEW3Q_CKPT_KEY = "([A-Za-z0-9_]+)"', src, re.M)
     kew3qa = re.search(r'^KEW3QA_CKPT_KEY = "([A-Za-z0-9_]+)"', src, re.M)
+    kew3nbj = re.search(r'^KEW3NBJ_CKPT_KEY = "([A-Za-z0-9_]+)"', src, re.M)      # 1010 넷째 합성 키(새 몸 종종걸음)
     # 1008: 걷기 키 = 1007 의 두 키(이름·순서·표시·인자 불변) + 허용된 추가 한 키(둘째 합성 키 — 갇힘 해소). 그 밖의 키가 끼면 실패.
     # 1008 오후: + 허용된 추가 한 키(셋째 합성 키 — 공중·착지 정책 G21h·공중 정책 시작). 앞의 세 키는 이름·순서·표시·인자 그대로다.
-    assert kew3 and kew3q and kew3qa and set(WALK_KEYS) == {W.W3S3D_CKPT_KEY, kew3[1], kew3q[1], kew3qa[1]} == set(WALK_BRIDGE_ARGS) == set(expect) \
+    # 1010: + 허용된 추가 한 키(넷째 합성 키 — 새 몸 종종걸음). 앞의 네 키는 이름·순서·표시·인자 그대로다.
+    assert kew3 and kew3q and kew3qa and kew3nbj and set(WALK_KEYS) == {W.W3S3D_CKPT_KEY, kew3[1], kew3q[1], kew3qa[1], kew3nbj[1]} == set(WALK_BRIDGE_ARGS) == set(expect) \
         and WALK_CKPTS == list(WALK_KEYS)
-    assert list(WALK_KEYS) == [W.W3S3D_CKPT_KEY, kew3[1], kew3q[1], kew3qa[1]] == list(expect) \
-        == ["stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3s3d15800"], list(WALK_KEYS)
+    assert list(WALK_KEYS) == [W.W3S3D_CKPT_KEY, kew3[1], kew3q[1], kew3qa[1], kew3nbj[1]] == list(expect) \
+        == ["stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3s3d15800",
+            "stand_kew3qa_g21a_g24ra_w3nbj2_16299"], list(WALK_KEYS)
+    assert WALK_KEYS[kew3nbj[1]]["composite"] is True and WALK_KEYS[kew3nbj[1]]["air_start"] is True and WALK_BRIDGE_ARGS[kew3nbj[1]] == WALK_BRIDGE_ARGS[kew3qa[1]] \
+        and all(s in WALK_KEYS[kew3nbj[1]]["label"] for s in ("새 몸(hip_r 고정)", "제자리·앞만", "실물 미검증")), WALK_KEYS[kew3nbj[1]]
     assert WALK_KEYS[W.W3S3D_CKPT_KEY]["composite"] is False and WALK_KEYS[kew3[1]]["composite"] is True
     assert WALK_KEYS[W.W3S3D_CKPT_KEY] == {"composite": False, "label": "걷기 실험 · W3 단독"}
     assert WALK_KEYS[kew3[1]] == {"composite": True, "label": "걷기 실험 · 서기 KE + 걷기 W3 합성"}
@@ -2486,7 +2498,7 @@ def selftest_walk(directory):
     assert WALK_KEYS[kew3qa[1]] == {"composite": True, "air_start": True,
                                     "label": "걷기 실험 · 서기 KE + 걷기 W3 합성 + 갇힘 해소 + 공중·착지 정책(G21h) · 공중 정책 시작 가능 · 실물 미검증"}
     assert WALK_BRIDGE_ARGS[kew3qa[1]] == WALK_BRIDGE_ARGS[kew3q[1]] == WALK_BRIDGE_ARGS[kew3[1]]
-    assert [k for k in WALK_KEYS if "air_start" in WALK_KEYS[k]] == [kew3qa[1]] == [k for k in WALK_KEYS if walk_air_start(k)] and not walk_air_start("stand_v7")
+    assert [k for k in WALK_KEYS if "air_start" in WALK_KEYS[k]] == [kew3qa[1], kew3nbj[1]] == [k for k in WALK_KEYS if walk_air_start(k)] and not walk_air_start("stand_v7")
     assert len({v["label"] for v in WALK_KEYS.values()}) == len(WALK_KEYS), "걷기 키의 표시 이름이 겹친다(드롭다운에서 구분 불가)"
     # 합성 키 ↔ 명세 = 브리지 KEW3_SPECS 원문: 두 키 모두 걷기 W3S3d, 갇힘 해소(requiet)는 둘째 키에만
     specs = re.findall(r'(KEW3Q?_CKPT_KEY): KeW3Spec\(w3=_W3\.([A-Z0-9_]+), ke="([a-z0-9_]+)", handoff="carry", settle_quiet_s=0\.5(\)|,\s*requiet=\(2\.0, 0\.3, "both"\)\))', src)
@@ -2497,12 +2509,16 @@ def selftest_walk(directory):
     # 콘솔이 공중 방식을 받아 놓고 브리지가 hang_arm 을 거부하는(또는 그 반대) 어긋남을 여기서 잡는다.
     spec_block = src.split("\nKEW3_SPECS = {", 1)[1].split("\nKEW3_KEYS = ", 1)[0]
     air_specs = re.findall(r'(KEW3[A-Z]*_CKPT_KEY): KeW3Spec\((?:[^()]|\([^()]*\))*?air="([a-z0-9_]+)"\)', spec_block)
-    assert air_specs == [("KEW3QA_CKPT_KEY", "stand_crouch_g21h")] and spec_block.count("air=") == 1, (air_specs, spec_block.count("air="))
+    # 1010: 넷째 합성 키는 사전 뒤에 KEW3_SPECS[KEW3NBJ_CKPT_KEY] = KeW3Spec(...) 로 덧붙는다(앞의 세 명세 원문은 그대로) — air 는 같은 공중·착지 키
+    nbj_spec = re.findall(r'KEW3_SPECS\[(KEW3[A-Z]*_CKPT_KEY)\] = KeW3Spec\(w3=_W3\.([A-Z0-9_]+), ke="([a-z0-9_]+)", handoff="carry", settle_quiet_s=0\.5,\s*'
+                          r'requiet=\(2\.0, 0\.3, "both"\), air="([a-z0-9_]+)"\)', spec_block)
+    assert nbj_spec == [("KEW3NBJ_CKPT_KEY", "W3NBJ_CKPT_KEY", "stand_c5kr_g21a_g24ra", "stand_crouch_g21h")], nbj_spec
+    assert air_specs == [("KEW3QA_CKPT_KEY", "stand_crouch_g21h")] and spec_block.count("air=") == 2, (air_specs, spec_block.count("air="))
     assert re.search(r'KEW3QA_CKPT_KEY: KeW3Spec\(w3=_W3\.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0\.5,\s*'
                      r'requiet=\(2\.0, 0\.3, "both"\), air="stand_crouch_g21h"\)', spec_block), "브리지 셋째 합성 키 명세가 기대와 다름"
     assert re.search(r'^CHECKPOINTS\["stand_crouch_g21h"\] = G21H_EXPORTED$', src, re.M), "브리지에 공중·착지 서기 키(stand_crouch_g21h) 등록이 없음"
     assert not re.search(r'^(CHECKPOINTS|C5_PAIRS|C5_EXTRA)\["stand_c5kr_g21h_g24ra"\]', src, re.M), "기각된 G21h KE 키가 브리지에 등록돼 있음"
-    assert len(re.findall(r'KEW3[A-Z]*_CKPT_KEY: KeW3Spec\(', spec_block)) == 3 == sum(1 for k in WALK_KEYS if WALK_KEYS[k]["composite"]), "브리지 합성 키 수 ≠ 콘솔 합성 걷기 키 수"
+    assert len(re.findall(r'KEW3[A-Z]*_CKPT_KEY: KeW3Spec\(', spec_block)) == 3 and 3 + len(nbj_spec) == sum(1 for k in WALK_KEYS if WALK_KEYS[k]["composite"]), "브리지 합성 키 수 ≠ 콘솔 합성 걷기 키 수"
     assert all(k.startswith("stand") for k in WALK_KEYS) and not set(WALK_KEYS) & set(CKPT_CHOICES) and CKPT_ALL[:len(CKPT_CHOICES)] == CKPT_CHOICES
     for flag in ("--experimental-w3", "--experimental-kew3", "--w3-heading-loop"):
         assert f'ap.add_argument("{flag}"' in src, flag
@@ -3350,7 +3366,7 @@ def selftest():
                       "text('policyOnNote',t.mode==='air'?POLICY_ON_AIR.note:POLICY_ON_GROUND.note)",
                       "w.mode==='air'?'공중·착지 정책(착지 정착 뒤 KE 인계)'"):
             assert piece in page, f"콘솔 페이지에 없음: {piece[:60]}"
-        assert f'<option value="{CKPT_DEFAULT}">' in page and page.count("<option value=\"stand_") == len(CKPT_MENU) == 1
+        assert f'<option value="{CKPT_DEFAULT}">' in page and page.count("<option value=\"stand_") == len(CKPT_MENU) == 2      # 1010: 기본 키 + 새 몸 종종걸음 키(선택지 추가)
         src = Path(__file__).with_name("rl_bridge_node.py").read_text(encoding="utf-8")
         body = src.split("CHECKPOINTS = {", 1)[1].split("\n}\n", 1)[0]
         known = set(re.findall(r'^\s+"([A-Za-z0-9_]+)": os\.path\.join', body, re.M))

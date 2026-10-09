@@ -38,6 +38,8 @@ from rl_walking.deploy.policy_runner_stage4 import PolicyRunnerStage4, yaw_from_
 
 NPZ_DEFAULT = os.path.join(REPO, "log_picture", "w3parity_rec_w3s3d_15800_d3.npz")
 EXPORT = os.path.join(REPO, W.W3S3D_RUN_REL, "exported")
+FIXED = []                      # 1010: --mech-fixed 관절 열(없으면 종전과 같은 계산)
+KEY = W.W3S3D_CKPT_KEY          # 1010: --key 로 바꿀 수 있다(기본 = 종전 W3S3d-15800 — 인자 없이는 종전과 같은 실행)
 TERMS = (("base_ang_vel", 3), ("projected_gravity", 3), ("velocity_commands", 3), ("joint_pos", 12), ("joint_vel", 12), ("actions", 12),
          ("gait_clock", 2), ("feet_contact", 2), ("gyro_ema", 3), ("joint_vel_ema", 12))
 OFF = {}
@@ -147,7 +149,7 @@ def run_bridge(z, meta, e, B, *, stale_yaw=False, qvel_mode="bridge"):
     """[P3] BridgeCore.tick 경로(러너 기본 설정 = 실제 브리지 _make_runner). 중력은 시뮬 원천을 넣는다(모듈 함수 교체 — 쿼터니언 식은 [P5] 별도).
     qvel_mode: "bridge" = 브리지 _tick 의 유한차분(같은 값 반복 시 '머문 틱 수'로 나눔) / "plain" = 단순 유한차분(시뮬 encoder_joint_vel_v2 식).
     헤딩 고리 고장(오차 15°·120 s)이 나면 코어가 걷기를 멈춘다(배포 안전 장치 — 시뮬 기록에는 없음) → 그 틱 전까지만 비교하고 사건을 돌려준다."""
-    key = W.W3S3D_CKPT_KEY
+    key = KEY
     core = B.BridgeCore(key)
     core.reset()
     core.heading_hold = False                     # stand 가족 경로(브리지 stand 시작이 강제)
@@ -217,9 +219,11 @@ def run_chain(z, meta, e, init):
     sim = z["lpf_state"][:, e].astype(np.float64)
     k = np.arange(T) + d + 1
     ok = k < T
-    diff = np.abs(outs[ok] - sim[k[ok]]).max(1)
+    dall = np.abs(outs[ok] - sim[k[ok]])
+    live = [j for j in range(dall.shape[1]) if j not in FIXED]      # 기구 고정 관절은 따로: 시뮬 LPF 는 실제 고정각에서 출발하고(원천은 영점), 그 목표는 브리지가 0° 로 덮는다
+    diff = dall[:, live].max(1)
     return {"max": float(diff.max()), "first5": [float(x) for x in diff[:5]], "after50": float(diff[50:].max()) if len(diff) > 50 else float("nan"),
-            "d": d, "beta": beta}
+            "d": d, "beta": beta, "fixed_max": float(dall[:, FIXED].max()) if FIXED else None, "fixed_after50": float(dall[50:, FIXED].max()) if FIXED and len(dall) > 50 else None}
 
 
 def check_formulas(z, meta, B):
@@ -237,7 +241,13 @@ def main():
     ap.add_argument("--npz", default=NPZ_DEFAULT)
     ap.add_argument("--report", default="")
     ap.add_argument("--envs", default="", help="쉼표 env 목록(기본 전부)")
+    ap.add_argument("--key", default=W.W3S3D_CKPT_KEY, help="1010: 대조할 W3 키(w3_deploy.W3_SPECS) — 정책 폴더 = <run_rel>/exported. 기본 = 종전")
+    ap.add_argument("--mech-fixed", default="", help="1010: 기구 고정 관절(쉼표) — stage8 합성 피드백 계약대로 원천의 그 관절 상대각·속도를 0 으로 넣는다(기본 없음 = 종전)")
     a = ap.parse_args()
+    global EXPORT, KEY
+    if a.key != W.W3S3D_CKPT_KEY:
+        assert a.key in W.W3_SPECS and W.W3_SPECS[a.key][3] == W.W3S3D_CONFIG, f"--key {a.key}: W3_SPECS 에 없거나 위상 설정이 W3S3d 와 다름"
+        KEY = a.key; EXPORT = os.path.join(REPO, W.W3_SPECS[a.key][0], "exported")
     if not os.path.isfile(a.npz):
         print(f"[SKIP] 기록 없음: {a.npz} — rl_walking/scripts/w3_parity_record.py 로 먼저 기록")
         return 0
@@ -245,6 +255,14 @@ def main():
         print(f"[SKIP] export 없음: {EXPORT}")
         return 0
     z, meta = load(a.npz)
+    if a.mech_fixed:
+        _fx = [list(JOINT_ORDER).index(n.strip()) for n in a.mech_fixed.split(",") if n.strip()]
+        FIXED[:] = _fx
+        z = {k: z[k] for k in z.files}
+        _pre = (float(np.abs(z["qpos_rel"][..., _fx]).max()), float(np.abs(z["qvel"][..., _fx]).max()))
+        z["qpos_rel"] = z["qpos_rel"].copy(); z["qvel"] = z["qvel"].copy()
+        z["qpos_rel"][..., _fx] = 0.0; z["qvel"][..., _fx] = 0.0
+        print(f"[mech-fixed] 관절 {a.mech_fixed} 원천 = 영점·속도 0 (바꾸기 전 |상대각| 최대 {_pre[0]:.3e} rad · |속도| 최대 {_pre[1]:.3e} rad/s)")
     N = int(meta["num_envs"])
     envs = [int(x) for x in a.envs.split(",")] if a.envs else list(range(N))
     B = _bridge_mod()
@@ -292,7 +310,8 @@ def main():
                      f"행동 {P3['act_ss']:.2e} — 시뮬 엔코더(발목 유격 안 = 명령값)가 정확히 같은 값을 반복할 때 시뮬 계약(단순 차분)과 다름")
         C1 = run_chain(z, meta, e, init="sim")
         C2 = run_chain(z, meta, e, init="deploy")
-        chk(C1["max"] <= TOL_CHAIN, f"[P4] 체인(시뮬 원시 행동 → 러너 슬루 → 브리지 LPF β{C1['beta']:.2f}) vs 시뮬(지연 {C1['d']} → 슬루 → LPF), LPF 첫 값=실측 qpos: 최대 |Δ| {C1['max']:.2e}")
+        chk(C1["max"] <= TOL_CHAIN, f"[P4] 체인(시뮬 원시 행동 → 러너 슬루 → 브리지 LPF β{C1['beta']:.2f}) vs 시뮬(지연 {C1['d']} → 슬루 → LPF), LPF 첫 값=실측 qpos: 최대 |Δ| {C1['max']:.2e}"
+            + (f" (기구 고정 관절 제외 — 그 관절은 최대 {C1['fixed_max']:.2e} rad·50 틱 뒤 {C1['fixed_after50']:.2e}: 시뮬은 실제 고정각에서 출발)" if FIXED else ""))
         lines.append(f"INFO [P4] 배포 LPF 첫 값(=첫 슬루 출력) 최대 |Δ| {C2['max']:.2e} rad · 첫 5 틱 {['%.1e' % x for x in C2['first5']]} · 50 틱 뒤 {C2['after50']:.1e}"
                      " — 시작 과도만((1−β)ⁿ 감쇠)")
         if e == envs[0]:

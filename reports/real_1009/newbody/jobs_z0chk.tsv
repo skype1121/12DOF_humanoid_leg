@@ -1,0 +1,2 @@
+z0chk_C0_b18_128	128	8	-	push:b:2:18:0.3	-	1
+z0chk_R2pla_b18_128	128	8	left_hip_r_joint,right_hip_r_joint	push:b:2:18:0.3	urdf=/home/ryu/humanoid_leg_test1/rl_walking/assets/biped12_final3_hiprpla.urdf:left_hip_r_joint,right_hip_r_joint	1

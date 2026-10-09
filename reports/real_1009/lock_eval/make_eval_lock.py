@@ -15,6 +15,7 @@ A1 = 'parser.add_argument("--out_tag", type=str, default="rec")\n'
 src = rep(src, A1, A1 +
           'parser.add_argument("--lock_joints", type=str, default="", help="1009: 물리 고정 관절 이름 \',\' 구분 — 위치 한계를 정책 기본자세 ± lock_band_deg 로 묶는다(모터 제거·기계 고정 모사). 정책 행동은 12 차원 그대로")\n'
           'parser.add_argument("--lock_band_deg", type=float, default=0.05, help="1009: 고정 한계 반폭 [deg]")\n'
+          'parser.add_argument("--lock_obs_zero", action="store_true", default=False, help="1010: --lock_joints 관절의 정책 관측 열(joint_pos·joint_vel·joint_vel_ema, 이력 전 프레임)을 정책 입력 직전에 0 으로 — 실물 stage8 의 기구 고정 합성 피드백(위치 영점·속도 0) 계약. 기본 꺼짐 = 종전과 동일")\n'
           'parser.add_argument("--link_urdf", type=str, default="", help="1009: \'URDF경로:링크,링크\' — 이 URDF 의 inertial(질량·질량 중심·관성 텐서)로 해당 링크를 실행 중 덮어쓴다(부품 교체 모사). startup 질량 DR 뒤에 적용")\n'
           'parser.add_argument("--mass_delta", type=str, default="", help="1009: 링크 질량 변화 \'링크:kg,...\' (모터 제거 모사) — 질량 중심 유지, 관성은 질량 비율로 축소. startup 질량 DR 뒤에 적용")\n')
 
@@ -101,6 +102,10 @@ B3 = A3 + '''    if i >= STEPS - 100 or (STEPS_PRE - 25 <= i < STEPS_PRE):      
         _ldv = torch.rad2deg((robot.data.joint_pos[:, _LOCK_IDS] - _LOCK_TGT).abs()).amax(-1)
         _lok = alive & ~term
         lock_dev_max = torch.where(_lok, torch.maximum(lock_dev_max, _ldv), lock_dev_max)
+    if policy2 is not None and i >= STEPS_PRE:      # 1010: 낙상(종료) 틱에 어느 정책이 행동을 냈는가(0 = 서기, 1 = 회복) · 그때까지 외란 뒤 회복 모드 틱 수
+        _lzf = term & alive & (_lz_mode_fall < 0)
+        _lz_mode_fall = torch.where(_lzf, sw_mode.float(), _lz_mode_fall)
+        _lz_rec_ticks_fall = torch.where(_lzf, sw_ticks - sw_ticks_pre_dist, _lz_rec_ticks_fall)
 '''
 src = rep(src, A3, B3)
 
@@ -124,8 +129,42 @@ if _LOCK_IDS:
     P(f"[고정] 관절 {','.join(_LOCK_NAMES)} · 한계 = 기본자세 ± {args_cli.lock_band_deg}° · 전체 구간(사전검사+인계 뒤, 생존 틱) 최대 변위: 전 env {_lm:.4f}° · 사전 검사 통과 env {_lmp:.4f}° · 판정(<0.3°) {'유효' if _lm < 0.3 else '무효!'} · 리셋 직후 어긋남 {_LOCK_SPAWN}°")
 else:
     P("[고정] 없음(대조군)")
+P(f"[고정 관측] --lock_obs_zero {'켬: 열 ' + str(len(_LZ_COLS)) + ' 개를 정책 입력 직전 0 으로 (0 으로 하기 전 값의 |최대| ' + format(_LZ_SEEN, '.4f') + ')' if _LZ_COLS else '끔(정책이 시뮬 값을 봄)'}")
+if policy2 is not None:
+    _lzF = pre_pass & fell & (_lz_mode_fall >= 0); _lzR = _lzF & (_lz_mode_fall > 0.5); _lzS = _lzF & (_lz_mode_fall < 0.5)
+    _lzS0 = _lzS & (_lz_rec_ticks_fall <= 0); _lzS1 = _lzS & (_lz_rec_ticks_fall > 0)
+    P(f"[낙상 시 모드] 사전검사 통과 env 의 인계 뒤 낙상 {int((pre_pass & fell).sum())} (모드 기록 {int(_lzF.sum())}): 회복 모드 중 {int(_lzR.sum())} · 서기 모드 중 {int(_lzS.sum())} "
+      f"(외란 뒤 회복 모드가 한 번도 안 켜짐 {int(_lzS0.sum())} · 켜졌다가 서기로 돌아온 뒤 {int(_lzS1.sum())}) · 회복 모드 중 낙상 env 의 외란 뒤 회복 모드 시간 중앙 {float((_lz_rec_ticks_fall[_lzR] / 50.0).median()) if _lzR.any() else float('nan'):.2f} s")
+    with open(os.path.join(DATA, "log_picture", f"ground_recovery_{args_cli.out_tag}_modefall.csv"), "w") as _lzfh:
+        _lzfh.write("env,pre_pass,fell,mode_at_fall,rec_s_before_fall\\n")
+        for _e in range(N):
+            _lzfh.write(f"{_e},{int(pre_pass[_e])},{int(fell[_e])},{int(_lz_mode_fall[_e])},{float(_lz_rec_ticks_fall[_e]) / 50.0:.2f}\\n")
 ''' + A4
 src = rep(src, A4, B4)
+
+A5 = "obs = env.get_observations()\n"
+B5 = A5 + """_LZ_COLS = []; _lz_mode_fall = torch.full((N,), -1.0, device=dev); _lz_rec_ticks_fall = torch.zeros(N, device=dev)
+if args_cli.lock_obs_zero:      # 1010: 기구 고정 관절 관측 열 = 0 (실물 합성 피드백 계약)
+    assert _LOCK_IDS, "--lock_obs_zero 는 --lock_joints 와 함께"
+    _lzo = 0; _lzJ = len(robot.data.joint_names)
+    for _lzn, _lzd in zip(uenv.observation_manager.active_terms["policy"], uenv.observation_manager.group_obs_term_dim["policy"]):
+        _lzs = 1
+        for _v in (_lzd if isinstance(_lzd, (tuple, list)) else (_lzd,)): _lzs *= int(_v)
+        if _lzn in ("joint_pos", "joint_vel", "joint_vel_ema"):
+            assert _lzs % _lzJ == 0, (_lzn, _lzs)
+            _LZ_COLS += [_lzo + _f * _lzJ + _j for _f in range(_lzs // _lzJ) for _j in _LOCK_IDS]
+        _lzo += _lzs
+    _LZ_PRE = float(obs["policy"][:, _LZ_COLS].abs().max())
+    print(f"[lock_obs_zero] 고정 관절 관측 열 {len(_LZ_COLS)} 개(joint_pos·joint_vel·joint_vel_ema × 이력) 를 정책 입력 직전에 0 으로 · 0 으로 하기 전 첫 관측의 |값| 최대 {_LZ_PRE:.4f}", flush=True)
+_LZ_SEEN = 0.0
+"""
+src = rep(src, A5, B5)
+
+A6 = "        a = torch.zeros(N, J, device=dev) if (policy is None or i < STEPS_PRE) else policy(obs)\n"
+B6 = """        if _LZ_COLS:
+            _LZ_SEEN = max(_LZ_SEEN, float(obs["policy"][:, _LZ_COLS].abs().max())); obs["policy"][:, _LZ_COLS] = 0.0
+""" + A6
+src = rep(src, A6, B6)
 
 dst = os.path.join(R, "rl_walking/scripts/eval_ground_recovery_lock.py")
 open(dst, "w", encoding="utf-8").write(src)

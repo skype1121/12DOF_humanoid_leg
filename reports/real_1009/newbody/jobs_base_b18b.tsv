@@ -1,0 +1,3 @@
+lk_R2pla2_b18_s4_b0	384	8	left_hip_r_joint,right_hip_r_joint	push:b:2:18:0.3	urdf=/home/ryu/humanoid_leg_test1/rl_walking/assets/biped12_final3_hiprpla.urdf:left_hip_a_joint,right_hip_a_joint,left_hip_r_joint,right_hip_r_joint	4
+lk_R2pla2_b18_s5_b0	384	8	left_hip_r_joint,right_hip_r_joint	push:b:2:18:0.3	urdf=/home/ryu/humanoid_leg_test1/rl_walking/assets/biped12_final3_hiprpla.urdf:left_hip_a_joint,right_hip_a_joint,left_hip_r_joint,right_hip_r_joint	5
+lk_R2pla2_b18_s6_b0	384	8	left_hip_r_joint,right_hip_r_joint	push:b:2:18:0.3	urdf=/home/ryu/humanoid_leg_test1/rl_walking/assets/biped12_final3_hiprpla.urdf:left_hip_a_joint,right_hip_a_joint,left_hip_r_joint,right_hip_r_joint	6

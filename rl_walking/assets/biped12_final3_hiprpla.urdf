@@ -1,0 +1,655 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- 변형본(1009): hip_r 링크(모터+하우징)를 PLA 통짜 출력물 211.23 g 로 대체. 원본 biped12_final3.urdf 의 좌·우 hip_r 링크 inertial 만 교체.
+     무게중심·관성 = 링크 메시(483.9 cm3)를 균일 밀도로 본 계산값(가정). 관절 정의·메시·나머지 링크는 원본과 동일. -->
+<robot name="biped12">
+  <link name="base">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.001" />
+      <inertia ixx="1e-06" ixy="0" ixz="0" iyy="1e-06" iyz="0" izz="1e-06" />
+    </inertial>
+  </link>
+  <joint name="base_to_pelvis" type="fixed">
+    <origin xyz="0 0 0" rpy="1.5707963267948966 0 1.5707963267948966" />
+    <parent link="base" />
+    <child link="pelvis" />
+  </joint>
+  <link name="pelvis">
+    <inertial>
+      <origin xyz="-0.000340280364 0.0888260156 -0.0463114886" rpy="0 0 0" />
+      <mass value="7.09929096" />
+      <inertia ixx="0.0551465369" ixy="9.89511628e-05" ixz="6.02098696e-05" iyy="0.0411764503" iyz="0.00686175151" izz="0.0502355535" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/pelvis.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/pelvis.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_hip_f_joint">
+    <inertial>
+      <origin xyz="-0.0110947127 9.01955585e-05 0.00122082775" rpy="0 0 0" />
+      <mass value="0.818788837" />
+      <inertia ixx="0.00074564544" ixy="-2.5150424e-06" ixz="8.696449e-05" iyy="0.00112652873" iyz="-1.05015783e-06" izz="0.00104783042" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/left_hip_f_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/left_hip_f_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="left_hip_f_joint" type="continuous">
+    <origin xyz="0.071 0 0" rpy="0 0 0" />
+    <parent link="pelvis" />
+    <child link="left_hip_f_joint" />
+    <axis xyz="-1 0 0" />
+  </joint>
+  <link name="left_hip_a_joint">
+    <inertial>
+      <origin xyz="0.000188614447 -0.0151611602 -0.0237355934" rpy="0 0 0" />
+      <mass value="0.96740276" />
+      <inertia ixx="0.00203175836" ixy="-1.77856838e-05" ixz="1.66296892e-06" iyy="0.000881160889" iyz="-6.6248374e-05" izz="0.00217041168" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/left_hip_a_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/left_hip_a_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="left_hip_a_joint" type="continuous">
+    <origin xyz="0.0725 0 0.019625" rpy="0 0 0" />
+    <parent link="left_hip_f_joint" />
+    <child link="left_hip_a_joint" />
+    <axis xyz="0 0 -1" />
+  </joint>
+  <link name="left_hip_r_joint">
+    <inertial>
+      <origin xyz="-0.002904 -0.032247 0.00018" rpy="0 0 0" />
+      <mass value="0.21123" />
+      <inertia ixx="1.431833e-03" ixy="-7.721334e-05" ixz="5.133204e-08" iyy="1.856144e-04" iyz="1.310034e-06" izz="1.399089e-03" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/left_hip_r_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/left_hip_r_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="left_hip_r_joint" type="continuous">
+    <origin xyz="0 -0.12405 -0.02" rpy="0 0 0" />
+    <parent link="left_hip_a_joint" />
+    <child link="left_hip_r_joint" />
+    <axis xyz="0 1 0" />
+  </joint>
+  <link name="left_knee_joint">
+    <inertial>
+      <origin xyz="0.0249422167 -0.0227797894 -0.000145278565" rpy="0 0 0" />
+      <mass value="0.906416913" />
+      <inertia ixx="0.00358135958" ixy="9.03350095e-05" ixz="-2.34060129e-06" iyy="0.00065872321" iyz="-3.6131702e-06" izz="0.00356372978" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/left_knee_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/left_knee_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="left_knee_joint" type="continuous">
+    <origin xyz="-0.01985 -0.15827 0.00035" rpy="0 0 0" />
+    <parent link="left_hip_r_joint" />
+    <child link="left_knee_joint" />
+    <axis xyz="-1 0 0" />
+  </joint>
+  <link name="left_ankle_f_joint">
+    <inertial>
+      <origin xyz="0.0246240614 -0.000940844552 0.000154612159" rpy="0 0 0" />
+      <mass value="0.802416913" />
+      <inertia ixx="0.000788198786" ixy="6.47495287e-06" ixz="2.55476686e-06" iyy="0.000633107913" iyz="-2.57809964e-06" izz="0.000684911548" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/left_ankle_f_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/left_ankle_f_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="left_ankle_f_joint" type="continuous">
+    <origin xyz="0 -0.236 0" rpy="0 0 0" />
+    <parent link="left_knee_joint" />
+    <child link="left_ankle_f_joint" />
+    <axis xyz="-1 0 0" />
+  </joint>
+  <link name="left_ankle_r_joint">
+    <inertial>
+      <origin xyz="-0.0119920415 -0.00891742243 -0.0032253641" rpy="0 0 0" />
+      <mass value="0.731321142" />
+      <inertia ixx="0.00107491224" ixy="0.000271214003" ixz="-0.000111302639" iyy="0.00172711553" iyz="-5.75117499e-05" izz="0.00131064448" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/left_ankle_r_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="1 0.949019607843137 0.909803921568627 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/left_ankle_r_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="left_ankle_r_joint" type="continuous">
+    <origin xyz="0.02 -0.08245 -0.0105" rpy="0 0 0" />
+    <parent link="left_ankle_f_joint" />
+    <child link="left_ankle_r_joint" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <link name="leftfoot_leftfront_RA30P">
+    <inertial>
+      <origin xyz="-2.77555756e-15 0.0025 0" rpy="0 0 0" />
+      <mass value="0.00330901598" />
+      <inertia ixx="1.46699708e-07" ixy="0" ixz="0" iyy="2.7961185e-07" iyz="0" izz="1.46699708e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/leftfoot_leftfront_RA30P.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/leftfoot_leftfront_RA30P.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leftfoot_leftfront_RA30P" type="fixed">
+    <origin xyz="0.025125 -0.0536 0.070601" rpy="0 0 0" />
+    <parent link="left_ankle_r_joint" />
+    <child link="leftfoot_leftfront_RA30P" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="leftfoot_rightfront_RA30P">
+    <inertial>
+      <origin xyz="-2.77555756e-15 0.0025 0" rpy="0 0 0" />
+      <mass value="0.00330901598" />
+      <inertia ixx="1.46699708e-07" ixy="0" ixz="0" iyy="2.7961185e-07" iyz="0" izz="1.46699708e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/leftfoot_rightfront_RA30P.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/leftfoot_rightfront_RA30P.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leftfoot_rightfront_RA30P" type="fixed">
+    <origin xyz="-0.024875 -0.0536 0.070601" rpy="0 0 0" />
+    <parent link="left_ankle_r_joint" />
+    <child link="leftfoot_rightfront_RA30P" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="leftfoot_leftback_RA30P">
+    <inertial>
+      <origin xyz="-2.77555756e-15 0.0025 0" rpy="0 0 0" />
+      <mass value="0.00330901598" />
+      <inertia ixx="1.46699708e-07" ixy="0" ixz="0" iyy="2.7961185e-07" iyz="0" izz="1.46699708e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/leftfoot_leftback_RA30P.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/leftfoot_leftback_RA30P.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leftfoot_leftback_RA30P" type="fixed">
+    <origin xyz="0.025125 -0.0536 -0.050933" rpy="0 0 0" />
+    <parent link="left_ankle_r_joint" />
+    <child link="leftfoot_leftback_RA30P" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="leftfoot_rightback_RA30P">
+    <inertial>
+      <origin xyz="-2.77555756e-15 0.0025 0" rpy="0 0 0" />
+      <mass value="0.00330901598" />
+      <inertia ixx="1.46699708e-07" ixy="0" ixz="0" iyy="2.7961185e-07" iyz="0" izz="1.46699708e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/leftfoot_rightback_RA30P.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/leftfoot_rightback_RA30P.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leftfoot_rightback_RA30P" type="fixed">
+    <origin xyz="-0.024875 -0.0536 -0.050933" rpy="0 0 0" />
+    <parent link="left_ankle_r_joint" />
+    <child link="leftfoot_rightback_RA30P" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="right_hip_f_joint">
+    <inertial>
+      <origin xyz="0.0110947127 9.98619472e-05 0.00119749163" rpy="0 0 0" />
+      <mass value="0.818788837" />
+      <inertia ixx="0.000745690143" ixy="2.78453801e-06" ixz="-8.76151967e-05" iyy="0.00112695815" iyz="-6.7489459e-07" izz="0.00104744571" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/right_hip_f_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/right_hip_f_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_hip_f_joint" type="continuous">
+    <origin xyz="-0.071 0 0" rpy="0 0 0" />
+    <parent link="pelvis" />
+    <child link="right_hip_f_joint" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <link name="right_hip_a_joint">
+    <inertial>
+      <origin xyz="-0.000245529258 -0.0151611602 -0.0237364394" rpy="0 0 0" />
+      <mass value="0.96740276" />
+      <inertia ixx="0.00203175225" ixy="2.08059953e-05" ixz="9.38493023e-08" iyy="0.000881130871" iyz="-6.61745651e-05" izz="0.00217038777" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/right_hip_a_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/right_hip_a_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_hip_a_joint" type="continuous">
+    <origin xyz="-0.0725 0 0.019625" rpy="0 0 0" />
+    <parent link="right_hip_f_joint" />
+    <child link="right_hip_a_joint" />
+    <axis xyz="0 0 -1" />
+  </joint>
+  <link name="right_hip_r_joint">
+    <inertial>
+      <origin xyz="0.002891 -0.032247 0.00032" rpy="0 0 0" />
+      <mass value="0.21123" />
+      <inertia ixx="1.431840e-03" ixy="7.744070e-05" ixz="1.436407e-07" iyy="1.856371e-04" iyz="-3.751581e-06" izz="1.399106e-03" />
+    </inertial>
+    <visual>
+      <origin xyz="0.01985 -0.158275 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/right_hip_r_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.01985 -0.158275 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/right_hip_r_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_hip_r_joint" type="continuous">
+    <origin xyz="-4.24660307e-15 -0.12405 -0.02" rpy="0 0 0" />
+    <parent link="right_hip_a_joint" />
+    <child link="right_hip_r_joint" />
+    <axis xyz="0 1 0" />
+  </joint>
+  <link name="right_knee_joint">
+    <inertial>
+      <origin xyz="-0.0249422167 -0.0227797894 0.000145278565" rpy="0 0 0" />
+      <mass value="0.906416913" />
+      <inertia ixx="0.00358135958" ixy="-9.03350095e-05" ixz="-2.34060129e-06" iyy="0.00065872321" iyz="3.6131702e-06" izz="0.00356372978" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/right_knee_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/right_knee_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_knee_joint" type="continuous">
+    <origin xyz="0.01985 -0.158275 -0.00035" rpy="0 0 0" />
+    <parent link="right_hip_r_joint" />
+    <child link="right_knee_joint" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <link name="right_ankle_f_joint">
+    <inertial>
+      <origin xyz="-0.0246240614 -0.000937183826 0.000148034294" rpy="0 0 0" />
+      <mass value="0.802416913" />
+      <inertia ixx="0.0007882059" ixy="-6.54493391e-06" ixz="-2.49588207e-06" iyy="0.000633217121" iyz="-2.42127214e-06" izz="0.000684809455" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/right_ankle_f_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/right_ankle_f_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_ankle_f_joint" type="continuous">
+    <origin xyz="0 -0.236 0" rpy="0 0 0" />
+    <parent link="right_knee_joint" />
+    <child link="right_ankle_f_joint" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <link name="right_ankle_r_joint">
+    <inertial>
+      <origin xyz="-0.0119920415 -0.00891742243 -0.0032253641" rpy="0 0 0" />
+      <mass value="0.731321142" />
+      <inertia ixx="0.00107491224" ixy="0.000271214003" ixz="-0.000111302639" iyy="0.00172711553" iyz="-5.75117499e-05" izz="0.00131064448" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/right_ankle_r_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.650980392156863 0.619607843137255 0.588235294117647 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/right_ankle_r_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_ankle_r_joint" type="continuous">
+    <origin xyz="-0.01955 -0.08245 -0.0115" rpy="0 0 0" />
+    <parent link="right_ankle_f_joint" />
+    <child link="right_ankle_r_joint" />
+    <axis xyz="0 0 -1" />
+  </joint>
+  <link name="rightfoot_leftfront_RA30P">
+    <inertial>
+      <origin xyz="2.49800181e-16 0.0025 0" rpy="0 0 0" />
+      <mass value="0.00330901598" />
+      <inertia ixx="1.46699708e-07" ixy="0" ixz="0" iyy="2.7961185e-07" iyz="0" izz="1.46699708e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/rightfoot_leftfront_RA30P.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/rightfoot_leftfront_RA30P.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="rightfoot_leftfront_RA30P" type="fixed">
+    <origin xyz="0.025125 -0.0536 0.070601" rpy="0 0 0" />
+    <parent link="right_ankle_r_joint" />
+    <child link="rightfoot_leftfront_RA30P" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="rightfoot_rightfront_RA30P">
+    <inertial>
+      <origin xyz="2.49800181e-16 0.0025 0" rpy="0 0 0" />
+      <mass value="0.00330901598" />
+      <inertia ixx="1.46699708e-07" ixy="0" ixz="0" iyy="2.7961185e-07" iyz="0" izz="1.46699708e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/rightfoot_rightfront_RA30P.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/rightfoot_rightfront_RA30P.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="rightfoot_rightfront_RA30P" type="fixed">
+    <origin xyz="-0.024875 -0.0536 0.070601" rpy="0 0 0" />
+    <parent link="right_ankle_r_joint" />
+    <child link="rightfoot_rightfront_RA30P" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="rightfoot_leftfback_RA30P">
+    <inertial>
+      <origin xyz="2.49800181e-16 0.0025 0" rpy="0 0 0" />
+      <mass value="0.00330901598" />
+      <inertia ixx="1.46699708e-07" ixy="0" ixz="0" iyy="2.7961185e-07" iyz="0" izz="1.46699708e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/rightfoot_leftfback_RA30P.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/rightfoot_leftfback_RA30P.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="rightfoot_leftfback_RA30P" type="fixed">
+    <origin xyz="0.025125 -0.0536 -0.050933" rpy="0 0 0" />
+    <parent link="right_ankle_r_joint" />
+    <child link="rightfoot_leftfback_RA30P" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="rightfoot_rightfback_RA30P">
+    <inertial>
+      <origin xyz="2.49800181e-16 0.0025 0" rpy="0 0 0" />
+      <mass value="0.00330901598" />
+      <inertia ixx="1.46699708e-07" ixy="0" ixz="0" iyy="2.7961185e-07" iyz="0" izz="1.46699708e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/rightfoot_rightfback_RA30P.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/rightfoot_rightfback_RA30P.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="rightfoot_rightfback_RA30P" type="fixed">
+    <origin xyz="-0.024875 -0.0536 -0.050933" rpy="0 0 0" />
+    <parent link="right_ankle_r_joint" />
+    <child link="rightfoot_rightfback_RA30P" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="imu">
+    <inertial>
+      <origin xyz="0 3.46944695e-18 -0.005" rpy="0 0 0" />
+      <mass value="0.025" />
+      <inertia ixx="2.65649698e-06" ixy="-6.18067423e-22" ixz="-6.05802161e-24" iyy="2.65649698e-06" iyz="8.46105193e-24" izz="4.8963273e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/imu.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.79216 0.81961 0.93333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/imu.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="imu" type="fixed">
+    <origin xyz="0.0005 0.009775 -0.044" rpy="0 0 0" />
+    <parent link="pelvis" />
+    <child link="imu" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="D455">
+    <inertial>
+      <origin xyz="5.72690461e-05 1.91262334e-05 -0.00715931215" rpy="0 0 0" />
+      <mass value="0.157841346" />
+      <inertia ixx="2.08925659e-05" ixy="5.29790922e-08" ixz="1.7982691e-07" iyy="0.000212450603" iyz="-5.67662692e-08" izz="0.000222367281" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/D455.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/home/ryu/humanoid_leg_test1/urdf/final3_urdf/meshes/D455.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="D455" type="fixed">
+    <origin xyz="-0.00025 0.17223 0.08193" rpy="0 0 0" />
+    <parent link="pelvis" />
+    <child link="D455" />
+    <axis xyz="0 0 0" />
+  </joint>
+</robot>

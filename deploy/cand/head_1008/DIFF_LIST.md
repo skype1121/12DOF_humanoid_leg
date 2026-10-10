@@ -5,8 +5,8 @@
 
 ```
 package: head_1008
-source_commit: 61ce92f303409bbc0c6ba434e3c45e63cb7d984b 2026-10-10T05:34:54+09:00
-source_uncommitted: rl_walking/deploy/w3_deploy.py
+source_commit: 0eaaab9d79a93b7a754fb22130a0e929c5dc3f6c 2026-10-10T06:01:29+09:00
+source_uncommitted: none
 manifest: deploy/head_1008.md5 md5 55ce09ccbee2800d5957b4cd67c00be9
 files: 132 (send 80 incl. this file and the manifest, verify 52)
 jetson_inventory: deploy/cand/head_1008/jetson_inventory_before_md5.txt md5 35a129c9f16a082e1cb6d3ba9cb13855

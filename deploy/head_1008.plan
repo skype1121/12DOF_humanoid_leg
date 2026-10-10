@@ -132,4 +132,4 @@ deploy/cand/head_1008/OPERATOR_COMMANDS.md	send	record	repo	3dfbf67297c795daa17b
 reports/night_1007/jetson/parity_ref.npz	send	parity	repo	425e48cf21a4768bf956787086a8033a	1128300	-	러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime)
 reports/night_1007/jetson_parity.py	send	parity	repo	0e7179d76d8c0e118a5d8073fcefcaec	11052	-	러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime)
 deploy/head_1008.md5	send	record	repo	55ce09ccbee2800d5957b4cd67c00be9	10222	-	매니페스트(젯슨에서 md5sum -c)
-deploy/head_1008.VERSION	send	record	repo	e718b7f23b0d73b1c9582db47fe9ba10	683	-	버전 기록
+deploy/head_1008.VERSION	send	record	repo	2cd416f7293edee5ca5239f35e21c480	657	-	버전 기록

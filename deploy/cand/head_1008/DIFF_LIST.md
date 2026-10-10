@@ -5,9 +5,9 @@
 
 ```
 package: head_1008
-source_commit: 966f33152b03d82240ae8a819d8abeac187530d3 2026-10-11T05:33:49+09:00
+source_commit: cbe1437a86ac946f1f52eda37ccdc3a91ede45a7 2026-10-11T07:12:27+09:00
 source_uncommitted: none
-manifest: deploy/head_1008.md5 md5 5b98d495c593207fdb04440ad53104eb
+manifest: deploy/head_1008.md5 md5 66297d4088524c0c877022cf5089dbd1
 files: 133 (send 81 incl. this file and the manifest, verify 52)
 jetson_inventory: deploy/cand/head_1008/jetson_inventory_before_md5.txt md5 35a129c9f16a082e1cb6d3ba9cb13855
 note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드(콘솔·브리지·stage8·러너·도구·시험)를 마지막으로 바꾼 커밋,
@@ -32,14 +32,14 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `jetson/scripts/analyze_cop_transfer.py` | sync | `4182c582` | `b9ed7cac` | eb15a99a 2026-09-11 | - |
 | `jetson/scripts/boot_pose_check.py` | tool | `cf24508e` | `7c60e6be` | d822b8d8 2026-09-06 | boot_pose_check.py, zero_anchor.py |
 | `jetson/scripts/console_demo.py` | session | `6f305da7` | `8bcd50e6` | 98ecfc9b 2026-09-22 | operator_console.py |
-| `jetson/scripts/console_state.py` | session | `446a7c2b` | `f4d4f6b1` | 432d1176 2026-10-03 | operator_console.py, robotctl.py |
+| `jetson/scripts/console_state.py` | session | `446a7c2b` | `56b5ae6f` | 432d1176 2026-10-03 | operator_console.py, robotctl.py |
 | `jetson/scripts/console_ui.html` | session | `9f6a963d` | `2140181c` | 432d1176 2026-10-03 | - |
 | `jetson/scripts/hang_stand.py` | sync | `2692298a` | `b28a04de` | 8984f8c7 2026-09-29 | hang_stand.py |
 | `jetson/scripts/imu_mount_calib.py` | sync | `b8aa00e9` | `7c3bd93c` | 29b984d2 2026-07-27 | - |
-| `jetson/scripts/operator_console.py` | session | `90b7ef28` | `fb6b6b81` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | operator_console.py |
+| `jetson/scripts/operator_console.py` | session | `90b7ef28` | `5d8fd9b2` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | operator_console.py |
 | `jetson/scripts/pose_hold.py` | sync | `83e4f599` | `16f57ffd` | 9c4750d3 2026-07-27 | - |
 | `jetson/scripts/release_all.py` | sync | `e06b80d1` | `7c44c40d` | 38e7402f 2026-09-22 | release_all.py |
-| `jetson/scripts/rl_bridge_node.py` | session | `15dcabf2` | `22de4e80` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
+| `jetson/scripts/rl_bridge_node.py` | session | `15dcabf2` | `5ccb0f67` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
 | `jetson/scripts/robotctl.py` | tool | `f761802c` | `61327e6b` | 83faa61b 2026-09-19 | robotctl.py |
 | `jetson/scripts/sensors_up.sh` | sync | `73fec1f3` | `3b372a2b` | 54425ab0 2026-09-13 | - |
 | `jetson/scripts/stage8_12axis_mit_control_node.py` | session | `2509bd99` | `c039fc02` | c93b45d1 2026-09-30 | stage8_12axis_mit_control_node.py |
@@ -86,12 +86,12 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.onnx` | policy | `d908cd92` | 1321751 | stand_w3s3d_15800 |
 | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.pt` | policy | `10e3ee40` | 1332468 | stand_w3s3d_15800 |
 | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/params/env.yaml` | policy | `41d1e62a` | 60296 | stand_w3s3d_15800 |
-| `logs/rsl_rl/biped12_stepb0/2026-10-11_03-19-54_w3s3dnbjd_s2_deploy17798/exported/SOURCE_CHECKPOINT` | policy | `526529db` | 15 | stand_w3s3dnbjd2_17798 |
-| `logs/rsl_rl/biped12_stepb0/2026-10-11_03-19-54_w3s3dnbjd_s2_deploy17798/exported/policy.onnx` | policy | `b5f167ea` | 1321751 | stand_w3s3dnbjd2_17798 |
-| `logs/rsl_rl/biped12_stepb0/2026-10-11_03-19-54_w3s3dnbjd_s2_deploy17798/exported/policy.pt` | policy | `f0ae727a` | 1332468 | stand_w3s3dnbjd2_17798 |
-| `logs/rsl_rl/biped12_stepb0/2026-10-11_03-19-54_w3s3dnbjd_s2_deploy17798/params/env.yaml` | policy | `83c2de95` | 61742 | stand_w3s3dnbjd2_17798 |
-| `reports/night_1007/jetson/parity_ref.npz` | parity | `22a4dd86` | 1505318 | 러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime) |
-| `reports/night_1007/jetson_parity.py` | parity | `9e8bf5c6` | 11055 | 러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime) |
+| `logs/rsl_rl/biped12_stepb0/2026-10-11_05-09-59_w3s3dnbje_s1_deploy18997/exported/SOURCE_CHECKPOINT` | policy | `9c6b4ce8` | 15 | stand_w3s3dnbje1_18997 |
+| `logs/rsl_rl/biped12_stepb0/2026-10-11_05-09-59_w3s3dnbje_s1_deploy18997/exported/policy.onnx` | policy | `354bc4b3` | 1321751 | stand_w3s3dnbje1_18997 |
+| `logs/rsl_rl/biped12_stepb0/2026-10-11_05-09-59_w3s3dnbje_s1_deploy18997/exported/policy.pt` | policy | `665b2a87` | 1332468 | stand_w3s3dnbje1_18997 |
+| `logs/rsl_rl/biped12_stepb0/2026-10-11_05-09-59_w3s3dnbje_s1_deploy18997/params/env.yaml` | policy | `4930d4ce` | 61742 | stand_w3s3dnbje1_18997 |
+| `reports/night_1007/jetson/parity_ref.npz` | parity | `08deea39` | 1505790 | 러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime) |
+| `reports/night_1007/jetson_parity.py` | parity | `df5b2993` | 11055 | 러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime) |
 | `rl_walking/deploy/hturn2.py` | session | `d0b283ab` | 7418 | c5_switch.py, kew3_runner.py, policy_runner_stage4.py, posture_probe.py |
 | `rl_walking/deploy/kew3_runner.py` | session | `a6f500e4` | 50539 | kew3_runner.py, posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py |
 | `rl_walking/deploy/leg_odometry.py` | session | `5f5c8132` | 12224 | c5_switch.py, kew3_runner.py, posture_probe.py, rl_bridge_node.py |
@@ -103,11 +103,11 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `rl_walking/deploy/selftest_w3_rollout_parity.py` | sync | `ef8d2c04` | 21477 | - |
 | `rl_walking/deploy/selftest_w3s3d_onnx.py` | sync | `7a5929c6` | 2438 | - |
 | `rl_walking/deploy/w3_contingency.py` | session | `3105a219` | 36676 | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, w3_contingency.py |
-| `rl_walking/deploy/w3_deploy.py` | session | `05de0456` | 49330 | c5_switch.py, kew3_runner.py, operator_console.py, policy_runner_stage4.py |
-| `tests/test_console_walk.py` | test | `ecc89b84` | 33582 | - |
+| `rl_walking/deploy/w3_deploy.py` | session | `8c181be9` | 49330 | c5_switch.py, kew3_runner.py, operator_console.py, policy_runner_stage4.py |
+| `tests/test_console_walk.py` | test | `94832eec` | 33582 | - |
 | `tests/test_console_walk_bridge.py` | test | `3282c2f1` | 37053 | - |
 | `tests/test_latency_check.py` | test | `db1ba370` | 7263 | - |
-| `tests/test_operator_console.py` | test | `62fab30c` | 54581 | - |
+| `tests/test_operator_console.py` | test | `95f76c43` | 54581 | - |
 | `tests/test_robotctl.py` | test | `ca9b74be` | 14372 | - |
 | `tests/test_stage8_can_send_timeout.py` | test | `955b8a97` | 7549 | - |
 | `tests/test_stage8_latency_options.py` | test | `e02faf66` | 12839 | - |
@@ -272,10 +272,10 @@ HEAD 의 `jetson/` 아래에 있지만 계획에 없는 것: `jetson/calib_data/
 | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.onnx` | 1321751 | `d908cd92ba0916e790f9e3e28ff1d882` | **없음 — 새로 간다** | send | stand_w3s3d_15800, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800 |
 | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/exported/policy.pt` | 1332468 | `10e3ee405e1534ebe67574ddbeb9a2a2` | **없음 — 새로 간다** | send | stand_w3s3d_15800, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800 |
 | `logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/params/env.yaml` | 60296 | `41d1e62aed455029be7351a1db43f48f` | **없음 — 새로 간다** | send | stand_w3s3d_15800, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800 |
-| `logs/rsl_rl/biped12_stepb0/2026-10-11_03-19-54_w3s3dnbjd_s2_deploy17798/exported/SOURCE_CHECKPOINT` | 15 | `526529db33d838abb3ac1618077c546f` | **없음 — 새로 간다** | send | stand_w3s3dnbjd2_17798, stand_kew3qa_g21a_g24ra_w3nbjd2_17798 |
-| `logs/rsl_rl/biped12_stepb0/2026-10-11_03-19-54_w3s3dnbjd_s2_deploy17798/exported/policy.onnx` | 1321751 | `b5f167ea356dc29ebba7381153d78f89` | **없음 — 새로 간다** | send | stand_w3s3dnbjd2_17798, stand_kew3qa_g21a_g24ra_w3nbjd2_17798 |
-| `logs/rsl_rl/biped12_stepb0/2026-10-11_03-19-54_w3s3dnbjd_s2_deploy17798/exported/policy.pt` | 1332468 | `f0ae727aeb78bcb97173459b0602e6cb` | **없음 — 새로 간다** | send | stand_w3s3dnbjd2_17798, stand_kew3qa_g21a_g24ra_w3nbjd2_17798 |
-| `logs/rsl_rl/biped12_stepb0/2026-10-11_03-19-54_w3s3dnbjd_s2_deploy17798/params/env.yaml` | 61742 | `83c2de95e31b6807c7119be4fdce573d` | **없음 — 새로 간다** | send | stand_w3s3dnbjd2_17798, stand_kew3qa_g21a_g24ra_w3nbjd2_17798 |
+| `logs/rsl_rl/biped12_stepb0/2026-10-11_05-09-59_w3s3dnbje_s1_deploy18997/exported/SOURCE_CHECKPOINT` | 15 | `9c6b4ce8bc5d8e6aa11dcbc434324e2c` | **없음 — 새로 간다** | send | stand_w3s3dnbje1_18997, stand_kew3qa_g21a_g24ra_w3nbje1_18997 |
+| `logs/rsl_rl/biped12_stepb0/2026-10-11_05-09-59_w3s3dnbje_s1_deploy18997/exported/policy.onnx` | 1321751 | `354bc4b316f299eafce63fecbf869c0d` | **없음 — 새로 간다** | send | stand_w3s3dnbje1_18997, stand_kew3qa_g21a_g24ra_w3nbje1_18997 |
+| `logs/rsl_rl/biped12_stepb0/2026-10-11_05-09-59_w3s3dnbje_s1_deploy18997/exported/policy.pt` | 1332468 | `665b2a87640b465471149f0adc5819bd` | **없음 — 새로 간다** | send | stand_w3s3dnbje1_18997, stand_kew3qa_g21a_g24ra_w3nbje1_18997 |
+| `logs/rsl_rl/biped12_stepb0/2026-10-11_05-09-59_w3s3dnbje_s1_deploy18997/params/env.yaml` | 61742 | `4930d4ceb044a83cdd3e1984e584c419` | **없음 — 새로 간다** | send | stand_w3s3dnbje1_18997, stand_kew3qa_g21a_g24ra_w3nbje1_18997 |
 | `logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/exported/policy.onnx` | 1168151 | `c577a65a3edbd9f856fbc4b0912f5908` | 같음(이미 있음) | verify | stand_v18b(확인) |
 | `logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/exported/policy.pt` | 1179026 | `fac90eb5490b47a77ca76281631af442` | 같음(이미 있음) | verify | stand_v18b(확인) |
 | `logs/rsl_rl/biped12_stage4/2026-09-05_19-37-39/params/env.yaml` | 41370 | `a2f1f885aa64d01ef77f14e05549df00` | 같음(이미 있음) | verify | stand_v18b(확인) |
@@ -285,13 +285,13 @@ HEAD 의 `jetson/` 아래에 있지만 계획에 없는 것: `jetson/calib_data/
 | `logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported/policy.onnx` | 1321751 | `6c5f8a7e08696cd07b1e5abf328fa616` | 같음(이미 있음) | verify | stand_crouch_g12(확인), stand_crouch_g12_ema0(확인) |
 | `logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported/policy.pt` | 1332626 | `dc9cd5867932e15103684055476565ba` | 같음(이미 있음) | verify | stand_crouch_g12(확인), stand_crouch_g12_ema0(확인) |
 | `logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/params/env.yaml` | 54587 | `0c07175148c9fdbbd71d9e1b125d7814` | 같음(이미 있음) | verify | stand_crouch_g12(확인), stand_crouch_g12_ema0(확인) |
-| `logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported/policy.onnx` | 1321751 | `43f113109a369a60e976a391cf8f17cd` | 같음(이미 있음) | verify | stand_crouch_g21a, stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbjd2_17798, stand_c5_g21a_g24ra(확인) |
-| `logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported/policy.pt` | 1332626 | `2464f5cdba2e819d03ffa2d8d03bbb69` | 같음(이미 있음) | verify | stand_crouch_g21a, stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbjd2_17798, stand_c5_g21a_g24ra(확인) |
-| `logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/params/env.yaml` | 54800 | `ebda410ec37987f788df920ccac4f264` | 같음(이미 있음) | verify | stand_crouch_g21a, stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbjd2_17798, stand_c5_g21a_g24ra(확인) |
-| `logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/SOURCE_CHECKPOINT` | 15 | `e24b90e328fadb2a5c7ef9d87721d1a3` | 같음(이미 있음) | verify | stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbjd2_17798, stand_c5_g21a_g24ra(확인) |
-| `logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/policy.onnx` | 1321751 | `57547697918f679543413a5b24c36555` | 같음(이미 있음) | verify | stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbjd2_17798, stand_c5_g21a_g24ra(확인) |
-| `logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/policy.pt` | 1332626 | `896ca613bc402de02caa8302988f9a68` | 같음(이미 있음) | verify | stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbjd2_17798, stand_c5_g21a_g24ra(확인) |
-| `logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/params/env.yaml` | 62452 | `7ff27617abdb9dd8ee6155c5d7703eaf` | 같음(이미 있음) | verify | stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbjd2_17798, stand_c5_g21a_g24ra(확인) |
+| `logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported/policy.onnx` | 1321751 | `43f113109a369a60e976a391cf8f17cd` | 같음(이미 있음) | verify | stand_crouch_g21a, stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbje1_18997, stand_c5_g21a_g24ra(확인) |
+| `logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/exported/policy.pt` | 1332626 | `2464f5cdba2e819d03ffa2d8d03bbb69` | 같음(이미 있음) | verify | stand_crouch_g21a, stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbje1_18997, stand_c5_g21a_g24ra(확인) |
+| `logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/params/env.yaml` | 54800 | `ebda410ec37987f788df920ccac4f264` | 같음(이미 있음) | verify | stand_crouch_g21a, stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbje1_18997, stand_c5_g21a_g24ra(확인) |
+| `logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/SOURCE_CHECKPOINT` | 15 | `e24b90e328fadb2a5c7ef9d87721d1a3` | 같음(이미 있음) | verify | stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbje1_18997, stand_c5_g21a_g24ra(확인) |
+| `logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/policy.onnx` | 1321751 | `57547697918f679543413a5b24c36555` | 같음(이미 있음) | verify | stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbje1_18997, stand_c5_g21a_g24ra(확인) |
+| `logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/exported/policy.pt` | 1332626 | `896ca613bc402de02caa8302988f9a68` | 같음(이미 있음) | verify | stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbje1_18997, stand_c5_g21a_g24ra(확인) |
+| `logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/params/env.yaml` | 62452 | `7ff27617abdb9dd8ee6155c5d7703eaf` | 같음(이미 있음) | verify | stand_c5kr_g21a_g24ra, stand_c5krh_g21a_g24ra, stand_kew3_g21a_g24ra_w3s3d15800, stand_kew3q_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3s3d15800, stand_kew3qa_g21a_g24ra_w3nbje1_18997, stand_c5_g21a_g24ra(확인) |
 
 키가 가리키는 폴더(브리지 레지스트리):
 
@@ -303,8 +303,8 @@ HEAD 의 `jetson/` 아래에 있지만 계획에 없는 것: `jetson/calib_data/
 - `stand_kew3q_g21a_g24ra_w3s3d15800` = 걷기 `stand_w3s3d_15800` + 서기·회복 `stand_c5kr_g21a_g24ra` (전환 carry, 정착 0.5 s) — 자체 파일 없음, 하위 키의 파일을 쓴다
 - `stand_crouch_g21h` = `logs/rsl_rl/biped12_stage4/2026-10-08_16-04-12_g21h2_s1_from_12299/exported`
 - `stand_kew3qa_g21a_g24ra_w3s3d15800` = 걷기 `stand_w3s3d_15800` + 서기·회복 `stand_c5kr_g21a_g24ra` (전환 carry, 정착 0.5 s) — 자체 파일 없음, 하위 키의 파일을 쓴다
-- `stand_w3s3dnbjd2_17798` = `logs/rsl_rl/biped12_stepb0/2026-10-11_03-19-54_w3s3dnbjd_s2_deploy17798/exported`
-- `stand_kew3qa_g21a_g24ra_w3nbjd2_17798` = 걷기 `stand_w3s3dnbjd2_17798` + 서기·회복 `stand_c5kr_g21a_g24ra` (전환 carry, 정착 0.5 s) — 자체 파일 없음, 하위 키의 파일을 쓴다
+- `stand_w3s3dnbje1_18997` = `logs/rsl_rl/biped12_stepb0/2026-10-11_05-09-59_w3s3dnbje_s1_deploy18997/exported`
+- `stand_kew3qa_g21a_g24ra_w3nbje1_18997` = 걷기 `stand_w3s3dnbje1_18997` + 서기·회복 `stand_c5kr_g21a_g24ra` (전환 carry, 정착 0.5 s) — 자체 파일 없음, 하위 키의 파일을 쓴다
 
 ## 8. selftest 기준 원문
 

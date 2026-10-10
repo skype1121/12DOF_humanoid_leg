@@ -1,0 +1,4 @@
+p4_nb_f	256	2	1	28	/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-10_03-05-58_w3s3dnbj_s2_from_15800/deploy_16299/exported	-	walk@2:0,0,0;stop@10;walk@14:0.06,0,0;stop@22	nb	--on_phases 8 --dist push:f:6:12:0.2;push:f:18:12:0.2
+p4_nb_b	256	2	1	28	/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-10_03-05-58_w3s3dnbj_s2_from_15800/deploy_16299/exported	-	walk@2:0,0,0;stop@10;walk@14:0.06,0,0;stop@22	nb	--on_phases 8 --dist push:b:6:12:0.2;push:b:18:12:0.2
+p4_nb_l	256	2	1	28	/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-10_03-05-58_w3s3dnbj_s2_from_15800/deploy_16299/exported	-	walk@2:0,0,0;stop@10;walk@14:0.06,0,0;stop@22	nb	--on_phases 8 --dist push:l:6:12:0.2;push:l:18:12:0.2
+p4_nb_r	256	2	1	28	/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-10_03-05-58_w3s3dnbj_s2_from_15800/deploy_16299/exported	-	walk@2:0,0,0;stop@10;walk@14:0.06,0,0;stop@22	nb	--on_phases 8 --dist push:r:6:12:0.2;push:r:18:12:0.2

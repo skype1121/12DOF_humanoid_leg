@@ -65,5 +65,15 @@ src = rep(src, A8, """    if args_cli.kw_w3_fstep > 0:
 """ + A8)
 A9 = '_evc.w3_gait = _ETC(func=_tr_gait_update, mode="interval", interval_range_s=(0.0, 0.0), params={"f_step": 1.1})'
 src = rep(src, A9, '_evc.w3_gait = _ETC(func=_tr_gait_update, mode="interval", interval_range_s=(0.0, 0.0), params={"f_step": float(args_cli.kw_w3_fstep) if args_cli.kw_w3_fstep > 0 else 1.1})')
+# 1010 힙 외전 한계 대조: --kw_effort_joints S — --kw_effort_scales 배율을 이름에 S 가 든 관절에만 건다('' = 종전: 전 관절).
+src = rep(src, A1, A1 + 'parser.add_argument("--kw_effort_joints", type=str, default="", help="1010: --kw_effort_scales 를 이름에 이 문자열이 든 관절에만 적용")\n')
+A10 = "_nom_ = robot.data.joint_effort_limits.clone(); _new_ = _nom_ * _sc_\n"
+src = rep(src, A10, """_nom_ = robot.data.joint_effort_limits.clone(); _new_ = _nom_ * _sc_
+                if args_cli.kw_effort_joints:
+                    _ejm_ = torch.tensor([args_cli.kw_effort_joints in n_ for n_ in robot.joint_names], device=dev)
+                    assert bool(_ejm_.any()), "--kw_effort_joints: 맞는 관절 없음"
+                    _new_ = torch.where(_ejm_.unsqueeze(0), _new_, _nom_)
+                    print(f"[runner_loop] 토크 한계 배율은 {[n_ for n_ in robot.joint_names if args_cli.kw_effort_joints in n_]} 에만", flush=True)
+""")
 dst = os.path.join(R, "rl_walking/scripts/eval_transition_kwx_nb.py")
 open(dst, "w", encoding="utf-8").write(src); print("wrote", dst)

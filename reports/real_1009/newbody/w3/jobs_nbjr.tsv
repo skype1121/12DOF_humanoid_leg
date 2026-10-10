@@ -1,0 +1,1 @@
+nbjr_16598_f_s1	W3S3dNB	2026-10-10_13-31-29_w3s3dnbjr_s1_from_16299	model_16598.pt	1	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0.06,0,0

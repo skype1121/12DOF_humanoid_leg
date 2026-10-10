@@ -247,3 +247,23 @@ class Biped12HangStandW3S3dNBjEnvCfg(Biped12HangStandW3S3dNBEnvCfg):
         super().__post_init__()
         p = dict(self.events.w3_cmd.params); p["mix3"] = NBJ_MIX3
         self.events.w3_cmd.params = p
+
+
+# ---------------------------------------------------------------- 1010 걷는 중 좌우 흔들림 시험(느낌 보기) ----------------------------------------------------------------
+def nb_roll_sq(env) -> torch.Tensor:
+    """몸통 좌우 기울기 제곱 g_y²(≈ 롤 rad²) — 벌점 크기(양수). STEP 게이트는 w3_step_gated 가 건다."""
+    return env.scene["robot"].data.projected_gravity_b[:, 1] ** 2
+
+
+@configclass
+class Biped12HangStandW3S3dNBjREnvCfg(Biped12HangStandW3S3dNBjEnvCfg):
+    """W3S3d-NBjR (1010 승윤님 '조금만 해봐 느낌만 보자'): NBj 와 전부 같고 **보상 항 하나만 추가** — 걷는 중(STEP) 좌우 기울기 제곱 벌점.
+    근거(측정): NBj-s2-16299 걷기 좌우 기울기 폭 17°(RMS 5.5° → g_y² 평균 ≈ 0.009), 기존 w3_orient(−2)는 초당 −0.02 로 사실상 무효.
+    가중 −30 = 걷기 초당 약 −0.28. 시작 = NBj-s2-16299 이어 학습(300 반복). 승격용이 아니라 반응을 보는 한 점 — 기준은 NEWBODY_WALK.md §15."""
+    W_ROLL = -30.0          # 비주석 클래스 상수(설정 필드 아님)
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import RewardTermCfg as RewTerm
+        from rl_walking import w3 as _w3
+        self.rewards.w3_roll_sq = RewTerm(func=_w3.w3_step_gated, weight=float(self.W_ROLL), params={"func": nb_roll_sq, "params": {}})

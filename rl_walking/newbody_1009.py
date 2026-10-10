@@ -311,3 +311,41 @@ class Biped12HangStandW3S3dNBjTEnvCfg(Biped12HangStandW3S3dNBjEnvCfg):
         from isaaclab.managers import RewardTermCfg as RewTerm
         from rl_walking import w3 as _w3
         self.rewards.w3_over_demand = RewTerm(func=_w3.w3_step_gated, weight=float(self.W_OD), params={"func": nb_over_demand, "params": {}})
+
+
+# ---------------------------------------------------------------- 1011 낮은 토크로 걷기(승윤님 "정책을 새로 구우는 방향 — 30 은 심해") ----------------------------------------------------------------
+def nb_resample_effort_by_joint(env, env_ids, named: dict | None = None, other_range: tuple = (1.0, 1.0)):
+    """리셋마다 관절 토크 한계 배율을 다시 뽑는다(env 별 한 값씩). named = {관절 이름 조각: (lo, hi)} — 조각이 든 관절은 그 범위, 나머지는 other_range.
+    mdp_stage4.resample_effort_scale 과 같은 쓰기 경로(PhysX 한계 + 액추에이터 모델 한계). 정책은 한계를 관측하지 못한다."""
+    robot = env.scene["robot"]
+    if not hasattr(env, "_effort_nominal"):
+        env._effort_nominal = robot.data.joint_effort_limits.clone()
+    ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    if len(ids) == 0:
+        return
+    s = torch.empty(len(ids), 1, device=env.device).uniform_(*other_range).repeat(1, robot.num_joints)
+    for key, (lo, hi) in (named or {}).items():
+        cols = [j for j, n in enumerate(robot.joint_names) if key in n]
+        assert cols, f"nb_resample_effort_by_joint: 맞는 관절 없음 {key!r}"
+        s[:, cols] = torch.empty(len(ids), 1, device=env.device).uniform_(lo, hi)
+    new = env._effort_nominal[ids] * s
+    robot.write_joint_effort_limit_to_sim(new, env_ids=ids)
+    for act in robot.actuators.values():
+        if hasattr(act, "effort_limit") and torch.is_tensor(act.effort_limit) and act.effort_limit.dim() == 2:
+            act.effort_limit[ids] = new[:, act.joint_indices]
+
+
+@configclass
+class Biped12HangStandW3S3dNBjLEnvCfg(Biped12HangStandW3S3dNBjTEnvCfg):
+    """W3S3d-NBjL (1011): NBjT(과요구 벌점 −5, 문턱 = 그 env 의 한계 × 0.8) + **힙 외전 토크 한계를 리셋마다 0.55–0.8 배(13.75–20 N·m), 나머지 관절 0.8–1.0 배**.
+    근거(시뮬 NBj-s2, hip_a 한계만): 25 N·m 낙상 6/214 · 20 → 8 · 17.5 → 14 · 15 → 39/214, 좌우 기울기 폭 17 → 13 → 9 → 5°. 지금 정책은 15 에서 무너진다.
+    목표: 힙 외전 15–20 N·m 안에서 성립하는 걸음(실물 상한 20 이 거의 걸리지 않는 걸음). 벌점만(NBjT)으로는 요구 p95 37–38 N·m·낙상 증가였다.
+    시작 = NBj-s2-16299 이어 학습. 기준 reports/real_1009/NEWBODY_WALK.md §18."""
+    HIP_A_SCALE = (0.55, 0.8)       # 비주석 클래스 상수(설정 필드 아님)
+    OTHER_SCALE = (0.8, 1.0)
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import EventTermCfg as EventTerm
+        self.events.nb_effort = EventTerm(func=nb_resample_effort_by_joint, mode="reset",
+                                          params={"named": {"hip_a": tuple(self.HIP_A_SCALE)}, "other_range": tuple(self.OTHER_SCALE)})

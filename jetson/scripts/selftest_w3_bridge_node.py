@@ -67,13 +67,28 @@ class _Pub:
 
 
 class _Log:
+    """가짜 로거 — 1011: rclpy(humble) rcutils_logger 의 **호출 위치별 등급 고정** 규칙을 그대로 건다(같은 줄에서 등급이 바뀌면 ValueError).
+    1010 실물에서 그 규칙 때문에 브리지가 정책 시작 직후 죽었고, 등급을 가리지 않던 종전 가짜 로거로는 이 시험이 못 잡았다."""
+    LEVELS = ("debug", "info", "warn", "warning", "error", "fatal")
+
     def __init__(self):
         self.lines = []
+        self._site = {}
 
     def _w(self, lvl):
-        return lambda s: self.lines.append((lvl, str(s)))
+        def log(s, **kwargs):
+            f = sys._getframe(1)
+            key = (f.f_code.co_filename, f.f_lineno)
+            sev = "warn" if lvl == "warning" else lvl
+            # 비트 비교용 기준 커밋 브리지(파일명에 @커밋 — 그 결함이 있던 옛 코드)는 검사하지 않는다
+            if "@" not in os.path.basename(key[0]) and self._site.setdefault(key, sev) != sev:
+                raise ValueError(f"Logger severity cannot be changed between calls. ({os.path.basename(key[0])}:{key[1]} {self._site[key]} → {sev})")
+            self.lines.append((lvl, str(s)))
+        return log
 
     def __getattr__(self, name):
+        if name not in self.LEVELS:
+            raise AttributeError(name)
         return self._w(name)
 
 

@@ -75,6 +75,11 @@ class LatencyOptionsTest(unittest.TestCase):
         p = patch.object(s8, "TAKEOVER_STATE_FILE", str(Path(tmp.name) / "absent.json"))
         p.start()
         self.addCleanup(p.stop)
+        # 1010: 현장 맵의 기구 고정 선언과 무관하게 12 관절 구성으로 돈다(선언된 젯슨 맵에서 '기본 = 종전' 비교가 깨졌다). 고정 구성은 tests/test_mech_fixed*.py 가 본다
+        for name, value in (("MECH_FIXED_JOINTS", frozenset()), ("POLL_JOINTS", list(s8.JOINT_NAMES_12DOF))):
+            pm = patch.object(s8, name, value)
+            pm.start()
+            self.addCleanup(pm.stop)
         self.t = 1000.0
         self.bus = FakeBus()
         self.core = s8.Stage8TwelveAxisMitControlCore(now_fn=lambda: self.t)

@@ -108,7 +108,9 @@ CKPT_CHOICES = ["stand_crouch_g12", "stand_crouch_g21a", "stand_c5_g21a_g24ra", 
 #   **이 키를 메뉴에 두는 것은 3 단 구성의 시뮬 평가(AIR2 — 같은 문서 §10, 이 변경 시점에는 사전 등록만·미실행)가 기준을 채운다는 전제다 —
 #   미달이면 이 줄을 종전 키(stand_kew3q_…)로 되돌린다**(그러면 방식 기본값도 종전 "ground" 로 돌아간다 — MODE_DEFAULT 는 이 키에서 나온다).
 # 1010: 새 몸(hip_r 기구 고정) 종종걸음 키를 **선택지로만** 더한다 — 기본값(첫 항목)은 그대로다. 기구가 고정된 구성에서만 고를 것(하드웨어맵 mech_fixed).
-CKPT_MENU_KEYS = ("stand_kew3qa_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3nbj2_16299")
+# 1010 저녁(승윤님 "정책 깔끔하게 한 개"): 실물이 hip_r 기구 고정 구성으로 바뀌어 메뉴 = 새 몸 종종걸음 키 **하나**. 원래 몸 키(stand_kew3qa_…_w3s3d15800)는
+#   "아는 키"로 내려갔다(하드웨어맵에 기구 고정 선언이 있으면 그 키의 걷기는 브리지가 거부한다 — 고를 이유가 없다). 원래 몸으로 되돌리면 이 줄을 되돌린다.
+CKPT_MENU_KEYS = ("stand_kew3qa_g21a_g24ra_w3nbj2_16299",)
 CKPT_DEFAULT = CKPT_MENU_KEYS[0]
 #: 시험 방식 기본값 — 기본 정책이 공중 정책 시작을 받는 키면 "air"(공중에서 정책 시작 → 착지), 아니면 종전대로 "ground". 새 TrialState 가 같은 규칙으로 시작한다.
 MODE_DEFAULT = default_mode(CKPT_DEFAULT)
@@ -2395,14 +2397,15 @@ def selftest_walk(directory):
     # 1008 정리: 고를 수 있는 정책 = 합성 키 하나(기본값도 그것). 그 밖의 아는 키는 정책 로드·시험 설정에서 사유를 대고 거부된다.
     # 1008 오후: 그 한 키 = 공중 정책 시작을 받는 합성 키(종전 합성 키 + 공중·착지 구간 서기 정책 G21h). 종전 메뉴 키(stand_kew3q_…)는 "아는 키"로 내려갔다.
     # 1010: 새 몸 종종걸음 키는 선택지로만 뒤에 붙었다 — 기본값은 첫 항목 그대로
-    assert CKPT_MENU_KEYS == ("stand_kew3qa_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3nbj2_16299") and CKPT_MENU == list(CKPT_MENU_KEYS) \
-        and CKPT_DEFAULT == CKPT_MENU[0] == "stand_kew3qa_g21a_g24ra_w3s3d15800"
+    assert CKPT_MENU_KEYS == ("stand_kew3qa_g21a_g24ra_w3nbj2_16299",) and CKPT_MENU == list(CKPT_MENU_KEYS) \
+        and CKPT_DEFAULT == CKPT_MENU[0] == "stand_kew3qa_g21a_g24ra_w3nbj2_16299"      # 1010 저녁: 새 몸 키 하나
+    assert "stand_kew3qa_g21a_g24ra_w3s3d15800" in CKPT_ALL and "stand_kew3qa_g21a_g24ra_w3s3d15800" not in CKPT_MENU
     assert "stand_kew3q_g21a_g24ra_w3s3d15800" in CKPT_ALL and "stand_kew3q_g21a_g24ra_w3s3d15800" not in CKPT_MENU
     # 시험 방식 기본값: 공중 정책 시작을 받는 키만 "air", 그 밖(정리된 키·모르는 키)은 종전대로 "ground"
     assert walk_air_start(CKPT_DEFAULT) and MODE_DEFAULT == "air" == default_mode(CKPT_DEFAULT) == TrialState(CKPT_DEFAULT).mode == TRIAL.mode
-    _nbj = "stand_kew3qa_g21a_g24ra_w3nbj2_16299"      # 1010 새 몸 종종걸음 키(공중 정책 시작을 받는 둘째 키)
-    assert [k for k in CKPT_ALL if walk_air_start(k)] == [CKPT_DEFAULT, _nbj] and default_mode(_nbj) == "air" \
-        and all(default_mode(k) == "ground" == TrialState(k).mode for k in [x for x in CKPT_ALL if x not in (CKPT_DEFAULT, _nbj)] + ["stand_v7", None])
+    _ob = "stand_kew3qa_g21a_g24ra_w3s3d15800"      # 원래 몸 합성 키(공중 정책 시작을 받는 첫 키 — 1010 저녁부터 메뉴 밖)
+    assert [k for k in CKPT_ALL if walk_air_start(k)] == [_ob, CKPT_DEFAULT] and default_mode(_ob) == "air" \
+        and all(default_mode(k) == "ground" == TrialState(k).mode for k in [x for x in CKPT_ALL if x not in (CKPT_DEFAULT, _ob)] + ["stand_v7", None])
     _flags = ["--experimental-w3", "--experimental-kew3"]
     started = []
     with patch.object(RUN, "start", side_effect=lambda key, argv, cwd=None: (started.append((key, list(argv))), (True, "mock"))[1]):
@@ -3366,7 +3369,7 @@ def selftest():
                       "text('policyOnNote',t.mode==='air'?POLICY_ON_AIR.note:POLICY_ON_GROUND.note)",
                       "w.mode==='air'?'공중·착지 정책(착지 정착 뒤 KE 인계)'"):
             assert piece in page, f"콘솔 페이지에 없음: {piece[:60]}"
-        assert f'<option value="{CKPT_DEFAULT}">' in page and page.count("<option value=\"stand_") == len(CKPT_MENU) == 2      # 1010: 기본 키 + 새 몸 종종걸음 키(선택지 추가)
+        assert f'<option value="{CKPT_DEFAULT}">' in page and page.count("<option value=\"stand_") == len(CKPT_MENU) == 1      # 1010 저녁: 새 몸 종종걸음 키 하나
         src = Path(__file__).with_name("rl_bridge_node.py").read_text(encoding="utf-8")
         body = src.split("CHECKPOINTS = {", 1)[1].split("\n}\n", 1)[0]
         known = set(re.findall(r'^\s+"([A-Za-z0-9_]+)": os\.path\.join', body, re.M))

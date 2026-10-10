@@ -1089,6 +1089,7 @@ def _patch(b, clock):
     def load_safe():
         f = b._st_real_load()
         f.guard_mode = "safe"
+        f.mech_fixed = ()       # 1010: 현장 맵의 기구 고정 선언과 무관하게 돈다(선언된 젯슨 맵에서 원래 몸 키 시험 14 항이 가드에 걸렸다). 가드 시험은 자기 선언을 따로 건다
         return f
     b.load_frame_map = load_safe
 

@@ -267,3 +267,20 @@ class Biped12HangStandW3S3dNBjREnvCfg(Biped12HangStandW3S3dNBjEnvCfg):
         from isaaclab.managers import RewardTermCfg as RewTerm
         from rl_walking import w3 as _w3
         self.rewards.w3_roll_sq = RewTerm(func=_w3.w3_step_gated, weight=float(self.W_ROLL), params={"func": nb_roll_sq, "params": {}})
+
+
+# ---------------------------------------------------------------- 1010 빠른 걸음(승윤님 "걸음 빠르게") ----------------------------------------------------------------
+NBJF_F_STEP = 1.5       # 위상 주파수 [Hz] — 한 주기 = 왼·오른 한 걸음씩. 종전 1.1(한발 지지 0.455 s) → 1.5(0.333 s)
+
+
+@configclass
+class Biped12HangStandW3S3dNBjFEnvCfg(Biped12HangStandW3S3dNBjEnvCfg):
+    """W3S3d-NBjF (1010): NBj 와 전부 같고 **걸음 시계 주파수만** 1.1 → 1.5 Hz. 보상·참조·관측 차원·명령·지연·질량·고정 불변
+    (위상 기반 항은 env._gf 를 읽어 따라온다; 한 주기 평균 창 _v_box 등의 길이 1/1.1 s 는 그대로 — 평균 창이 1.36 주기가 된다).
+    근거: 걷는 중 좌우 기울기 폭 17°·옆 이동 11.6 cm 는 느린 걸음(한발 지지 0.455 s)의 무게 이동. 선형 역진자 어림으로 옆 이동이 약 40 % 준다.
+    배포 계약 변경: 러너 W3Config.f_step 을 같은 값으로(새 키). 시작 = NBj-s2-16299 이어 학습. 기준 reports/real_1009/NEWBODY_WALK.md §16."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        p = dict(self.events.w3_gait.params); p["f_step"] = float(NBJF_F_STEP)
+        self.events.w3_gait.params = p

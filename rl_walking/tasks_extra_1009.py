@@ -58,3 +58,14 @@ gym.register(
         "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
     },
 )
+
+# 1010 빠른 걸음: NBj + 걸음 시계 1.5 Hz
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjF-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjFEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)

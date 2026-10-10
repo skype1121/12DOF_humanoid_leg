@@ -54,5 +54,16 @@ if _LOCK_IDS:
 else:
     P("[고정] 없음")
 """ + A4)
+# 1010 빠른 걸음: --kw_w3_fstep F(> 0) — 합성 러너의 걷기 시계(W3_SPECS 의 W3Config.f_step)와 평가 env 의 위상 시계를 같은 값으로. 0(기본) = 종전과 같은 코드 경로.
+src = rep(src, A1, A1 + 'parser.add_argument("--kw_w3_fstep", type=float, default=0.0, help="1010: 걷기 시계 주파수 덮어쓰기[Hz](러너·평가 env 둘 다). 0 = 등록값 1.1")\n')
+A8 = "    _BR.enable_experimental_w3()\n"
+src = rep(src, A8, """    if args_cli.kw_w3_fstep > 0:
+        import dataclasses as _dc_
+        _sp_ = _W3D.W3_SPECS["stand_w3s3d_15800"]
+        _W3D.W3_SPECS["stand_w3s3d_15800"] = _sp_[:3] + (_dc_.replace(_sp_[3], f_step=float(args_cli.kw_w3_fstep)),) + _sp_[4:]
+        print(f"[runner_loop] ★ 걷기 시계 덮어쓰기(평가 전용): f_step {_sp_[3].f_step} → {args_cli.kw_w3_fstep} Hz (러너 W3Config + 평가 env)", flush=True)
+""" + A8)
+A9 = '_evc.w3_gait = _ETC(func=_tr_gait_update, mode="interval", interval_range_s=(0.0, 0.0), params={"f_step": 1.1})'
+src = rep(src, A9, '_evc.w3_gait = _ETC(func=_tr_gait_update, mode="interval", interval_range_s=(0.0, 0.0), params={"f_step": float(args_cli.kw_w3_fstep) if args_cli.kw_w3_fstep > 0 else 1.1})')
 dst = os.path.join(R, "rl_walking/scripts/eval_transition_kwx_nb.py")
 open(dst, "w", encoding="utf-8").write(src); print("wrote", dst)

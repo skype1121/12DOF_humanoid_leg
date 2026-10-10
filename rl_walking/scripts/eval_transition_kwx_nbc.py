@@ -155,6 +155,7 @@ parser.add_argument("--osc_inj", type=str, default="",
                          "인계 기준 t0 s 부터 on s 버스트 n 회, 틈 env 별 U(gap_lo,gap_hi) s · 램프 0.1 s). numpy RNG(4242) — torch RNG 경로 불변. 빈 값 = 끔(종전 비트 동일)")
 parser.add_argument("--trace_npz", action="store_true", help="1007 §13b: 틱별 회복 모드·참 |ω_xy|·감지 |ω_xy|·생존 기록 → log_picture/ground_recovery_<tag>_trace.npz (회복 전환 평가 전용)")
 parser.add_argument("--out_tag", type=str, default="rec")
+parser.add_argument("--kw_w3_soft", type=str, default="", help="1011: 걷기 전환 뒤 T 초 동안 틱당 목표 변화 상한 d0° → 4° 선형('T,d0'). '' = 끔")
 parser.add_argument("--kw_effort_joints", type=str, default="", help="1010: --kw_effort_scales 를 이름에 이 문자열이 든 관절에만 적용")
 parser.add_argument("--kw_w3_fstep", type=float, default=0.0, help="1010: 걷기 시계 주파수 덮어쓰기[Hz](러너·평가 env 둘 다). 0 = 등록값 1.1")
 parser.add_argument("--lock_joints", type=str, default="")
@@ -1480,6 +1481,10 @@ if KWL:
                 R.ke.det_hold = not _AIR_DH["acq"][e]
             R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], (_npk.ones(2, dtype=_npk.float32) if (args_cli.air_contact_one and args_cli.air_det_hold and not _AIR_DH["acq"][e]) else ct[e]))
             act[e] = R.last_step_action; kind[e] = R.last_step_kind; want_v[e] = bool(clk.want)
+            if args_cli.kw_w3_soft:
+                if "_SOFT_TK" not in globals():
+                    globals()["_SOFT_TK"] = [10 ** 6] * N
+                _SOFT_TK[e] = int(R.ticks_in_mode) if kind[e] == 2 else 10 ** 6
             if not R.last_event and R.ticks_in_mode > 6:              # 전환 뒤 이력이 다 찬 틱만(fresh 전환의 백필 구간 제외)
                 _ro = (R.w3r if kind[e] == 2 else (R.air if kind[e] == 3 else R.ke.core)).last_obs
                 if _ro is not None:
@@ -2040,6 +2045,13 @@ for i in range(STEPS):
             a = _FROZEN[0]
         if C2MODE:
             uenv._c2_enable = torch.full((N,), i >= STEPS_PRE, dtype=torch.bool, device=dev)   # 홀드(인계 전)에는 감지 켜짐 금지
+        if args_cli.kw_w3_soft and "_SOFT_TK" in globals():
+            _sT_, _sd0_ = [float(x) for x in args_cli.kw_w3_soft.split(",")]
+            _st_term_ = uenv.action_manager.get_term("joint_pos")
+            if "_SOFT_MAX" not in globals():
+                globals()["_SOFT_MAX"] = float(_st_term_._max_delta)
+            _fr_ = (torch.tensor(_SOFT_TK, device=dev, dtype=torch.float32) * 0.02 / max(_sT_, 1e-6)).clamp(0.0, 1.0)
+            _st_term_._max_delta = (math.radians(_sd0_) + (_SOFT_MAX - math.radians(_sd0_)) * _fr_).unsqueeze(1)
         obs, _, dones, _ = env.step(a)
         if KWL:
             _KW_RAWJV[0] = obs["policy"][:, _KW_JV1 - 12:_KW_JV1].clone()      # 관측 필터(EMA) 전 엔코더 속도 최신 프레임 = 러너 qvel 입력
@@ -2361,6 +2373,7 @@ for i in range(STEPS):
             _TALL["q"].append(robot.data.joint_pos[:_na].half().cpu()); _TALL["tq"].append(robot.data.applied_torque[:_na].half().cpu())   # 실측 관절각·적용 토크(추종 오차·포화 통계)
             if args_cli.trace_qd:
                 _TALL.setdefault("qd", []).append(robot.data.joint_vel[:_na].half().cpu())
+                _TALL.setdefault("ptg", []).append(robot.data.joint_pos_target[:_na].half().cpu())      # 1011: PD 가 실제로 받는 목표(지연·슬루·LPF 뒤) — 요구 토크 계산용
             _nan2 = torch.full((_na, 2), float("nan"))
             _TALL["ref"].append(sw_ref[:_na].float().cpu() if "sw_ref" in dir() else _nan2); _TALL["rp2"].append(_rp2[:_na].float().cpu() if "_rp2" in dir() else _nan2)
         _cur = {"a": a, "cmd": cmd, "q": robot.data.joint_pos, "pitch": pitch, "roll": roll, "w": w_xy, "v": v_xy,

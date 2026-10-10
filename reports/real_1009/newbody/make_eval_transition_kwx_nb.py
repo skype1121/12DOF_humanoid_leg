@@ -75,5 +75,24 @@ src = rep(src, A10, """_nom_ = robot.data.joint_effort_limits.clone(); _new_ = _
                     _new_ = torch.where(_ejm_.unsqueeze(0), _new_, _nom_)
                     print(f"[runner_loop] 토크 한계 배율은 {[n_ for n_ in robot.joint_names if args_cli.kw_effort_joints in n_]} 에만", flush=True)
 """)
+# 1011 걷기 켜는 순간 완화(시뮬 시험용): --kw_w3_soft "T,d0" — KE→W3 전환 뒤 T 초 동안 **시뮬 액션 항**의 틱당 목표 변화 상한을 d0° 에서 4° 까지 선형으로(env 별).
+#   --runner_loop 경로에서 PD 목표를 만드는 것은 시뮬 액션 항(지연 → 슬루)이므로 여기에 건다. '' (기본) = 종전(상수 4°/틱, 같은 코드 경로).
+#   배포 대응(러너·stage8 쪽 슬루)은 효과가 확인되면 따로 만든다.
+src = rep(src, A1, A1 + 'parser.add_argument("--kw_w3_soft", type=str, default="", help="1011: 걷기 전환 뒤 T 초 동안 틱당 목표 변화 상한 d0° → 4° 선형(\'T,d0\'). \'\' = 끔")\n')
+A11 = "            act[e] = R.last_step_action; kind[e] = R.last_step_kind; want_v[e] = bool(clk.want)\n"
+src = rep(src, A11, A11 + """            if args_cli.kw_w3_soft:
+                if "_SOFT_TK" not in globals():
+                    globals()["_SOFT_TK"] = [10 ** 6] * N
+                _SOFT_TK[e] = int(R.ticks_in_mode) if kind[e] == 2 else 10 ** 6
+""")
+A12 = "        obs, _, dones, _ = env.step(a)\n"
+src = rep(src, A12, """        if args_cli.kw_w3_soft and "_SOFT_TK" in globals():
+            _sT_, _sd0_ = [float(x) for x in args_cli.kw_w3_soft.split(",")]
+            _st_term_ = uenv.action_manager.get_term("joint_pos")
+            if "_SOFT_MAX" not in globals():
+                globals()["_SOFT_MAX"] = float(_st_term_._max_delta)
+            _fr_ = (torch.tensor(_SOFT_TK, device=dev, dtype=torch.float32) * 0.02 / max(_sT_, 1e-6)).clamp(0.0, 1.0)
+            _st_term_._max_delta = (math.radians(_sd0_) + (_SOFT_MAX - math.radians(_sd0_)) * _fr_).unsqueeze(1)
+""" + A12)
 dst = os.path.join(R, "rl_walking/scripts/eval_transition_kwx_nb.py")
 open(dst, "w", encoding="utf-8").write(src); print("wrote", dst)

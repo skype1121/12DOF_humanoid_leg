@@ -42,6 +42,7 @@ src = rep(src, A3, """    if args_cli.lock_offset_deg:
 A4 = '            _TALL["q"].append(robot.data.joint_pos[:_na].half().cpu()); _TALL["tq"].append(robot.data.applied_torque[:_na].half().cpu())   # 실측 관절각·적용 토크(추종 오차·포화 통계)\n'
 src = rep(src, A4, A4 + """            if args_cli.trace_qd:
                 _TALL.setdefault("qd", []).append(robot.data.joint_vel[:_na].half().cpu())
+                _TALL.setdefault("ptg", []).append(robot.data.joint_pos_target[:_na].half().cpu())      # 1011: PD 가 실제로 받는 목표(지연·슬루·LPF 뒤) — 요구 토크 계산용
 """)
 
 A5 = "        ct = (po[:, _FC1 - 2:_FC1] > 0.5).float().cpu().numpy().astype(_npk.float32)\n"

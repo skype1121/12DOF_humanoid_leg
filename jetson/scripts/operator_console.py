@@ -110,7 +110,7 @@ CKPT_CHOICES = ["stand_crouch_g12", "stand_crouch_g21a", "stand_c5_g21a_g24ra", 
 # 1010: 새 몸(hip_r 기구 고정) 종종걸음 키를 **선택지로만** 더한다 — 기본값(첫 항목)은 그대로다. 기구가 고정된 구성에서만 고를 것(하드웨어맵 mech_fixed).
 # 1010 저녁(승윤님 "정책 깔끔하게 한 개"): 실물이 hip_r 기구 고정 구성으로 바뀌어 메뉴 = 새 몸 종종걸음 키 **하나**. 원래 몸 키(stand_kew3qa_…_w3s3d15800)는
 #   "아는 키"로 내려갔다(하드웨어맵에 기구 고정 선언이 있으면 그 키의 걷기는 브리지가 거부한다 — 고를 이유가 없다). 원래 몸으로 되돌리면 이 줄을 되돌린다.
-CKPT_MENU_KEYS = ("stand_kew3qa_g21a_g24ra_w3nbjd2_17798",)
+CKPT_MENU_KEYS = ("stand_kew3qa_g21a_g24ra_w3nbje1_18997",)
 CKPT_DEFAULT = CKPT_MENU_KEYS[0]
 #: 시험 방식 기본값 — 기본 정책이 공중 정책 시작을 받는 키면 "air"(공중에서 정책 시작 → 착지), 아니면 종전대로 "ground". 새 TrialState 가 같은 규칙으로 시작한다.
 MODE_DEFAULT = default_mode(CKPT_DEFAULT)
@@ -126,7 +126,7 @@ WALK_BRIDGE_ARGS = {
     # 1008 오후 셋째 합성 키(둘째 합성 키 + 공중·착지 구간 서기 정책 G21h — 공중 정책 시작을 받는 키 · 실물 미검증) — 같은 실험 플래그. 위 세 키의 인자는 그대로다.
     "stand_kew3qa_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
     # 1010 넷째 합성 키(새 몸 종종걸음 — hip_r 기구 고정 구성 전용 · 실물 미검증) — 같은 실험 플래그. 위 네 키의 인자는 그대로다.
-    "stand_kew3qa_g21a_g24ra_w3nbjd2_17798": ["--experimental-w3", "--experimental-kew3"],
+    "stand_kew3qa_g21a_g24ra_w3nbje1_18997": ["--experimental-w3", "--experimental-kew3"],
 }
 #: 정책 로드(--live)에만 더 붙는 인자. 헤딩 고리는 기본 off — 시뮬 판정: 왕복에서 기준 미달(reports/gen_w3/HEADING_SESSION_1007.md §7).
 #: 셀프테스트 게이트에는 붙이지 않는다: 브리지 --selftest 의 'W3 감시 2 차 대비책'·'헤딩 고리 고장 판별 분리' 항목은 고리 설정이 켜진 채로만
@@ -2408,8 +2408,8 @@ def selftest_walk(directory):
     # 1008 정리: 고를 수 있는 정책 = 합성 키 하나(기본값도 그것). 그 밖의 아는 키는 정책 로드·시험 설정에서 사유를 대고 거부된다.
     # 1008 오후: 그 한 키 = 공중 정책 시작을 받는 합성 키(종전 합성 키 + 공중·착지 구간 서기 정책 G21h). 종전 메뉴 키(stand_kew3q_…)는 "아는 키"로 내려갔다.
     # 1010: 새 몸 종종걸음 키는 선택지로만 뒤에 붙었다 — 기본값은 첫 항목 그대로
-    assert CKPT_MENU_KEYS == ("stand_kew3qa_g21a_g24ra_w3nbjd2_17798",) and CKPT_MENU == list(CKPT_MENU_KEYS) \
-        and CKPT_DEFAULT == CKPT_MENU[0] == "stand_kew3qa_g21a_g24ra_w3nbjd2_17798"      # 1010 저녁: 새 몸 키 하나
+    assert CKPT_MENU_KEYS == ("stand_kew3qa_g21a_g24ra_w3nbje1_18997",) and CKPT_MENU == list(CKPT_MENU_KEYS) \
+        and CKPT_DEFAULT == CKPT_MENU[0] == "stand_kew3qa_g21a_g24ra_w3nbje1_18997"      # 1010 저녁: 새 몸 키 하나
     assert "stand_kew3qa_g21a_g24ra_w3s3d15800" in CKPT_ALL and "stand_kew3qa_g21a_g24ra_w3s3d15800" not in CKPT_MENU
     assert "stand_kew3q_g21a_g24ra_w3s3d15800" in CKPT_ALL and "stand_kew3q_g21a_g24ra_w3s3d15800" not in CKPT_MENU
     # 시험 방식 기본값: 공중 정책 시작을 받는 키만 "air", 그 밖(정리된 키·모르는 키)은 종전대로 "ground"
@@ -2478,7 +2478,7 @@ def selftest_walk(directory):
                   "stand_kew3_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
                   "stand_kew3q_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],       # 1008 둘째 합성 키(허용된 추가)
                   "stand_kew3qa_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],      # 1008 오후 셋째 합성 키(공중 정책 시작 — 허용된 추가)
-                  "stand_kew3qa_g21a_g24ra_w3nbjd2_17798": ["--experimental-w3", "--experimental-kew3"]}    # 1010 넷째 합성 키(새 몸 종종걸음 — 허용된 추가)
+                  "stand_kew3qa_g21a_g24ra_w3nbje1_18997": ["--experimental-w3", "--experimental-kew3"]}    # 1010 넷째 합성 키(새 몸 종종걸음 — 허용된 추가)
         for k, flags in expect.items():
             act_bridge_live({"checkpoint": k})
             ACTIONS["selftest"][0]({"checkpoint": k})
@@ -2496,7 +2496,7 @@ def selftest_walk(directory):
         and WALK_CKPTS == list(WALK_KEYS)
     assert list(WALK_KEYS) == [W.W3S3D_CKPT_KEY, kew3[1], kew3q[1], kew3qa[1], kew3nbj[1]] == list(expect) \
         == ["stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3s3d15800",
-            "stand_kew3qa_g21a_g24ra_w3nbjd2_17798"], list(WALK_KEYS)
+            "stand_kew3qa_g21a_g24ra_w3nbje1_18997"], list(WALK_KEYS)
     assert WALK_KEYS[kew3nbj[1]]["composite"] is True and WALK_KEYS[kew3nbj[1]]["air_start"] is True and WALK_BRIDGE_ARGS[kew3nbj[1]] == WALK_BRIDGE_ARGS[kew3qa[1]] \
         and all(s in WALK_KEYS[kew3nbj[1]]["label"] for s in ("새 몸(hip_r 고정)", "제자리·앞만", "실물 미검증")), WALK_KEYS[kew3nbj[1]]
     assert WALK_KEYS[W.W3S3D_CKPT_KEY]["composite"] is False and WALK_KEYS[kew3[1]]["composite"] is True

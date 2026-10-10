@@ -82,7 +82,7 @@ class ConsoleTests(unittest.TestCase):
 
     def test_kept_policy_is_the_air_start_key_and_accepts_both_modes(self):
         """1008 오후: 남긴 정책 = 공중 정책 시작을 받는 합성 키(종전 합성 키 + 공중·착지 구간 정책). 시험 방식의 기본값은 '공중'이고, 공중·접지 설정을 둘 다 받는다."""
-        self.assertEqual(c.CKPT_DEFAULT, "stand_kew3qa_g21a_g24ra_w3nbjd2_17798")
+        self.assertEqual(c.CKPT_DEFAULT, "stand_kew3qa_g21a_g24ra_w3nbje1_18997")
         self.assertEqual((c.MODE_DEFAULT, self.trial.mode, c.console_snapshot()["trial"]["mode"]), ("air", "air", "air"))
         self.assertEqual(TrialState("stand_crouch_g12").mode, "ground")                      # 공중 정책 시작 키가 아니면 종전 기본값
         self.assertEqual(TrialState("stand_kew3q_g21a_g24ra_w3s3d15800").mode, "ground")

@@ -33,7 +33,7 @@ T = 600
 KEYS = ["stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra", "stand_w3s3d_15800", "stand_kew3_g21a_g24ra_w3s3d15800",
         "stand_kew3q_g21a_g24ra_w3s3d15800", "stand_crouch_g21h", "stand_kew3qa_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3s3d15800@air",
         # 1010: 새 몸 종종걸음 키를 **맨 뒤에** 더했다(앞의 9 키·순서·입력열은 그대로) — 걷기 단독 키, 합성 키의 지면 시작, 공중 시작
-        "stand_w3s3dnbjd2_17798", "stand_kew3qa_g21a_g24ra_w3nbjd2_17798", "stand_kew3qa_g21a_g24ra_w3nbjd2_17798@air"]
+        "stand_w3s3dnbje1_18997", "stand_kew3qa_g21a_g24ra_w3nbje1_18997", "stand_kew3qa_g21a_g24ra_w3nbje1_18997@air"]
 AIR_TICKS = 150      # "@air" 입력열: 처음 3 s 는 양발 무접촉(공중), 그 뒤는 표준 입력열의 접촉
 WALK_EVENTS = [(100, True, (0.06, 0.0, 0.0)), (300, False, (0.0, 0.0, 0.0)), (420, True, (0.0, 0.0, 0.15)), (520, False, (0.0, 0.0, 0.0))]
 

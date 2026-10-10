@@ -1079,6 +1079,10 @@ def scenario_kew3_ov(b, clock, out):
     return driver
 
 
+#: main() 만 True 로 켠다 — 밖에서 _patch 를 빌려 쓰는 시험은 맵의 mech_fixed 선언을 그대로 받는다.
+STRIP_MECH_FIXED = False
+
+
 def _patch(b, clock):
     """시험 전용 치환: 가짜 시계·guard_mode safe·스텁 정책 러너(관측 의존 결정적 출력). 원래 함수는 한 번만 저장."""
     import numpy as np
@@ -1089,7 +1093,8 @@ def _patch(b, clock):
     def load_safe():
         f = b._st_real_load()
         f.guard_mode = "safe"
-        f.mech_fixed = ()       # 1010: 현장 맵의 기구 고정 선언과 무관하게 돈다(선언된 젯슨 맵에서 원래 몸 키 시험 14 항이 가드에 걸렸다). 가드 시험은 자기 선언을 따로 건다
+        if STRIP_MECH_FIXED:    # 1010: 이 selftest(main) 는 현장 맵의 기구 고정 선언과 무관하게 돈다(선언된 젯슨 맵에서 원래 몸 키 시험 14 항이 가드에 걸렸다).
+            f.mech_fixed = ()   #       가드 시험은 자기 선언을 따로 건다. 이 시험대를 빌려 쓰는 다른 시험(tests/test_mech_fixed.py)은 맵 선언을 그대로 본다(기본 False)
         return f
     b.load_frame_map = load_safe
 
@@ -1252,6 +1257,8 @@ def replay(b, argv, t0=2_000_000_000.0, driver_fn=None):
 
 
 def main():
+    global STRIP_MECH_FIXED
+    STRIP_MECH_FIXED = True
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--ref", default="68493c11", help="플래그 꺼짐 노드 비트 비교 기준 커밋(감독기 도입 전)")

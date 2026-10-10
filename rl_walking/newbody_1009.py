@@ -284,3 +284,30 @@ class Biped12HangStandW3S3dNBjFEnvCfg(Biped12HangStandW3S3dNBjEnvCfg):
         super().__post_init__()
         p = dict(self.events.w3_gait.params); p["f_step"] = float(NBJF_F_STEP)
         self.events.w3_gait.params = p
+
+
+# ---------------------------------------------------------------- 1010 밤: 과요구 벌점(실물 모터 8 정지 뒤) ----------------------------------------------------------------
+def nb_over_demand(env, thresh: float = 0.8, joint_names=NB_LOCK_JOINTS) -> torch.Tensor:
+    """PD 가 **요구한** 토크(자르기 전 computed_torque)의 한계 대비 비율이 thresh 를 넘는 초과분 제곱합 — 굳은 관절 제외. 벌점 크기(양수).
+    왜: 시뮬 구동기는 한계를 넘는 요구를 조용히 자른다(applied_torque ≤ 한계) → 정책이 목표를 크게 튀겨도 공짜다. 실물 MIT 구동기는 kp·오차를 그대로 받는다
+    (1010 실물: 걷기 켠 0.19 s 뒤 right_hip_a 목표−실측 14° = 요구 약 37 N·m → 모터 8 응답 정지). 기존 torque_saturation 은 잘린 값이라 비율이 1 에서 멈춘다."""
+    robot = env.scene["robot"]
+    c = getattr(env, "_nb_od_cols", None)
+    if c is None:
+        lock = set(robot.find_joints(list(joint_names))[0])
+        c = env._nb_od_cols = torch.tensor([j for j in range(robot.num_joints) if j not in lock], device=env.device)
+    r = robot.data.computed_torque[:, c].abs() / (robot.data.joint_effort_limits[:, c] + 1e-6)
+    return torch.clamp(r - thresh, min=0.0).pow(2).sum(dim=1)
+
+
+@configclass
+class Biped12HangStandW3S3dNBjTEnvCfg(Biped12HangStandW3S3dNBjEnvCfg):
+    """W3S3d-NBjT (1010 밤, 승윤님 "토크 상한이랑 급격한 튐에 벌점"): NBj 와 전부 같고 **보상 항 하나만 추가** — 걷는 중 과요구 벌점(nb_over_demand, 문턱 0.8).
+    가중 −5(어림: 힙 외전이 12 % 틱 동안 요구비 1.5 → 초당 약 −0.3). 시작 = NBj-s2-16299 이어 학습. 기준 reports/real_1009/NEWBODY_WALK.md §17."""
+    W_OD = -5.0             # 비주석 클래스 상수(설정 필드 아님)
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import RewardTermCfg as RewTerm
+        from rl_walking import w3 as _w3
+        self.rewards.w3_over_demand = RewTerm(func=_w3.w3_step_gated, weight=float(self.W_OD), params={"func": nb_over_demand, "params": {}})

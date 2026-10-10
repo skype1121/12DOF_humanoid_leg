@@ -1153,6 +1153,7 @@ def act_can_up():
 
 # 1006: stage8 실효 지연 단축 옵션(73889d5f, 기본 꺼짐) — 환경변수 STAGE8_LATENCY_OPTS 에 허용 목록 키만(쉼표 구분).
 #   fas = --feedback-after-send, soc = --send-on-command, w<ms> = --feedback-wait-ms <ms>(0.5–8). 비우면 종전 기동 인자 그대로.
+#   1010: tc<N·m> = --target-torque-cap-nm(전 관절 요구 토크 상한), tcj.<이름조각>=<N·m> = --target-torque-cap-joint(관절별). 예: "tc25,tcj.hip_a=20".
 #   권장 단계(승인 후): "fas" → "fas,soc". 100 Hz(--control-hz)는 여기서 켜지 않는다(별도 승인).
 _STAGE8_LAT_FLAGS = {"fas": ["--feedback-after-send"], "soc": ["--send-on-command"]}
 
@@ -1180,6 +1181,16 @@ def stage8_latency_args(raw=None):
     for tok in [t.strip() for t in raw.split(",") if t.strip()]:
         if tok in _STAGE8_LAT_FLAGS:
             out += _STAGE8_LAT_FLAGS[tok]
+        elif tok.startswith("tcj."):        # 1010 요구 토크 상한(관절별): tcj.hip_a=20 → --target-torque-cap-joint hip_a=20 (값·이름은 stage8 이 검증)
+            name, sep, val = tok[4:].partition("=")
+            if not sep or not name or not (10.0 <= float(val) <= 25.0):
+                raise ValueError(f"STAGE8_LATENCY_OPTS 토크 상한 형식·범위 밖: {tok}")
+            out += ["--target-torque-cap-joint", f"{name}={float(val):g}"]
+        elif tok.startswith("tc"):          # 1010 요구 토크 상한(전 관절): tc25 → --target-torque-cap-nm 25
+            nm = float(tok[2:])
+            if not (10.0 <= nm <= 25.0):
+                raise ValueError(f"STAGE8_LATENCY_OPTS 토크 상한 범위 밖: {tok}")
+            out += ["--target-torque-cap-nm", f"{nm:g}"]
         elif tok.startswith("w"):
             ms = float(tok[1:])
             if not (0.5 <= ms <= 8.0):

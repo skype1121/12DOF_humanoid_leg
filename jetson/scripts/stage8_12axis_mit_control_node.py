@@ -130,6 +130,62 @@ MAX_TARGET_SLEW_DEG_PER_SEC = MAX_TARGET_STEP_DEG_PER_TICK / 0.02
 ALLOWED_CONTROL_HZ = (50, 100)
 
 
+# ---------------------------------------------------------------------------
+# 1010 요구 토크 상한 — 기본 꺼짐(0 = 종전 프레임과 바이트 동일). --target-torque-cap-nm X 로 켠다.
+#   MIT 구동기는 kp·(목표−실측) 을 그대로 토크로 요구받는다. 시뮬 구동기는 한계(25 N·m)에서 조용히 자르지만 실물에는 그 자르기가 없다.
+#   1010 실물: 걷기 켠 0.19 s 뒤 right_hip_a 목표−실측 14°(kp 150 → 약 37 N·m 요구) → 모터 8 응답 정지.
+#   켜면 **보내는 프레임의 목표만** 최신 실측각 ± degrees(X / kp) 안으로 묶는다(위치 항 요구 토크 ≤ X). 내부 commanded 목표·슬루·가드는 그대로 —
+#   시뮬의 토크 자르기와 같은 꼴(실측이 따라오면 목표가 풀린다). 실측이 낡은 관절·실측이 없는 관절은 묶지 않는다(종전 그대로 — 동결 유지 경로를 건드리지 않는다).
+# ---------------------------------------------------------------------------
+TARGET_TORQUE_CAP_NM = 0.0
+TARGET_TORQUE_CAP_RANGE_NM = (10.0, 25.0)
+#: 관절 이름에 든 문자열별 상한(--target-torque-cap-joint hip_a=20 — 여러 번 가능). 맞는 항목이 있으면 전체 상한 대신 그 값(여럿 맞으면 가장 작은 값).
+#: 근거(시뮬 1010): 힙 외전 한계만 20 N·m 로 낮춰도 왕복 낙상 6 → 8/214, 전 관절을 20 으로 낮추면 60/418 — 그래서 관절별로 따로 준다.
+TARGET_TORQUE_CAP_BY_NAME = {}
+
+
+def parse_target_torque_cap(value):
+    cap = float(value)
+    if cap == 0.0:
+        return 0.0
+    lo, hi = TARGET_TORQUE_CAP_RANGE_NM
+    if not (lo <= cap <= hi) or not math.isfinite(cap):
+        raise ValueError(f"--target-torque-cap-nm {value} 불가 (0 = 끔, 또는 {lo:g}~{hi:g})")
+    return cap
+
+
+def parse_target_torque_cap_joints(items):
+    """['hip_a=20', ...] → {'hip_a': 20.0}. 이름 조각은 12 관절 중 하나 이상에 들어 있어야 하고 값은 상한 범위 안(0 불가 — 끄려면 항목을 빼라)."""
+    out = {}
+    for item in items or []:
+        key, sep, val = str(item).partition("=")
+        key = key.strip()
+        if not sep or not key or not any(key in j for j in JOINT_NAMES_12DOF):
+            raise ValueError(f"--target-torque-cap-joint {item!r} 불가 (형식 이름조각=N·m, 이름조각은 관절명 일부)")
+        cap = parse_target_torque_cap(val)
+        if cap == 0.0:
+            raise ValueError(f"--target-torque-cap-joint {item!r}: 0 불가")
+        out[key] = cap
+    return out
+
+
+def torque_cap_enabled():
+    return TARGET_TORQUE_CAP_NM > 0.0 or bool(TARGET_TORQUE_CAP_BY_NAME)
+
+
+def torque_cap_err_deg(joint, cap_nm=None):
+    """그 관절의 허용 |목표−실측| [deg] = degrees(cap / kp). 상한이 꺼졌거나 kp ≤ 0 이면 None."""
+    cap = TARGET_TORQUE_CAP_NM if cap_nm is None else float(cap_nm)
+    if cap_nm is None:
+        named = [v for k, v in TARGET_TORQUE_CAP_BY_NAME.items() if k in joint]
+        if named:
+            cap = min(named)
+    kp = float(get_joint_config(joint)["kp"])
+    if cap <= 0.0 or kp <= 0.0:
+        return None
+    return math.degrees(cap / kp)
+
+
 def time_based_slew_enabled():
     """송신 주기를 바꾸는 옵션(명령 즉시 송신·100 Hz)이 켜졌는가 → 슬루를 시간 기준으로.
 
@@ -468,6 +524,7 @@ class Stage8TwelveAxisMitControlCore:
             joint: float(STAND_ZERO_DEG_BY_JOINT[joint]) for joint in MECH_FIXED_JOINTS}
         self.mech_fixed_target_drops = 0   # 고정 관절로 들어와 버린 목표 수 (status 노출)
         self.latest_feedback_by_joint = {}
+        self.torque_cap_counts = {}        # 1010 요구 토크 상한이 목표를 묶은 송신 수(관절별, status 노출)
         self.latest_feedback_time_by_joint = {}
         self.latest_feedback_time = None
         self.desired_relative_deg_by_joint = {joint: 0.0 for joint in JOINT_NAMES_12DOF}
@@ -926,6 +983,15 @@ class Stage8TwelveAxisMitControlCore:
             self.commanded_relative_deg_by_joint[joint] = next_value
 
             absolute_target_deg = self.baseline_deg_by_joint[joint] + next_value
+            if torque_cap_enabled() and not (global_stale or joint_stale):
+                # 1010 요구 토크 상한: 보내는 목표만 실측 ± 허용 오차로 묶는다(내부 commanded 는 그대로 — 위 머리말)
+                err_lim = torque_cap_err_deg(joint)
+                meas = self.latest_actual_deg_by_joint.get(joint)
+                if err_lim is not None and meas is not None:
+                    capped = min(max(absolute_target_deg, float(meas) - err_lim), float(meas) + err_lim)
+                    if capped != absolute_target_deg:
+                        self.torque_cap_counts[joint] = self.torque_cap_counts.get(joint, 0) + 1
+                        absolute_target_deg = capped
             preview = build_12axis_mit_preview(joint, absolute_target_deg)
             self.last_preview_by_joint[joint] = preview
             sent = self._maybe_write_frame(preview.motor_id, preview.frame_bytes)
@@ -1722,6 +1788,9 @@ class Stage8TwelveAxisMitControlCore:
             "fb_after_send": dict(self.fb_after_send),
             "tick_timing": self._tick_timing_status(),
             "max_target_step_deg_per_tick": MAX_TARGET_STEP_DEG_PER_TICK,
+            # 1010 요구 토크 상한: 켠 때만 싣는다(꺼짐 = status 가 종전과 같은 키)
+            **({"target_torque_cap_nm": TARGET_TORQUE_CAP_NM, "target_torque_cap_by_name": dict(TARGET_TORQUE_CAP_BY_NAME),
+                "target_torque_cap_counts": dict(self.torque_cap_counts)} if torque_cap_enabled() else {}),
             "baseline_set": self._has_any_baseline(),
             "baseline_complete": self._baseline_is_set(),
             "baseline_count": len(self.baseline_deg_by_joint),
@@ -1858,12 +1927,23 @@ def build_arg_parser():
     parser.add_argument(
         "--control-hz", type=int, default=None, choices=list(ALLOWED_CONTROL_HZ),
         help="제어(송신) 주기 Hz (기본 50 = 종전). 100 은 버스 부하 2배·실물 미검증")
+    parser.add_argument(
+        "--target-torque-cap-nm", default=None,
+        help=f"1010 요구 토크 상한 N·m (0/미지정 = 끔 = 종전, {TARGET_TORQUE_CAP_RANGE_NM[0]:g}~{TARGET_TORQUE_CAP_RANGE_NM[1]:g}). "
+             "보내는 목표를 실측각 ± degrees(상한/kp) 안으로 묶는다")
+    parser.add_argument(
+        "--target-torque-cap-joint", action="append", default=None, metavar="이름조각=N·m",
+        help="관절 이름에 이 조각이 든 관절만의 상한(예: hip_a=20). 여러 번 줄 수 있다. 전체 상한 없이 이것만 줘도 된다")
     return parser
 
 
 def apply_latency_args(args):
     """지연 옵션 인자를 모듈 전역에 반영. 잘못된 값은 ValueError (기동 거부)."""
-    global FEEDBACK_AFTER_SEND, FEEDBACK_WAIT_SEC, SEND_ON_COMMAND, CONTROL_PERIOD_SEC
+    global FEEDBACK_AFTER_SEND, FEEDBACK_WAIT_SEC, SEND_ON_COMMAND, CONTROL_PERIOD_SEC, TARGET_TORQUE_CAP_NM, TARGET_TORQUE_CAP_BY_NAME
+    cap_by_name = parse_target_torque_cap_joints(getattr(args, "target_torque_cap_joint", None))
+    cap = TARGET_TORQUE_CAP_NM
+    if getattr(args, "target_torque_cap_nm", None) is not None:
+        cap = parse_target_torque_cap(args.target_torque_cap_nm)
     wait = FEEDBACK_WAIT_SEC
     if getattr(args, "feedback_wait_ms", None) is not None:
         wait = parse_feedback_wait_ms(args.feedback_wait_ms)
@@ -1881,6 +1961,8 @@ def apply_latency_args(args):
     FEEDBACK_WAIT_SEC = wait
     SEND_ON_COMMAND = bool(getattr(args, "send_on_command", False))
     CONTROL_PERIOD_SEC = period
+    TARGET_TORQUE_CAP_NM = cap
+    TARGET_TORQUE_CAP_BY_NAME = cap_by_name
 
 
 def main():

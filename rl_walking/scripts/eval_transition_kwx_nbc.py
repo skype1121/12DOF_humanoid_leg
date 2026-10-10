@@ -155,6 +155,8 @@ parser.add_argument("--osc_inj", type=str, default="",
                          "인계 기준 t0 s 부터 on s 버스트 n 회, 틈 env 별 U(gap_lo,gap_hi) s · 램프 0.1 s). numpy RNG(4242) — torch RNG 경로 불변. 빈 값 = 끔(종전 비트 동일)")
 parser.add_argument("--trace_npz", action="store_true", help="1007 §13b: 틱별 회복 모드·참 |ω_xy|·감지 |ω_xy|·생존 기록 → log_picture/ground_recovery_<tag>_trace.npz (회복 전환 평가 전용)")
 parser.add_argument("--out_tag", type=str, default="rec")
+parser.add_argument("--kw_effort_joints", type=str, default="", help="1010: --kw_effort_scales 를 이름에 이 문자열이 든 관절에만 적용")
+parser.add_argument("--kw_w3_fstep", type=float, default=0.0, help="1010: 걷기 시계 주파수 덮어쓰기[Hz](러너·평가 env 둘 다). 0 = 등록값 1.1")
 parser.add_argument("--lock_joints", type=str, default="")
 parser.add_argument("--lock_band_deg", type=float, default=0.05)
 parser.add_argument("--link_urdf", type=str, default="")
@@ -299,7 +301,7 @@ def _tr_u0(env):
     if _LWZ > 0.0:
         u0 = torch.where((cw[:, 1].abs() < 0.02) & (cw[:, 2] < -_LWZ), torch.full_like(u0, 0.5), u0)
     return u0
-_evc.w3_gait = _ETC(func=_tr_gait_update, mode="interval", interval_range_s=(0.0, 0.0), params={"f_step": 1.1})
+_evc.w3_gait = _ETC(func=_tr_gait_update, mode="interval", interval_range_s=(0.0, 0.0), params={"f_step": float(args_cli.kw_w3_fstep) if args_cli.kw_w3_fstep > 0 else 1.1})
 _evc.w3_track = _ETC(func=_w3m.w3_step_tracker, mode="interval", interval_range_s=(0.0, 0.0), params={})
 _cmdc = env_cfg.commands.base_velocity
 _cmdc.heading_command = False; _cmdc.resampling_time_range = (1.0e6, 1.0e6); _cmdc.rel_standing_envs = 0.0
@@ -1173,6 +1175,11 @@ if KWL:
     _BR = _ilu.module_from_spec(_spec); sys.modules["rl_bridge_node"] = _BR; _spec.loader.exec_module(_BR)
     from rl_walking.deploy.kew3_runner import KeW3Runner as _KWR, MODE_W3 as _KW_MW3
     from rl_walking.deploy import w3_deploy as _W3D
+    if args_cli.kw_w3_fstep > 0:
+        import dataclasses as _dc_
+        _sp_ = _W3D.W3_SPECS["stand_w3s3d_15800"]
+        _W3D.W3_SPECS["stand_w3s3d_15800"] = _sp_[:3] + (_dc_.replace(_sp_[3], f_step=float(args_cli.kw_w3_fstep)),) + _sp_[4:]
+        print(f"[runner_loop] ★ 걷기 시계 덮어쓰기(평가 전용): f_step {_sp_[3].f_step} → {args_cli.kw_w3_fstep} Hz (러너 W3Config + 평가 env)", flush=True)
     _BR.enable_experimental_w3()
     if args_cli.kw_stand_exported:
         _sx_new = os.path.abspath(args_cli.kw_stand_exported); _sx_old = _BR.CHECKPOINTS["stand_crouch_g21a"]
@@ -1322,6 +1329,11 @@ if KWL:
                 _es_ = [float(x) for x in args_cli.kw_effort_scales.split(",")]
                 _sc_ = torch.tensor([_es_[e_ % len(_es_)] for e_ in range(N)], device=dev, dtype=torch.float32).unsqueeze(1)
                 _nom_ = robot.data.joint_effort_limits.clone(); _new_ = _nom_ * _sc_
+                if args_cli.kw_effort_joints:
+                    _ejm_ = torch.tensor([args_cli.kw_effort_joints in n_ for n_ in robot.joint_names], device=dev)
+                    assert bool(_ejm_.any()), "--kw_effort_joints: 맞는 관절 없음"
+                    _new_ = torch.where(_ejm_.unsqueeze(0), _new_, _nom_)
+                    print(f"[runner_loop] 토크 한계 배율은 {[n_ for n_ in robot.joint_names if args_cli.kw_effort_joints in n_]} 에만", flush=True)
                 robot.write_joint_effort_limit_to_sim(_new_)
                 for _act_ in robot.actuators.values():
                     if hasattr(_act_, "effort_limit") and torch.is_tensor(_act_.effort_limit) and _act_.effort_limit.dim() == 2:

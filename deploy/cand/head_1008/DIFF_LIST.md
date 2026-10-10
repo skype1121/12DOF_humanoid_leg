@@ -5,10 +5,10 @@
 
 ```
 package: head_1008
-source_commit: abdfd7e73bc016cd42f9d8df73d54c39c80a7a1c 2026-10-10T21:51:30+09:00
+source_commit: 27bbe96cddb00f651fdfc1bd9ab413abfc4a873c 2026-10-10T23:26:06+09:00
 source_uncommitted: none
-manifest: deploy/head_1008.md5 md5 1bbb6ded9b02498e0a7450f42e30319c
-files: 132 (send 80 incl. this file and the manifest, verify 52)
+manifest: deploy/head_1008.md5 md5 8488815511d2f3d874f727057e3e1132
+files: 133 (send 81 incl. this file and the manifest, verify 52)
 jetson_inventory: deploy/cand/head_1008/jetson_inventory_before_md5.txt md5 35a129c9f16a082e1cb6d3ba9cb13855
 note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드(콘솔·브리지·stage8·러너·도구·시험)를 마지막으로 바꾼 커밋,
       source_uncommitted = 생성 시점에 그 커밋과 달랐던 실행 코드 파일(none 이어야 커밋과 일치).
@@ -18,8 +18,8 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 
 | 구분 | 파일 수 | 크기 합 |
 |---|---|---|
-| 전송 — 변경(젯슨에 구판이 있음) | 18 | 1264 KB |
-| 전송 — 신규(젯슨에 없음) | 60 (+ 매니페스트·VERSION 2) | 10686 KB |
+| 전송 — 변경(젯슨에 구판이 있음) | 18 | 1270 KB |
+| 전송 — 신규(젯슨에 없음) | 61 (+ 매니페스트·VERSION 2) | 10695 KB |
 | 확인만(젯슨과 같음 — 복사하지 않음) | 52 | 13253 KB |
 | 삭제 | 0 | — |
 
@@ -36,13 +36,13 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `jetson/scripts/console_ui.html` | session | `9f6a963d` | `2140181c` | 432d1176 2026-10-03 | - |
 | `jetson/scripts/hang_stand.py` | sync | `2692298a` | `b28a04de` | 8984f8c7 2026-09-29 | hang_stand.py |
 | `jetson/scripts/imu_mount_calib.py` | sync | `b8aa00e9` | `7c3bd93c` | 29b984d2 2026-07-27 | - |
-| `jetson/scripts/operator_console.py` | session | `90b7ef28` | `0c2abb73` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | operator_console.py |
+| `jetson/scripts/operator_console.py` | session | `90b7ef28` | `785c9241` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | operator_console.py |
 | `jetson/scripts/pose_hold.py` | sync | `83e4f599` | `16f57ffd` | 9c4750d3 2026-07-27 | - |
 | `jetson/scripts/release_all.py` | sync | `e06b80d1` | `7c44c40d` | 38e7402f 2026-09-22 | release_all.py |
 | `jetson/scripts/rl_bridge_node.py` | session | `15dcabf2` | `fec814d8` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
 | `jetson/scripts/robotctl.py` | tool | `f761802c` | `61327e6b` | 83faa61b 2026-09-19 | robotctl.py |
 | `jetson/scripts/sensors_up.sh` | sync | `73fec1f3` | `3b372a2b` | 54425ab0 2026-09-13 | - |
-| `jetson/scripts/stage8_12axis_mit_control_node.py` | session | `2509bd99` | `308f7211` | c93b45d1 2026-09-30 | stage8_12axis_mit_control_node.py |
+| `jetson/scripts/stage8_12axis_mit_control_node.py` | session | `2509bd99` | `a53b2f7f` | c93b45d1 2026-09-30 | stage8_12axis_mit_control_node.py |
 | `jetson/scripts/zero_anchor.py` | tool | `00340915` | `bc3519ae` | 7b6f5538 2026-09-18 | zero_anchor.py |
 | `rl_walking/__init__.py` | session | `51ed3c5e` | `2413781a` | 6761a690 2026-09-29 | kew3_runner.py, operator_console.py, posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, w3_cmd.py |
 | `rl_walking/deploy/c5_switch.py` | session | `11cf9641` | `eaf66687` | 332dcf38 2026-10-05 | c5_switch.py, kew3_runner.py, posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
@@ -72,7 +72,7 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `jetson/scripts/ping_all.py` | sync | `589dd074` | 6925 | ping_all.py |
 | `jetson/scripts/play_probe.py` | sync | `6b06ae5e` | 46233 | - |
 | `jetson/scripts/plot_trial_recon.py` | sync | `78a9ca95` | 25298 | - |
-| `jetson/scripts/selftest_w3_bridge_node.py` | tool | `e30b3356` | 101364 | selftest_w3_bridge_node.py |
+| `jetson/scripts/selftest_w3_bridge_node.py` | tool | `1cdf6ef0` | 101758 | selftest_w3_bridge_node.py |
 | `jetson/scripts/stack_down.sh` | sync | `7f8f7925` | 1765 | - |
 | `jetson/scripts/stage8_cmd.py` | sync | `344aae83` | 4737 | stage8_cmd.py |
 | `jetson/scripts/takeover_capture.sh` | sync | `4653296c` | 1887 | - |
@@ -111,6 +111,7 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `tests/test_robotctl.py` | test | `ca9b74be` | 14372 | - |
 | `tests/test_stage8_can_send_timeout.py` | test | `955b8a97` | 7549 | - |
 | `tests/test_stage8_latency_options.py` | test | `e02faf66` | 12839 | - |
+| `tests/test_stage8_torque_cap.py` | test | `7bafbd8e` | 8955 | - |
 | `tests/test_startup_simplify_bridge.py` | test | `491c7085` | 24527 | - |
 
 ## 3. 확인만 (젯슨 md5 = HEAD md5 — 배포 때 다시 읽어 같지 않으면 중단)

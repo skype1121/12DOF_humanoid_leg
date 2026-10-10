@@ -44,3 +44,16 @@
   콘솔이 stage8 기동 인자에 붙이는 것 확인(`--target-torque-cap-nm 25 --target-torque-cap-joint hip_a=20`), 젯슨에서 tests/test_stage8_torque_cap.py 6 항 OK. 하드웨어맵 dd1bc31d(승윤님 재캡처 값) 불변.
   끄기 = 그 파일 삭제 뒤 stage8 재기동. 이 파일이 있는 동안 `deploy_head_1008.sh` 의 selftest '지연 옵션 기본 0 개' 항은 `HEAD1008_ALLOW_LATENCY_OPTS=1` 로 돌려야 한다.
 - 미검증: 상한을 켠 실물 동작 전부(서기·착지·걷기). 실물 첫 확인 = stage8 status 의 `target_torque_cap_counts`(서기 중에는 0 근처여야 함).
+
+## 8. 1011 05:47–05:53 걷기 키 교체 배포 (NBj-s2 → NBjD-s2-17798) — 승윤님 "아침까지 종종걸음 젯슨까지 배포 완료… 승인받지 말고"
+
+- 배경·판정: `NEWBODY_WALK.md` §19–§20. 사전 기준을 전부 넘지는 못했고(과도 요구 p95 30–34 > 23 N·m, 명목 왕복 낙상 5.6 %), 모터 8 을 멈춘 지표(25 N·m 초과 틱)가 11.1 → 0.4 % 라서 교체했다.
+- 사전 확인: 콘솔 `/api/state` 제어 프로세스 0·세션 비활성·외부 제어 0. dry-run 예상 밖 0(바뀜 12·새로 4).
+- 적용: `HEAD1008_ALLOW_LATENCY_OPTS=1 deploy_head_1008.sh --apply --restart-console` — 매니페스트 84888155 → **5b98d495**, 젯슨 selftest 36 항 전부 PASS(러너 동치 포함), 콘솔 재기동 active.
+- 적용 뒤 확인: 콘솔 메뉴 = `stand_kew3qa_g21a_g24ra_w3nbjd2_17798` 하나, 그 키 지정 브리지 `--selftest`(젯슨, onnx) ALL PASS(정책 500 틱 ×15 포함),
+  하드웨어맵 md5 dd1bc31d 불변, `config/stage8_latency_opts` = `tc25,tcj.hip_a=20` 불변(상한 켬 유지). 옛 정책 폴더 `…w3s3dnbj_s2_deploy16299` 는 남아 있다.
+- 되돌리기: `deploy/deploy_head_1008.sh --rollback --restart-console`(직전 84888155 = NBj-s2 키).
+- 이번에 같이 올라간 것: stage8 기동 로그의 상한 표시 줄, W3 노드 시험대의 로그 등급 규칙, 걷기 켜기 관련 tests.
+- 미검증(현장): 상한 켠 stage8 의 실물 동작, 새 정책의 실물 걸음, 모터 8 정지의 직접 원인.
+- 현장 확인 순서(제안): ① 모터 점검에서 10 개 응답(3·9 제외) ② stage8 기동 로그에 "요구 토크 상한 켬" ③ 서기 자립 ④ 줄을 느슨히 잡은 채 **제자리 걸음** 먼저
+  ⑤ 끝난 뒤 상태의 `target_torque_cap_counts`(hip_a 가 몇 번 걸렸는지)와 블랙박스의 right_hip_a 목표−실측을 본다. 걸음이 눌려 무너지면 `tcj.hip_a=23`.

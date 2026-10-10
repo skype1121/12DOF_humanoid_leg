@@ -91,3 +91,14 @@ gym.register(
         "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
     },
 )
+
+# 1011: NBjL 완화판 — 힙 외전 0.72–0.92 배(18–23 N·m)·나머지 0.9–1.0 배
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjM-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjMEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)

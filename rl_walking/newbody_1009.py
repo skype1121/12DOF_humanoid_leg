@@ -349,3 +349,11 @@ class Biped12HangStandW3S3dNBjLEnvCfg(Biped12HangStandW3S3dNBjTEnvCfg):
         from isaaclab.managers import EventTermCfg as EventTerm
         self.events.nb_effort = EventTerm(func=nb_resample_effort_by_joint, mode="reset",
                                           params={"named": {"hip_a": tuple(self.HIP_A_SCALE)}, "other_range": tuple(self.OTHER_SCALE)})
+
+
+@configclass
+class Biped12HangStandW3S3dNBjMEnvCfg(Biped12HangStandW3S3dNBjLEnvCfg):
+    """W3S3d-NBjM (1011, 승윤님 "실패하면 상한 23 으로도"): NBjL 과 같은 구조, 범위만 완화 — hip_a 0.72–0.92 배(18–23 N·m), 나머지 0.9–1.0 배.
+    NBjL(13.75–20 N·m)은 학습 보상이 50 → 33–37 에서 회복하지 못했다(반복 900 시점). 실물 상한 23 N·m 에 맞춘 걸음을 노린다. 기준 §18(문턱만 23)."""
+    HIP_A_SCALE = (0.72, 0.92)
+    OTHER_SCALE = (0.9, 1.0)

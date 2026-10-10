@@ -2000,6 +2000,9 @@ def main():
     print(f"[Stage8-12Axis] status topic = {STATUS_TOPIC}")
     print(f"[Stage8-12Axis] CAN channel = {CAN_CHANNEL}")
     print(f"[Stage8-12Axis] CAN send timeout = {CAN_SEND_TIMEOUT_SEC} s")
+    if torque_cap_enabled():      # 1010 요구 토크 상한 — 기동 로그에 남긴다(현장에서 켜졌는지 확인용)
+        print(f"[Stage8-12Axis] 요구 토크 상한 켬: 전 관절 {TARGET_TORQUE_CAP_NM:g} N·m, 관절별 {TARGET_TORQUE_CAP_BY_NAME} "
+              f"(허용 |목표−실측| = degrees(상한/kp))", flush=True)
     print(f"[Stage8-12Axis] latency options = {latency_options_status()}")
     print(f"[Stage8-12Axis] REAL_CAN_WRITE_ENABLED = {REAL_CAN_WRITE_ENABLED}")
     print(f"[Stage8-12Axis] ALLOWED_JOINTS = {ALLOWED_JOINTS}")

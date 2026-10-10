@@ -671,7 +671,7 @@ KEW3_SPECS = {KEW3_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a
 #: 1010 넷째 합성 키(**실물 미검증 · 젯슨 미배포**): 셋째 합성 키에서 걷기만 새 몸 종종걸음(W3S3dNBj seed 2 -16299)으로 바꾼 것. 서기 KE·갇힘 해소·공중·착지 정책은 그대로.
 #: 새 몸(hip_r 양쪽 기구 고정 — 하드웨어맵 mech_fixed) 전용이다. 걷기 명령은 제자리·앞 0.03–0.06 만(옆·회전·뒤는 범위 (0, 0) 이라 감독기가 거부).
 #: 시뮬 근거 reports/real_1009/NEWBODY_WALK.md §9·§11(전환 왕복 낙상 1.9 %, 헤딩 고리 끔). 앞의 세 키(이름·명세·순서)는 그대로다 — **뒤에** 덧붙였다.
-KEW3NBJ_CKPT_KEY = "stand_kew3qa_g21a_g24ra_w3nbj2_16299"
+KEW3NBJ_CKPT_KEY = "stand_kew3qa_g21a_g24ra_w3nbjd2_17798"
 KEW3_SPECS[KEW3NBJ_CKPT_KEY] = KeW3Spec(w3=_W3.W3NBJ_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5,
                                         requiet=(2.0, 0.3, "both"), air="stand_crouch_g21h")
 KEW3_KEYS = tuple(KEW3_SPECS)
@@ -2381,7 +2381,7 @@ def _selftest_air_start():
         assert KEW3_KEYS[:3] == (K1, K2, K3) == ("stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800",
                                                  "stand_kew3qa_g21a_g24ra_w3s3d15800"), KEW3_KEYS
         # 1010 넷째 키(새 몸 종종걸음): 셋째 명세에서 걷기 키만 다르다 — 앞의 세 키는 그대로
-        assert KEW3_KEYS[3:] == (KEW3NBJ_CKPT_KEY,) == ("stand_kew3qa_g21a_g24ra_w3nbj2_16299",), KEW3_KEYS
+        assert KEW3_KEYS[3:] == (KEW3NBJ_CKPT_KEY,) == ("stand_kew3qa_g21a_g24ra_w3nbjd2_17798",), KEW3_KEYS
         assert KEW3_SPECS[KEW3NBJ_CKPT_KEY] == KEW3_SPECS[K3]._replace(w3=_W3.W3NBJ_CKPT_KEY) and _W3.W3NBJ_CKPT_KEY != _W3.W3S3D_CKPT_KEY
         s1, s2, s3 = (KEW3_SPECS[k] for k in KEW3_KEYS[:3])
         assert s1.air is None and s2.air is None and s3.air == AIR_KEY, (s1.air, s2.air, s3.air)

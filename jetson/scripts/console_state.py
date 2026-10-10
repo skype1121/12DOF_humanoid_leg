@@ -120,7 +120,7 @@ WALK_KEYS = {
                                            "label": "걷기 실험 · 서기 KE + 걷기 W3 합성 + 갇힘 해소 + 공중·착지 정책(G21h) · 공중 정책 시작 가능 · 실물 미검증"},
     # 1010 다섯째 걷기 키(브리지의 넷째 합성 키): 넷째 걷기 키에서 걷기만 새 몸 종종걸음(W3S3dNBj)으로 바꾼 것 — **hip_r 기구 고정(mech_fixed) 구성 전용**.
     #   명령은 제자리·앞만(옆·회전·뒤 버튼은 브리지 감독기가 범위 밖으로 거부한다). **뒤에** 덧붙였다 — 앞의 네 항목은 그대로다. 실물 미검증.
-    "stand_kew3qa_g21a_g24ra_w3nbj2_16299": {"composite": True, "air_start": True,
+    "stand_kew3qa_g21a_g24ra_w3nbjd2_17798": {"composite": True, "air_start": True,
                                              "label": "걷기 실험 · 새 몸(hip_r 고정) 종종걸음 · 서기 KE + 걷기 W3S3dNBj + 갇힘 해소 + 공중·착지 정책(G21h) · 제자리·앞만 · 실물 미검증"},
 }
 

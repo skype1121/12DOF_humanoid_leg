@@ -375,3 +375,10 @@ class Biped12HangStandW3S3dNBjDEnvCfg(Biped12HangStandW3S3dNBjMEnvCfg):
         _win = (float(self.SWING_WIN[0]), float(self.SWING_WIN[1]))
         rw.w3_periodic.params = dict(rw.w3_periodic.params or {}, win=_win)
         rw.w3_height.params = dict(rw.w3_height.params or {}, win=_win)
+
+
+@configclass
+class Biped12HangStandW3S3dNBjEEnvCfg(Biped12HangStandW3S3dNBjDEnvCfg):
+    """W3S3d-NBjE (1011 05:20): NBjD 와 전부 같고 **힙 외전 한계 범위만 0.72–0.92 → 0.64–0.84 배(16–21 N·m)**. 시작 = NBjD-s1-17798 이어 학습.
+    근거: NBjD 는 걷기 전환 솟음 중앙 20–21·p95 25 N·m, env 별 최대 p95 29–30 N·m — 과도 기준(≤ 23) 미달. NBjL(13.75–20, 좁은 양발 지지)은 폭발했으므로 넓은 양발 지지 위에서 한 단계만 낮춘다. 기준 §20."""
+    HIP_A_SCALE = (0.64, 0.84)

@@ -113,3 +113,14 @@ gym.register(
         "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
     },
 )
+
+# 1011: NBjD + 힙 외전 한계 0.64–0.84 배(16–21 N·m) — NBjD-s1 에서 이어 학습
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjE-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjEEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)

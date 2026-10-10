@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_mech_fixed as M  # noqa: E402  (시험대·가짜 버스·임시 맵 도우미)
 
 b, s8, H = M.b, M.s8, M.H
-KEY = "stand_kew3qa_g21a_g24ra_w3nbj2_16299"
+KEY = "stand_kew3qa_g21a_g24ra_w3nbjd2_17798"
 SLOW_ID, SLOW_JOINT, SLOW_DEG_PER_TICK = 8, "right_hip_a_joint", 0.3
 Q = 0.06          # 프레임 위치 16 비트 양자화(25 rad / 65535 = 0.022°)가 목표·실측에 한 번씩 드는 여유 [deg]
 
@@ -186,12 +186,12 @@ class WalkOnClosedLoopTest(unittest.TestCase):
                 continue
             self.assertLessEqual(max_err(self.cap, mid), lim + Q, j)
         counts = self.cap["status"]["target_torque_cap_counts"]
-        self.assertGreater(counts.get(SLOW_JOINT, 0), 5, counts)
+        self.assertGreater(counts.get(SLOW_JOINT, 0), 0, counts)                          # 1011: 횟수 문턱은 정책마다 다르다(NBj-s2 는 수십 번, 낮은 토크 정책 NBjD 는 5 번) — 한 번이라도 걸렸는지만 본다
         self.assertEqual(self.cap["status"]["target_torque_cap_by_name"], {"hip_a": 20.0})
 
     def test_C_without_cap_the_error_exceeds_the_limit(self):
         lim_a = math.degrees(20.0 / float(s8.get_joint_config(SLOW_JOINT)["kp"]))
-        self.assertGreater(max_err(self.nocap, SLOW_ID), lim_a + 1.0)                     # 대조: 상한이 없으면 눌린 관절의 오차가 허용값을 넘는다
+        self.assertGreater(max_err(self.nocap, SLOW_ID), max(lim_a, max_err(self.cap, SLOW_ID)))   # 대조: 상한이 없으면 눌린 관절의 오차가 허용값(과 상한 켠 실행)을 넘는다. 1011: 여유 +1° 는 NBj-s2(14.2°) 전제였다 — NBjD 는 8.3°
         self.assertFalse(any(k.startswith("target_torque_cap") for k in self.nocap["status"]))
 
 

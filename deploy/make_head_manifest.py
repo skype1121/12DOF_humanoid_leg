@@ -82,7 +82,7 @@ RECORD_FILES = [f"{CAND}/OPERATOR_COMMANDS.md"]
 POLICY_KEYS = ["stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra", "stand_w3s3d_15800",
                "stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800",
                "stand_crouch_g21h", "stand_kew3qa_g21a_g24ra_w3s3d15800",
-               "stand_w3s3dnbj2_16299", "stand_kew3qa_g21a_g24ra_w3nbj2_16299"]      # 1010 새 몸 종종걸음(배포 계약 폴더 deploy_16299)
+               "stand_w3s3dnbjd2_17798", "stand_kew3qa_g21a_g24ra_w3nbjd2_17798"]      # 새 몸 종종걸음(1011: NBjD-s2-17798)
 #: 진입점별 import 사슬 표에만 쓰는 목록(젯슨에서 ~/rl_calib 사본으로 도는 것 — 저장소 사본 기준으로 사슬을 적는다)
 ENTRY_CALIB = ["jetson/scripts/hang_stand.py", "jetson/scripts/boot_pose_check.py", "jetson/scripts/release_all.py",
                "jetson/scripts/stage8_cmd.py", "jetson/scripts/ping_all.py", "jetson/scripts/imu_adapter_node.py",

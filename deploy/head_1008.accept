@@ -1,9 +1,5 @@
-# head_1008 재적용 허용 목록(1010 저녁 갱신) — 젯슨에 있는 직전 배포본(매니페스트 55ce09cc…, 1010 16:38 적용)의 md5.
-# 이번 변경(콘솔 정책 메뉴 = 새 몸 키 하나 + 시험 3 곳 맵 선언 무관화)으로 덮어쓸 파일만 적는다.
-5febc5fb22de990b1e6da8ac01f08c2f  jetson/scripts/operator_console.py
-0b3a0b0b023d10adc4fbab8a230bc826  jetson/scripts/selftest_w3_bridge_node.py
-7339e13de01e32c8b7c7e9bc85607be5  tests/test_console_walk.py
-513c47892334463610d4738125abb247  tests/test_operator_console.py
-70d08af6c7ce2ff2fa7d6fabf66caf90  tests/test_stage8_latency_options.py
-55ce09ccbee2800d5957b4cd67c00be9  deploy/head_1008.md5
-2cd416f7293edee5ca5239f35e21c480  deploy/head_1008.VERSION
+# head_1008 재적용 허용 목록(1010 밤 갱신) — 젯슨에 있는 직전 배포본(매니페스트 ad6b7e44…, 1010 20:3x 적용)의 md5.
+# 이번 변경(브리지 로그 등급 호출 결함 수정)으로 덮어쓸 파일만 적는다.
+07ce120ce3e507f0a420db58c4026042  jetson/scripts/rl_bridge_node.py
+ad6b7e4490d193c6f50ed3a4087ffb61  deploy/head_1008.md5
+aa4cd21d446df80c50359cc66d28d5e7  deploy/head_1008.VERSION

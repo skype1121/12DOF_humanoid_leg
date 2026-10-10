@@ -38,7 +38,7 @@ abc2c00951449016d4352456c0270ae8  jetson/scripts/obs_dryrun.py
 353446713251bed28bd9ca99060889b9  jetson/scripts/posture_probe.py
 e899f2458a8eb66d9ad4eb3a1f1c72fd  jetson/scripts/propose_ankle_r_direction_fix.py
 7c44c40df9f79b5ccd6c43c767b69682  jetson/scripts/release_all.py
-07ce120ce3e507f0a420db58c4026042  jetson/scripts/rl_bridge_node.py
+fec814d898209598a31fa47b31fa421d  jetson/scripts/rl_bridge_node.py
 61327e6bba0b6ce3733b7ec96f8dcf62  jetson/scripts/robotctl.py
 e30b3356a944c7468d7e1a445acc5da0  jetson/scripts/selftest_w3_bridge_node.py
 3b372a2b7439ada08aba349d632797df  jetson/scripts/sensors_up.sh

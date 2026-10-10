@@ -7,7 +7,7 @@ jetson/scripts/console_state.py	send	session	repo	024fb65220be6b4ac5080c1b06f68f
 jetson/scripts/console_ui.html	send	session	repo	2140181c8f267d08962e4c36aab683fc	55408	9f6a963dea7d265d4cedc32e7fd2fb9f	젯슨 구판 = 432d1176 2026-10-03
 jetson/scripts/mech_fixed.py	send	session	repo	514777eb3c17c5f49180b1655873bfef	4784	-	-
 jetson/scripts/operator_console.py	send	session	repo	0c2abb73ab69480b0ad7d4a987696497	235262	90b7ef283a9da1450de34d3f3da09cc2	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
-jetson/scripts/rl_bridge_node.py	send	session	repo	07ce120ce3e507f0a420db58c4026042	498834	15dcabf224f9bbfdc01f1017c93d101a	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
+jetson/scripts/rl_bridge_node.py	send	session	repo	fec814d898209598a31fa47b31fa421d	500800	15dcabf224f9bbfdc01f1017c93d101a	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
 jetson/scripts/stage8_12axis_mit_control_node.py	send	session	repo	308f7211c2173bd8c0a0f1e038d3bdae	96032	2509bd9998a5177e42dcf8d66bc833b6	젯슨 구판 = c93b45d1 2026-09-30
 jetson/scripts/w3_cmd.py	send	session	repo	e06de3d422841c127aa93ac3b774638e	9569	-	-
 protocols/__init__.py	verify	session	repo	3820717ce5c7b02b864108ca81604e25	50	3820717ce5c7b02b864108ca81604e25	-
@@ -131,5 +131,5 @@ deploy/cand/head_1008/selftest_w3_node_refs.py	send	ref	repo	40edb00b9d06bde97f3
 deploy/cand/head_1008/OPERATOR_COMMANDS.md	send	record	repo	3dfbf67297c795daa17b53b1a9f29c7d	31707	-	-
 reports/night_1007/jetson/parity_ref.npz	send	parity	repo	425e48cf21a4768bf956787086a8033a	1128300	-	러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime)
 reports/night_1007/jetson_parity.py	send	parity	repo	0e7179d76d8c0e118a5d8073fcefcaec	11052	-	러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime)
-deploy/head_1008.md5	send	record	repo	ad6b7e4490d193c6f50ed3a4087ffb61	10222	-	매니페스트(젯슨에서 md5sum -c)
-deploy/head_1008.VERSION	send	record	repo	aa4cd21d446df80c50359cc66d28d5e7	657	-	버전 기록
+deploy/head_1008.md5	send	record	repo	1bbb6ded9b02498e0a7450f42e30319c	10222	-	매니페스트(젯슨에서 md5sum -c)
+deploy/head_1008.VERSION	send	record	repo	bcdbe520622d720c61488e62ec2566c5	657	-	버전 기록

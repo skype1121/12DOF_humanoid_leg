@@ -5,9 +5,9 @@
 
 ```
 package: head_1008
-source_commit: d79110d5a02472fe623424341355553adf85bb64 2026-10-10T20:22:59+09:00
+source_commit: abdfd7e73bc016cd42f9d8df73d54c39c80a7a1c 2026-10-10T21:51:30+09:00
 source_uncommitted: none
-manifest: deploy/head_1008.md5 md5 ad6b7e4490d193c6f50ed3a4087ffb61
+manifest: deploy/head_1008.md5 md5 1bbb6ded9b02498e0a7450f42e30319c
 files: 132 (send 80 incl. this file and the manifest, verify 52)
 jetson_inventory: deploy/cand/head_1008/jetson_inventory_before_md5.txt md5 35a129c9f16a082e1cb6d3ba9cb13855
 note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드(콘솔·브리지·stage8·러너·도구·시험)를 마지막으로 바꾼 커밋,
@@ -18,7 +18,7 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 
 | 구분 | 파일 수 | 크기 합 |
 |---|---|---|
-| 전송 — 변경(젯슨에 구판이 있음) | 18 | 1262 KB |
+| 전송 — 변경(젯슨에 구판이 있음) | 18 | 1264 KB |
 | 전송 — 신규(젯슨에 없음) | 60 (+ 매니페스트·VERSION 2) | 10686 KB |
 | 확인만(젯슨과 같음 — 복사하지 않음) | 52 | 13253 KB |
 | 삭제 | 0 | — |
@@ -39,7 +39,7 @@ note: 파일 md5(매니페스트)가 정본이다. source_commit = 실행 코드
 | `jetson/scripts/operator_console.py` | session | `90b7ef28` | `0c2abb73` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | operator_console.py |
 | `jetson/scripts/pose_hold.py` | sync | `83e4f599` | `16f57ffd` | 9c4750d3 2026-07-27 | - |
 | `jetson/scripts/release_all.py` | sync | `e06b80d1` | `7c44c40d` | 38e7402f 2026-09-22 | release_all.py |
-| `jetson/scripts/rl_bridge_node.py` | session | `15dcabf2` | `07ce120c` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
+| `jetson/scripts/rl_bridge_node.py` | session | `15dcabf2` | `fec814d8` | 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007) | posture_probe.py, rl_bridge_node.py, selftest_w3_bridge_node.py, zero_kinematic_check.py |
 | `jetson/scripts/robotctl.py` | tool | `f761802c` | `61327e6b` | 83faa61b 2026-09-19 | robotctl.py |
 | `jetson/scripts/sensors_up.sh` | sync | `73fec1f3` | `3b372a2b` | 54425ab0 2026-09-13 | - |
 | `jetson/scripts/stage8_12axis_mit_control_node.py` | session | `2509bd99` | `308f7211` | c93b45d1 2026-09-30 | stage8_12axis_mit_control_node.py |

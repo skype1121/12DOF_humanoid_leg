@@ -43,6 +43,14 @@ A4 = '            _TALL["q"].append(robot.data.joint_pos[:_na].half().cpu()); _T
 src = rep(src, A4, A4 + """            if args_cli.trace_qd:
                 _TALL.setdefault("qd", []).append(robot.data.joint_vel[:_na].half().cpu())
                 _TALL.setdefault("ptg", []).append(robot.data.joint_pos_target[:_na].half().cpu())      # 1011: PD 가 실제로 받는 목표(지연·슬루·LPF 뒤) — 요구 토크 계산용
+                # 1011 보고용: 좌·우 발 수직 접지력[N], 전신 무게중심의 (앞, 왼) 위치[m] — 두 발 중점 기준(골반 진행 방향 좌표)
+                _TALL.setdefault("fz", []).append(_cs.data.net_forces_w[:_na][:, [_fl, _fr], 2].half().cpu())
+                if "_MASS_B" not in globals():
+                    globals()["_MASS_B"] = robot.root_physx_view.get_masses().to(dev)
+                _comw = (robot.data.body_com_pos_w[:_na, :, :2] * _MASS_B[:_na, :, None]).sum(1) / _MASS_B[:_na].sum(1, keepdim=True)
+                _midw = robot.data.body_pos_w[:_na, _FT, :2].mean(1)
+                _dcm = _comw - _midw
+                _TALL.setdefault("com", []).append(torch.stack([(_dcm * _dir_vec("f")[:_na, :2]).sum(-1), (_dcm * _dir_vec("l")[:_na, :2]).sum(-1)], -1).half().cpu())
 """)
 
 A5 = "        ct = (po[:, _FC1 - 2:_FC1] > 0.5).float().cpu().numpy().astype(_npk.float32)\n"

@@ -357,3 +357,21 @@ class Biped12HangStandW3S3dNBjMEnvCfg(Biped12HangStandW3S3dNBjLEnvCfg):
     NBjL(13.75–20 N·m)은 학습 보상이 50 → 33–37 에서 회복하지 못했다(반복 900 시점). 실물 상한 23 N·m 에 맞춘 걸음을 노린다. 기준 §18(문턱만 23)."""
     HIP_A_SCALE = (0.72, 0.92)
     OTHER_SCALE = (0.9, 1.0)
+
+
+@configclass
+class Biped12HangStandW3S3dNBjDEnvCfg(Biped12HangStandW3S3dNBjMEnvCfg):
+    """W3S3d-NBjD (1011): NBjM + **예정 스윙 창을 (0.12, 0.88) → (0.25, 0.75)** — 예정 양발 지지 24 → 50 %(반주기 0.455 s 중 0.11 → 0.23 s).
+    근거(NBj-s2 시뮬, 걷기 켠 뒤 틱별 중앙): 지지쪽 힙 외전 요구는 스윙발 이륙 **직전** 0.1 s 에 30–37 N·m 로 솟고(25 초과의 83 % 가 이륙 전), 한발 지지 중에는 2–5 N·m.
+    즉 과요구는 한발로 버티는 힘이 아니라 0.11 s 안에 무게를 넘기는 밀기다 — 넘길 시간을 늘린다. 바뀌는 것은 w3_periodic·w3_height 의 win 뿐(W3S3tD 와 같은 방식),
+    클록·관측·유효 스텝 판정·모방 창 불변 → 배포 러너 변경 없음. 기준 §19."""
+    SWING_WIN = (0.25, 0.75)
+
+    def __post_init__(self):
+        super().__post_init__()
+        from rl_walking import w3 as _w3
+        rw = self.rewards
+        assert rw.w3_periodic.func is _w3.w3_periodic_contact and rw.w3_height.func is _w3.w3_swing_height
+        _win = (float(self.SWING_WIN[0]), float(self.SWING_WIN[1]))
+        rw.w3_periodic.params = dict(rw.w3_periodic.params or {}, win=_win)
+        rw.w3_height.params = dict(rw.w3_height.params or {}, win=_win)

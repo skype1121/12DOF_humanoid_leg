@@ -3412,6 +3412,24 @@ def _selftest_body_config():
     return "네 조합(새 몸 키 × 선언 없음 = 라이브 거부 · 새 몸 키 × 좌우 hip_r 선언 = 통과 · 원래 몸 걷기 키 × 선언 = 걷기 켜기만 거부 · 원래 몸 걷기 키 × 선언 없음 = 종전) · 서기 전용 키 무관 · 부분·초과 선언 거부 · 게이트는 켜기만"
 
 
+def _selftest_log_severity_sites():
+    """1010 실물 사고 재발 방지(정적 검사): 한 호출 위치에서 로그 등급을 골라 부르는 꼴이 실행 스크립트에 없어야 한다.
+    rclpy(humble) rcutils_logger 는 호출 위치마다 첫 등급을 기억하고 달라지면 ValueError — 콜백 안이면 노드가 죽는다."""
+    import re
+    pat = re.compile(r"\.(?:debug|info|warn|warning|error|fatal)\s+if\s.+?\selse\s.+?\.(?:debug|info|warn|warning|error|fatal)\s*\)\s*\(")
+    here = os.path.dirname(os.path.abspath(__file__)); bad = []; n = 0
+    for fn in sorted(os.listdir(here)):
+        if not fn.endswith(".py"):
+            continue
+        n += 1
+        for i, ln in enumerate(open(os.path.join(here, fn), encoding="utf-8", errors="replace"), 1):
+            if pat.search(ln) and "pat.search(" not in ln:       # 이 검사 자신의 예문 줄 제외
+                bad.append(f"{fn}:{i}")
+    assert not bad, f"한 줄에서 로그 등급을 고르는 호출: {bad}"
+    assert pat.search("(self.get_logger().info if ok else self.get_logger().warn)(msg)"), "검사식이 사고 꼴을 못 잡음"
+    return f"실행 스크립트 {n} 개에 등급 선택 호출 0 건(사고 꼴은 검사식이 잡음)"
+
+
 def _selftest_mech_fixed_map():
     """1009 기구 고정 선언 — 맵 로드·사본 일치 검사(임시 사본 2 개, 실제 맵은 읽기만)."""
     import tempfile
@@ -5355,6 +5373,7 @@ def run_selftest(required=()):
              ("프레임 게이트", _selftest_frame_gate),
              ("기구 고정 선언·맵 사본 일치(1009)", _selftest_mech_fixed_map),
              ("구성 불일치 가드 — 걷기 키의 요구 기구 구성 ↔ 맵 선언(1010)", _selftest_body_config),
+             ("로그 등급 호출 위치 고정(1010 실물 브리지 종료 재발 방지)", _selftest_log_severity_sites),
              ("중력 게이트", _selftest_grav_gate),
              ("IMU 장착 편향", _selftest_imu_mount),
              ("롤 보정기", _selftest_roll_comp),
@@ -6127,8 +6146,13 @@ def main():
             except Exception:  # noqa: BLE001 — 응답 실패가 명령 처리를 막으면 안 된다
                 pass
             self._bb_write(dict(ack, event="w3_cmd_ack"))
-            (self.get_logger().info if accepted else self.get_logger().warn)(
-                f"W3 명령 {d.get('cmd')!r} seq={d.get('seq')} {'수락' if accepted else '거부'}: {why}")
+            # 1010 실물: rclpy 는 **호출 위치(파일·줄)마다 로그 등급을 고정**한다 — 한 줄에서 info/warn 을 골라 부르면 등급이 바뀌는 순간
+            # ValueError 로 노드가 죽는다(stand 거부 2 회 뒤 수락에서 브리지 종료 → 정책 없이 착지). 등급마다 줄을 따로 둔다.
+            _msg = f"W3 명령 {d.get('cmd')!r} seq={d.get('seq')} {'수락' if accepted else '거부'}: {why}"
+            if accepted:
+                self.get_logger().info(_msg)
+            else:
+                self.get_logger().warn(_msg)
 
         def _on_cmd_w3(self, d):
             """1006 W3 세션 명령 처리(감사 H3–H5·L1) — 판단은 W3Supervisor.handle, 실행은 종전 경로."""
@@ -6988,8 +7012,10 @@ def main():
             self._bb_write({"timestamp": now, "event": "w3_freeze", "kind": kind, "why": why})
             self._stop_all(why)
             self.core.active = False
-            (self.get_logger().error if kind == "timeout" else self.get_logger().warn)(
-                f"{why}. 동결 홀드 — 줄 재인장 후 회수 절차")
+            if kind == "timeout":           # 등급마다 줄을 따로(위 _w3_ack 주석 — rclpy 호출 위치별 등급 고정)
+                self.get_logger().error(f"{why}. 동결 홀드 — 줄 재인장 후 회수 절차")
+            else:
+                self.get_logger().warn(f"{why}. 동결 홀드 — 줄 재인장 후 회수 절차")
             return True
 
         def _stop_all(self, reason):

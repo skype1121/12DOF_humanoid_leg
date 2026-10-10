@@ -29,7 +29,7 @@ b28a04de64e63865ddba2a1b59957516  jetson/scripts/hang_stand.py
 e71d340b73aa8cb248cc0722dcf91086  jetson/scripts/level_pose_retarget.py
 514777eb3c17c5f49180b1655873bfef  jetson/scripts/mech_fixed.py
 abc2c00951449016d4352456c0270ae8  jetson/scripts/obs_dryrun.py
-5febc5fb22de990b1e6da8ac01f08c2f  jetson/scripts/operator_console.py
+0c2abb73ab69480b0ad7d4a987696497  jetson/scripts/operator_console.py
 589dd074b1c424963ca7a854ec9abb63  jetson/scripts/ping_all.py
 79d0dac532d49afdf7257e648b954000  jetson/scripts/pitch_sweep.py
 6b06ae5e1cac641c17f27b187968a3f4  jetson/scripts/play_probe.py
@@ -40,7 +40,7 @@ e899f2458a8eb66d9ad4eb3a1f1c72fd  jetson/scripts/propose_ankle_r_direction_fix.p
 7c44c40df9f79b5ccd6c43c767b69682  jetson/scripts/release_all.py
 07ce120ce3e507f0a420db58c4026042  jetson/scripts/rl_bridge_node.py
 61327e6bba0b6ce3733b7ec96f8dcf62  jetson/scripts/robotctl.py
-0b3a0b0b023d10adc4fbab8a230bc826  jetson/scripts/selftest_w3_bridge_node.py
+e30b3356a944c7468d7e1a445acc5da0  jetson/scripts/selftest_w3_bridge_node.py
 3b372a2b7439ada08aba349d632797df  jetson/scripts/sensors_up.sh
 1a9fe7384f4c74b5fa80b49d526f6374  jetson/scripts/set_pitch_comp.py
 483b4e547a94008d2b3ad289d499097b  jetson/scripts/sign_check.py
@@ -117,14 +117,14 @@ f1b3db6c9cff4c22030aefc626fcc5c0  robot_runtime/dof12_mapping.py
 63d466c99d7144d4032655ab1201aa1a  robot_runtime/joint_limits.py
 d77ae8dd548ea1f3937f35b10a8a51ff  robot_runtime/mode_types.py
 3002c11c30bd75d0bb21bbcc885db6c3  robot_runtime/robot_model.py
-7339e13de01e32c8b7c7e9bc85607be5  tests/test_console_walk.py
+078ae60730bd61329031172570b5ddd9  tests/test_console_walk.py
 3282c2f1235e2dfff5ecb5ff0df32850  tests/test_console_walk_bridge.py
 b486903a87dec4fabb1dd98784837449  tests/test_dof12_mapping_cache.py
 db1ba370d0a39b1834bafde8d933febf  tests/test_latency_check.py
-513c47892334463610d4738125abb247  tests/test_operator_console.py
+d5901c5b9d7b87e933a45915fb3d5514  tests/test_operator_console.py
 ca9b74bee7dfeeaaa81e829c75459ec8  tests/test_robotctl.py
 b92cf07a1dc1d8e9ee17a1f9a6102925  tests/test_stage8_baseline_from_hold.py
 955b8a978f96bd12ef8b76df4b634fc6  tests/test_stage8_can_send_timeout.py
 27845170083ca2ec900a2476946bd257  tests/test_stage8_cmd_timing.py
-70d08af6c7ce2ff2fa7d6fabf66caf90  tests/test_stage8_latency_options.py
+e02faf6679f69820d5bcc06f8155683a  tests/test_stage8_latency_options.py
 491c70856194f3cf422045fc77dd90bb  tests/test_startup_simplify_bridge.py

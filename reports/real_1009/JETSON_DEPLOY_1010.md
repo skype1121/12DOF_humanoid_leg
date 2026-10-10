@@ -36,3 +36,11 @@
 - 정책 폴더: 25 → **8**(묶음 매니페스트가 요구하는 것만). 지운 17 개(8–9 월 세대)는 로컬 `/home/ryu/jetson_archive_1010/home_mama/humanoid_repo/logs` 에 보관. 66 → 25 MB.
   남긴 8 = 새 키가 쓰는 4(G21a 서기·G24Ra 회복·G21h2 공중·NBj 종종걸음) + 젯슨 자체 시험이 읽는 4(W3S3d 원래 몸 걷기·G11a·G12·0905 stand_v18b).
 - 정리 뒤 `--verify` 전부 통과, 새 키 브리지 `--selftest`(전체) ALL PASS, 맵 e2cc21d3 불변.
+
+## 7. 브리지 로그 등급 결함 수정 (1010 22:00 전후) · 요구 토크 상한 (1011 00:1x, 승윤님 "무조건 해야하지않아?")
+- 22:0x: `rl_bridge_node.py` 한 파일(매니페스트 1bbb6ded). 승윤님 지시로 젯슨 selftest 는 중간에 끊음(로컬 selftest·왕복 통과). 그 뒤 실물에서 정책 시작·자립 정상.
+- 00:1x: stage8 요구 토크 상한 옵션·콘솔 옵션 토큰·W3 노드 시험 헬퍼·tests 1(매니페스트 **84888155**), 젯슨 selftest 35 항 전부 PASS, 콘솔 재기동.
+- **상한 켬**: 젯슨 `~/humanoid_repo/config/stage8_latency_opts` = `tc25,tcj.hip_a=20`(전 관절 25 N·m, 힙 외전 20 N·m — kp 150 에서 허용 |목표−실측| 9.55°·7.64°).
+  콘솔이 stage8 기동 인자에 붙이는 것 확인(`--target-torque-cap-nm 25 --target-torque-cap-joint hip_a=20`), 젯슨에서 tests/test_stage8_torque_cap.py 6 항 OK. 하드웨어맵 dd1bc31d(승윤님 재캡처 값) 불변.
+  끄기 = 그 파일 삭제 뒤 stage8 재기동. 이 파일이 있는 동안 `deploy_head_1008.sh` 의 selftest '지연 옵션 기본 0 개' 항은 `HEAD1008_ALLOW_LATENCY_OPTS=1` 로 돌려야 한다.
+- 미검증: 상한을 켠 실물 동작 전부(서기·착지·걷기). 실물 첫 확인 = stage8 status 의 `target_torque_cap_counts`(서기 중에는 0 근처여야 함).

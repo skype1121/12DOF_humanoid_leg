@@ -146,3 +146,47 @@ gym.register(
         "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
     },
 )
+
+# 1011: NBjE + 발 높이 목표 1.2 cm(종종걸음 모션 영상용) — NBjE-s1-18997 에서 이어 학습
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjS-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjSEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)
+
+# 1011 WADDLE-W1a 0.4 Hz: NBjE-s1-18997 에서 이어 학습
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjW-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjWEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)
+
+# 1011 WADDLE-W1b 0.6 Hz: NBjE-s1-18997 에서 이어 학습
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjX-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjXEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)
+
+# 1011 WADDLE-W1c 0.8 Hz: NBjE-s1-18997 에서 이어 학습
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjY-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjYEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)

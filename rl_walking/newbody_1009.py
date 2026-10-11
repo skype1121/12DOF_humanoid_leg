@@ -418,3 +418,64 @@ class Biped12HangStandW3S3dNBjIEnvCfg(Biped12HangStandW3S3dNBjHEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.w3_hip_a_demand.params["params"] = {"lim_nm": float(self.HAD_LIM)}
+
+
+@configclass
+class Biped12HangStandW3S3dNBjSEnvCfg(Biped12HangStandW3S3dNBjEEnvCfg):
+    """W3S3d-NBjS (1011 18:35, 승윤님 "발은 1 cm 만 띄워도 되고 진짜 종종걸음 모션만"): NBjE 와 전부 같고 **발 높이만** —
+    스윙 높이 목표 5 → 1.2 cm(σ 2 → 0.8 cm), 유효 스텝 정점 기준 3 → 0.5 cm. 시작 = NBjE-s1-18997. 시뮬 영상용(실물 배포 후보 아님)."""
+    SWING_H = 0.012
+    SWING_SIG = 0.008
+    MIN_APEX = 0.005
+
+    def __post_init__(self):
+        super().__post_init__()
+        rw = self.rewards
+        rw.w3_height.params = dict(rw.w3_height.params or {}, h=float(self.SWING_H), sig=float(self.SWING_SIG))
+        self.events.w3_track.params = dict(self.events.w3_track.params or {}, min_apex=float(self.MIN_APEX))
+
+
+# ---------------------------------------------------------------- 1011 밤: WADDLE-W1 초저속 뒤뚱 보행(승윤님 지시) ----------------------------------------------------------------
+def nb_set_vbox_period(env, env_ids, period_s: float = 1.0 / 1.1):
+    """mode="startup": 한 주기 이동 평균 속도(_v_box) 창 길이를 걸음 시계 주기에 맞춘다(시계를 늦추면 종전 0.91 s 창은 한 주기를 못 덮어 흔들림이 남는다)."""
+    env._w3_vbox_period = float(period_s)
+
+
+@configclass
+class Biped12HangStandW3S3dNBjWEnvCfg(Biped12HangStandW3S3dNBjEEnvCfg):
+    """W3S3d-NBjW (1011 WADDLE-W1a): NBjE 와 같고 **걸음 시계·발 높이·명령 범위만** 바꾼다. 시작 = NBjE-s1-18997 이어 학습.
+    - 걸음 시계 1.1 → F_STEP Hz(0.4 = 한 발 스텝 1.25 s, 예정 스윙 0.625 s·양발 지지 0.625 s). 속도 평균 창도 한 주기로.
+    - 스윙 높이 목표 5 → 2 cm(σ 2 → 1 cm), 유효 스텝 정점 기준 3 → 1 cm.
+    - 명령: 제자리 0.2·앞뒤 0.8(뒤 범위 0 → 뒤 표본은 제자리와 같다 = 제자리 60 %·앞 40 %), 앞 속도 VX(한 걸음 2–4 cm 어림).
+    힙 외전 한계 무작위화(16–21 N·m)·과요구 벌점·미끄러짐 벌점·보상 가중·관측/행동 차원은 NBjE 그대로.
+    배포 계약 변경: 러너 f_step 을 같은 값으로. 기준 reports/real_1009/WADDLE_W1.md."""
+    F_STEP = 0.4
+    VX = (0.02, 0.035)
+    SWING_H = 0.02
+    SWING_SIG = 0.01
+    MIN_APEX = 0.01
+    MIX3 = (0.2, 0.8, 0.0, 0.0)
+
+    def __post_init__(self):
+        super().__post_init__()
+        rw = self.rewards; ev = self.events
+        ev.w3_gait.params = dict(ev.w3_gait.params or {}, f_step=float(self.F_STEP))
+        ev.w3_cmd.params = dict(ev.w3_cmd.params or {}, mix3=tuple(self.MIX3), vx_range=tuple(self.VX), vx_back_range=(0.0, 0.0))
+        rw.w3_height.params = dict(rw.w3_height.params or {}, h=float(self.SWING_H), sig=float(self.SWING_SIG))
+        ev.w3_track.params = dict(ev.w3_track.params or {}, min_apex=float(self.MIN_APEX))
+        ev.nb_vbox = EventTerm(func=nb_set_vbox_period, mode="startup", params={"period_s": 1.0 / float(self.F_STEP)})
+
+
+@configclass
+class Biped12HangStandW3S3dNBjXEnvCfg(Biped12HangStandW3S3dNBjWEnvCfg):
+    """W3S3d-NBjX (1011 WADDLE-W1b): NBjW 와 같고 걸음 시계만 0.6 Hz(한 발 스텝 0.83 s), 앞 속도 0.025–0.05(한 걸음 2–4 cm)."""
+    F_STEP = 0.6
+    VX = (0.025, 0.05)
+
+
+@configclass
+class Biped12HangStandW3S3dNBjYEnvCfg(Biped12HangStandW3S3dNBjWEnvCfg):
+    """W3S3d-NBjY (1011 WADDLE-W1c, 21:25 추가): NBjW 와 같고 걸음 시계만 0.8 Hz(한 발 스텝 0.625 s), 앞 속도 0.03–0.06.
+    근거: W1a(0.4 Hz)는 유효 스텝이 0 으로 무너졌고 W1b(0.6 Hz)는 기준선의 1/3 수준에서 정체 — 동적 걸음에서 덜 벗어난 한 단계."""
+    F_STEP = 0.8
+    VX = (0.03, 0.06)

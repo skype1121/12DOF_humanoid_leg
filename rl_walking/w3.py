@@ -448,6 +448,7 @@ def _v_box(env, period_s: float = 1.0 / 1.1):
     asset = env.scene[H._base_cfg().name]
     p = asset.data.root_pos_w[:, :2]
     tick = int(env.common_step_counter)
+    period_s = float(getattr(env, "_w3_vbox_period", period_s))        # 1011 WADDLE: 걸음 시계를 바꾼 태스크만 설정(없으면 종전과 동일)
     K = max(2, int(round(period_s / env.step_dt)))
     st = getattr(env, "_w3_vbox", None)
     if st is None or st["buf"].shape[0] != env.num_envs or st["buf"].shape[1] != K:

@@ -12,9 +12,9 @@ for SEED in "$@"; do
   RNAME=${NB_NAME}_s${SEED}_from_$PC; LG=$HERE/logs/train_$RNAME.log; ok=0
   for try in 1 2 3; do
     exec 9>$LOCK; flock 9
-    until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)" -le 7500 ]; do sleep 20; done
+    until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)" -le ${NB_MEM:-7500} ]; do sleep 20; done
     t0=$(date +%s)
-    setsid /home/ryu/IsaacLab/isaaclab.sh -p -u rl_walking/scripts/train.py --headless --task $T --num_envs 4096 --seed $SEED --max_iterations $IT --resume --load_run $PN --checkpoint model_$PC.pt --run_name $RNAME < /dev/null > $LG 2>&1 &
+    setsid /home/ryu/IsaacLab/isaaclab.sh -p -u rl_walking/scripts/train.py --headless --task $T --num_envs ${NB_ENVS:-4096} --seed $SEED --max_iterations $IT --resume --load_run $PN --checkpoint model_$PC.pt --run_name $RNAME < /dev/null > $LG 2>&1 &
     P=$!; echo "$(date '+%m-%d %H:%M:%S') [seed $SEED] 학습 PID=PGID $P (시도 $try) 로그 $LG"; echo "$P" > $HERE/logs/train_$RNAME.pgid
     sleep 240; flock -u 9
     D=$(ls -d logs/rsl_rl/biped12_stepb0/*_$RNAME 2>/dev/null | tail -1)

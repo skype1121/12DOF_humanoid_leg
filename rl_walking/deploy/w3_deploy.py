@@ -28,7 +28,7 @@ HTURN2(rl_walking/deploy/hturn2.py)와 같은 방식: 러너는 `w3=None`(기본
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as _dc_replace
 
 import numpy as np
 
@@ -409,12 +409,13 @@ class W3HeadingLoop:
 #: run_rel 은 학습 run 자체가 아니라 그 내용을 옮긴 **배포 계약 폴더**(형제 폴더 …_s2_deploy16299/{exported, params/env.yaml} — 학습 run 아래 deploy_16299 의 사본, 배포 금지 규칙이 logs/ 아래 run 바로 밑의 exported·params 만 허용해서 형제로 뒀다)다 — 학습 run 의 env.yaml 은 관측 감싸개
 #: (nb_obs_fixed_zero) 때문에 브리지 계약 파서가 관측 필터를 못 읽는다(reports/real_1009/newbody/make_deploy_contract.py 가 풀어 쓴 사본을 만든다).
 #: 굳은 관절의 관측 0 은 러너가 아니라 stage8 의 기구 고정 합성 피드백이 만든다 → **하드웨어맵에 mech_fixed 선언이 있는 구성에서만 쓴다.**
-W3NBJ_CKPT_KEY = "stand_w3s3dnbje1_18997"
-W3NBJ_RUN_REL = "logs/rsl_rl/biped12_stepb0/2026-10-11_05-09-59_w3s3dnbje_s1_deploy18997"
-W3NBJ_MODEL = "model_18997.pt"
-W3NBJ_TASK = "Biped12-HangStand-W3S3dNBjE-v0"
-#: 위상·리드 발 규칙은 W3S3d 와 같다(학습 env.yaml events.w3_gait.params 동일). 명령은 제자리·앞·뒤만 학습했다(옆·회전 범주 0).
-W3NBJ_CONFIG = W3S3D_CONFIG
+W3NBJ_CKPT_KEY = "stand_w3s3dnbjy1_19996"
+W3NBJ_RUN_REL = "logs/rsl_rl/biped12_stepb0/2026-10-11_21-38-25_w3s3dnbjy_s1_deploy19996"
+W3NBJ_MODEL = "model_19996.pt"
+W3NBJ_TASK = "Biped12-HangStand-W3S3dNBjY-v0"
+#: 리드 발 규칙은 W3S3d 와 같다. 명령은 제자리·앞만 학습했다(옆·회전 범주 0).
+#: 1012 W1c(W3S3dNBjY): **걸음 시계 0.8 Hz**(학습 env.yaml events.w3_gait.params.f_step 0.8 — 브리지 자가검증이 env.yaml 과 대조한다). 종전 NBjE 는 1.1 Hz.
+W3NBJ_CONFIG = _dc_replace(W3S3D_CONFIG, f_step=0.8)
 #: 명령 한계: 앞 0.03–0.06(시뮬 판정이 0.06 까지 — 학습은 0.10 까지지만 재지 않았다) · 뒤·옆·회전 = 0 만(범위 (0, 0) → 0 이 아닌 값은 전부 거부).
 #: 뒤는 학습 분포에 있으나 판정하지 않아 닫아 둔다. 0 은 언제나 허용(제자리).
 W3NBJ_CMD_LIMITS = W3CmdLimits(vx_fwd=(0.03, 0.06), vx_back=(0.0, 0.0), vy=(0.0, 0.0), wz=(0.0, 0.0))

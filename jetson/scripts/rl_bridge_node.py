@@ -595,7 +595,8 @@ def enable_experimental_w3():
     global EXPERIMENTAL_W3
     for k, (run_rel, _m, _t, cfg, lim) in _W3.W3_SPECS.items():
         CHECKPOINTS[k] = os.path.join(REPO, run_rel, "exported")
-        CKPT_GAIT_FREQ[k] = cfg.f_step
+        CKPT_GAIT_FREQ[k] = 1.1      # stand 가족 레지스트리 값(서기 클록 — 합성 때 KE 키와 같아야 한다). W3 걸음 시계는 cfg.f_step 이고 러너는 W3 모드에서 gait_freq 를 쓰지 않는다.
+                                     # 1012: 종전 cfg.f_step(전 키 1.1 — 값 불변) → 상수. f_step 이 1.1 이 아닌 걷기 키(W1c 0.8 Hz)도 합성되게 둘을 분리했다.
         CKPT_DEFAULT_POSE[k] = [float(_CROUCH_V5_POSE[j]) for j in JOINT_ORDER]
         CKPT_REQUIRE_ENV_YAML.add(k)
         W3_CKPTS[k] = cfg
@@ -671,9 +672,13 @@ KEW3_SPECS = {KEW3_CKPT_KEY: KeW3Spec(w3=_W3.W3S3D_CKPT_KEY, ke="stand_c5kr_g21a
 #: 1010 넷째 합성 키(**실물 미검증 · 젯슨 미배포**): 셋째 합성 키에서 걷기만 새 몸 종종걸음(W3S3dNBj seed 2 -16299)으로 바꾼 것. 서기 KE·갇힘 해소·공중·착지 정책은 그대로.
 #: 새 몸(hip_r 양쪽 기구 고정 — 하드웨어맵 mech_fixed) 전용이다. 걷기 명령은 제자리·앞 0.03–0.06 만(옆·회전·뒤는 범위 (0, 0) 이라 감독기가 거부).
 #: 시뮬 근거 reports/real_1009/NEWBODY_WALK.md §9·§11(전환 왕복 낙상 1.9 %, 헤딩 고리 끔). 앞의 세 키(이름·명세·순서)는 그대로다 — **뒤에** 덧붙였다.
-KEW3NBJ_CKPT_KEY = "stand_kew3qa_g21a_g24ra_w3nbje1_18997"
+KEW3NBJ_CKPT_KEY = "stand_kew3qa_g21a_g24ra_w3nbjy1_19996"
 KEW3_SPECS[KEW3NBJ_CKPT_KEY] = KeW3Spec(w3=_W3.W3NBJ_CKPT_KEY, ke="stand_c5kr_g21a_g24ra", handoff="carry", settle_quiet_s=0.5,
                                         requiet=(2.0, 0.3, "both"), air="stand_crouch_g21h")
+#: 1012 서기 → 걷기 전환 완화(KeW3Runner blend_s·blend_stand — 걷기로 넘어간 뒤 내보내는 목표를 서기 목표에서 걷기 목표로 서서히 섞는다): {합성 키: (초, "hold"|"live")}.
+#: 여기 없는 키 = 끔(러너 생성자 호출이 종전 그대로). 명세(KeW3Spec) 원문은 바꾸지 않는다 — 콘솔 자가검증이 그 문자열을 읽는다.
+#: 근거 reports/real_1009/WADDLE_W1.md §6(1 s·hold: 걷기 켠 뒤 0.2 s 목표 변화 10 → 0.6°, 낙상은 끈 것과 같음; 2 s 는 더 넘어짐, live 는 KE 감지기가 회복 모드로 가서 hold 와 같아짐).
+KEW3_BLEND = {KEW3NBJ_CKPT_KEY: (1.0, "hold")}
 KEW3_KEYS = tuple(KEW3_SPECS)
 KEW3_CKPTS = {}            # 켜졌을 때만 {합성 키: KeW3Spec}
 
@@ -755,9 +760,11 @@ def _kew3_compose(key, w3_runner, ke_runner, air=None):
         raise ValueError(f"{key}: KE 감지기 requiet {_got} ≠ 명세 {_kew3_det_want(sp)} — 감지기는 이 키의 명세(_kew3_det_kw)로 만들 것")
     if (air is None) != (sp.air is None):
         raise ValueError(f"{key}: 공중·착지 러너 {'없음' if air is None else '있음'} ≠ 명세 air={sp.air!r} — 러너 구성은 이 키의 명세대로 만들 것")
+    _bl = KEW3_BLEND.get(key)                              # 1012 전환 완화 — 없는 키는 인자를 붙이지 않는다(종전 호출 그대로)
+    _blkw = {} if _bl is None else {"blend_s": float(_bl[0]), "blend_stand": str(_bl[1])}
     if air is None:
-        return KeW3Runner(w3_runner, ke_runner, handoff=sp.handoff, settle_quiet_s=sp.settle_quiet_s)
-    return KeW3Runner(w3_runner, ke_runner, handoff=sp.handoff, settle_quiet_s=sp.settle_quiet_s, air_runner=air)
+        return KeW3Runner(w3_runner, ke_runner, handoff=sp.handoff, settle_quiet_s=sp.settle_quiet_s, **_blkw)
+    return KeW3Runner(w3_runner, ke_runner, handoff=sp.handoff, settle_quiet_s=sp.settle_quiet_s, air_runner=air, **_blkw)
 
 
 def kew3_startup_reject(*, checkpoint, experimental_w3, experimental_kew3, runner_ema_fresh):
@@ -2381,7 +2388,7 @@ def _selftest_air_start():
         assert KEW3_KEYS[:3] == (K1, K2, K3) == ("stand_kew3_g21a_g24ra_w3s3d15800", "stand_kew3q_g21a_g24ra_w3s3d15800",
                                                  "stand_kew3qa_g21a_g24ra_w3s3d15800"), KEW3_KEYS
         # 1010 넷째 키(새 몸 종종걸음): 셋째 명세에서 걷기 키만 다르다 — 앞의 세 키는 그대로
-        assert KEW3_KEYS[3:] == (KEW3NBJ_CKPT_KEY,) == ("stand_kew3qa_g21a_g24ra_w3nbje1_18997",), KEW3_KEYS
+        assert KEW3_KEYS[3:] == (KEW3NBJ_CKPT_KEY,) == ("stand_kew3qa_g21a_g24ra_w3nbjy1_19996",), KEW3_KEYS
         assert KEW3_SPECS[KEW3NBJ_CKPT_KEY] == KEW3_SPECS[K3]._replace(w3=_W3.W3NBJ_CKPT_KEY) and _W3.W3NBJ_CKPT_KEY != _W3.W3S3D_CKPT_KEY
         s1, s2, s3 = (KEW3_SPECS[k] for k in KEW3_KEYS[:3])
         assert s1.air is None and s2.air is None and s3.air == AIR_KEY, (s1.air, s2.air, s3.air)
@@ -5104,6 +5111,7 @@ def _selftest_kew3(key=None):
             rr = cr.runner
             assert type(rr).__name__ == "KeW3Runner" and isinstance(rr.ke, C5Runner) and isinstance(rr.w3r, PolicyRunnerStage4)
             assert rr.w3r.w3 == W3_CKPTS[spec.w3] and rr.handoff == "carry" and rr.settle_quiet_s == 0.5 and rr.obs_dim == 320
+            assert (rr.blend_s, rr.blend_stand) == tuple(KEW3_BLEND.get(key, (0.0, "hold"))), f"{key}: 전환 완화 설정이 KEW3_BLEND 와 다름"
             assert rr.ke.det.early == C5_EXTRA[spec.ke]["det"]["early"] and rr.ke.cue_vx == C5_EXTRA[spec.ke]["runner"]["cue_vx"] and rr.ke.det.settle is None
             assert (rr.ke.det.requiet, rr.ke.det.requiet_contact) == _kew3_det_want(spec), f"{key}: 실모델 경로(_make_runner) KE 감지기 requiet ≠ 명세"
             assert rr.ke.core.ema_fresh_ticks == 1 and rr.w3r.ema_fresh_ticks == 1 and (rr.act_obs_ema_beta, rr.jvel_obs_ema_beta) == (0.27, 0.25)

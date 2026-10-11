@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_mech_fixed as M  # noqa: E402  (시험대·가짜 버스·임시 맵 도우미)
 
 b, s8, H = M.b, M.s8, M.H
-KEY = "stand_kew3qa_g21a_g24ra_w3nbje1_18997"
+KEY = "stand_kew3qa_g21a_g24ra_w3nbjy1_19996"
 SLOW_ID, SLOW_JOINT, SLOW_DEG_PER_TICK = 8, "right_hip_a_joint", 0.3
 Q = 0.06          # 프레임 위치 16 비트 양자화(25 rad / 65535 = 0.022°)가 목표·실측에 한 번씩 드는 여유 [deg]
 

@@ -156,6 +156,7 @@ parser.add_argument("--osc_inj", type=str, default="",
                          "인계 기준 t0 s 부터 on s 버스트 n 회, 틈 env 별 U(gap_lo,gap_hi) s · 램프 0.1 s). numpy RNG(4242) — torch RNG 경로 불변. 빈 값 = 끔(종전 비트 동일)")
 parser.add_argument("--trace_npz", action="store_true", help="1007 §13b: 틱별 회복 모드·참 |ω_xy|·감지 |ω_xy|·생존 기록 → log_picture/ground_recovery_<tag>_trace.npz (회복 전환 평가 전용)")
 parser.add_argument("--out_tag", type=str, default="rec")
+parser.add_argument("--kw_w3_key", type=str, default="", help="1012: 브리지에 등록된 걷기 키를 그대로 사용(정책 폴더·f_step·전환 완화 = 등록값). --kw_w3_fstep 는 같은 값으로 줄 것(평가 env 시계)")
 parser.add_argument("--kw_rblend", type=str, default="", help="1012: 러너 안의 전환 완화 'T초,hold|live' (kew3_runner blend_s·blend_stand). '' = 끔")
 parser.add_argument("--kw_w3_blend", type=float, default=0.0, help="1012 시험: 걷기 전환 뒤 T 초 동안 내보내는 목표를 전환 직전 목표 → 걷기 목표로 smoothstep 보간. 0 = 끔")
 parser.add_argument("--kw_w3_soft", type=str, default="", help="1011: 걷기 전환 뒤 T 초 동안 틱당 목표 변화 상한 d0° → 4° 선형('T,d0'). '' = 끔")
@@ -1194,7 +1195,12 @@ if KWL:
             if _sx_v == _sx_old:
                 _BR.CHECKPOINTS[_sx_k] = _sx_new; _sx_n += 1
         print(f"[runner_loop] ★ 서기 정책 덮어쓰기(평가 전용): {_sx_n} 키의 경로 {_sx_old} → {_sx_new} (키 이름은 G21a 그대로 — 실제 정책은 새 폴더)", flush=True)
-    _KW_KEYS = ("stand_w3s3d_15800", args_cli.kw_ke_key or "stand_c5kr_g21a_g24ra")
+    _KW_KEYS = (args_cli.kw_w3_key or "stand_w3s3d_15800", args_cli.kw_ke_key or "stand_c5kr_g21a_g24ra")
+    if args_cli.kw_w3_key:                                  # 1012: 브리지에 등록된 걷기 키를 그대로 쓴다(정책 폴더·걸음 시계·전환 완화 = 등록값)
+        assert args_cli.kw_w3_key in _W3D.W3_SPECS and not args_cli.kw_w3_export and not args_cli.kw_rblend, "--kw_w3_key 는 등록 키만, --kw_w3_export·--kw_rblend 와 함께 쓰지 않는다"
+        _rf_ = float(_W3D.W3_SPECS[args_cli.kw_w3_key][3].f_step)
+        assert abs(_rf_ - (float(args_cli.kw_w3_fstep) if args_cli.kw_w3_fstep > 0 else 1.1)) < 1e-9, f"등록 키의 걸음 시계 {_rf_} Hz 와 --kw_w3_fstep(평가 env 시계)이 다름"
+        print(f"[runner_loop] ★ 등록된 걷기 키 사용: {args_cli.kw_w3_key} · 폴더 {_BR.CHECKPOINTS[args_cli.kw_w3_key]} · f_step {_rf_}", flush=True)
     assert _KW_KEYS[1] in _BR.C5_PAIRS, "--kw_ke_key: 브리지에 없는 KE 키 " + repr(_KW_KEYS[1])
     if args_cli.kw_w3_export:
         _kwx_ = os.path.abspath(args_cli.kw_w3_export)
@@ -1230,6 +1236,12 @@ if KWL:
     else:
         KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max),
                     **({"air_runner": _BR._make_runner(_KW_AIRKEY)} if _KW_AIRKEY else {})) for _ in range(N)]
+        if args_cli.kw_w3_key:                              # 등록된 합성 키의 전환 완화 설정을 그대로
+            _ck_ = [k for k, sp in _BR.KEW3_SPECS.items() if sp.w3 == args_cli.kw_w3_key]; assert len(_ck_) == 1, _ck_
+            _bl_ = _BR.KEW3_BLEND.get(_ck_[0])
+            if _bl_ is not None:
+                args_cli.kw_rblend = f"{_bl_[0]},{_bl_[1]}"
+            print(f"[runner_loop] ★ 합성 키 {_ck_[0]} 의 전환 완화 = {_bl_}", flush=True)
         if args_cli.kw_rblend:                              # 1012: 러너 안의 전환 완화(kew3_runner blend_s·blend_stand)를 켠다 — 실제 러너 구현으로 폐루프
             _rbT, _rbM = args_cli.kw_rblend.split(","); assert _rbM in ("hold", "live")
             for _r in KWR:

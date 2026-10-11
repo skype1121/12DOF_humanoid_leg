@@ -143,7 +143,7 @@ def test_walk_keys_are_the_1007_pair_plus_the_requiet_composite_key():
     old = {"stand_w3s3d_15800": ["--experimental-w3"], "stand_kew3_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"]}
     new = {"stand_kew3q_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
            "stand_kew3qa_g21a_g24ra_w3s3d15800": ["--experimental-w3", "--experimental-kew3"],
-           "stand_kew3qa_g21a_g24ra_w3nbje1_18997": ["--experimental-w3", "--experimental-kew3"]}      # 1010: 새 몸 종종걸음 키(맨 뒤)
+           "stand_kew3qa_g21a_g24ra_w3nbjy1_19996": ["--experimental-w3", "--experimental-kew3"]}      # 1010: 새 몸 종종걸음 키(맨 뒤)
     assert list(cs.WALK_KEYS) == list(old) + list(new) == c.WALK_CKPTS and set(c.WALK_BRIDGE_ARGS) == set(old) | set(new)
     assert cs.WALK_KEYS["stand_w3s3d_15800"] == {"composite": False, "label": "걷기 실험 · W3 단독"}
     assert cs.WALK_KEYS["stand_kew3_g21a_g24ra_w3s3d15800"] == {"composite": True, "label": "걷기 실험 · 서기 KE + 걷기 W3 합성"}
@@ -158,7 +158,7 @@ def test_walk_keys_are_the_1007_pair_plus_the_requiet_composite_key():
     assert set(h) == {"composite", "air_start", "label"} and h["composite"] is True and h["air_start"] is True
     assert h["label"] == "걷기 실험 · 서기 KE + 걷기 W3 합성 + 갇힘 해소 + 공중·착지 정책(G21h) · 공중 정책 시작 가능 · 실물 미검증"
     assert all(s in h["label"] for s in ("걷기 실험", "서기 KE + 걷기 W3 합성 + 갇힘 해소 + 공중·착지 정책(G21h)", "공중 정책 시작 가능", "실물 미검증")), h["label"]
-    air = ["stand_kew3qa_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3nbje1_18997"]      # 1010: 새 몸 종종걸음 키도 공중 정책 시작을 받는다
+    air = ["stand_kew3qa_g21a_g24ra_w3s3d15800", "stand_kew3qa_g21a_g24ra_w3nbjy1_19996"]      # 1010: 새 몸 종종걸음 키도 공중 정책 시작을 받는다
     others = [k for k in cs.WALK_KEYS if k not in air]
     assert all("air_start" not in cs.WALK_KEYS[k] and "공중 정책 시작" not in cs.WALK_KEYS[k]["label"] and "G21h" not in cs.WALK_KEYS[k]["label"] for k in others)
     assert [k for k in cs.WALK_KEYS if cs.walk_air_start(k)] == air
@@ -177,7 +177,7 @@ def test_policy_menu_is_the_single_composite_key():
     """1008 승윤님 지시(안 쓰는 정책 정리): 고를 수 있는 정책 = 합성 키 하나. 드롭다운·기본값·시험 설정·정책 로드·계약 검사가 모두 그 키만 받는다.
     1008 오후: 그 한 키 = 공중 정책 시작을 받는 합성 키(종전 합성 키 + 공중·착지 구간 서기 정책 G21h). 시험 방식의 기본값도 그에 맞춰 '공중'이다.
     종전 메뉴 키는 정리된 키가 됐다."""
-    keep = "stand_kew3qa_g21a_g24ra_w3nbje1_18997"      # 1010 저녁: 새 몸 종종걸음 키 하나
+    keep = "stand_kew3qa_g21a_g24ra_w3nbjy1_19996"      # 1010 저녁: 새 몸 종종걸음 키 하나
     assert c.CKPT_MENU_KEYS == (keep,) and c.CKPT_MENU == [keep] and c.CKPT_DEFAULT == keep and c.TRIAL.checkpoint == keep
     assert c.MODE_DEFAULT == "air" == c.TRIAL.mode == cs.TrialState(keep).mode and cs.TrialState("stand_kew3q_g21a_g24ra_w3s3d15800").mode == "ground"
     assert "정리된 정책" in c.ckpt_menu_reason("stand_kew3q_g21a_g24ra_w3s3d15800")

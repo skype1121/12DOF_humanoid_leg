@@ -382,3 +382,27 @@ class Biped12HangStandW3S3dNBjEEnvCfg(Biped12HangStandW3S3dNBjDEnvCfg):
     """W3S3d-NBjE (1011 05:20): NBjD 와 전부 같고 **힙 외전 한계 범위만 0.72–0.92 → 0.64–0.84 배(16–21 N·m)**. 시작 = NBjD-s1-17798 이어 학습.
     근거: NBjD 는 걷기 전환 솟음 중앙 20–21·p95 25 N·m, env 별 최대 p95 29–30 N·m — 과도 기준(≤ 23) 미달. NBjL(13.75–20, 좁은 양발 지지)은 폭발했으므로 넓은 양발 지지 위에서 한 단계만 낮춘다. 기준 §20."""
     HIP_A_SCALE = (0.64, 0.84)
+
+
+def nb_hip_a_demand_abs(env, lim_nm: float = 20.0) -> torch.Tensor:
+    """힙 외전 PD 요구 토크(자르기 전)의 **절대값**이 lim_nm 을 넘는 초과 비율 e 의 (e + e²) 합 — 벌점 크기(양수).
+    nb_over_demand 는 env 별 무작위 한계 대비 제곱이라 드문 솟음(26 N·m 수준)엔 값이 작다. 이 항은 실물 상한(20 N·m) 기준 고정 문턱 + 선형 항으로 작은 초과에도 기울기를 준다."""
+    robot = env.scene["robot"]
+    c = getattr(env, "_nb_ha_cols", None)
+    if c is None:
+        c = env._nb_ha_cols = torch.tensor([j for j, n in enumerate(robot.joint_names) if "hip_a" in n], device=env.device)
+    e = torch.clamp(robot.data.computed_torque[:, c].abs() / float(lim_nm) - 1.0, min=0.0)
+    return (e + e.pow(2)).sum(dim=1)
+
+
+@configclass
+class Biped12HangStandW3S3dNBjHEnvCfg(Biped12HangStandW3S3dNBjEEnvCfg):
+    """W3S3d-NBjH (1011 14:50, 승윤님 "순간 요구를 26 까지 안 나오게 — 20 으로 자르는 게 아니라"): NBjE 와 전부 같고 **보상 항 하나만 추가** —
+    걷는 중 힙 외전 요구가 20 N·m 를 넘는 초과분 벌점(nb_hip_a_demand_abs, 가중 −20). 시작 = NBjE-s1-18997 이어 학습. 기준 NEWBODY_WALK.md §22."""
+    W_HAD = -20.0           # 비주석 클래스 상수(설정 필드 아님)
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import RewardTermCfg as RewTerm
+        from rl_walking import w3 as _w3
+        self.rewards.w3_hip_a_demand = RewTerm(func=_w3.w3_step_gated, weight=float(self.W_HAD), params={"func": nb_hip_a_demand_abs, "params": {}})

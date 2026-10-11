@@ -124,3 +124,14 @@ gym.register(
         "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
     },
 )
+
+# 1011: NBjE + 힙 외전 요구 20 N·m 초과 절대 벌점 — NBjE-s1-18997 에서 이어 학습
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjH-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjHEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)

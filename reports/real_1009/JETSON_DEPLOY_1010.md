@@ -111,3 +111,11 @@
 - 미검증: 젯슨 추론 시간(전환 완화 hold 는 추론 추가 없음), 실물에서 처음 도는 것 = 이 러너 변경·stage8 위치 항 상한(10/10 판)·사고 뒤의 모터 6.
 - 되돌리기: 커밋 cee1f169 의 묶음(66297d40)을 다시 배포.
 - 배포 절차(승인 뒤, 젯슨이 켜져 있고 콘솔 유휴일 때): `HEAD1008_ALLOW_LATENCY_OPTS=1 deploy/deploy_head_1008.sh`(dry-run, ★예상 밖 0 확인) → `--apply --restart-console`.
+
+**03:40 갱신(같은 묶음에 robotctl 걷기 명령 추가)** — 매니페스트 d8e7a171 → **1339b4f6**. 승윤님 "콘솔은 이제 안써 robotctl로만 제어".
+- 추가: 걷기 동작 `inplace5`(제자리·기한 5 s — 기한이 지나면 브리지 감독기가 끔), `robotctl march [-y] [--move inplace5] [--list]`·`robotctl march-off`.
+  march 는 콘솔 걷기 버튼과 같은 서버 액션(w3_move)을 보낸다(선행조건·운영자 확인·기한 그대로). 콘솔 패드에 inplace5 자리 추가.
+- 젯슨에서 바뀌는 파일 10: 앞의 8 + `jetson/scripts/robotctl.py`·`tests/test_robotctl.py`. stage8·상한·맵 불변.
+- 로컬 모의 배포 PASS 37 · FAIL 0(매니페스트 1339b4f6). 자가검증 4 종 ALL PASS, test_robotctl 27·test_console_walk 21·test_operator_console 60 통과.
+- 주의: 젯슨의 `~/bin/robotctl` 이 저장소 파일을 가리키는지(링크) 사본인지 확인하지 못했다(02:10 젯슨 무응답) — 배포 뒤 `robotctl march --list` 로 새 명령이 보이는지 확인할 것.
+- 실물 순서(승인 뒤): 모터 6·전원 점검 → `robotctl prep` → `level` → `policy-on` → 지그 내림 → 서기 확인 → `robotctl march`(확인 1 회 뒤 5 s 제자리걸음, 스스로 서기 복귀). 멈춤 `march-off`, 비상 `estop`.

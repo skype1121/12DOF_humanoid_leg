@@ -1,12 +1,14 @@
-# head_1008 재적용 허용 목록(1012 02:1x) — 젯슨 현재본(매니페스트 66297d40, 1011 19:00 복원 = 커밋 cee1f169 묶음)의 md5.
+# head_1008 재적용 허용 목록(1012 03:2x) — 젯슨 현재본(매니페스트 66297d40, 1011 19:00 복원 = 커밋 cee1f169 묶음)의 md5.
 # 젯슨이 꺼져 있어(02:10 응답 없음) 실기에서 읽지 못하고 cee1f169 의 매니페스트에서 옮겼다 — 배포 스크립트의 dry-run 이 실기 md5 와 대조한다.
 56b5ae6f9e6404ee649a60aa23c1bd4c  jetson/scripts/console_state.py
 5d8fd9b29be7b400511b9fd02a3d5254  jetson/scripts/operator_console.py
 5ccb0f672a2840d4c7057c16a1e6a605  jetson/scripts/rl_bridge_node.py
+61327e6bba0b6ce3733b7ec96f8dcf62  jetson/scripts/robotctl.py
 df5b29933b08a7bfedfcad3f0fd6a6b0  reports/night_1007/jetson_parity.py
 a6f500e4b48483c88caf07759bbe432e  rl_walking/deploy/kew3_runner.py
 8c181be9a34d8ba9c7f16259b3a8f23e  rl_walking/deploy/w3_deploy.py
 94832eec37aaa47ccb3e6fc9f13f4b46  tests/test_console_walk.py
 95f76c43477a88bbcfe3f64b231dd9b5  tests/test_operator_console.py
+ca9b74bee7dfeeaaa81e829c75459ec8  tests/test_robotctl.py
 66297d4088524c0c877022cf5089dbd1  deploy/head_1008.md5
 6c28d4b0032f0d402168d0b845de6871  deploy/head_1008.VERSION

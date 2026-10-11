@@ -339,7 +339,13 @@ def cmd_march(a):
     if not confirm(f"{b['label']}: 로봇이 혼자 서 있고, 줄은 느슨하지만 바로 받칠 수 있으며, 발 주변 바닥에 전선·물건이 없고, "
                    "다리 주변에 사람이 없나요? (멈추려면 robotctl march-off, 급하면 robotctl estop)", a.yes):
         die("취소")
-    if not act("w3_move", {"move": a.move}):
+    # 서버는 걷기 요청에 '운영자가 본 서버 시각'(seen, 5 s 안)을 요구한다 — 끊겼다 늦게 도착한 요청으로 걷지 않게. 확인 직후의 상태를 다시 읽어 그 시각을 싣는다
+    # (1012 실물 첫 시도: seen 을 안 실어 서버가 "요청이 오래됐습니다(화면 시각 없음)" 로 거부 — 명령은 나가지 않았다).
+    st = state()
+    w = st.get("walk") or {}
+    if not w.get("available"):
+        die(f"확인하는 사이 걷기를 켤 수 없게 됐습니다: {w.get('reason')}")
+    if not act("w3_move", {"move": a.move, "seen": st.get("server_time")}):
         sys.exit(1)
 
     def done(st):

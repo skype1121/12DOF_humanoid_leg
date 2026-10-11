@@ -273,7 +273,8 @@ class FakeWalkConsole:
                "enabled": self.available and self.enabled, "why_disabled": None}
         cur = {"blocking": True} if self.walking else None
         self.walking = False                                   # 한 번 본 뒤에는 끝난 것으로
-        return {"trial": {"checkpoint": "stand_kew3qa_x", "allowed": {}, "boot_id": "b", "revision": 1, "fault": None},
+        self.clock = getattr(self, "clock", 1000.0) + 1.0
+        return {"server_time": self.clock, "trial": {"checkpoint": "stand_kew3qa_x", "allowed": {}, "boot_id": "b", "revision": 1, "fault": None},
                 "walk": {"available": self.available, "reason": self.reason, "buttons": [btn], "current": cur}}
 
     def act(self, action, extra=None, confirmed=True, quiet=False):
@@ -288,7 +289,8 @@ def margs(**kw):
 def test_march_asks_then_sends_the_console_walk_action(rc, monkeypatch, capsys):
     fake = FakeWalkConsole(); asked = wire(rc, monkeypatch, fake, answers=["y"])
     rc.cmd_march(margs())
-    assert len(asked) == 1 and "전선" in asked[0] and fake.sent == [("w3_move", {"move": "inplace5"}, True)]
+    # 확인 뒤에 다시 읽은 상태의 서버 시각을 seen 으로 싣는다(서버의 걷기 요청 나이 검사 — 없으면 409)
+    assert len(asked) == 1 and "전선" in asked[0] and fake.sent == [("w3_move", {"move": "inplace5", "seen": 1002.0}, True)]
     assert "걷기 끝" in capsys.readouterr().out
 
 

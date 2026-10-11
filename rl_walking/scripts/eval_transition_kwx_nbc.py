@@ -156,6 +156,7 @@ parser.add_argument("--osc_inj", type=str, default="",
                          "인계 기준 t0 s 부터 on s 버스트 n 회, 틈 env 별 U(gap_lo,gap_hi) s · 램프 0.1 s). numpy RNG(4242) — torch RNG 경로 불변. 빈 값 = 끔(종전 비트 동일)")
 parser.add_argument("--trace_npz", action="store_true", help="1007 §13b: 틱별 회복 모드·참 |ω_xy|·감지 |ω_xy|·생존 기록 → log_picture/ground_recovery_<tag>_trace.npz (회복 전환 평가 전용)")
 parser.add_argument("--out_tag", type=str, default="rec")
+parser.add_argument("--kw_friction", type=str, default="", help="1012: 로봇 접촉 재질 마찰 '정지,운동' 을 전 env 에 덮어씀(실물 미끄러짐 대조). '' = 환경 무작위화 그대로")
 parser.add_argument("--kw_w3_key", type=str, default="", help="1012: 브리지에 등록된 걷기 키를 그대로 사용(정책 폴더·f_step·전환 완화 = 등록값). --kw_w3_fstep 는 같은 값으로 줄 것(평가 env 시계)")
 parser.add_argument("--kw_rblend", type=str, default="", help="1012: 러너 안의 전환 완화 'T초,hold|live' (kew3_runner blend_s·blend_stand). '' = 끔")
 parser.add_argument("--kw_w3_blend", type=float, default=0.0, help="1012 시험: 걷기 전환 뒤 T 초 동안 내보내는 목표를 전환 직전 목표 → 걷기 목표로 smoothstep 보간. 0 = 끔")
@@ -804,6 +805,12 @@ if args_cli.lock_joints:
     robot.write_joint_state_to_sim(_LOCK_TGT, torch.zeros_like(_LOCK_TGT), joint_ids=_LOCK_IDS)
     print(f"[lock] 고정 {_LOCK_NAMES} ids {_LOCK_IDS} · 목표(env0) {torch.rad2deg(_LOCK_TGT[0]).cpu().tolist()}° ± {args_cli.lock_band_deg}° · 종전 한계(env0) {torch.rad2deg(_lim_old).cpu().tolist()}° · 리셋 직후 어긋남 최대 {_LOCK_SPAWN}° → 목표로 놓음", flush=True)
 
+if args_cli.kw_friction:                                # 1012: 발·몸 접촉 재질의 마찰을 전 env 같은 값으로(실물 미끄러짐 대조용). 바닥 재질·결합 방식은 환경 그대로.
+    _mu_s, _mu_d = [float(x) for x in args_cli.kw_friction.split(",")]
+    _mat = robot.root_physx_view.get_material_properties(); _mat0 = _mat.clone()
+    _mat[..., 0] = _mu_s; _mat[..., 1] = _mu_d
+    robot.root_physx_view.set_material_properties(_mat, torch.arange(N, device="cpu"))
+    print(f"[friction] ★ 로봇 접촉 재질 마찰 덮어쓰기: 정지 {_mat0[..., 0].min():.2f}–{_mat0[..., 0].max():.2f} → {_mu_s} · 운동 {_mat0[..., 1].min():.2f}–{_mat0[..., 1].max():.2f} → {_mu_d}", flush=True)
 _nbx_sat = torch.zeros(N, device=dev); _nbx_n = torch.zeros(N, device=dev)
 
 policy = None; resume_path = "(hold: 액션 0 지속)"

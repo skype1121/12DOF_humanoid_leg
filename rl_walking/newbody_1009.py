@@ -479,3 +479,81 @@ class Biped12HangStandW3S3dNBjYEnvCfg(Biped12HangStandW3S3dNBjWEnvCfg):
     근거: W1a(0.4 Hz)는 유효 스텝이 0 으로 무너졌고 W1b(0.6 Hz)는 기준선의 1/3 수준에서 정체 — 동적 걸음에서 덜 벗어난 한 단계."""
     F_STEP = 0.8
     VX = (0.03, 0.06)
+
+
+# ---------------------------------------------------------------- 1011 밤: 좁은 걸음(승윤님 "저렇게 종종걸음으로") ----------------------------------------------------------------
+@configclass
+class Biped12HangStandW3S3dNBjNEnvCfg(Biped12HangStandW3S3dNBjEEnvCfg):
+    """W3S3d-NBjN (1011 22:40): NBjE 와 전부 같고 **착지 목표 발 간격만** 좁힌다 — 목표 반폭 0.17 → W_HALF_N(0.14 = 서기 간격 28 cm),
+    폭 벌점 문턱(2w − 0.05)도 같은 w 로. 걸음 시계 1.1 Hz·발 높이·명령·한계 무작위화 불변 → 배포 러너 계약 변경 없음.
+    근거: 지금 걸음은 착지 간격 34–36 cm(목표 0.17 이 1006 에 실측 넓은 걸음에 맞춰 올려진 값). 좌우로 미는 힘은 발 간격에 비례(선형 역진자 어림) —
+    좁히면 이륙 직전 힙 외전 밀기가 줄 것이라는 예상(미검증). 시작 = NBjE-s1-18997. 기준 reports/real_1009/WADDLE_W1.md §5."""
+    W_HALF_N = 0.14
+
+    def __post_init__(self):
+        super().__post_init__()
+        ev = self.events
+        ev.w3_track.params = dict(ev.w3_track.params or {}, nominal_half_width=float(self.W_HALF_N))
+        ev.w3_lat.params = dict(ev.w3_lat.params or {}, nominal_half_width=float(self.W_HALF_N))
+
+
+@configclass
+class Biped12HangStandW3S3dNBjOEnvCfg(Biped12HangStandW3S3dNBjNEnvCfg):
+    """W3S3d-NBjO (1011 22:40): NBjN 과 같고 목표 반폭 0.11(발 간격 22 cm)."""
+    W_HALF_N = 0.11
+
+
+def nb_width_excess(env, width_m: float = 0.24) -> torch.Tensor:
+    """걷는 중 좌우 발 간격이 width_m 을 넘는 만큼[m](양수, 매 틱) — w3_lat_tracker 가 갱신한 현재 간격. STEP 게이트는 w3_step_gated 가 건다."""
+    from rl_walking import w3 as _w3
+    return (_w3._lat(env)["width"] - float(width_m)).clamp(min=0.0)
+
+
+@configclass
+class Biped12HangStandW3S3dNBjPEnvCfg(Biped12HangStandW3S3dNBjNEnvCfg):
+    """W3S3d-NBjP (1011 22:47): NBjN(목표 반폭 0.12) + **간격 초과 벌점**(걷는 중 매 틱, 간격 − 24 cm 의 양수분 × −5).
+    근거: N1·N2 학습 초반 300 반복 동안 착지 보상이 오르지 않음(착지 사건 보상만으로는 간격을 당기는 신호가 약함 — 1006 W3S1e 때와 같은 현상). 시작 = NBjE-s1-18997."""
+    W_HALF_N = 0.12
+    W_WEX = -5.0
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import RewardTermCfg as RewTerm
+        from rl_walking import w3 as _w3
+        self.rewards.w3_width_excess = RewTerm(func=_w3.w3_step_gated, weight=float(self.W_WEX), params={"func": nb_width_excess, "params": {"width_m": 2.0 * float(self.W_HALF_N)}})
+
+
+NB_REF_NARROW = os.path.join(os.path.dirname(_HERE), "reports", "real_1009", "newbody", "ref_narrow_a.npz")
+
+
+def nb_imit_lateral(env, ref_path: str = NB_REF_NARROW, sig_q: float = 0.10) -> torch.Tensor:
+    """좌우 관절(양쪽 hip_a·ankle_r) 모방 — 반주기 위상의 참조각과의 차: exp(−Σdq²/(4σ²)), 전 구간. STEP 게이트는 w3_step_gated 가 건다.
+    σ 0.10 rad(w3_imit 와 같은 값): 0.04 로 시작했더니 지금 걸음과의 차(관절당 RMS 5.5°)에서 값이 0.003 으로 죽어 기울기가 없었다(22:55 측정) → 0.10 이면 약 0.4."""
+    from rl_walking import mdp_hang as H
+    R = H._sbi_ref(env, ref_path)
+    asset = env.scene[H._base_cfg().name]
+    if getattr(env, "_nb_latidx", None) is None:
+        jn = list(asset.joint_names)
+        env._nb_latidx = torch.tensor([jn.index(f"{sd}_{j}_joint") for j in ("hip_a", "ankle_r") for sd in ("left", "right")], device=env.device)
+    u = env._gu if getattr(env, "_gu", None) is not None else torch.zeros(env.num_envs, device=env.device)
+    half = (u >= 0.5).long(); v = torch.remainder(2.0 * u, 1.0); k = (v * 23.0).long().clamp(0, 22)
+    dq = asset.data.joint_pos[:, env._nb_latidx] - R["q"][half, k][:, env._nb_latidx]
+    return torch.exp(-(dq * dq).sum(1) / (4.0 * sig_q ** 2))
+
+
+@configclass
+class Biped12HangStandW3S3dNBjZEnvCfg(Biped12HangStandW3S3dNBjPEnvCfg):
+    """W3S3d-NBjZ (1011 22:50, 승윤님 "레퍼런스 잡아주면 안돼?"·"보폭 줄고 발 빠르게"): NBjP + **좌우 관절 참조 모방**(역기구학으로 만든 좁은 종종걸음:
+    발 간격 22.7 cm·골반 흔들림 1.5 cm·발 2 cm, `newbody/make_ref_narrow.py`) + **걸음 시계 1.1 → 1.4 Hz**(초당 2.8 걸음).
+    한 번에 세 가지(간격 벌점·참조·시계)가 바뀌므로 무엇의 효과인지는 가르지 못한다 — 결과만 본다. 배포 계약 변경: 러너 f_step 1.4."""
+    F_STEP_Z = 1.4
+    W_IMLAT = 1.5
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import RewardTermCfg as RewTerm
+        from rl_walking import w3 as _w3
+        ev = self.events
+        ev.w3_gait.params = dict(ev.w3_gait.params or {}, f_step=float(self.F_STEP_Z))
+        ev.nb_vbox = EventTerm(func=nb_set_vbox_period, mode="startup", params={"period_s": 1.0 / float(self.F_STEP_Z)})
+        self.rewards.w3_imit_lat = RewTerm(func=_w3.w3_step_gated, weight=float(self.W_IMLAT), params={"func": nb_imit_lateral, "params": {}})

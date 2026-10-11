@@ -190,3 +190,47 @@ gym.register(
         "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
     },
 )
+
+# 1011 좁은 걸음 반폭 0.14: NBjE-s1-18997 에서 이어 학습
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjN-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjNEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)
+
+# 1011 좁은 걸음 반폭 0.11: NBjE-s1-18997 에서 이어 학습
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjO-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjOEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)
+
+# 1011 좁은 걸음 반폭 0.12 + 간격 초과 벌점: NBjE-s1-18997 에서 이어 학습
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjP-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjPEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)
+
+# 1011 좁은 걸음 + 좌우 참조 모방 + 1.4 Hz: NBjE-s1-18997 에서 이어 학습
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjZ-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjZEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)

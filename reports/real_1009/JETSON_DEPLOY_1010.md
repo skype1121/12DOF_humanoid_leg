@@ -96,3 +96,18 @@
 - 승윤님 결정(18:50): "서기만 하자", 랜선 없이 `robotctl` 로만 제어. 지면 걷기는 콘솔 웹 패널에서만 켤 수 있고 robotctl 에는 그 명령이 없다(`robotctl walk` 는 공중 다리 스윙 — 지면 걷기 아님). 걷기 코드를 막는 추가 수정은 하지 않았다(실물 직전에 코드를 또 바꾸지 않기 위해).
 - 현장 확인 필요: 모터 6 기구·배선(여러 바퀴 회전), 배터리·전원, 모터 6 영점 프레임(prep 의 영점 확인에서 드러남 — 어긋나면 zero-fix).
 - 미검증: 위치 항만 묶는 상한(`tc25,tcj.hip_a=20`)은 실물에서 한 번도 돌지 않았다(1010 밤 추가 뒤 첫 실물이 오늘의 §10 판이었다).
+
+## 13. 배포 묶음 준비 — 새 몸 걷기 키 W1c(0.8 Hz) + 전환 완화 1 s (10-12 02:15, **젯슨 미배포 — 승인 대기**)
+
+- 내용: 새 몸 합성 키 `stand_kew3qa_g21a_g24ra_w3nbje1_18997` → `stand_kew3qa_g21a_g24ra_w3nbjy1_19996`(걷기 정책 W3S3dNBjY-19996, 걸음 시계 0.8 Hz,
+  서기 → 걷기 전환 완화 1 s·hold). 서기·회복·공중 정책(G21a·G24Ra·G21h)과 stage8·토크 상한·하드웨어맵은 그대로. 근거 `WADDLE_W1.md` §4·§6.
+- 매니페스트 d8e7a171(직전 젯슨 = 66297d40). 젯슨에서 바뀌는 파일 8: `rl_walking/deploy/kew3_runner.py`·`w3_deploy.py`, `jetson/scripts/rl_bridge_node.py`·`operator_console.py`·
+  `console_state.py`, `tests/test_console_walk.py`·`test_operator_console.py`, `reports/night_1007/jetson_parity.py`. 새 정책 폴더 4 파일 추가(옛 NBjE 폴더는 매니페스트에서 빠짐).
+  **stage8 노드는 바뀌지 않는다**(T9b: CAN 프레임 39056 개 젯슨 판과 동일).
+- 허용 목록 `deploy/head_1008.accept`: 02:10 젯슨 무응답이라 실기에서 읽지 못하고 커밋 cee1f169 의 매니페스트(= 66297d40)에서 옮겼다. 배포 dry-run 이 실기 md5 와 대조한다(★예상 밖 0 이어야 적용).
+- 로컬 모의 배포(`deploy/test_head_1008_local.sh`): **PASS 37 · FAIL 0** — selftest 23/23, 자동 롤백, 종전 서기·회복 키의 브리지 발행 27 건 젯슨 판과 동일.
+- 자가검증: kew3_runner·rl_bridge_node(정책 500 틱 ×17)·selftest_w3_bridge_node·operator_console ALL PASS. 등록 키 폐루프 = 평가 구성과 수치 일치.
+- 시뮬(계획 그대로: 제자리걸음 5 s × 2, 힙 외전 한계 20): 낙상 2/214·다른 초기조건 0/204(종전 키 3/214), 8번 제한 뒤 최대 20.0·요구 최대 29.7, 걷기 켠 뒤 0.2 s 목표 변화 0.5°(종전 11.4°).
+- 미검증: 젯슨 추론 시간(전환 완화 hold 는 추론 추가 없음), 실물에서 처음 도는 것 = 이 러너 변경·stage8 위치 항 상한(10/10 판)·사고 뒤의 모터 6.
+- 되돌리기: 커밋 cee1f169 의 묶음(66297d40)을 다시 배포.
+- 배포 절차(승인 뒤, 젯슨이 켜져 있고 콘솔 유휴일 때): `HEAD1008_ALLOW_LATENCY_OPTS=1 deploy/deploy_head_1008.sh`(dry-run, ★예상 밖 0 확인) → `--apply --restart-console`.

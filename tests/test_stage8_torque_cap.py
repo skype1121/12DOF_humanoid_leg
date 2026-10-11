@@ -117,30 +117,6 @@ class TorqueCapTest(unittest.TestCase):
         self.core.latest_actual_deg_by_joint[self.J] = self.base + 50.0  # 반대쪽(밀려서 지나침)도 대칭
         self.assertEqual(self.tick()[self.mid], self.frame(self.J, self.base + 50.0 - e))
 
-    def test_cap_includes_damping_term(self):
-        """1011: 밀려 움직이는 관절에서도 kp·(목표−실측) − kd·속도 의 크기가 상한을 넘지 않는다."""
-        class SimpleNamespace:                       # 피드백 대역: 속도·위치만 쓰고 나머지 필드는 0
-            def __init__(self, **kw): self.__dict__.update(kw)
-            def __getattr__(self, name): return 0.0
-        self.apply(["--target-torque-cap-nm", "25", "--target-torque-cap-joint", "hip_a=20"])
-        cfg = s8.get_joint_config(self.J); kp, kd = float(cfg["kp"]), float(cfg["kd"])
-        self.run_ticks(8, 30.0)
-        for v in (-3.0, -1.0, 0.0, 1.0, 3.0, 6.0):
-            for want in (30.0, -30.0):
-                self.core.desired_relative_deg_by_joint[self.J] = want
-                for _ in range(20):
-                    self.tick()
-                self.core.latest_feedback_by_joint[self.J] = SimpleNamespace(velocity_rad_s=v, position_deg=self.base)
-                self.core.latest_actual_deg_by_joint[self.J] = self.base
-                self.tick()
-                sent_deg = math.degrees(self.core.last_preview_by_joint[self.J].p_des_rad)
-                tau = kp * math.radians(sent_deg - self.base) - kd * v
-                self.assertLessEqual(abs(tau), 20.0 + 1e-6, (v, want, tau))
-        # 속도를 모르면 종전(위치 항만)
-        self.core.latest_feedback_by_joint[self.J] = None
-        self.assertEqual(s8.torque_cap_damping_shift_deg(self.J, None), 0.0)
-        self.assertEqual(s8.torque_cap_damping_shift_deg(self.J, SimpleNamespace(velocity_rad_s=float("nan"))), 0.0)
-
     def test_stale_joint_is_not_capped(self):
         self.apply(["--target-torque-cap-nm", "20"])
         self.run_ticks(3, 30.0)

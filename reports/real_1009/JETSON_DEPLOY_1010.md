@@ -119,3 +119,10 @@
 - 로컬 모의 배포 PASS 37 · FAIL 0(매니페스트 1339b4f6). 자가검증 4 종 ALL PASS, test_robotctl 27·test_console_walk 21·test_operator_console 60 통과.
 - 주의: 젯슨의 `~/bin/robotctl` 이 저장소 파일을 가리키는지(링크) 사본인지 확인하지 못했다(02:10 젯슨 무응답) — 배포 뒤 `robotctl march --list` 로 새 명령이 보이는지 확인할 것.
 - 실물 순서(승인 뒤): 모터 6·전원 점검 → `robotctl prep` → `level` → `policy-on` → 지그 내림 → 서기 확인 → `robotctl march`(확인 1 회 뒤 5 s 제자리걸음, 스스로 서기 복귀). 멈춤 `march-off`, 비상 `estop`.
+
+**03:40 젯슨 배포 완료(승윤님 승인 "ㅇㅇ 배포해도 되고")** — 매니페스트 66297d40 → **1339b4f6**.
+- 사전 점검(dry-run): 일치 133/133 · 바뀔 파일 12 · 새 파일 4 · ★예상 밖 0. 콘솔 유휴(제어 프로세스·세션 없음) 확인 뒤 `--apply --restart-console`.
+- 젯슨 selftest PASS 35 · FAIL 0(러너·콘솔·브리지 각 키·W3 노드·stage8 기본/단위·jetson_parity·md5sum -c). 백업 `~/humanoid_repo_bak_1008`.
+- 배포 뒤 읽기 확인: 선택 키 `stand_kew3qa_g21a_g24ra_w3nbjy1_19996`·방식 air, 걷기 동작에 inplace5(5 s), `~/bin/robotctl march --list` 에 새 동작 표시,
+  `KEW3_BLEND = {…: (1.0, "hold")}`·`f_step=0.8` 반영, stage8 md5 c039fc02(불변)·`torque_cap_damping_shift_deg` 0 건, 옵션 파일 `tc25,tcj.hip_a=20`, 하드웨어맵 두 사본 f2eef8aa(불변).
+- 실물 미실행. 되돌리기 `deploy/deploy_head_1008.sh --rollback --restart-console`(직전 판 66297d40).

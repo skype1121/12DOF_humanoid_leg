@@ -17,6 +17,7 @@
 """
 import argparse
 import math
+import time
 import os
 import sys
 
@@ -155,6 +156,8 @@ parser.add_argument("--osc_inj", type=str, default="",
                          "인계 기준 t0 s 부터 on s 버스트 n 회, 틈 env 별 U(gap_lo,gap_hi) s · 램프 0.1 s). numpy RNG(4242) — torch RNG 경로 불변. 빈 값 = 끔(종전 비트 동일)")
 parser.add_argument("--trace_npz", action="store_true", help="1007 §13b: 틱별 회복 모드·참 |ω_xy|·감지 |ω_xy|·생존 기록 → log_picture/ground_recovery_<tag>_trace.npz (회복 전환 평가 전용)")
 parser.add_argument("--out_tag", type=str, default="rec")
+parser.add_argument("--kw_rblend", type=str, default="", help="1012: 러너 안의 전환 완화 'T초,hold|live' (kew3_runner blend_s·blend_stand). '' = 끔")
+parser.add_argument("--kw_w3_blend", type=float, default=0.0, help="1012 시험: 걷기 전환 뒤 T 초 동안 내보내는 목표를 전환 직전 목표 → 걷기 목표로 smoothstep 보간. 0 = 끔")
 parser.add_argument("--kw_w3_soft", type=str, default="", help="1011: 걷기 전환 뒤 T 초 동안 틱당 목표 변화 상한 d0° → 4° 선형('T,d0'). '' = 끔")
 parser.add_argument("--kw_effort_joints", type=str, default="", help="1010: --kw_effort_scales 를 이름에 이 문자열이 든 관절에만 적용")
 parser.add_argument("--kw_w3_fstep", type=float, default=0.0, help="1010: 걷기 시계 주파수 덮어쓰기[Hz](러너·평가 env 둘 다). 0 = 등록값 1.1")
@@ -1227,6 +1230,12 @@ if KWL:
     else:
         KWR = [_KWR(_BR._make_runner(_KW_KEYS[0]), _BR._make_runner(_KW_KEYS[1]), handoff=args_cli.kw_handoff, settle_quiet_s=float(args_cli.kw_settle), settle_max_s=float(args_cli.kw_settle_max),
                     **({"air_runner": _BR._make_runner(_KW_AIRKEY)} if _KW_AIRKEY else {})) for _ in range(N)]
+        if args_cli.kw_rblend:                              # 1012: 러너 안의 전환 완화(kew3_runner blend_s·blend_stand)를 켠다 — 실제 러너 구현으로 폐루프
+            _rbT, _rbM = args_cli.kw_rblend.split(","); assert _rbM in ("hold", "live")
+            for _r in KWR:
+                _r.blend_s = float(_rbT); _r.blend_stand = _rbM
+            globals()["_RB"] = {"dev": _npk.zeros((N, 130), _npk.float32), "ke_rec": _npk.zeros(N, _npk.int32), "t_bl": [], "t_no": [], "n": 0}
+            print(f"[runner_loop] ★ 러너 전환 완화 켬: blend_s {_rbT} s · 서기 목표 {_rbM}", flush=True)
     _KW_SAFETY = _W3D.parse_w3_safety(args_cli.kw_safety) if args_cli.kw_safety else _BR.W3_SAFETY
     if args_cli.kw_safety:
         print(f"[runner_loop] X19b 감독기 문턱 덮어쓰기: {args_cli.kw_safety} → {_KW_SAFETY}", flush=True)
@@ -1479,8 +1488,36 @@ if KWL:
                     _AIR_DH["run"][e] = _AIR_DH["run"][e] + 1 if (float(ct[e][0]) > 0.5 and float(ct[e][1]) > 0.5) else 0
                     _AIR_DH["acq"][e] = _AIR_DH["run"][e] >= 15
                 R.ke.det_hold = not _AIR_DH["acq"][e]
+            _t0p = time.perf_counter()
             R.step(gy[e], pg[e], _cmd_e, qp[e], jv[e], (_npk.ones(2, dtype=_npk.float32) if (args_cli.air_contact_one and args_cli.air_det_hold and not _AIR_DH["acq"][e]) else ct[e]))
             act[e] = R.last_step_action; kind[e] = R.last_step_kind; want_v[e] = bool(clk.want)
+            if "_RB" in globals():
+                _dtp = time.perf_counter() - _t0p; _bl = R._bl_stand is not None
+                (_RB["t_bl"] if _bl else _RB["t_no"]).append(_dtp)
+                if len(_RB["t_no"]) > 400000:
+                    del _RB["t_no"][:200000]
+                if _bl and kind[e] == 2 and R.n_to_w3 == 1 and R.ticks_in_mode < 130:      # 첫 걷기 전환만: 내보낸 목표와 걷기 러너 목표의 차[deg]
+                    _RB["dev"][e, R.ticks_in_mode] = R.blend_dev_deg
+                    if R.blend_stand == "live" and not R._bl_live:
+                        _RB["ke_rec"][e] = 1
+                _RB["n"] += 1
+                if _RB["n"] % (N * 250) == 0:
+                    _npk.savez_compressed(os.path.join(DATA, "log_picture", f"rblend_{args_cli.out_tag}.npz"), dev=_RB["dev"], ke_rec=_RB["ke_rec"],
+                                          t_bl=_npk.array(_RB["t_bl"][-200000:], _npk.float32), t_no=_npk.array(_RB["t_no"][-200000:], _npk.float32))
+            if args_cli.kw_w3_blend > 0:
+                # 1012 시험: 걷기 전환 뒤 T 초 동안 최종 목표를 '전환 직전에 내보낸 목표' → '걷기 정책 목표'로 smoothstep 보간(평가 전용 — 러너 안이 아니라 내보낸 행동에 건다).
+                if "_BL_PREV" not in globals():
+                    globals()["_BL_PREV"] = [None] * N; globals()["_BL_HOLD"] = [None] * N
+                if kind[e] == 2:
+                    _tk = int(R.ticks_in_mode)
+                    if _tk <= 1 or _BL_HOLD[e] is None:
+                        _BL_HOLD[e] = _npk.array(_BL_PREV[e] if _BL_PREV[e] is not None else act[e], dtype=_npk.float32, copy=True)
+                    _s = min(1.0, _tk * 0.02 / float(args_cli.kw_w3_blend)); _al = 3 * _s * _s - 2 * _s * _s * _s
+                    if _al < 1.0:
+                        act[e] = (1.0 - _al) * _BL_HOLD[e] + _al * _npk.array(act[e], dtype=_npk.float32)
+                else:
+                    _BL_HOLD[e] = None
+                _BL_PREV[e] = _npk.array(act[e], dtype=_npk.float32, copy=True)
             if args_cli.kw_w3_soft:
                 if "_SOFT_TK" not in globals():
                     globals()["_SOFT_TK"] = [10 ** 6] * N

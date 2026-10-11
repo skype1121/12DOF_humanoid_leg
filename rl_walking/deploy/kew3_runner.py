@@ -38,6 +38,7 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 MODE_KE, MODE_W3, MODE_AIR = "ke", "w3", "air"
+_ACTION_SCALE = 0.25      # policy_runner.ACTION_SCALE 와 같은 값(자가검증 [12] 가 대조) — 전환 완화의 '실행한 행동' 환산에만 쓴다
 
 
 def _core(r):
@@ -50,7 +51,8 @@ class KeW3Runner:
 
     def __init__(self, w3_runner, ke_runner, *, handoff: str = "carry", settle_quiet_s: float = 0.0, settle_w: float = 0.15,
                  settle_max_s: float = 3.0, dt: float = 0.02, air_runner=None, air_contact_s: float = 1.0, air_quiet_s: float = 0.5,
-                 air_w: float = 0.15, air_max_s: float = 3.0, air_guard_deg=30.0, air_guard_s: float = 0.5, air_guard_rate_deg: float = 1.0):
+                 air_w: float = 0.15, air_max_s: float = 3.0, air_guard_deg=30.0, air_guard_s: float = 0.5, air_guard_rate_deg: float = 1.0,
+                 blend_s: float = 0.0, blend_stand: str = "hold"):
         """handoff: "carry" | "fresh". settle_quiet_s: 0 = 래치 다음 틱에 KE / > 0 = 래치 뒤 W3 STAND 로 (양발 접촉 ∧ |ω_xy| < settle_w)가
         이 시간 이어지면 KE(상한 settle_max_s — 시뮬 전환 평가의 정착 판정과 같은 정의: 0.5 s·0.15 rad/s·상한 3 s)."""
         if handoff not in ("carry", "fresh"):
@@ -118,6 +120,23 @@ class KeW3Runner:
             if not (self.air_contact_s > 0.0 and self.air_quiet_s > 0.0 and self.air_w > 0.0 and self.air_max_s >= self.air_contact_s):
                 raise ValueError("air_contact_s·air_quiet_s·air_w > 0, air_max_s ≥ air_contact_s 여야 함")
         self.w3r, self.ke = w3_runner, ke_runner
+        # 1012 서기 → 걷기 전환 완화(선택, 기본 끔 — blend_s 0 이면 아래 상태를 쓰는 분기에 들어가지 않아 모든 출력·기록이 종전과 같다).
+        # 걷기로 넘어간 뒤 blend_s 초 동안 **내보내는 목표** = (1 − α)·서기 목표 + α·걷기 러너 목표, α = smoothstep(경과/blend_s).
+        #   blend_stand "hold" = 전환 직전에 내보낸 서기 목표를 고정 / "live" = 섞는 동안 서기 러너(KE)도 같은 입력으로 계속 돌려 그 틱의 서기 목표를 쓴다
+        #   (KE 가 회복 모드로 들어가면 그 뒤로는 마지막 서기 목표를 고정 — 회복 정책 출력과 걷기 출력을 섞지 않는다).
+        # 걷기 러너 안의 상태(이력·last_action·슬루 기준)는 건드리지 않는다 — 걷기 정책은 자기 원시 행동을 last_action 으로 본다(적용된 목표와 다름: blend_dev_deg 로 기록).
+        # 걸음 시계는 멈추지 않는다(정책이 배운 적 없는 입력을 만들지 않는다). 끄기 요청·정착·KE 복귀 경로는 종전 그대로.
+        if blend_stand not in ("hold", "live"):
+            raise ValueError(f"blend_stand 는 'hold' | 'live' (받음 {blend_stand!r})")
+        if not float(blend_s) >= 0.0:
+            raise ValueError("blend_s ≥ 0 이어야 함")
+        self.blend_s, self.blend_stand = float(blend_s), str(blend_stand)
+        self._bl_stand = None             # 섞는 중인 서기 목표(None = 섞지 않음)
+        self._bl_live = False
+        self.blend_alpha = 1.0            # 이번 틱 α(섞지 않으면 1)
+        self.blend_dev_deg = 0.0          # 이번 틱 |내보낸 목표 − 걷기 러너 목표| 최대 [deg]
+        self.n_blend = 0
+        self.last_raw_action = None       # 이번 틱 행동 주체의 원시 행동(섞기와 무관) — 기록용
         self.mode = MODE_KE
         self._want = False
         self._force_ke = False
@@ -186,6 +205,8 @@ class KeW3Runner:
         bb = dict(self.ke.blackbox()) if hasattr(self.ke, "blackbox") else {}
         bb["kew3"] = {"mode": self.mode, "event": self.last_event, "n_to_w3": int(self.n_to_w3), "n_to_ke": int(self.n_to_ke),
                       "ticks": int(self.ticks_in_mode), "want": bool(self._want)}
+        if self.blend_s > 0.0:                          # 전환 완화를 켠 키에서만 키 추가(끈 키의 스키마는 불변)
+            bb["kew3"]["blend_a"] = round(float(self.blend_alpha), 3); bb["kew3"]["blend_dev"] = round(float(self.blend_dev_deg), 2)
         if self.air is not None:                        # 공중 러너가 있는 키에서만 키 추가(없는 키의 스키마는 불변)
             bb["kew3"]["n_air_to_ke"] = int(self.n_air_to_ke)
             bb["kew3"]["air_hold"] = bool(self.air_hold); bb["kew3"]["n_air_hold"] = int(self.n_air_hold)
@@ -208,6 +229,7 @@ class KeW3Runner:
         self._air_both_run = 0.0; self._air_quiet_run = 0.0
         self.air_hold = False; self._air_hold_out = None; self._air_none_run = 0.0
         self.air_dev_max = 0.0; self.air_act_max = 0.0; self.air_act_max_all = 0.0
+        self._bl_stand = None; self._bl_live = False; self.blend_alpha = 1.0; self.blend_dev_deg = 0.0
 
     def start_air(self) -> None:
         """1008: 이 세션을 AIR(공중·착지 서기 정책)로 시작한다 — **reset() 바로 뒤, 첫 step 전에** 부른다(공중 정책 시작 = 브리지 hang_arm).
@@ -282,6 +304,8 @@ class KeW3Runner:
     def _to_w3(self) -> None:
         ck, cw = _core(self.ke), _core(self.w3r)
         prev = ck._prev_emitted
+        if self.blend_s > 0.0 and prev is not None:     # 전환 완화: 전환 직전에 내보낸 서기 목표에서 출발
+            self._bl_stand = np.array(prev, dtype=np.float32, copy=True); self._bl_live = (self.blend_stand == "live"); self.n_blend += 1
         self.w3r.reset()
         if self.handoff == "carry":
             # 이력 이어받기 + 클록 이력 (0,0)(W3 STAND 계약). 틱 ≥ 2 = fresh 아님 → 첫 W3 틱은 STAND(클록 0), 다음 틱에 0→1 래치(게이트 0.2 s 램프).
@@ -306,11 +330,38 @@ class KeW3Runner:
             ck._prev_emitted = None if prev is None else np.array(prev, dtype=np.float32, copy=True)
         self.w3r.reset()                                # 클록 ge 0·want 0
         self._settle_run = 0.0; self._since_latch = None; self._w3_arm_want = False
+        self._bl_stand = None; self._bl_live = False; self.blend_alpha = 1.0; self.blend_dev_deg = 0.0
         self.mode = MODE_KE
         self._force_ke = False
         self.n_to_ke += 1
         self.ticks_in_mode = 0
         self.last_event = event
+
+    def _blend_out(self, out, gyro_rad_s, gravity_unit, qpos_rad, qvel_rad_s, contact2, tau_knee_nm):
+        """걷기 러너가 낸 목표 out 을 서기 목표와 섞어 돌려준다(전환 완화 중일 때만 불린다). 걷기 러너의 상태는 바꾸지 않는다."""
+        s = self.ticks_in_mode * self.dt / self.blend_s
+        if s >= 1.0 - 1e-9:                             # 끝 — 이 틱부터 걷기 러너 목표 그대로(비트 동일)
+            self._bl_stand = None; self._bl_live = False; self.blend_alpha = 1.0; self.blend_dev_deg = 0.0
+            return out
+        if self._bl_live:                               # 실시간 서기 목표: KE 를 같은 입력으로 한 틱 돌린다(명령 0)
+            zero = np.zeros(3, dtype=np.float32)
+            if getattr(self.ke, "needs_knee_tau", False) or tau_knee_nm is not None:
+                st = self.ke.step(gyro_rad_s, gravity_unit, zero, qpos_rad, qvel_rad_s, contact2, tau_knee_nm=tau_knee_nm)
+            else:
+                st = self.ke.step(gyro_rad_s, gravity_unit, zero, qpos_rad, qvel_rad_s, contact2)
+            if int(self.ke.last_mode) == 1:             # KE 가 회복 모드로 — 회복 출력은 섞지 않는다: 마지막 서기 목표로 고정
+                self._bl_live = False
+            else:
+                self._bl_stand = np.array(st, dtype=np.float32, copy=True)
+        a = float(3.0 * s * s - 2.0 * s * s * s)
+        o = np.asarray(out, dtype=np.float32)
+        mix = ((1.0 - a) * self._bl_stand + a * o).astype(np.float32)
+        self.blend_alpha = a
+        self.blend_dev_deg = float(np.degrees(np.abs(mix - o).max()))
+        # 시뮬 폐루프·기록용 '실행한 행동' = 내보낸 목표와 같은 값이 되도록 환산(원시 행동은 last_raw_action 에 남는다)
+        cw = _core(self.w3r)
+        self.last_step_action = ((mix - np.asarray(cw.default_pose, dtype=np.float32)) / float(_ACTION_SCALE)).astype(np.float32)
+        return mix
 
     # ---------- 스텝 ----------
     def step(self, gyro_rad_s, gravity_unit, cmd, qpos_rad, qvel_rad_s, contact2, tau_knee_nm=None) -> np.ndarray:
@@ -361,6 +412,9 @@ class KeW3Runner:
             out = self.w3r.step(gyro_rad_s, gravity_unit, cmd, qpos_rad, qvel_rad_s, contact2)
             self.ticks_in_mode += 1
             self.last_step_action = np.array(_core(self.w3r).last_action, dtype=np.float32, copy=True); self.last_step_kind = 2
+            if self._bl_stand is not None:              # 1012 전환 완화(켠 키·전환 뒤 blend_s 동안만)
+                self.last_raw_action = self.last_step_action
+                out = self._blend_out(out, gyro_rad_s, gravity_unit, qpos_rad, qvel_rad_s, contact2, tau_knee_nm)
             if self._w3_arm_want:                       # carry: 첫 W3 틱(STAND) 뒤에 켠다 — 시뮬 direct 즉시 켜기와 같은 수열
                 self._w3_arm_want = False
                 if self._want:
@@ -663,7 +717,72 @@ def selftest() -> int:
     return 0
 
 
+def selftest_blend() -> int:
+    """[12] 1012 서기 → 걷기 전환 완화: 끄면 종전과 비트 동일 · hold/live 식 · 연속성 · 끝난 뒤 걷기 목표 그대로 · 섞는 중 끄기 → KE 복귀."""
+    from rl_walking.deploy.policy_runner import ACTION_SCALE, SLEW_RAD
+    assert float(ACTION_SCALE) == float(_ACTION_SCALE), "행동 배율 상수 불일치"
+    mk_w3, mk_ke, pose, kw = _mk()
+    cmd0 = np.zeros(3, np.float32)
+    seq = [False] * 40 + [True] * 150 + [False] * 120 + [True] * 60       # 서기 → 걷기 → 끄기 → 다시 걷기
+
+    def run(R, n=None, on_step=None):
+        R.reset(); outs = []; bbs = []
+        for k, w in enumerate(seq[:n]):
+            R.set_gait_enable(w)
+            o = R.step(cmd=cmd0, **_inp(k, pose))
+            outs.append(np.array(o, np.float32, copy=True)); bbs.append(R.blackbox())
+            if on_step:
+                on_step(k, R, o)
+        return np.stack(outs), bbs
+
+    # (a) 끈 러너 = 인자를 주지 않은 러너(비트 동일·블랙박스 스키마 동일)
+    o0, b0 = run(KeW3Runner(mk_w3(), mk_ke(), handoff="carry", settle_quiet_s=0.5))
+    o1, b1 = run(KeW3Runner(mk_w3(), mk_ke(), handoff="carry", settle_quiet_s=0.5, blend_s=0.0, blend_stand="live"))
+    assert np.array_equal(o0, o1) and [sorted(x["kew3"]) for x in b0] == [sorted(x["kew3"]) for x in b1], "blend_s 0 이 종전과 다름"
+    assert "blend_a" not in b0[0]["kew3"]
+    n_on = 40                                                              # 켜기 틱(이 틱에 W3 로)
+    for T in (0.25, 0.5, 1.0, 2.0):
+        K = int(np.ceil(T / 0.02 - 1e-9))                                 # 섞기가 끝나는 걷기 틱(경과 ≥ T)
+        # (b) hold: 내보낸 목표 = (1 − α)·전환 직전 서기 목표 + α·(끈 쌍둥이의 걷기 목표), 끝난 뒤 쌍둥이와 비트 동일
+        Rh = KeW3Runner(mk_w3(), mk_ke(), handoff="carry", settle_quiet_s=0.5, blend_s=T, blend_stand="hold")
+        acts = []
+        oh, bh = run(Rh, on_step=lambda k, R, o: acts.append((np.array(R.last_step_action, np.float32), int(R.last_step_kind))))
+        hold = o0[n_on - 1]
+        for i in range(1, K):                                             # ticks_in_mode = i (첫 걷기 틱이 1)
+            s_ = i * 0.02 / T; a_ = 3 * s_ * s_ - 2 * s_ ** 3; k = n_on + i - 1
+            want = ((1.0 - a_) * hold + a_ * o0[k]).astype(np.float32)
+            assert np.allclose(oh[k], want, atol=1e-6), f"hold 식 불일치 T={T} i={i}"
+            assert abs(bh[k]["kew3"]["blend_a"] - round(a_, 3)) < 1e-9
+            assert np.allclose(pose + ACTION_SCALE * acts[k][0], oh[k], atol=1e-5) and acts[k][1] == 2, "실행한 행동 환산이 내보낸 목표와 다름"
+        assert np.array_equal(oh[n_on + K - 1:190], o0[n_on + K - 1:190]), f"섞기 끝난 뒤가 종전 걷기와 다름 T={T}"
+        d1 = float(np.degrees(np.abs(oh[n_on] - oh[n_on - 1]).max())); d0 = float(np.degrees(np.abs(o0[n_on] - o0[n_on - 1]).max()))
+        assert d1 <= d0 + 1e-4, f"전환 틱 목표 변화가 줄지 않음 {d1} > {d0}"
+        step_max = float(np.degrees(np.abs(np.diff(oh[n_on - 1:n_on + K + 5], axis=0)).max()))
+        assert step_max <= np.degrees(SLEW_RAD) + 1e-3, f"섞는 동안 한 틱 변화 {step_max}° 가 슬루 한도를 넘음"
+        assert np.array_equal(oh[:n_on], o0[:n_on]), "켜기 전 서기 구간이 바뀜"
+        # (c) live: 서기 목표 = 계속 도는 단독 KE 의 그 틱 목표
+        ref = mk_ke(); ref.reset(); ko = [np.array(ref.step(cmd=cmd0, **_inp(k, pose)), np.float32) for k in range(n_on + K + 2)]
+        Rl = KeW3Runner(mk_w3(), mk_ke(), handoff="carry", settle_quiet_s=0.5, blend_s=T, blend_stand="live")
+        ol, _ = run(Rl, n=n_on + K + 2)
+        for i in range(1, K):
+            s_ = i * 0.02 / T; a_ = 3 * s_ * s_ - 2 * s_ ** 3; k = n_on + i - 1
+            assert np.allclose(ol[k], ((1.0 - a_) * ko[k] + a_ * o0[k]).astype(np.float32), atol=1e-6), f"live 식 불일치 T={T} i={i}"
+        assert np.array_equal(ol[n_on + K - 1:], o0[n_on + K - 1:n_on + K + 2])
+    # (d) 섞는 중 끄기: 종전 경로(반주기 래치 → 정착 → KE)로 돌아오고 섞기 상태가 지워진다
+    Rc = KeW3Runner(mk_w3(), mk_ke(), handoff="carry", settle_quiet_s=0.5, blend_s=2.0, blend_stand="hold"); Rc.reset()
+    back = None
+    for k in range(400):
+        Rc.set_gait_enable(40 <= k < 55)                                  # 0.3 s 만 켰다 끔(섞기 15 %)
+        Rc.step(cmd=cmd0, **_inp(k, pose))
+        if k > 55 and Rc.mode == MODE_KE and back is None:
+            back = k
+    assert back is not None and Rc._bl_stand is None and Rc.blend_alpha == 1.0 and Rc.n_to_ke == 1, "섞는 중 끄기 뒤 KE 로 돌아오지 않음"
+    print(f"[selftest] kew3_runner 전환 완화: 끄면 종전과 비트 동일(370 틱·블랙박스 스키마) · hold/live 식(T 0.25·0.5·1·2 s) · 끝난 뒤 걷기 목표 비트 동일 · "
+          f"한 틱 변화 ≤ 슬루 한도 · 실행한 행동 환산 = 내보낸 목표 · 섞는 중 끄기 → {back - 55} 틱 뒤 KE 복귀: PASS")
+    return 0
+
+
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
-        raise SystemExit(selftest())
+        raise SystemExit(selftest() or selftest_blend())
     print(__doc__)

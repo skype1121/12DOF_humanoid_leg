@@ -186,6 +186,18 @@ def torque_cap_err_deg(joint, cap_nm=None):
     return math.degrees(cap / kp)
 
 
+def torque_cap_damping_shift_deg(joint, feedback):
+    """허용 창 중심 이동 [deg] = degrees(kd·실측속도 / kp). 속도를 모르면(피드백 없음·비유한) 0 = 위치 항만 묶던 종전 동작."""
+    v = getattr(feedback, "velocity_rad_s", None)
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return 0.0
+    cfg = get_joint_config(joint)
+    kp, kd = float(cfg["kp"]), float(cfg["kd"])
+    if kp <= 0.0:
+        return 0.0
+    return math.degrees(kd * float(v) / kp)
+
+
 def time_based_slew_enabled():
     """송신 주기를 바꾸는 옵션(명령 즉시 송신·100 Hz)이 켜졌는가 → 슬루를 시간 기준으로.
 
@@ -988,7 +1000,10 @@ class Stage8TwelveAxisMitControlCore:
                 err_lim = torque_cap_err_deg(joint)
                 meas = self.latest_actual_deg_by_joint.get(joint)
                 if err_lim is not None and meas is not None:
-                    capped = min(max(absolute_target_deg, float(meas) - err_lim), float(meas) + err_lim)
+                    # 1011 감쇠 항 포함: 구동기 토크 = kp·(목표−실측) − kd·실측속도(v_des = 0). 위치 항만 묶으면 밀려 움직이는 관절에서
+                    # 상한 + kd·|속도| 까지 나온다(시뮬 왕복: 힙 외전 29, 무릎 35 N·m). 실측 속도만큼 허용 창을 옮겨 **합**이 상한 안에 들게 한다.
+                    shift = torque_cap_damping_shift_deg(joint, self.latest_feedback_by_joint.get(joint))
+                    capped = min(max(absolute_target_deg, float(meas) + shift - err_lim), float(meas) + shift + err_lim)
                     if capped != absolute_target_deg:
                         self.torque_cap_counts[joint] = self.torque_cap_counts.get(joint, 0) + 1
                         absolute_target_deg = capped

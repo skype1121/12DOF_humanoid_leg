@@ -135,3 +135,14 @@ gym.register(
         "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
     },
 )
+
+# 1011: NBjH 의 요구 벌점 문턱 16 N·m·가중 -40 — NBjH-s2-20196 에서 이어 학습
+gym.register(
+    id="Biped12-HangStand-W3S3dNBjI-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "rl_walking.newbody_1009:Biped12HangStandW3S3dNBjIEnvCfg",
+        "rsl_rl_cfg_entry_point": "rl_walking.agents:Biped12StepB0PPORunnerCfg",
+    },
+)

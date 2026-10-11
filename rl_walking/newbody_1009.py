@@ -406,3 +406,15 @@ class Biped12HangStandW3S3dNBjHEnvCfg(Biped12HangStandW3S3dNBjEEnvCfg):
         from isaaclab.managers import RewardTermCfg as RewTerm
         from rl_walking import w3 as _w3
         self.rewards.w3_hip_a_demand = RewTerm(func=_w3.w3_step_gated, weight=float(self.W_HAD), params={"func": nb_hip_a_demand_abs, "params": {}})
+
+
+@configclass
+class Biped12HangStandW3S3dNBjIEnvCfg(Biped12HangStandW3S3dNBjHEnvCfg):
+    """W3S3d-NBjI (1011 16:35, 승윤님 "가능하면 20 으로 맞춰"): NBjH 와 같고 벌점 문턱 20 → 16 N·m, 가중 −20 → −40.
+    순간 최대(env 별 최대 p95)를 20 이하로 두려면 문턱이 목표보다 낮아야 한다(NBjH 는 문턱 20 에서 p95 24). 시작 = NBjH-s2-20196. 기준 NEWBODY_WALK.md §23."""
+    W_HAD = -40.0
+    HAD_LIM = 16.0
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.w3_hip_a_demand.params["params"] = {"lim_nm": float(self.HAD_LIM)}

@@ -30,6 +30,9 @@
   robotctl zero              에어 보행 정지 + 개별 조정 전부 0 = 매달림 기준(제로) 자세
   robotctl walk [-y] [--f 0.5 --hip 30 --hipext 12 --knee 30 --ankle 8]   공중 걷기(힙 앞뒤 스윙) 시작 (공중·kp150 에서만)
   robotctl stop              에어 보행 정지(자세는 유지)
+  robotctl march [-y] [--move inplace5]   [1012] **지면 제자리걸음**(기본 5초 — 기한이 지나면 스스로 서기로 복귀). 정책이 서기 중일 때만.
+                             콘솔 걷기 버튼과 같은 서버 액션(w3_move)이다 — 선행조건·운영자 확인·기한을 그대로 거친다. 동작 목록: robotctl march --list
+  robotctl march-off         걷기 끄기(다음 반주기 경계에서 서기로 — 확인 없이 즉시)
   robotctl kd N              홀드 감쇠 kd (1~30, 기본 5)
   robotctl autolevel on [--target 0]   접지 뒤 IMU 기준 자동 수평(힙앞뒤 트림, 0.5°/s, ±10°)
   robotctl autolevel off
@@ -315,6 +318,42 @@ def cmd_stop(a):
     act("air_gait_off")
 
 
+def cmd_march(a):
+    """1012 지면 걷기(시간 제한) — 콘솔 걷기 패널의 버튼과 같은 액션(w3_move). 서버의 선행조건(정책 서기 중·정지 래치 없음 …)과 기한을 그대로 따른다."""
+    st = state()
+    w = st.get("walk") or {}
+    btns = {b["name"]: b for b in (w.get("buttons") or [])}
+    if a.list:
+        for b in btns.values():
+            print(f"  {b['name']:10s} {b['label']} · vx {b['vx']:+.2f} vy {b['vy']:+.2f} wz {b['wz']:+.2f} · {b['dur_s']:g} s"
+                  + ("" if b.get("allowed") else f" · 비활성({b.get('why_disabled')})"), flush=True)
+        return
+    b = btns.get(a.move)
+    if b is None:
+        die(f"모르는 걷기 동작 {a.move!r} — robotctl march --list")
+    if not w.get("available"):
+        die(f"지금은 걷기를 켤 수 없습니다: {w.get('reason')}")
+    if not b.get("enabled"):
+        die(f"{b['label']}: 비활성 — {b.get('why_disabled') or w.get('reason')}")
+    print(f"선택 정책 {st['trial'].get('checkpoint')} | 동작 {b['label']}({b['dur_s']:g} s 뒤 스스로 서기 복귀)", flush=True)
+    if not confirm(f"{b['label']}: 로봇이 혼자 서 있고, 줄은 느슨하지만 바로 받칠 수 있으며, 발 주변 바닥에 전선·물건이 없고, "
+                   "다리 주변에 사람이 없나요? (멈추려면 robotctl march-off, 급하면 robotctl estop)", a.yes):
+        die("취소")
+    if not act("w3_move", {"move": a.move}):
+        sys.exit(1)
+
+    def done(st):
+        cur = (st.get("walk") or {}).get("current")
+        return not cur or not cur.get("blocking")
+    time.sleep(1.0)
+    wait_until(done, float(b["dur_s"]) + 20.0, "걷기")
+    print("✓ 걷기 끝 — 'robotctl watch' 로 서기 복귀를 확인하세요. 문제 시 robotctl estop", flush=True)
+
+
+def cmd_march_off(a):
+    act("w3_off", confirmed=False)
+
+
 def cmd_autolevel(a):
     if a.mode == "on":
         act("auto_level_on", {"target": a.target})
@@ -540,6 +579,9 @@ def main():
     s.add_argument("--knee", type=float, default=None, help="deg 0~45"); s.add_argument("--ankle", type=float, default=None, help="deg 0~15")
     s.set_defaults(fn=cmd_walk)
     sub.add_parser("stop").set_defaults(fn=cmd_stop)
+    s = sub.add_parser("march"); s.add_argument("-y", dest="yes", action="store_true"); s.add_argument("--move", default="inplace5")
+    s.add_argument("--list", action="store_true"); s.set_defaults(fn=cmd_march)
+    sub.add_parser("march-off").set_defaults(fn=cmd_march_off)
     s = sub.add_parser("kd"); s.add_argument("value", type=float); s.set_defaults(fn=cmd_kd)
     s = sub.add_parser("autolevel"); s.add_argument("mode", choices=("on", "off")); s.add_argument("--target", type=float, default=0.0); s.set_defaults(fn=cmd_autolevel)
     s = sub.add_parser("trim"); s.add_argument("joint"); s.add_argument("deg", type=float); s.set_defaults(fn=cmd_trim)

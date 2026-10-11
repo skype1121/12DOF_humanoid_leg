@@ -261,3 +261,55 @@ def test_cli_parses_new_prep_flags(rc, monkeypatch):
         monkeypatch.setattr(rc.sys, "argv", argv)
         rc.main()
     assert seen == [(False, False), (True, False), (False, True)]
+
+
+# ---- 1012 robotctl march(지면 제자리걸음 — 콘솔 걷기 버튼과 같은 액션 w3_move) ----
+class FakeWalkConsole:
+    def __init__(self, available=True, reason=None, enabled=True):
+        self.sent = []; self.available = available; self.reason = reason; self.enabled = enabled; self.walking = False
+
+    def state(self):
+        btn = {"name": "inplace5", "label": "제자리 걸음 5초", "vx": 0.0, "vy": 0.0, "wz": 0.0, "dur_s": 5.0, "allowed": True,
+               "enabled": self.available and self.enabled, "why_disabled": None}
+        cur = {"blocking": True} if self.walking else None
+        self.walking = False                                   # 한 번 본 뒤에는 끝난 것으로
+        return {"trial": {"checkpoint": "stand_kew3qa_x", "allowed": {}, "boot_id": "b", "revision": 1, "fault": None},
+                "walk": {"available": self.available, "reason": self.reason, "buttons": [btn], "current": cur}}
+
+    def act(self, action, extra=None, confirmed=True, quiet=False):
+        self.sent.append((action, dict(extra or {}), confirmed)); self.walking = action == "w3_move"
+        return True
+
+
+def margs(**kw):
+    return types.SimpleNamespace(**{"yes": False, "move": "inplace5", "list": False, **kw})
+
+
+def test_march_asks_then_sends_the_console_walk_action(rc, monkeypatch, capsys):
+    fake = FakeWalkConsole(); asked = wire(rc, monkeypatch, fake, answers=["y"])
+    rc.cmd_march(margs())
+    assert len(asked) == 1 and "전선" in asked[0] and fake.sent == [("w3_move", {"move": "inplace5"}, True)]
+    assert "걷기 끝" in capsys.readouterr().out
+
+
+def test_march_declined_sends_nothing(rc, monkeypatch):
+    fake = FakeWalkConsole(); wire(rc, monkeypatch, fake, answers=["n"])
+    with pytest.raises(SystemExit):
+        rc.cmd_march(margs())
+    assert fake.sent == []
+
+
+def test_march_refuses_when_server_says_walk_unavailable_without_asking(rc, monkeypatch, capsys):
+    fake = FakeWalkConsole(available=False, reason="정책이 서기 중이 아님"); asked = wire(rc, monkeypatch, fake)
+    with pytest.raises(SystemExit):
+        rc.cmd_march(margs(yes=True))
+    assert fake.sent == [] and asked == [] and "정책이 서기 중이 아님" in capsys.readouterr().out + capsys.readouterr().err
+
+
+def test_march_unknown_move_and_march_off(rc, monkeypatch):
+    fake = FakeWalkConsole(); wire(rc, monkeypatch, fake)
+    with pytest.raises(SystemExit):
+        rc.cmd_march(margs(move="moonwalk", yes=True))
+    assert fake.sent == []
+    rc.cmd_march_off(margs())
+    assert fake.sent == [("w3_off", {}, False)]

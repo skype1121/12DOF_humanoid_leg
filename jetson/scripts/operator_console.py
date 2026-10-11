@@ -150,7 +150,7 @@ def ckpt_menu_reason(ckpt):
         return f"정리된 정책입니다 — 콘솔에서 고를 수 있는 정책은 {', '.join(CKPT_MENU) or '없음'} 뿐입니다(1008)"
     return "허용되지 않은 체크포인트입니다"
 #: 화면 방향 패드 배치(이름만) — 값(vx·vy·wz·dur_s)과 표시 이름은 w3_deploy.W3_MOVES 가 유일한 원본이다. 콘솔에 값을 다시 적지 않는다.
-WALK_PAD = (("turn_l", "fwd1", "turn_r"), ("left1", "inplace", "right1"), ("fwd3", "back1"))
+WALK_PAD = (("turn_l", "fwd1", "turn_r"), ("left1", "inplace", "right1"), ("fwd3", "back1", "inplace5"))   # 1012: inplace5 = 제자리 걸음 5초(robotctl march 기본 동작)
 WALK_REQ_MAX_AGE_S = 5.0     # 걷기 버튼·재무장 요청의 허용 나이 [s](화면이 본 서버 시각 기준) — 끊겼다 뒤늦게 도착한 요청으로 걷지 않게
 
 
@@ -2358,7 +2358,8 @@ def selftest_walk(directory):
     if callable(getattr(W, "w3_moves_public", None)):       # 원본에 공개 목록이 있으면 그것과 같은 내용이어야 한다(없는 판은 위 대체 경로)
         assert moves == [{k: p.get(k) for k in ("name",) + VAL + ("enabled", "why_disabled")} for p in W.w3_moves_public()]
     on, off = [m["name"] for m in moves if m["enabled"]], [m["name"] for m in moves if not m["enabled"]]
-    by_dur = sorted((m for m in moves if m["enabled"]), key=lambda m: m["dur_s"])
+    # 1012: 아래 시나리오의 시간 상수(2.1 s·1.5 s …)는 기한 3 s 이하 버튼 기준이다 → 시나리오용 버튼은 그 안에서 고른다(inplace5 = 5 s 는 목록·패드 검사만 받는다).
+    by_dur = sorted((m for m in moves if m["enabled"] and m["dur_s"] <= 3.0), key=lambda m: m["dur_s"])
     mv, mv_long = by_dur[0]["name"], by_dur[-1]["name"]         # 가장 짧은·가장 긴 활성 버튼(시나리오용 — 이름을 박아 두지 않는다)
     mv_b, mv_c = [n for n in on if n not in (mv, mv_long)][:2]
     assert by_dur[-1]["dur_s"] > WALK_ACK_TIMEOUT_S + 0.2, "응답 대기보다 긴 활성 버튼이 없어 '걷는 중 응답 없음' 시나리오를 만들 수 없음"

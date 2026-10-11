@@ -1,12 +1,6 @@
-# head_1008 재적용 허용 목록(1011 07:2x 갱신) — 젯슨에 있는 직전 배포본(매니페스트 5b98d495…, 1011 05:53 적용)의 md5.
-# 이번 변경(걷기 키 NBjD-s2 → NBjE-s1-18997·러너 동치 기준)으로 덮어쓸 파일만 적는다.
-f4d4f6b1c24137ef8304e3207d9057e3  jetson/scripts/console_state.py
-fb6b6b81e8b58dfe942d521782c9c2fc  jetson/scripts/operator_console.py
-22de4e800ebb7a251be849c2565a7c7b  jetson/scripts/rl_bridge_node.py
-22a4dd86d500302775f9a974ae553afd  reports/night_1007/jetson/parity_ref.npz
-9e8bf5c6e8f1ab457eb102475fcb27c1  reports/night_1007/jetson_parity.py
-05de0456adc04f2fbc2135c0bb4b4f64  rl_walking/deploy/w3_deploy.py
-ecc89b84b6708197a0e38d25415ac6e5  tests/test_console_walk.py
-62fab30cc4edfd0b6a7c82c423dcaec4  tests/test_operator_console.py
-5b98d495c593207fdb04440ad53104eb  deploy/head_1008.md5
-f0e1c41f521e2d6ff3bf4a7811bea235  deploy/head_1008.VERSION
+# head_1008 재적용 허용 목록(1011 17:4x 갱신) — 젯슨에 있는 직전 배포본(매니페스트 66297d40…, 1011 07:29 적용)의 md5.
+# 이번 변경(stage8 요구 토크 상한에 감쇠 항 포함 + 그 시험)으로 덮어쓸 파일만 적는다.
+c039fc025c7772b771aa07c64f8d89d0  jetson/scripts/stage8_12axis_mit_control_node.py
+7bafbd8e28f359418908380eec59ed6f  tests/test_stage8_torque_cap.py
+66297d4088524c0c877022cf5089dbd1  deploy/head_1008.md5
+bded27e9872105e4c152bb2cc4053607  deploy/head_1008.VERSION

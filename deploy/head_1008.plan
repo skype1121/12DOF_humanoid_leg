@@ -8,7 +8,7 @@ jetson/scripts/console_ui.html	send	session	repo	2140181c8f267d08962e4c36aab683f
 jetson/scripts/mech_fixed.py	send	session	repo	514777eb3c17c5f49180b1655873bfef	4784	-	-
 jetson/scripts/operator_console.py	send	session	repo	5d8fd9b29be7b400511b9fd02a3d5254	236244	90b7ef283a9da1450de34d3f3da09cc2	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
 jetson/scripts/rl_bridge_node.py	send	session	repo	5ccb0f672a2840d4c7057c16a1e6a605	500802	15dcabf224f9bbfdc01f1017c93d101a	젯슨 구판 = 8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)
-jetson/scripts/stage8_12axis_mit_control_node.py	send	session	repo	747986da7d1c04c9eb5276dc5838c296	102725	2509bd9998a5177e42dcf8d66bc833b6	젯슨 구판 = c93b45d1 2026-09-30
+jetson/scripts/stage8_12axis_mit_control_node.py	send	session	repo	c039fc025c7772b771aa07c64f8d89d0	101701	2509bd9998a5177e42dcf8d66bc833b6	젯슨 구판 = c93b45d1 2026-09-30
 jetson/scripts/w3_cmd.py	send	session	repo	e06de3d422841c127aa93ac3b774638e	9569	-	-
 protocols/__init__.py	verify	session	repo	3820717ce5c7b02b864108ca81604e25	50	3820717ce5c7b02b864108ca81604e25	-
 protocols/ak_mit_command.py	verify	session	repo	52543d3db24888770e348d59a82279e2	3873	52543d3db24888770e348d59a82279e2	-
@@ -45,7 +45,7 @@ tests/test_stage8_baseline_from_hold.py	verify	test	repo	b92cf07a1dc1d8e9ee17a1f
 tests/test_stage8_can_send_timeout.py	send	test	repo	955b8a978f96bd12ef8b76df4b634fc6	7549	-	-
 tests/test_stage8_cmd_timing.py	verify	test	repo	27845170083ca2ec900a2476946bd257	2764	27845170083ca2ec900a2476946bd257	-
 tests/test_stage8_latency_options.py	send	test	repo	e02faf6679f69820d5bcc06f8155683a	12839	-	-
-tests/test_stage8_torque_cap.py	send	test	repo	7c42ce0c384416445f8767f90d542f40	10576	-	-
+tests/test_stage8_torque_cap.py	send	test	repo	7bafbd8e28f359418908380eec59ed6f	8955	-	-
 tests/test_startup_simplify_bridge.py	send	test	repo	491c70856194f3cf422045fc77dd90bb	24527	-	-
 jetson/scripts/analyze_a1_blackbox.py	send	sync	repo	4d75432e8334e78706953037c3af5e19	5032	-	-
 jetson/scripts/analyze_cop_transfer.py	send	sync	repo	b9ed7cacde327dcd406f30d8595f5000	7910	4182c5828e40110f3d568166c3d54f24	젯슨 구판 = eb15a99a 2026-09-11
@@ -132,5 +132,5 @@ deploy/cand/head_1008/selftest_w3_node_refs.py	send	ref	repo	40edb00b9d06bde97f3
 deploy/cand/head_1008/OPERATOR_COMMANDS.md	send	record	repo	3dfbf67297c795daa17b53b1a9f29c7d	31707	-	-
 reports/night_1007/jetson/parity_ref.npz	send	parity	repo	08deea3960ab43f646dc45ca1892ec76	1505790	-	러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime)
 reports/night_1007/jetson_parity.py	send	parity	repo	df5b29933b08a7bfedfcad3f0fd6a6b0	11055	-	러너 동치 확인(로컬 기준 ↔ 젯슨 onnxruntime)
-deploy/head_1008.md5	send	record	repo	80f8588047eb6f55a2bc860a2d84a6b8	10292	-	매니페스트(젯슨에서 md5sum -c)
-deploy/head_1008.VERSION	send	record	repo	b1fad35df2e5c6302c64f2dd090e1bb9	657	-	버전 기록
+deploy/head_1008.md5	send	record	repo	66297d4088524c0c877022cf5089dbd1	10292	-	매니페스트(젯슨에서 md5sum -c)
+deploy/head_1008.VERSION	send	record	repo	6c28d4b0032f0d402168d0b845de6871	657	-	버전 기록

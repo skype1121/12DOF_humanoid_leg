@@ -45,7 +45,7 @@ e899f2458a8eb66d9ad4eb3a1f1c72fd  jetson/scripts/propose_ankle_r_direction_fix.p
 1a9fe7384f4c74b5fa80b49d526f6374  jetson/scripts/set_pitch_comp.py
 483b4e547a94008d2b3ad289d499097b  jetson/scripts/sign_check.py
 7f8f79253f67c8d323ab4fda9f3e3f7c  jetson/scripts/stack_down.sh
-747986da7d1c04c9eb5276dc5838c296  jetson/scripts/stage8_12axis_mit_control_node.py
+c039fc025c7772b771aa07c64f8d89d0  jetson/scripts/stage8_12axis_mit_control_node.py
 344aae83e6511b3fd241f10bfa65d445  jetson/scripts/stage8_cmd.py
 194e79b67280bee5f0ff6a5221cf82d7  jetson/scripts/static_march.py
 b65f0a4e3c329d4f65e2dc5f28318e1b  jetson/scripts/stiffness_log.py
@@ -127,5 +127,5 @@ b92cf07a1dc1d8e9ee17a1f9a6102925  tests/test_stage8_baseline_from_hold.py
 955b8a978f96bd12ef8b76df4b634fc6  tests/test_stage8_can_send_timeout.py
 27845170083ca2ec900a2476946bd257  tests/test_stage8_cmd_timing.py
 e02faf6679f69820d5bcc06f8155683a  tests/test_stage8_latency_options.py
-7c42ce0c384416445f8767f90d542f40  tests/test_stage8_torque_cap.py
+7bafbd8e28f359418908380eec59ed6f  tests/test_stage8_torque_cap.py
 491c70856194f3cf422045fc77dd90bb  tests/test_startup_simplify_bridge.py

@@ -1,6 +1,5 @@
-# head_1008 재적용 허용 목록(1011 17:4x 갱신) — 젯슨에 있는 직전 배포본(매니페스트 66297d40…, 1011 07:29 적용)의 md5.
-# 이번 변경(stage8 요구 토크 상한에 감쇠 항 포함 + 그 시험)으로 덮어쓸 파일만 적는다.
-c039fc025c7772b771aa07c64f8d89d0  jetson/scripts/stage8_12axis_mit_control_node.py
-7bafbd8e28f359418908380eec59ed6f  tests/test_stage8_torque_cap.py
-66297d4088524c0c877022cf5089dbd1  deploy/head_1008.md5
-bded27e9872105e4c152bb2cc4053607  deploy/head_1008.VERSION
+# head_1008 재적용 허용 목록(1011 18:3x) — 젯슨 현재본(매니페스트 80f85880, 1011 17:20 적용)의 md5. stage8 상한 감쇠 항 되돌림으로 덮어쓸 파일만.
+747986da7d1c04c9eb5276dc5838c296  jetson/scripts/stage8_12axis_mit_control_node.py
+7c42ce0c384416445f8767f90d542f40  tests/test_stage8_torque_cap.py
+80f8588047eb6f55a2bc860a2d84a6b8  deploy/head_1008.md5
+b1fad35df2e5c6302c64f2dd090e1bb9  deploy/head_1008.VERSION

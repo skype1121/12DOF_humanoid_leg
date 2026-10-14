@@ -1,0 +1,156 @@
+{
+ "files": [
+  {
+   "file": "reports/real_1001/rl_bridge_20261001_184814.jsonl",
+   "ticks": 3414,
+   "windows": 324,
+   "no_est": 324,
+   "est_n": 0,
+   "est_p10_50_90": null,
+   "est_hist": {},
+   "corr_p50": null
+  },
+  {
+   "file": "reports/real_1001/rl_bridge_20261001_185555.jsonl",
+   "ticks": 1286,
+   "windows": 111,
+   "no_est": 94,
+   "est_n": 17,
+   "est_p10_50_90": [
+    3.0,
+    3.0,
+    4.0
+   ],
+   "est_hist": {
+    "3": 12,
+    "4": 5
+   },
+   "corr_p50": 0.7557307540467759
+  },
+  {
+   "file": "reports/real_1001/rl_bridge_20261001_193901.jsonl",
+   "ticks": 1996,
+   "windows": 182,
+   "no_est": 175,
+   "est_n": 7,
+   "est_p10_50_90": [
+    5.0,
+    5.0,
+    5.0
+   ],
+   "est_hist": {
+    "5": 7
+   },
+   "corr_p50": 0.8560452834672022
+  },
+  {
+   "file": "reports/real_1002/rl_bridge_20261002_143511.jsonl",
+   "ticks": 3253,
+   "windows": 308,
+   "no_est": 286,
+   "est_n": 22,
+   "est_p10_50_90": [
+    4.0,
+    4.0,
+    5.0
+   ],
+   "est_hist": {
+    "4": 16,
+    "5": 6
+   },
+   "corr_p50": 0.7392834990310864
+  },
+  {
+   "file": "reports/real_1003/rl_bridge_20261003_174906.jsonl",
+   "ticks": 15299,
+   "windows": 1512,
+   "no_est": 1250,
+   "est_n": 262,
+   "est_p10_50_90": [
+    3.0,
+    4.0,
+    4.0
+   ],
+   "est_hist": {
+    "3": 77,
+    "4": 183,
+    "5": 1,
+    "8": 1
+   },
+   "corr_p50": 0.6914167522620251
+  },
+  {
+   "file": "reports/real_1004/rl_bridge_20261004_220509.jsonl",
+   "ticks": 5935,
+   "windows": 576,
+   "no_est": 551,
+   "est_n": 25,
+   "est_p10_50_90": [
+    4.4,
+    5.0,
+    5.0
+   ],
+   "est_hist": {
+    "4": 3,
+    "5": 22
+   },
+   "corr_p50": 0.7315960321265809
+  },
+  {
+   "file": "reports/real_1004/rl_bridge_20261004_221209.jsonl",
+   "ticks": 4171,
+   "windows": 400,
+   "no_est": 394,
+   "est_n": 6,
+   "est_p10_50_90": [
+    3.5,
+    4.0,
+    4.0
+   ],
+   "est_hist": {
+    "3": 1,
+    "4": 5
+   },
+   "corr_p50": 0.8665173991409614
+  },
+  {
+   "file": "reports/real_1004/rl_bridge_20261004_221920.jsonl",
+   "ticks": 1909,
+   "windows": 173,
+   "no_est": 157,
+   "est_n": 16,
+   "est_p10_50_90": [
+    4.0,
+    4.0,
+    4.0
+   ],
+   "est_hist": {
+    "4": 16
+   },
+   "corr_p50": 0.8541235306610138
+  },
+  {
+   "file": "reports/real_1004/rl_bridge_20261004_223349.jsonl",
+   "ticks": 4643,
+   "windows": 447,
+   "no_est": 360,
+   "est_n": 87,
+   "est_p10_50_90": [
+    4.0,
+    4.0,
+    4.0
+   ],
+   "est_hist": {
+    "3": 6,
+    "4": 81
+   },
+   "corr_p50": 0.8336813544937918
+  }
+ ],
+ "total_hist": {
+  "3": 96,
+  "4": 309,
+  "5": 36,
+  "8": 1
+ }
+}

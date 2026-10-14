@@ -1,0 +1,125 @@
+{
+ "task": "Biped12-HangStand-W3U-v0",
+ "checkpoint": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-06_11-29-33_w3U_s1_from_g21a/model_11699.pt",
+ "num_envs": 256,
+ "seed": 1,
+ "delay": 2,
+ "warmup_s": 2.0,
+ "seconds": 30.0,
+ "long": false,
+ "cmd": [
+  0.0,
+  0.0,
+  0.0
+ ],
+ "gait_enable": 1,
+ "assist_alpha": 0.0,
+ "ref_off": false,
+ "turn_alpha": "0",
+ "phase_source": "env._gu",
+ "steps_done": 1600,
+ "lift_rate": 0.0,
+ "touchdown_rate": 0.0,
+ "swing_rate": 0.0,
+ "load_rate": 0.0,
+ "alternation_rate": 0.0,
+ "valid_steps": 0.0,
+ "valid_per_env_s": 0.0,
+ "valid_cadence_hz": 0.0,
+ "drift_res_mps": NaN,
+ "displacement_m": NaN,
+ "fwd_mps": NaN,
+ "lat_mps": NaN,
+ "yaw_drift_deg": NaN,
+ "yaw_rate_dps": NaN,
+ "fall_rate": 1.0,
+ "window_cadence_hz": [
+  0.0,
+  0.0,
+  0.0
+ ],
+ "collapse": false,
+ "step_height_cm_p10_50_90": [
+  NaN,
+  NaN,
+  NaN
+ ],
+ "step_len_cm_p10_50_90": [
+  NaN,
+  NaN,
+  NaN
+ ],
+ "step_fwd_cm_p10_50_90": [
+  NaN,
+  NaN,
+  NaN
+ ],
+ "lift_phase_p10_50_90": [
+  NaN,
+  NaN,
+  NaN
+ ],
+ "pitch_rms_deg": NaN,
+ "pitch_rate_rms": NaN,
+ "action_rms": 1.8862644378871312,
+ "action_rms_deg": 27.018747834137308,
+ "ref_rms_deg": 0.0,
+ "per_foot": {
+  "왼": {
+   "이륙": 0.0,
+   "예정창": 0.0,
+   "예정창_이륙": 0.0,
+   "착지": 0.0,
+   "의미스윙": 0.0,
+   "하중수용": 0.0,
+   "유효": 0.0
+  },
+  "오른": {
+   "이륙": 0.0,
+   "예정창": 0.0,
+   "예정창_이륙": 0.0,
+   "착지": 0.0,
+   "의미스윙": 0.0,
+   "하중수용": 0.0,
+   "유효": 0.0
+  }
+ },
+ "criteria": [
+  {
+   "name": "교대 > 90 %",
+   "pass": false,
+   "value": "0.0 %"
+  },
+  {
+   "name": "이륙 > 90 %",
+   "pass": false,
+   "value": "0.0 %"
+  },
+  {
+   "name": "착지 > 90 %",
+   "pass": false,
+   "value": "0.0 %"
+  },
+  {
+   "name": "하중 ≥ 85 %",
+   "pass": false,
+   "value": "0.0 %"
+  },
+  {
+   "name": "낙상 < 5 %",
+   "pass": false,
+   "value": "100.0 %"
+  },
+  {
+   "name": "표류 ≤ 0.03 m/s",
+   "pass": false,
+   "value": "nan m/s"
+  },
+  {
+   "name": "장시간 붕괴 없음",
+   "pass": false,
+   "value": "창 0.00/0.00/0.00 Hz"
+  }
+ ],
+ "pass": false
+}

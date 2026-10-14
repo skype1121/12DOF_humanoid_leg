@@ -28,3 +28,10 @@ reports/real_20260912/*/stiff_cop_*.jsonl
 
 # 회귀 검사 실행 로그(Isaac stdout — 큼, 판정은 summary.md·results.json)
 reports/regress/runs/*/logs/
+
+# 2026-10-14 종료 정리: 재생성 가능한 대용량 시뮬 산출물은 저장소 밖(디스크에는 그대로 둠)
+# - 평가 궤적·DR 덤프 npz (transall/kwloop/trans 등, 합계 약 28 GB)
+# - 영상 렌더 프레임 폴더 (같은 이름의 .mp4 가 함께 커밋됨, 약 4 GB)
+# 이미 추적 중인 파일에는 영향 없음.
+*.npz
+log_picture/video_*/

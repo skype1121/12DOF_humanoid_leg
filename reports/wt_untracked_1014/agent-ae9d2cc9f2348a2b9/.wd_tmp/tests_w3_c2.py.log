@@ -1,0 +1,71 @@
+[PASS] 1a 무장 없으면 켜짐 없음
+[PASS] 1b 감지 지연 = det_delay 틱 — 감지 틱 3 → 켜짐 틱 5(기대 5)
+[PASS] 1c 문턱 미만(4°·0.5 rad/s)은 켜짐 없음
+[PASS] 2a 정지 요청 ≥ min_rec_s — 요청 0.92s
+[PASS] 2b 유효 착지 0 이면 정지 요청 없음(시간 초과 전)
+[PASS] 2c 정숙 창 미충족이면 정지 요청 없음
+[PASS] 2d 시간 초과 → STOPREQ — 4.00s
+[PASS] 2e 시간 초과 STOPREQ 는 취소 불가
+[PASS] 3a STOPREQ 중 재불안정 → REC 취소
+[PASS] 4a 감지 → REC → STOPREQ → POST 순서 — 켜짐 1.04s 요청 2.88s 래치 3.32s
+[PASS] 4b 요청 → 래치 ≤ 반주기(스윙 중 끄지 않음) — 0.44s ≤ 0.46s
+[PASS] 4c 래치 순간 위상 = 반주기 경계(u 0 리셋)
+[PASS] 4d 요청 뒤 착지 사건 ≤ 1(반주기 마무리) — 0
+[PASS] 4e POST 뒤 ge 0 유지(무장 중에도 재켜짐 없음 — 정숙)
+[PASS] 4f 무외란(nd): ge 0 내내·모드 STAND 내내
+[PASS] 4g 대조(정지 요청 무시 = RW3Z 형): 래치 없음·ge 1 유지
+[PASS] 5a POST 불응기 뒤에만 재켜짐 — 0.48s
+[PASS] 6a POST 정착 사건 1회만(계속 서 있어도)
+[PASS] 6b 같은 외란 재진입은 지급 없음(파밍 차단)
+[PASS] 6c-1 외력 중에는 정착 지급 없음
+[PASS] 6c-2 새 외란이어도 회복이 켜지지 않았으면(elig 0) 지급 없음
+[PASS] 6c-3 새 외란 + 회복 뒤 1회 재지급
+[PASS] 6d 표류 중(|v| 0.12)이면 정착 아님
+[PASS] 6e 회복 없던 STAND 는 정착 보상 0(무외란 Stage 1 불변)
+[PASS] 6f c2_core 켜짐이 자격(elig)을 세움
+[PASS] 7a v=0 → W3 명목 목표와 정확히 같음
+[PASS] 7b 앞 0.3 m/s → 목표 +v/ω0 + b 여유 — 9.1 cm
+[PASS] 7c 뒤 속도 → 목표 뒤(부호 대칭)
+[PASS] 7d 오프셋 상한 max_off
+[PASS] 7e 비회복 착지 = w3_place_reward 비트 동일
+[PASS] 7f 회복 착지 없는 env 는 값 동일
+[PASS] 8a 정착 보너스(1.0) < 낙상 벌점 75 의 2 %(정착 위해 위험 감수 동기 없음) — 1.00
+[PASS] 8b 포획 착지 보상 상한 = 명목 착지 상한(같은 가중 10) — 회복 중 걸음 수 경쟁 없음 — 0.44/s
+[PASS] 9a late(B5): 정지 요청 = 시간 초과 시각 — 4.02s
+[PASS] 9b early(B4): 첫 유효 착지 직후 정지 요청 — 착지 1.52s 요청 1.52s
+[PASS] 9c nostop(B2): 정지 없음 = RW3Z 형
+[PASS] 9d 없는 키 덮어쓰기는 오류(조용한 무시 금지)
+[PASS] 10a 같은 자세 편차 0 — 0.0000
+[PASS] 10b 서기 5° 기준에서 +4° 기울면 편차 4° — 4.000
+[PASS] 10c init → 기준 = 현재
+[PASS] 10d upd 0 이면 기준 불변(회복 중 기준 끌림 없음)
+[PASS] 10e 기준 기울기 상한 8° — 7.98
+[PASS] 10f 기본 tilt_ref_tau 0(종전 절대 기울기 — 학습 설정 불변)
+[PASS] 11a cancel_calm: 걸음 흔들림(감지 문턱 초과·정지 문턱 미만)으로는 취소 안 됨
+[PASS] 11b cancel_calm: 정지 문턱 초과면 취소
+[PASS] 12a 이동 방향으로 ICP 보다 앞 = + — +0.60
+[PASS] 12b 제자리(골반 밑, ICP 뒤) = − — -1.00
+[PASS] 12c 포화 +1
+[PASS] 12d |v| ≤ 0.10 이면 0(운동량 없음)
+[PASS] 12e 뒤 방향 대칭
+[PASS] 12f 여유형도 비회복 착지는 W3 와 비트 동일
+[PASS] 12g c2_place_reward 기본 cap_mode = err(종전 비트 동일)
+[PASS] 13a 양발 지지영역 안(골반 밑) 거리 ≤ 0 — -0.065
+[PASS] 13b 앞 0.185 m 점 = 발끝(0.085) 에서 0.10 m — 0.1000
+[PASS] 13c 방향 스텝 점수 > 제자리 디딤 점수 — 1.00 vs 0.39
+[PASS] 13d 이미 포획(ξ 가 지지발 위) 착지 = 0 점
+[PASS] 13e 지지 없던 착지(공중) = 0 점
+[PASS] 13f 강제 정지 k=1: k 번째 착지에서 요청(불안정 무시) — 1
+[PASS] 13f 강제 정지 k=3: k 번째 착지에서 요청(불안정 무시) — 3
+[PASS] 13g 오라클: 포획 착지 신호에서만 요청
+[c2] supervisor 파라미터 C2Params(on_tilt=4.0, on_w=0.5, tilt_ref_tau=0.0, tilt_ref_init_s=1.5, det_delay=2, arm_s=2.5, min_rec_s=0.9, min_td=1, win_s=0.45, stop_w=0.6, stop_tilt=4.0, stop_v=0.07, kv_noise=0.03, kv_bias=0.0, kv_lf=0.0, kv_lf_tau=1.0, v_box_s=0.909, tmax_s=4.0, stop_td_k=0, stop_oracle=0.0, cancel_calm=0.0, refr_s=0.5, post_s=3.0, settle_tilt=3.0, settle_w=0.3, settle_v=0.08, settle_s=0.3) · 켜짐 금지 False · 배포 의미 False
+[PASS] 14a 보상 먼저 불러도 속도 버퍼 = 주기(45 틱) — 45
+[PASS] 14b env._c2_P = 설정 c2 파라미터
+[PASS] 14c supervisor 쪽 호출은 같은 상태(재생성 없음)
+[PASS] 14d 버퍼 길이가 P 와 다르면 재생성(통계 보존)
+[PASS] 14e 상관 잡음 파라미터(kv_bias·kv_lf) 해석
+[PASS] 15a v2: 제자리 되딛기 = 0 점 — 0.000
+[PASS] 15b v2: ICP 쪽으로 딛기 > 0 — 1.000
+[PASS] 15c v1(다른 발만) 은 제자리도 점수 받음 — 결함 재현 — 1.000
+
+결과: 실패 0 — 전부 통과

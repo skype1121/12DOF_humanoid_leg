@@ -1,0 +1,190 @@
+{
+ "ramp_off": false,
+ "mix": null,
+ "turn": {
+  "dpsi_deg_p10_50_90": [
+   7.1028059959411625,
+   9.7008638381958,
+   12.466645050048827
+  ],
+  "dpsi_target_deg": 10.417414456924059,
+  "dpsi_sign_rate": 0.9997395833333333,
+  "yaw_gain": 1.1034634871272466,
+  "swing_yaw_dps": 20.816221215617677,
+  "pivot_yaw_dps": 2.264659291610756,
+  "pivot_abs_dps": 9.59785904837415,
+  "pivot_frac_abs": 0.31556758327108464,
+  "twist_mean_deg": -2.268464411816026,
+  "twist_rms_deg": 3.3160602571357756,
+  "hl_wz_mean": null,
+  "hl_wz_rms": null,
+  "pivot_share": 0.0981184097765037
+ },
+ "heading_loop": 0.0,
+ "hl_wzmax": 0.4,
+ "lateral": {
+  "lat_sign_rate": NaN,
+  "width_viol": 0.0,
+  "cross_rate": 0.0,
+  "lr_ratio": 1.0,
+  "roll_mean": 1.6043624877929688,
+  "lat_p50_cm": -1.2713831663131714,
+  "width_p50_cm": 31.684619903564453
+ },
+ "stop": null,
+ "fall_t_hist": {
+  "0-0.5s": 0,
+  "0.5-1s": 1,
+  "1-1.5s": 6,
+  "1.5-2s": 1,
+  "2-3s": 0,
+  "3-4s": 0,
+  "4-5s": 0,
+  "5-1000000000.0s": 0
+ },
+ "fall_t": [
+  1.14,
+  1.36,
+  1.34,
+  0.98,
+  1.16,
+  1.72,
+  1.14,
+  1.04
+ ],
+ "fall_warm": 8,
+ "fall_score": 0,
+ "stand_first": 0.0,
+ "task": "Biped12-HangStand-W3S3d-v0",
+ "checkpoint": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-07_16-49-39_w3S3dR_from_s3d/model_16299.pt",
+ "num_envs": 128,
+ "seed": 1,
+ "delay": 2,
+ "warmup_s": 2.0,
+ "seconds": 15.0,
+ "long": false,
+ "cmd": [
+  0.0,
+  0.0,
+  0.2
+ ],
+ "gait_enable": 1,
+ "assist_alpha": 0.0,
+ "ref_off": false,
+ "turn_alpha": "0",
+ "phase_source": "env._gu",
+ "steps_done": 850,
+ "lift_rate": 1.0,
+ "touchdown_rate": 0.9696969696969697,
+ "swing_rate": 1.0,
+ "load_rate": 1.0,
+ "alternation_rate": 1.0,
+ "valid_steps": 3840.0,
+ "valid_per_env_s": 2.1333333333333373,
+ "valid_cadence_hz": 1.0666666666666687,
+ "drift_res_mps": 0.014285440556704998,
+ "displacement_m": 0.2142816036939621,
+ "fwd_mps": 0.008402598090469837,
+ "lat_mps": 0.00466203223913908,
+ "yaw_drift_deg": 27.328100204467773,
+ "yaw_rate_dps": 12.644760131835938,
+ "fall_rate": 0.0625,
+ "window_cadence_hz": [
+  1.0500000000000003,
+  1.1000000000000052
+ ],
+ "collapse": false,
+ "step_height_cm_p10_50_90": [
+  4.78225564956665,
+  6.002784252166748,
+  7.077506446838379
+ ],
+ "step_len_cm_p10_50_90": [
+  2.352422642707825,
+  4.238017559051514,
+  6.141601467132568
+ ],
+ "step_fwd_cm_p10_50_90": [
+  -3.8760211944580076,
+  0.11113272234797478,
+  5.319786691665649
+ ],
+ "lift_phase_p10_50_90": [
+  0.04200667142868042,
+  0.062003254890441895,
+  0.08200740814208984
+ ],
+ "pitch_rms_deg": 1.3584458827972412,
+ "pitch_rate_rms": 0.3083500564098358,
+ "action_rms": 0.7641819753884891,
+ "action_rms_deg": 10.946100492432643,
+ "ref_rms_deg": 0.0,
+ "per_foot": {
+  "왼": {
+   "이륙": 1920.0,
+   "예정창": 1920.0,
+   "예정창_이륙": 1920.0,
+   "착지": 1920.0,
+   "의미스윙": 1920.0,
+   "하중수용": 1920.0,
+   "유효": 1920.0
+  },
+  "오른": {
+   "이륙": 2040.0,
+   "예정창": 1920.0,
+   "예정창_이륙": 1920.0,
+   "착지": 1920.0,
+   "의미스윙": 1920.0,
+   "하중수용": 1920.0,
+   "유효": 1920.0
+  }
+ },
+ "criteria": [
+  {
+   "name": "교대 > 90 %",
+   "pass": true,
+   "value": "100.0 %"
+  },
+  {
+   "name": "이륙 > 90 %",
+   "pass": true,
+   "value": "100.0 %"
+  },
+  {
+   "name": "착지 > 90 %",
+   "pass": true,
+   "value": "97.0 %"
+  },
+  {
+   "name": "하중 ≥ 85 %",
+   "pass": true,
+   "value": "100.0 %"
+  },
+  {
+   "name": "채점 구간 낙상 < 2 % (시작 과도 제외 — 1006 판정 정의)",
+   "pass": true,
+   "value": "0/120"
+  },
+  {
+   "name": "표류 ≤ 0.03 m/s",
+   "pass": true,
+   "value": "0.014 m/s"
+  },
+  {
+   "name": "장시간 붕괴 없음",
+   "pass": true,
+   "value": "창 1.05/1.10 Hz"
+  }
+ ],
+ "pass": true,
+ "fall_env_ids": [
+  25,
+  36,
+  45,
+  67,
+  83,
+  84,
+  117,
+  120
+ ]
+}

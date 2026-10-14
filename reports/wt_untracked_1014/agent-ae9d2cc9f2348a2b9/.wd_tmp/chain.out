@@ -1,0 +1,64 @@
+model_16300.pt
+model_16400.pt
+model_16500.pt
+model_16600.pt
+model_16700.pt
+model_16798.pt
+04:33 평가 base_dist_f_s1 끝
+04:35 평가 base_dist_b_s1 끝
+04:36 평가 d500_dist_f_s1 끝
+04:38 평가 d500_dist_b_s1 끝
+04:39 평가 d500_dist_l_s1 끝
+04:40 평가 d500_dist_r_s1 끝
+04:42 평가 d500_stop_s1 끝
+04:45 평가 d500_dist_f_s2 끝
+04:48 평가 d500_dist_b_s2 끝
+04:50 평가 d500_dist_l_s2 끝
+04:53 평가 d500_dist_r_s2 끝
+04:55 평가 d500_stop_s2 끝
+04:56 평가 d500_distmix_s1 끝
+04:58 평가 d500_reg_c0 끝
+05:00 평가 d500_reg_f06 끝
+05:00 무효 d500_reg_b04 재시도 1
+05:01 무효 d500_reg_b04 재시도 2
+05:02 무효 d500_reg_b04 재시도 3
+05:03 ✗ d500_reg_b04 3회 무효
+05:05 평가 d500_reg_l05 끝
+05:08 평가 d500_reg_r05 끝
+05:10 평가 d500_reg_tl02 끝
+05:13 평가 d500_reg_tr02 끝
+05:15 평가 d500_reg_fl02 끝
+05:18 평가 d500_reg_fr02 끝
+05:20 평가 d500_reg_all3 끝
+05:22 평가 d500_reg_d4f06 끝
+05:25 평가 d500_reg_d4all3 끝
+05:33 평가 d500_hl_c0 끝
+05:44 평가 d500_hl_f06 끝
+05:45 무효 d500_reg_stop 재시도 1
+05:47 무효 d500_reg_stop 재시도 2
+05:49 무효 d500_reg_stop 재시도 3
+05:50 ✗ d500_reg_stop 3회 무효
+05:53 평가 d500_reg_stand 끝
+05:56 평가 d201_dist_f_s1 끝
+05:59 평가 d201_dist_b_s1 끝
+06:03 평가 d201_dist_l_s1 끝
+06:07 평가 d201_dist_r_s1 끝
+06:11 평가 d201_stop_s1 끝
+06:16 평가 d201_dist_f_s2 끝
+06:18 무효 d201_dist_b_s2 재시도 1
+06:23 평가 d201_dist_b_s2 끝
+06:27 평가 d201_dist_l_s2 끝
+06:28 무효 d201_dist_r_s2 재시도 1
+06:33 평가 d201_dist_r_s2 끝
+06:36 평가 d201_stop_s2 끝
+06:40 평가 d301_dist_f_s1 끝
+06:43 평가 d301_dist_b_s1 끝
+06:46 평가 d301_dist_l_s1 끝
+06:49 평가 d301_dist_r_s1 끝
+06:52 평가 d301_stop_s1 끝
+06:55 평가 d301_dist_f_s2 끝
+06:58 평가 d301_dist_b_s2 끝
+07:00 평가 d301_dist_l_s2 끝
+07:03 평가 d301_dist_r_s2 끝
+07:06 평가 d301_stop_s2 끝
+07:06 체인 끝

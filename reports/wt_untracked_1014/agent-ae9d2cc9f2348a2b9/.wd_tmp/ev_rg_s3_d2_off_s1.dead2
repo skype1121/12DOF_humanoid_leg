@@ -1,0 +1,236 @@
+[3gH    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H   [INFO] Using python from: /home/ryu/IsaacLab/_isaac_sim/python.sh
+[INFO][AppLauncher]: Using device: cuda:0
+[INFO][AppLauncher]: Loading experience file: /home/ryu/IsaacLab/apps/isaaclab.python.headless.kit
+[INFO]: Parsing configuration from: rl_walking.hang_stand_env_cfg:Biped12HangStandW3S3dEnvCfg
+[INFO]: Parsing configuration from: rl_walking.agents:Biped12StepB0PPORunnerCfg
+
+[36m======================================================================================[0m
+[36m[1m[INFO][IsaacLab]: Logging to file: /tmp/isaaclab/logs/isaaclab_2026-10-07_09-58-10.log[0m
+[36m======================================================================================[0m
+
+[33m09:58:10 [simulation_context.py] WARNING: The `enable_external_forces_every_iteration` parameter in the PhysxCfg is set to False. If you are experiencing noisy velocities, consider enabling this flag. You may need to slightly increase the number of velocity iterations (setting it to 1 or 2 rather than 0), together with this flag, to improve the accuracy of velocity updates.[0m
+Loading user config located at: '/home/ryu/isaacsim/isaac-sim-5.1.0/kit/data/Kit/Isaac-Sim/5.1/user.config.json'
+[Info] [carb] Logging to file: /home/ryu/isaacsim/isaac-sim-5.1.0/kit/logs/Kit/Isaac-Sim/5.1/kit_20261007_095755.log
+2026-10-07T00:57:55Z [357ms] [Warning] [omni.usd_config.extension] Enable omni.materialx.libs extension to use MaterialX
+2026-10-07T00:57:56Z [702ms] [Warning] [carb] Acquiring non optional plugin interface which is not listed as dependency: [omni::physx::IPhysxBenchmarks v1.0] (plugin: <default plugin>), by client: omni.physics.physx.plugin. Add it to CARB_PLUGIN_IMPL_DEPS() macro of a client.
+2026-10-07T00:57:56Z [872ms] [Warning] [omni.isaac.dynamic_control] omni.isaac.dynamic_control is deprecated as of Isaac Sim 4.5. No action is needed from end-users.
+
+|---------------------------------------------------------------------------------------------|
+| Driver Version: 580.159.04    | Graphics API: Vulkan
+|=============================================================================================|
+| GPU | Name                             | Active | LDA | GPU Memory | Vendor-ID | LUID       |
+|     |                                  |        |     |            | Device-ID | UUID       |
+|     |                                  |        |     |            | Bus-ID    |            |
+|---------------------------------------------------------------------------------------------|
+| 0   | NVIDIA GeForce RTX 5080          | Yes: 0 |     | 16303   MB | 10de      | 0          |
+|     |                                  |        |     |            | 2c02      | 965e7aeb.. |
+|     |                                  |        |     |            | 1         |            |
+|=============================================================================================|
+| OS: 22.04.5 LTS (Jammy Jellyfish) ubuntu, Version: 22.04.5, Kernel: 6.8.0-138-generic
+| XServer Vendor: The X.Org Foundation, XServer Version: 12101004 (1.21.1.4)
+| Processor: AMD Ryzen 9 7900X 12-Core Processor
+| Cores: 12 | Logical Cores: 24
+|---------------------------------------------------------------------------------------------|
+| Total Memory (MB): 63875 | Free Memory: 46718
+| Total Page/Swap (MB): 8191 | Free Page/Swap: 7581
+|---------------------------------------------------------------------------------------------|
+2026-10-07T00:58:07Z [11,920ms] [Warning] [omni.kvdb.plugin] Disabling key-value database because another kit process is locking it
+2026-10-07T00:58:12Z [17,339ms] [Error] [omni.physx.plugin] PhysX error: PxgCudaDeviceMemoryAllocator failed to allocate memory 67108864 bytes! Result = 2, FILE /builds/omniverse/physics/physx/source/gpucommon/src/PxgCudaMemoryAllocator.cpp, LINE 140
+2026-10-07T00:58:12Z [17,339ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuEventRecord failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 56
+2026-10-07T00:58:12Z [17,339ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuStreamWaitEvent failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 62
+2026-10-07T00:58:12Z [17,339ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuEventRecord failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 56
+2026-10-07T00:58:12Z [17,339ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuStreamWaitEvent failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 62
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuEventRecord failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 78
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuStreamWaitEvent failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 84
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: GPU zero bodies fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgSolverCore.cpp, LINE 630
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: GPU artiContactConstraintPrepare fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1044
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuEventRecord failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 78
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuStreamWaitEvent failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 84
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: GPU initializeSolverVelocitiesTGS fail to launch kernel!! 2
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1300
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: GPU propagate solver bodies average velocities fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1489
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,340ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU propagate solver bodies average velocities fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1489
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU propagate solver bodies average velocities fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1489
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU propagate solver bodies average velocities fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1489
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU propagate solver bodies average velocities fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1489
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU propagate solver bodies average velocities fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1489
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU propagate solver bodies average velocities fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1489
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU propagate solver bodies average velocities fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1489
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,341ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU propagate solver bodies average velocities fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1489
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU propagate solver bodies average velocities fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1489
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU propagate solver bodies average velocities fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1489
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU propagate solver bodies average velocities fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1489
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU concludeBlockFunction fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1519
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU solveSelfConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 670
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 689
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU solveInternalConstraints fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpuarticulation/src/PxgArticulationCore.cpp, LINE 720
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: GPU mWritebackBlockFunction fail to launch kernel!!
+, FILE /builds/omniverse/physics/physx/source/gpusolver/src/PxgTGSCudaSolverCore.cpp, LINE 1096
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuEventRecord failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 78
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuStreamWaitEvent failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 84
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuEventRecord failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 78
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuStreamWaitEvent failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 84
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuEventRecord failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 78
+2026-10-07T00:58:12Z [17,342ms] [Error] [omni.physx.plugin] PhysX error: SynchronizeStreams cuStreamWaitEvent failed with error 2
+, FILE /builds/omniverse/physics/physx/source/gpucommon/include/PxgCudaUtils.h, LINE 84
+2026-10-07T00:58:12Z [17,443ms] [Error] [omni.physx.plugin] PhysX error: PhysX Internal CUDA error. Simulation cannot continue! Error code 2!
+, FILE /builds/omniverse/physics/physx/source/physx/src/NpScene.cpp, LINE 3000
+2026-10-07T00:58:12Z [17,443ms] [Error] [omni.physx.plugin] PhysX ABORT error: PhysX failed to allocate GPU memory - aborting simulation., FILE /builds/omniverse/physics/physx/source/physx/src/NpScene.cpp, LINE 3005
+2026-10-07T00:58:12Z [17,443ms] [Error] [omni.physx.plugin] PhysX error: Exceeding maximum number of PhysX errors (1000). omni.physx will ignore logging subsequent errors to user interface until simulation stop
+2026-10-07T00:58:12Z [17,444ms] [Error] [omni.physx.tensors.plugin] CUDA error: out of memory: ../../../extensions/runtime/source/omni.physx.tensors/plugins/gpu/CudaCommon.h: 74
+2026-10-07T00:58:12Z [17,444ms] [Error] [omni.physx.tensors.plugin] Unable to allocate memory of size 671088640 for mGpuContactPairsDev
+2026-10-07T00:58:12Z [17,446ms] [Error] [omni.physx.plugin] PhysX error: Scene state is corrupted. Simulation cannot continue!, FILE /builds/omniverse/physics/physx/source/physx/src/NpScene.cpp, LINE 2812
+2026-10-07T00:58:12Z [17,535ms] [Error] [omni.physx.tensors.plugin] CUDA error: out of memory: ../../../extensions/runtime/source/omni.physx.tensors/plugins/gpu/CudaKernels.cu: 573
+2026-10-07T00:58:12Z [17,535ms] [Error] [omni.physx.tensors.plugin] Failed to fetch DOF velocity attribute
+[INFO]: Base environment:
+	Environment device    : cuda:0
+	Environment seed      : 1
+	Physics step-size     : 0.005
+	Rendering step-size   : 0.02
+	Environment step-size : 0.02
+[INFO]: Time taken for scene creation : 2.079312 seconds
+[INFO]: Scene manager:  <class InteractiveScene>
+	Number of environments: 384
+	Environment spacing   : 2.5
+	Source prim name      : /World/envs/env_0
+	Global prim paths     : ['/World/ground']
+	Replicate physics     : True
+[INFO]: Starting the simulation. This may take a few seconds. Please wait...
+[INFO]: Time taken for simulation start : 0.820837 seconds
+Traceback (most recent call last):
+  File "/home/ryu/humanoid_leg_test1/.claude/worktrees/agent-ae9d2cc9f2348a2b9/rl_walking/scripts/eval_w3.py", line 162, in <module>
+    env = gym.make(a.task, cfg=env_cfg)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ryu/IsaacLab/_isaac_sim/kit/python/lib/python3.11/site-packages/gymnasium/envs/registration.py", line 734, in make
+    env = env_creator(**env_spec_kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/envs/manager_based_rl_env.py", line 80, in __init__
+    super().__init__(cfg=cfg)
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/envs/manager_based_env.py", line 173, in __init__
+    self.sim.reset()
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/sim/simulation_context.py", line 530, in reset
+    self.render()
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/sim/simulation_context.py", line 601, in render
+    raise exception_to_raise
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/assets/asset_base.py", line 317, in _initialize_callback
+    self._initialize_impl()
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation.py", line 1578, in _initialize_impl
+    self._data = ArticulationData(self.root_physx_view, self.device)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation_data.py", line 68, in __init__
+    self._previous_joint_vel = self._root_physx_view.get_dof_velocities().clone()
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ryu/isaacsim/isaac-sim-5.1.0/extscache/omni.physics.tensors-107.3.26+107.3.3.lx64.r.cp311.u353/omni/physics/tensors/impl/api.py", line 1764, in get_dof_velocities
+    raise Exception("Failed to get DOF velocities from backend")
+Exception: Failed to get DOF velocities from backend
+2026-10-07T00:58:13Z [17,678ms] [Warning] [omni.physx.plugin] USD stage detach not called, holding a loose ptr to a stage!
+2026-10-07T00:58:13Z [17,949ms] [Warning] [carb] Recursive unloadAllPlugins() detected!

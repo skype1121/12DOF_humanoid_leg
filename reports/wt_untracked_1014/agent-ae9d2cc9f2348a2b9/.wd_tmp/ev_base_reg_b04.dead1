@@ -1,0 +1,19 @@
+[3gH    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H   [INFO] Using python from: /home/ryu/IsaacLab/_isaac_sim/python.sh
+usage: eval_w3.py [-h] [--task TASK] [--num_envs NUM_ENVS] [--seconds SECONDS]
+                  [--long] [--warmup WARMUP] [--delay DELAY] [--seed SEED]
+                  [--assist_alpha ASSIST_ALPHA] [--ref_off]
+                  [--gait_enable {0,1}] [--ramp_off]
+                  [--stand_first STAND_FIRST] [--stop_at STOP_AT] [--cmd CMD]
+                  [--heading_loop HEADING_LOOP] [--hl_wzmax HL_WZMAX]
+                  [--turn_metrics] [--out_tag OUT_TAG] [--dist DIST]
+                  [--rec_T REC_T] [--pre_s PRE_S] [--walk_win WALK_WIN]
+                  [--walk_alt_frac WALK_ALT_FRAC] [--walk_hold WALK_HOLD]
+                  [--walk_tol_v WALK_TOL_V] [--walk_tol_ang WALK_TOL_ANG]
+                  [--walk_rate_frac WALK_RATE_FRAC]
+                  [--dist_jitter DIST_JITTER]
+                  [--experiment_name EXPERIMENT_NAME] [--run_name RUN_NAME]
+                  [--resume] [--load_run LOAD_RUN] [--checkpoint CHECKPOINT]
+                  [--logger {wandb,tensorboard,neptune}]
+                  [--log_project_name LOG_PROJECT_NAME]
+eval_w3.py: error: argument --cmd: expected one argument
+There was an error running python

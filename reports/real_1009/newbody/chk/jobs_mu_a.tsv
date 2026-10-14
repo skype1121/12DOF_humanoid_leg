@@ -1,0 +1,1 @@
+wk_reg5_mu030	256	2	1	28	-	-	walk@3:0,0,0;stop@8;walk@16:0,0,0;stop@21	nb	--trace_qd --kw_w3_fstep 0.8 --kw_w3_key stand_w3s3dnbjy1_19996 --kw_effort_scales 0.8 --kw_effort_joints hip_a --kw_friction 0.30,0.20

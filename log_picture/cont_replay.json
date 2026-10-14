@@ -1,0 +1,26 @@
+[
+ {
+  "file": "reports/real_1003/rl_bridge_20261003_174906.jsonl",
+  "ticks": 15299,
+  "gaps": 0,
+  "yaw_rate_dpm_samples": 57,
+  "yaw_rate_dpm_p50_abs": 1.006,
+  "yaw_rate_dpm_max_abs": 5.031,
+  "yaw_rate_dpm_last": -1.006,
+  "events": {
+   "hl_ban": 1
+  },
+  "frac_gate_chatter": 0.1894,
+  "frac_health_bad": 0.0,
+  "w_xy_p50_90_99": [
+   0.024,
+   0.22,
+   1.43
+  ],
+  "tilt_deg_p50_90_99": [
+   3.573,
+   4.232,
+   6.696
+  ]
+ }
+]

@@ -1,0 +1,78 @@
+{
+ "task": "Biped12-HangStand-W3D-v0",
+ "ckpt": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/model_15800.pt",
+ "level": 2,
+ "F": [
+  6.0,
+  18.0
+ ],
+ "p_dist": 1.0,
+ "seed": 1,
+ "N": 256,
+ "seconds": 21.0,
+ "reward_nonfinite": 0,
+ "applied_env": 183,
+ "impulse_env": 122,
+ "canceled_stand_env": 47,
+ "fall_dist": [
+  56,
+  183
+ ],
+ "fall_nodist": [
+  26,
+  26
+ ],
+ "fall_by_dir": {
+  "f": [
+   24,
+   59
+  ],
+  "b": [
+   13,
+   52
+  ],
+  "l": [
+   9,
+   35
+  ],
+  "r": [
+   10,
+   37
+  ]
+ },
+ "fall_imp_env": [
+  35,
+  122
+ ],
+ "stop_issued": 54,
+ "sret_paid": 39,
+ "ret_paid": 0,
+ "rec_td": 319.0,
+ "cap_mean": 0.17023439705371857,
+ "gain_mean": 0.014209077693521976,
+ "newterm_sum_nodist_absmax": 0.0,
+ "newterm_sum_dist_mean": 6.936087131500244,
+ "step_reward_available": true,
+ "ret_window_ticks": 17990,
+ "ret_verr_p10_50_90": [
+  0.02,
+  0.057,
+  0.16
+ ],
+ "ret_tilt_p10_50_90": [
+  3.257,
+  8.556,
+  14.86
+ ],
+ "ret_w_p10_50_90": [
+  0.476,
+  1.086,
+  1.793
+ ],
+ "ret_each_ok_frac": [
+  0.428,
+  0.151,
+  0.11
+ ],
+ "r_run_max_p90": 0.019999999552965164
+}

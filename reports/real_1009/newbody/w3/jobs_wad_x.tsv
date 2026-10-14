@@ -1,0 +1,2 @@
+wadX_z_s1	W3S3dNBjX	2026-10-11_20-46-35_w3s3dnbjx_s1_from_18997	model_19996.pt	1	--warmup 2 --num_envs 384 --seconds 30 --delay 2 --cmd=0,0,0
+wadX_f_s1	W3S3dNBjX	2026-10-11_20-46-35_w3s3dnbjx_s1_from_18997	model_19996.pt	1	--warmup 2 --num_envs 384 --seconds 30 --delay 2 --cmd=0.04,0,0

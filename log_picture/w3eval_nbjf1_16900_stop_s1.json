@@ -1,0 +1,266 @@
+{
+ "ramp_off": false,
+ "mix": null,
+ "turn": null,
+ "heading_loop": 0.0,
+ "hl_wzmax": 0.4,
+ "lateral": {
+  "lat_sign_rate": NaN,
+  "width_viol": 0.0,
+  "cross_rate": 0.0,
+  "lr_ratio": 1.110483364720653,
+  "roll_mean": 0.08129359781742096,
+  "lat_p50_cm": -0.10148156434297562,
+  "width_p50_cm": 42.395774841308594
+ },
+ "stop": {
+  "ge_off_med": 0.03999999910593033,
+  "lifts_med": 1.0,
+  "settle_rate": 0.9971590909090909,
+  "settle_med": 0.8799999952316284,
+  "settle_p90": 1.2999999523162842,
+  "drift_med_cm": 3.8834009170532227,
+  "tilt_med": 2.1683402061462402,
+  "dq_med": 4.53175163269043,
+  "foot_mid_drift_med_cm": 1.656599760055542,
+  "foot_mid_drift_p90_cm": 2.7498786449432373,
+  "lifts_after_latch_med": 1.0,
+  "falls_after_stop": 2,
+  "alive_at_stop": 354
+ },
+ "fall_t_hist": {
+  "0-0.5s": 0,
+  "0.5-1s": 9,
+  "1-1.5s": 20,
+  "1.5-2s": 1,
+  "2-3s": 0,
+  "3-4s": 0,
+  "4-5s": 0,
+  "5-1000000000.0s": 2
+ },
+ "fall_t": [
+  1.06,
+  0.9,
+  1.12,
+  1.08,
+  1.22,
+  1.26,
+  1.16,
+  1.24,
+  1.52,
+  1.12,
+  1.2,
+  8.52,
+  0.96,
+  1.18,
+  0.92,
+  1.04,
+  9.22,
+  1.18,
+  0.9,
+  0.82,
+  1.12,
+  0.86,
+  1.36,
+  0.98,
+  1.14,
+  1.14,
+  1.04,
+  1.16,
+  1.14,
+  0.86,
+  1.04,
+  0.96
+ ],
+ "fall_warm": 30,
+ "fall_score": 2,
+ "stand_first": 0.0,
+ "task": "Biped12-HangStand-W3S3dNBjF-v0",
+ "checkpoint": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-10_16-17-27_w3s3dnbjf_s1_from_16299/model_16900.pt",
+ "num_envs": 384,
+ "seed": 1,
+ "delay": 2,
+ "warmup_s": 2.0,
+ "seconds": 14.0,
+ "long": false,
+ "cmd": [
+  0.06,
+  0.0,
+  0.0
+ ],
+ "gait_enable": 1,
+ "assist_alpha": 0.0,
+ "ref_off": false,
+ "turn_alpha": "0",
+ "phase_source": "env._gu",
+ "steps_done": 800,
+ "lift_rate": 0.9996861268047709,
+ "touchdown_rate": 0.9997027790161985,
+ "swing_rate": 0.9995540359744314,
+ "load_rate": 0.9997026906496209,
+ "alternation_rate": 1.0,
+ "valid_steps": 6724.0,
+ "valid_per_env_s": 1.3606653580751622,
+ "valid_cadence_hz": 0.6803326790375811,
+ "drift_res_mps": 0.03813926875591278,
+ "displacement_m": 0.3258119523525238,
+ "fwd_mps": 0.02239043079316616,
+ "lat_mps": -0.00156795559450984,
+ "yaw_drift_deg": 12.512581825256348,
+ "yaw_rate_dps": -0.4142671227455139,
+ "fall_rate": 0.0833333358168602,
+ "window_cadence_hz": [
+  0.9514107026629359,
+  0.0
+ ],
+ "collapse": true,
+ "step_height_cm_p10_50_90": [
+  4.7511396408081055,
+  5.663752555847168,
+  6.534099578857422
+ ],
+ "step_len_cm_p10_50_90": [
+  1.7388876795768737,
+  3.642794609069824,
+  5.913691568374634
+ ],
+ "step_fwd_cm_p10_50_90": [
+  0.6601788759231568,
+  2.805960774421692,
+  4.9583094120025635
+ ],
+ "lift_phase_p10_50_90": [
+  0.049994707107543945,
+  0.06999707221984863,
+  0.08999854326248169
+ ],
+ "pitch_rms_deg": 2.372323989868164,
+ "pitch_rate_rms": 0.22402851283550262,
+ "action_rms": 132.10783812830303,
+ "action_rms_deg": 1892.305391337305,
+ "ref_rms_deg": 0.0,
+ "per_foot": {
+  "왼": {
+   "이륙": 3540.0,
+   "예정창": 3186.0,
+   "예정창_이륙": 3184.0,
+   "착지": 3539.0,
+   "의미스윙": 3538.0,
+   "하중수용": 3539.0,
+   "유효": 3538.0
+  },
+  "오른": {
+   "이륙": 3189.0,
+   "예정창": 3186.0,
+   "예정창_이륙": 3186.0,
+   "착지": 3188.0,
+   "의미스윙": 3186.0,
+   "하중수용": 3186.0,
+   "유효": 3186.0
+  }
+ },
+ "criteria": [
+  {
+   "name": "교대 > 90 %",
+   "pass": true,
+   "value": "100.0 %"
+  },
+  {
+   "name": "이륙 > 90 %",
+   "pass": true,
+   "value": "100.0 %"
+  },
+  {
+   "name": "착지 > 90 %",
+   "pass": true,
+   "value": "100.0 %"
+  },
+  {
+   "name": "하중 ≥ 85 %",
+   "pass": true,
+   "value": "100.0 %"
+  },
+  {
+   "name": "채점 구간 낙상 < 2 % (시작 과도 제외 — 1006 판정 정의)",
+   "pass": true,
+   "value": "2/354"
+  },
+  {
+   "name": "표류 ≤ 0.03 m/s",
+   "pass": false,
+   "value": "0.038 m/s"
+  },
+  {
+   "name": "장시간 붕괴 없음",
+   "pass": false,
+   "value": "창 0.95/0.00 Hz"
+  }
+ ],
+ "pass": false,
+ "fall_env_ids": [
+  5,
+  23,
+  35,
+  41,
+  46,
+  70,
+  98,
+  122,
+  132,
+  147,
+  156,
+  160,
+  161,
+  178,
+  208,
+  212,
+  213,
+  214,
+  247,
+  250,
+  254,
+  268,
+  270,
+  289,
+  297,
+  301,
+  329,
+  338,
+  355,
+  363,
+  368,
+  382
+ ],
+ "nb": {
+  "locked": true,
+  "sat_any_pct": 21.152959478532033,
+  "sat_excl_hipr_pct": 16.534504665265857,
+  "sat_joint_pct": {
+   "left_hip_f_joint": 0.0,
+   "right_hip_f_joint": 0.0,
+   "left_hip_a_joint": 6.645,
+   "right_hip_a_joint": 7.775,
+   "left_hip_r_joint": 2.864,
+   "right_hip_r_joint": 2.083,
+   "left_knee_joint": 3.263,
+   "right_knee_joint": 2.317,
+   "left_ankle_f_joint": 0.069,
+   "right_ankle_f_joint": 0.075,
+   "left_ankle_r_joint": 2.033,
+   "right_ankle_r_joint": 2.366
+  },
+  "hipr_dev_max_deg": 0.1213054433465004,
+  "hipr_abs_from_lock_p50_p99_deg": [
+   0.002311272080987692,
+   0.011495434679090977
+  ],
+  "fwd_body_mps": 0.023421410471200943,
+  "lat_body_mps": -0.0009618154726922512,
+  "hipr_tau_mean_nm": 13.700134756287161,
+  "mass_mean_kg": 16.259458541870117,
+  "mass_min_max_kg": [
+   16.259456634521484,
+   16.259456634521484
+  ]
+ }
+}

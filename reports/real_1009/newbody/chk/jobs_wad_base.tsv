@@ -1,0 +1,1 @@
+w_wadbase_v03_s1	256	2	1	55	/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-11_05-09-59_w3s3dnbje_s1_from_17798/deploy_18997/exported	-	walk@2:0,0,0;stop@14;walk@19:0.03,0,0;stop@34;walk@39:0.03,0,0;stop@49	nb	--trace_qd

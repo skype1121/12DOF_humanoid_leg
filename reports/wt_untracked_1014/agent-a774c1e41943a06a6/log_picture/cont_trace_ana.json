@@ -1,0 +1,131 @@
+[
+ {
+  "tag": "cE1_d1",
+  "delay": 1,
+  "cmd": [
+   0.06,
+   0.0,
+   0.0
+  ],
+  "n_env": 16,
+  "falls": 0,
+  "lag_sent_p10_50_90": [
+   3.0,
+   4.0,
+   5.0
+  ],
+  "lag_sent_hist": {
+   "3": 441,
+   "4": 577,
+   "5": 189,
+   "6": 14
+  },
+  "lag_app_p50": 2.0,
+  "ok_dev_lp_p50_99_999_max": [
+   4.774,
+   10.67,
+   11.16,
+   11.309
+  ],
+  "ok_wrms_p50_99_999_max": [
+   0.97,
+   1.135,
+   1.153,
+   1.166
+  ],
+  "events_ok_envs": {
+   "tilt": 1
+  },
+  "events_fall_envs": {},
+  "fall_pre_dev_max": [],
+  "fall_pre_wrms_max": [],
+  "fall_lead_s_tilt": [],
+  "fall_lead_s_w": []
+ },
+ {
+  "tag": "cE1_d2",
+  "delay": 2,
+  "cmd": [
+   0.06,
+   0.0,
+   0.0
+  ],
+  "n_env": 16,
+  "falls": 0,
+  "lag_sent_p10_50_90": [
+   4.0,
+   4.0,
+   5.0
+  ],
+  "lag_sent_hist": {
+   "3": 1,
+   "4": 666,
+   "5": 475,
+   "6": 113
+  },
+  "lag_app_p50": 2.0,
+  "ok_dev_lp_p50_99_999_max": [
+   4.916,
+   11.009,
+   11.449,
+   11.524
+  ],
+  "ok_wrms_p50_99_999_max": [
+   0.931,
+   1.138,
+   1.162,
+   1.181
+  ],
+  "events_ok_envs": {
+   "tilt": 1
+  },
+  "events_fall_envs": {},
+  "fall_pre_dev_max": [],
+  "fall_pre_wrms_max": [],
+  "fall_lead_s_tilt": [],
+  "fall_lead_s_w": []
+ },
+ {
+  "tag": "cE1_d3",
+  "delay": 3,
+  "cmd": [
+   0.06,
+   0.0,
+   0.0
+  ],
+  "n_env": 16,
+  "falls": 0,
+  "lag_sent_p10_50_90": [
+   5.0,
+   5.0,
+   6.0
+  ],
+  "lag_sent_hist": {
+   "4": 1,
+   "5": 875,
+   "6": 344,
+   "7": 12
+  },
+  "lag_app_p50": 2.0,
+  "ok_dev_lp_p50_99_999_max": [
+   5.181,
+   11.159,
+   11.557,
+   11.842
+  ],
+  "ok_wrms_p50_99_999_max": [
+   0.912,
+   1.102,
+   1.127,
+   1.141
+  ],
+  "events_ok_envs": {
+   "tilt": 2
+  },
+  "events_fall_envs": {},
+  "fall_pre_dev_max": [],
+  "fall_pre_wrms_max": [],
+  "fall_lead_s_tilt": [],
+  "fall_lead_s_w": []
+ }
+]

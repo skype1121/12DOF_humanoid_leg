@@ -1,0 +1,4 @@
+nbj1_16299_f2_s1	W3S3dNB	2026-10-10_02-51-28_w3s3dnbj_s1_from_15800	model_16299.pt	1	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0.06,0,0
+nbj1_16299_long2_s1	W3S3dNB	2026-10-10_02-51-28_w3s3dnbj_s1_from_15800	model_16299.pt	1	--warmup 2 --num_envs 128 --long --ramp_off --delay 2 --cmd=0.06,0,0
+nbj2_16299_f2_s1	W3S3dNB	2026-10-10_03-05-58_w3s3dnbj_s2_from_15800	model_16299.pt	1	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0.06,0,0
+nbj2_16299_long2_s1	W3S3dNB	2026-10-10_03-05-58_w3s3dnbj_s2_from_15800	model_16299.pt	1	--warmup 2 --num_envs 128 --long --ramp_off --delay 2 --cmd=0.06,0,0

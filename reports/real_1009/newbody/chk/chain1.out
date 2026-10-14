@@ -1,0 +1,35 @@
+05:33:59 시작 chkeq_a (PGID 1053845, 시도 1)
+05:34:53   유효 (54 s)
+05:34:53 끝 /home/ryu/humanoid_leg_test1/reports/real_1009/newbody/chk/jobs_eq_a.tsv
+05:41:56 시작 chkeq_b (PGID 1061674, 시도 1)
+05:42:50   유효 (54 s)
+05:42:50 끝 /home/ryu/humanoid_leg_test1/reports/real_1009/newbody/chk/jobs_eq_b.tsv
+EQ_DONE
+05:49:54 시작 p1_nb_e10_s1 (PGID 1069176, 시도 1)
+05:54:24   유효 (270 s)
+05:54:24 시작 p1_nb_e08_s1 (PGID 1115549, 시도 1)
+05:59:00   유효 (276 s)
+05:59:00 시작 p1_ob_e10_s1 (PGID 1196243, 시도 1)
+06:03:33   유효 (273 s)
+06:03:33 시작 p1_nb_e08_s2 (PGID 1242025, 시도 1)
+06:07:37   유효 (244 s)
+06:07:37 시작 p1_ob_e08_s1 (PGID 1245791, 시도 1)
+06:11:19   유효 (222 s)
+06:11:19 끝 /home/ryu/humanoid_leg_test1/reports/real_1009/newbody/chk/jobs_p1.tsv
+P1_DONE
+06:11:19 시작 p7_B1_all (PGID 1249249, 시도 1)
+06:15:37   유효 (258 s)
+06:15:37 시작 p7_B0_all (PGID 1253217, 시도 1)
+06:20:46   유효 (309 s)
+06:20:46 시작 p7_L0_all (PGID 1257910, 시도 1)
+06:25:55   유효 (309 s)
+06:25:55 시작 p7_d2f2 (PGID 1264796, 시도 1)
+06:30:29   유효 (274 s)
+06:30:29 시작 p7_B0_w3pol (PGID 1268972, 시도 1)
+06:34:44   유효 (255 s)
+06:34:44 시작 p7_B0_kepol (PGID 1272904, 시도 1)
+06:39:05   유효 (261 s)
+06:39:05 시작 p7_B0_sup (PGID 1277057, 시도 1)
+06:44:14   유효 (309 s)
+06:44:14 끝 /home/ryu/humanoid_leg_test1/reports/real_1009/newbody/chk/jobs_p7a.tsv
+P7A_DONE

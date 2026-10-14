@@ -1,0 +1,1 @@
+y_nbje1_all08_s1	256	2	1	45	/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-11_05-09-59_w3s3dnbje_s1_from_17798/deploy_18997/exported	-	walk@2:0,0,0;stop@7;walk@12:0.06,0,0;stop@18;walk@23:0.06,0,0;stop@29;walk@34:0,0,0;stop@39	nb	--trace_qd --kw_effort_scales 0.8

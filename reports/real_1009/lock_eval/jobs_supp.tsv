@@ -1,0 +1,14 @@
+lk_C0_l30	384	8	-	push:l:2:30:0.2
+lk_R2_l30	384	8	left_hip_r_joint,right_hip_r_joint	push:l:2:30:0.2
+lk_RR_l30	384	8	right_hip_r_joint	push:l:2:30:0.2
+lk_RL_l30	384	8	left_hip_r_joint	push:l:2:30:0.2
+lk_A2_l30	384	8	left_hip_a_joint,right_hip_a_joint	push:l:2:30:0.2
+lk_AR_l30	384	8	right_hip_a_joint	push:l:2:30:0.2
+lk_AL_l30	384	8	left_hip_a_joint	push:l:2:30:0.2
+lk_C0_r30	384	8	-	push:r:2:30:0.2
+lk_R2_r30	384	8	left_hip_r_joint,right_hip_r_joint	push:r:2:30:0.2
+lk_RR_r30	384	8	right_hip_r_joint	push:r:2:30:0.2
+lk_RL_r30	384	8	left_hip_r_joint	push:r:2:30:0.2
+lk_A2_r30	384	8	left_hip_a_joint,right_hip_a_joint	push:r:2:30:0.2
+lk_AR_r30	384	8	right_hip_a_joint	push:r:2:30:0.2
+lk_AL_r30	384	8	left_hip_a_joint	push:r:2:30:0.2

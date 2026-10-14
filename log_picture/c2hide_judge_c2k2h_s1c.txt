@@ -1,0 +1,39 @@
+숨기 유인 분해 · c2k2h_s1c · seed 1 2 3 4 5 6 · 외란 env 739
+(가) 보상 매니저 항 합 B1 − B3 = +6.828(R1 기준 차와 같은 축) — 기여 큰 순:
+    knee_stance_flexion          +3.299   (B1 +20.701 · B3 +17.401)
+    feet_contact_gated           +1.583   (B1 +10.179 · B3 +8.596)
+    track_ang_vel_z_exp          +1.380   (B1 +9.984 · B3 +8.604)
+    track_lin_vel_xy_exp         +1.162   (B1 +9.679 · B3 +8.517)
+    settle_quiet_bonus           +1.102   (B1 +7.053 · B3 +5.950)
+    w3_height                    -0.899   (B1 +0.000 · B3 +0.899)
+    survive_after_release        +0.823   (B1 +5.186 · B3 +4.363)
+    leg_pose_deviation           -0.744   (B1 -2.776 · B3 -2.031)
+    w3_alive                     -0.479   (B1 +0.000 · B3 +0.479)
+    w3_drift                     +0.442   (B1 +0.000 · B3 -0.442)
+    torso_pitch_band             -0.404   (B1 -0.790 · B3 -0.386)
+    w3_yaw                       +0.309   (B1 +0.000 · B3 -0.309)
+    w3_periodic                  +0.271   (B1 +0.000 · B3 -0.271)
+    w3_imit                      -0.257   (B1 +0.000 · B3 +0.257)
+(나) 후보 회복 중 복제 기여(B3 외란 env 평균): knee_stance_flexion +3.236 · feet_contact_gated +0.767 · settle_quiet_bonus +0.039 · track_lin_vel_xy_exp +1.024 · track_ang_vel_z_exp +1.177 · survive_after_release +0.959
+    집합 | B1−B3(±SE) | 기준 3 (B3−B2) | 기준 5 (B4−B3) | 회복 중 추가분
+    (없음=R1)                                                                | +6.83±0.79 | P +11.00 | F +0.19 | +0.00
+    knee_stance_flexion                                                    | +3.59±0.76 | P +7.35 | P -0.48 | +3.24
+    track_ang_vel_z_exp                                                    | +5.65±0.77 | P +8.98 | P -0.09 | +1.18
+    track_lin_vel_xy_exp                                                   | +5.80±0.78 | P +9.32 | P -0.06 | +1.02
+    survive_after_release                                                  | +5.87±0.78 | P +9.65 | P -0.04 | +0.96
+    feet_contact_gated                                                     | +6.06±0.78 | P +10.46 | F +0.08 | +0.77
+    settle_quiet_bonus                                                     | +6.79±0.79 | P +11.00 | F +0.19 | +0.04
+    knee_stance_flexion+track_ang_vel_z_exp                                | +2.42±0.75 | P +5.32 | P -0.76 | +4.41
+    knee_stance_flexion+track_lin_vel_xy_exp                               | +2.57±0.75 | P +5.67 | P -0.73 | +4.26
+    knee_stance_flexion+survive_after_release                              | +2.63±0.75 | P +6.00 | P -0.71 | +4.19
+    knee_stance_flexion+feet_contact_gated                                 | +2.83±0.76 | P +6.80 | P -0.58 | +4.00
+    knee_stance_flexion+settle_quiet_bonus                                 | +3.55±0.76 | P +7.35 | P -0.47 | +3.27
+    track_lin_vel_xy_exp+track_ang_vel_z_exp                               | +4.63±0.76 | P +7.30 | P -0.34 | +2.20
+    track_ang_vel_z_exp+survive_after_release                              | +4.69±0.76 | P +7.62 | P -0.33 | +2.14
+    track_lin_vel_xy_exp+survive_after_release                             | +4.85±0.77 | P +7.97 | P -0.30 | +1.98
+    feet_contact_gated+track_ang_vel_z_exp                                 | +4.88±0.77 | P +8.43 | P -0.20 | +1.94
+    feet_contact_gated+track_lin_vel_xy_exp                                | +5.04±0.77 | P +8.78 | P -0.17 | +1.79
+    feet_contact_gated+survive_after_release                               | +5.10±0.77 | P +9.11 | P -0.15 | +1.73
+    settle_quiet_bonus+track_ang_vel_z_exp                                 | +5.61±0.77 | P +8.98 | P -0.09 | +1.22
+    settle_quiet_bonus+track_lin_vel_xy_exp                                | +5.77±0.77 | P +9.32 | P -0.06 | +1.06
+최소 유지 집합: knee_stance_flexion + feet_contact_gated + track_lin_vel_xy_exp + track_ang_vel_z_exp + survive_after_release (B1−B3 -0.33±0.74, 기준 3 B3−B2 +1.74, 기준 5 B4−B3 -1.36)

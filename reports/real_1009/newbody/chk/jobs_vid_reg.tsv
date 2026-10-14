@@ -1,0 +1,1 @@
+vid_reg5_ha20	16	2	1	22	-	-	walk@3:0,0,0;stop@8;walk@13:0,0,0;stop@18	nb	--kw_w3_fstep 0.8 --kw_w3_key stand_w3s3dnbjy1_19996 --kw_effort_scales 0.8 --kw_effort_joints hip_a --video --video_env 0 --video_every 2

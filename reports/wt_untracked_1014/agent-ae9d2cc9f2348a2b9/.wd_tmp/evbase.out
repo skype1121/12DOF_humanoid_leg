@@ -1,0 +1,29 @@
+03:30 평가 base_dist_b_s1 끝
+03:33 평가 base_dist_l_s1 끝
+03:36 평가 base_dist_r_s1 끝
+03:39 평가 base_stop_s1 끝
+03:42 평가 base_dist_f_s2 끝
+03:44 평가 base_dist_b_s2 끝
+03:47 평가 base_dist_l_s2 끝
+03:50 평가 base_dist_r_s2 끝
+03:52 평가 base_stop_s2 끝
+03:55 평가 base_distmix_s1 끝
+03:56 평가 base_reg_c0 끝
+03:59 평가 base_reg_f06 끝
+03:59 무효 base_reg_b04 재시도 1
+04:00 무효 base_reg_b04 재시도 2
+04:01 무효 base_reg_b04 재시도 3
+04:02 ✗ base_reg_b04 3회 무효
+04:03 평가 base_reg_l05 끝
+04:04 평가 base_reg_r05 끝
+04:05 평가 base_reg_tl02 끝
+04:07 평가 base_reg_tr02 끝
+04:09 평가 base_reg_fl02 끝
+04:10 평가 base_reg_fr02 끝
+04:11 평가 base_reg_all3 끝
+04:12 평가 base_reg_d4f06 끝
+04:14 평가 base_reg_d4all3 끝
+04:20 평가 base_hl_c0 끝
+04:27 평가 base_hl_f06 끝
+04:29 평가 base_reg_stop 끝
+04:31 평가 base_reg_stand 끝

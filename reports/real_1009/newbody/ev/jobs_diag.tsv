@@ -1,0 +1,1 @@
+nbdiag_bz_fi40_128	128	8	left_hip_r_joint,right_hip_r_joint	push:f:2:40:0.2	urdf=/home/ryu/humanoid_leg_test1/rl_walking/assets/biped12_final3_hiprpla.urdf:left_hip_a_joint,right_hip_a_joint,left_hip_r_joint,right_hip_r_joint	1

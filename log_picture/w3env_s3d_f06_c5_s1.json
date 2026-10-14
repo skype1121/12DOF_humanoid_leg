@@ -1,0 +1,810 @@
+{
+ "task": "Biped12-HangStand-W3S3d-v0",
+ "checkpoint": "/home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-07_00-11-12_w3S3d_from_s2d/model_15800.pt",
+ "seed": 1,
+ "per_group": 256,
+ "num_envs": 3328,
+ "warmup": 3.0,
+ "seconds": 15.0,
+ "steps_done": 900,
+ "completed": true,
+ "base_delay": 2,
+ "heading_loop": 0.0,
+ "ramp_on": true,
+ "sweep": "play=0.5,0.75,1.25,1.5;imu_pitch=-2,-1.5,1.5,2;com_x=-0.03,-0.01,0.01,0.03",
+ "grid": [
+  [
+   "play",
+   [
+    0.5,
+    0.75,
+    1.0,
+    1.25,
+    1.5
+   ]
+  ],
+  [
+   "imu_pitch",
+   [
+    -2.0,
+    -1.5,
+    0.0,
+    1.5,
+    2.0
+   ]
+  ],
+  [
+   "com_x",
+   [
+    -0.03,
+    -0.01,
+    0.0,
+    0.01,
+    0.03
+   ]
+  ]
+ ],
+ "fix": {},
+ "cmds": [
+  [
+   "f06",
+   [
+    0.06,
+    0.0,
+    0.0
+   ]
+  ]
+ ],
+ "events": [
+  "physics_material[startup] randomize_rigid_body_material {'asset_cfg': SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names='.*', body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'static_friction_range': (0.5, 1.1), 'dynamic_friction_range': (0.4, 0.9), 'restitution_range': (0.0, 0.1), 'num_buckets': 64, 'make_consistent': True}",
+  "add_base_mass[startup] randomize_rigid_body_mass {'asset_cfg': SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names='base', body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'mass_distribution_params': (0.0, 0.5), 'operation': 'add'}",
+  "base_com[startup] randomize_rigid_body_com {'asset_cfg': SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names='base', body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'com_range': {'x': (0.0, 0.0), 'y': (-0.01, 0.01), 'z': (0.0, 0.05)}}",
+  "actuator_gains[startup] randomize_actuator_gains {'asset_cfg': SceneEntityCfg(name='robot', joint_names='.*', joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=None, body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'stiffness_distribution_params': (0.85, 1.1), 'damping_distribution_params': (0.8, 1.2), 'operation': 'scale'}",
+  "joint_friction[startup] randomize_joint_parameters {'asset_cfg': SceneEntityCfg(name='robot', joint_names='.*', joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=None, body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'friction_distribution_params': (0.0, 0.1), 'operation': 'abs'}",
+  "joint_armature[startup] randomize_joint_parameters {'asset_cfg': SceneEntityCfg(name='robot', joint_names='.*', joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=None, body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'armature_distribution_params': (0.5, 1.5), 'operation': 'scale'}",
+  "base_external_force_torque[reset] apply_external_force_torque {'asset_cfg': SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names='base', body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'force_range': (0.0, 0.0), 'torque_range': (-0.0, 0.0)}",
+  "reset_base[reset] reset_root_state_uniform {'pose_range': {'x': (-0.3, 0.3), 'y': (-0.3, 0.3), 'yaw': (-3.14, 3.14), 'roll': (-0.035, 0.035), 'pitch': (-0.05, 0.05), 'z': (0.0, 0.01)}, 'velocity_range': {'x': (0.0, 0.0), 'y': (0.0, 0.0), 'z': (0.0, 0.0), 'roll': (0.0, 0.0), 'pitch': (0.0, 0.0), 'yaw': (0.0, 0.0)}}",
+  "reset_robot_joints[reset] reset_joints_by_offset {'position_range': (-0.02, 0.02), 'velocity_range': (0.0, 0.0)}",
+  "link_mass_calib[startup] randomize_rigid_body_mass {'asset_cfg': SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names='.*', body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'mass_distribution_params': (1.0, 1.0), 'operation': 'scale'}",
+  "calib_bias[reset] resample_calib_bias {'joint_bias_rad': (-0.0175, 0.0175), 'imu_tilt_rad': (-0.026, 0.026), 'imu_roll_rad': (-0.026, 0.026), 'ankle_bias_rad': (-0.0175, 0.0175), 'knee_bias_rad': (-0.0175, 0.0175), 'imu_lag_steps': (0, 3)}",
+  "stance_asym[reset] reset_stance_asymmetry {'fore_aft_m': (-0.03, 0.03), 'yaw_rad': (-0.087, 0.087)}",
+  "hang_support_reset[reset] hang_support_reset {'r0_range': (0.0, 0.0), 'hold_range': (0.1, 0.1), 'release_range': (0.1, 0.2), 'rope_len_range': (1.0, 2.0), 'bias_frac': 0.01, 'point_xy': 0.01, 'asset_cfg': SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names='base', body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'level_gain_range': (0.0, 0.0), 'level_damp_range': (0.0, 0.0), 'ramp_rate_range': (0.05, 0.6), 'ramp_cap_range': (2.0, 12.0), 'ramp_start_range': (1.0, 8.0), 'ramp_sign_random': True}",
+  "hang_support_step[interval] hang_support_step {'asset_cfg': SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names='base', body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'sensor_cfg': SceneEntityCfg(name='contact_forces', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=['left_ankle_r_joint', 'right_ankle_r_joint'], body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=True), 'threshold': 5.0}",
+  "ankle_r_friction[startup] randomize_joint_parameters {'asset_cfg': SceneEntityCfg(name='robot', joint_names=['.*_ankle_r_joint'], joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=None, body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'friction_distribution_params': (0.1, 0.6), 'operation': 'abs'}",
+  "default_pose_bias[reset] resample_default_pose_bias {'hip_f_rad': (-0.035, 0.035), 'knee_rad': (-0.0175, 0.0175), 'ankle_f_rad': (-0.01, 0.01), 'reset_noise_rad': 0.025, 'action_term': 'joint_pos', 'asset_cfg': SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names='base', body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=False), 'shared_knee_rad': (-0.236, -0.183), 'shared_ankle_f_rad': None, 'shared_hip_f_rad': (-0.052, -0.018)}",
+  "joint_limits_config[startup] set_joint_limits_from_config {'config_path': '/home/ryu/humanoid_leg_test1/config/joint_limits_12dof.json'}",
+  "w3_cmd[startup] install_w3_cmd {'p_step': 0.7, 'stage': 3, 'vx_back_range': (0.03, 0.06), 'mix2': (0.3, 0.3, 0.4), 'vy_range': (0.03, 0.04), 'mix3': (0.25, 0.2, 0.25, 0.3), 'wz_range': (0.1, 0.2), 'p_hloop': 0.0}",
+  "w3_gait[interval] w3_gait_update {'f_step': 1.1, 'lead_vy_cmin': 0.02, 'lead_wz_cmin': 0.08}",
+  "w3_ref[startup] install_w3_ref {'ref_path': '/home/ryu/humanoid_leg_test1/reports/gen_step/ref_step_primitive_flex.npz', 'ref_scale': 0.0, 'assist_alpha0': 1.0}",
+  "w3_track[interval] w3_step_tracker {}",
+  "w3_lat[interval] w3_lat_tracker {'nominal_half_width': 0.144, 'width_margin': 0.05}",
+  "w3_turn[interval] w3_turn_tracker {'cmin': 0.08}"
+ ],
+ "wrapped_obs": {
+  "joint_pos": "rl_walking.mdp_hang.encoder_joint_pos_rel_v2 params={} noise=UniformNoiseCfg(func=<function uniform_noise at 0x751412780cc0>, operation='add', n_min=-0.01, n_max=0.01) hist=5",
+  "projected_gravity": "rl_walking.mdp_stage4.projected_gravity_lagged params={} noise=UniformNoiseCfg(func=<function uniform_noise at 0x751412780cc0>, operation='add', n_min=-0.02, n_max=0.02) hist=5",
+  "base_ang_vel": "rl_walking.mdp_hang.base_ang_vel_lagged params={'max_lag': 3} noise=UniformNoiseCfg(func=<function uniform_noise at 0x751412780cc0>, operation='add', n_min=-0.05, n_max=0.05) hist=5",
+  "gyro_ema": "rl_walking.mdp_hang.gyro_ema_lagged params={'alpha': 0.1, 'noise': 0.05, 'max_lag': 3} noise=None hist=5",
+  "feet_contact": "rl_walking.mdp_hang.feet_contact_real_v2 params={'sensor_cfg': SceneEntityCfg(name='contact_forces', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=['left_ankle_r_joint', 'right_ankle_r_joint'], body_ids=slice(None, None, None), object_collection_names=None, object_collection_ids=slice(None, None, None), preserve_order=True), 'threshold': 5.0, 'threshold_range': (2.0, 20.0), 'hold_ticks': 5, 'extra_delay': 1, 'tilt_off_deg': (6.0, 20.0)} noise=None hist=5"
+ },
+ "actuators": {
+  "ak70": {
+   "type": "ImplicitActuator",
+   "joints": [
+    "left_hip_f_joint",
+    "right_hip_f_joint",
+    "left_hip_a_joint",
+    "right_hip_a_joint",
+    "left_hip_r_joint",
+    "right_hip_r_joint",
+    "left_knee_joint",
+    "right_knee_joint"
+   ],
+   "kp0_med": 146.00648498535156,
+   "kd0_med": 4.994263648986816,
+   "play_med_deg": null,
+   "coul_med": null
+  },
+  "ankle_roll": {
+   "type": "ImplicitActuator",
+   "joints": [
+    "left_ankle_r_joint",
+    "right_ankle_r_joint"
+   ],
+   "kp0_med": 146.51951599121094,
+   "kd0_med": 5.005252361297607,
+   "play_med_deg": null,
+   "coul_med": null
+  },
+  "ankle_f_play": {
+   "type": "DeadzoneCoulombImplicitActuator",
+   "joints": [
+    "left_ankle_f_joint",
+    "right_ankle_f_joint"
+   ],
+   "kp0_med": 145.97610473632812,
+   "kd0_med": 5.0026092529296875,
+   "play_med_deg": 4.0,
+   "coul_med": 2.255310297012329
+  }
+ },
+ "wall_s": 37.8132541179657,
+ "groups": [
+  {
+   "g": 0,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 1.0,
+    "imu_pitch": 0.0,
+    "com_x": 0.0
+   },
+   "n": 256,
+   "fall_warm": 13,
+   "fall_score": 0,
+   "n_score": 243,
+   "fall_rate": 0.0,
+   "fall_ci": [
+    0.0,
+    0.015563016930695634
+   ],
+   "alt": 0.9998672008514404,
+   "step_rate": 2.132784605026245,
+   "gain_x": 0.9028028696775436,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 1.139882140689426,
+   "gain_disp_y": null,
+   "gain_path_x": 1.1895261704921722,
+   "gain_path_y": null,
+   "disp_v": [
+    0.06839292844136556,
+    0.010617576042811076
+   ],
+   "gain_min": 1.1895261704921722,
+   "vb": [
+    0.05416817218065262,
+    0.011812095530331135
+   ],
+   "yaw_mean_deg": 1.147621989250183,
+   "yaw_absp50_deg": 15.55273723602295,
+   "yaw_absp95_deg": 50.17978515624994,
+   "pitch_mean": 4.87655782699585,
+   "roll_mean": -0.11373037099838257,
+   "pitch_rms": 0.8458967208862305,
+   "roll_rms": 6.856724262237549,
+   "tilt_max_p95": 15.538864707946775,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": false
+  },
+  {
+   "g": 1,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 0.5,
+    "imu_pitch": 0.0,
+    "com_x": 0.0
+   },
+   "n": 256,
+   "fall_warm": 7,
+   "fall_score": 1,
+   "n_score": 249,
+   "fall_rate": 0.004016064257028112,
+   "fall_ci": [
+    0.0007092678323149942,
+    0.022394525214398834
+   ],
+   "alt": 0.9983053207397461,
+   "step_rate": 2.128763437271118,
+   "gain_x": 1.270267367362976,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 1.469475825627645,
+   "gain_disp_y": null,
+   "gain_path_x": 1.5729306886593502,
+   "gain_path_y": null,
+   "disp_v": [
+    0.0881685495376587,
+    0.012831103801727296
+   ],
+   "gain_min": 1.5729306886593502,
+   "vb": [
+    0.07621604204177856,
+    0.01559190172702074
+   ],
+   "yaw_mean_deg": -0.3762611150741577,
+   "yaw_absp50_deg": 20.506046295166016,
+   "yaw_absp95_deg": 66.1529586791992,
+   "pitch_mean": 5.446391582489014,
+   "roll_mean": -0.06269290298223495,
+   "pitch_rms": 0.9620513916015625,
+   "roll_rms": 7.6733622550964355,
+   "tilt_max_p95": 16.932235908508297,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": false
+  },
+  {
+   "g": 2,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 0.75,
+    "imu_pitch": 0.0,
+    "com_x": 0.0
+   },
+   "n": 256,
+   "fall_warm": 15,
+   "fall_score": 0,
+   "n_score": 241,
+   "fall_rate": 0.0,
+   "fall_ci": [
+    0.0,
+    0.01569014415850901
+   ],
+   "alt": 0.9995982050895691,
+   "step_rate": 2.1319503784179688,
+   "gain_x": 1.0791728893915813,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 1.3094830513000488,
+   "gain_disp_y": null,
+   "gain_path_x": 1.3760723173618317,
+   "gain_path_y": null,
+   "disp_v": [
+    0.07856898307800293,
+    0.013566101590792337
+   ],
+   "gain_min": 1.3760723173618317,
+   "vb": [
+    0.06475037336349487,
+    0.013977373950183392
+   ],
+   "yaw_mean_deg": 2.8950259685516357,
+   "yaw_absp50_deg": 17.149211883544922,
+   "yaw_absp95_deg": 49.0604248046875,
+   "pitch_mean": 5.199165344238281,
+   "roll_mean": -0.1564640998840332,
+   "pitch_rms": 0.8605144619941711,
+   "roll_rms": 7.376795768737793,
+   "tilt_max_p95": 16.434368133544922,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": false
+  },
+  {
+   "g": 3,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 1.25,
+    "imu_pitch": 0.0,
+    "com_x": 0.0
+   },
+   "n": 256,
+   "fall_warm": 13,
+   "fall_score": 0,
+   "n_score": 243,
+   "fall_rate": 0.0,
+   "fall_ci": [
+    0.0,
+    0.015563016930695634
+   ],
+   "alt": 0.9998672604560852,
+   "step_rate": 2.133059024810791,
+   "gain_x": 0.729811874528726,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 0.9805355469385784,
+   "gain_disp_y": null,
+   "gain_path_x": 1.0182675595084827,
+   "gain_path_y": null,
+   "disp_v": [
+    0.0588321328163147,
+    0.011427403489748637
+   ],
+   "gain_min": 1.0182675595084827,
+   "vb": [
+    0.043788712471723557,
+    0.011473363265395164
+   ],
+   "yaw_mean_deg": 4.018953800201416,
+   "yaw_absp50_deg": 12.390081405639648,
+   "yaw_absp95_deg": 35.503269577026344,
+   "pitch_mean": 4.517261505126953,
+   "roll_mean": -0.23134474456310272,
+   "pitch_rms": 0.8653038144111633,
+   "roll_rms": 6.431562900543213,
+   "tilt_max_p95": 14.833687114715575,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": false
+  },
+  {
+   "g": 4,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 1.5,
+    "imu_pitch": 0.0,
+    "com_x": 0.0
+   },
+   "n": 256,
+   "fall_warm": 10,
+   "fall_score": 0,
+   "n_score": 246,
+   "fall_rate": 0.0,
+   "fall_ci": [
+    0.0,
+    0.015376142323776345
+   ],
+   "alt": 1.0,
+   "step_rate": 2.133333206176758,
+   "gain_x": 0.5634643758336704,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 0.8287347687615289,
+   "gain_disp_y": null,
+   "gain_path_x": 0.8523731182018917,
+   "gain_path_y": null,
+   "disp_v": [
+    0.04972408612569173,
+    0.009220405419667562
+   ],
+   "gain_min": 0.8523731182018917,
+   "vb": [
+    0.03380786255002022,
+    0.010333825834095478
+   ],
+   "yaw_mean_deg": 3.1088931560516357,
+   "yaw_absp50_deg": 9.948064804077148,
+   "yaw_absp95_deg": 38.26725673675537,
+   "pitch_mean": 3.9378814697265625,
+   "roll_mean": -0.18373656272888184,
+   "pitch_rms": 0.9175553917884827,
+   "roll_rms": 6.303452491760254,
+   "tilt_max_p95": 14.194870948791504,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": false
+  },
+  {
+   "g": 5,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 1.0,
+    "imu_pitch": -2.0,
+    "com_x": 0.0
+   },
+   "n": 256,
+   "fall_warm": 19,
+   "fall_score": 2,
+   "n_score": 237,
+   "fall_rate": 0.008438818565400843,
+   "fall_ci": [
+    0.002317238705718979,
+    0.030241920509300354
+   ],
+   "alt": 0.9998627305030823,
+   "step_rate": 2.133049726486206,
+   "gain_x": 0.9229769309361776,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 1.1881250805324979,
+   "gain_disp_y": null,
+   "gain_path_x": 1.237191508213679,
+   "gain_path_y": null,
+   "disp_v": [
+    0.07128750483194987,
+    0.013818554083506266
+   ],
+   "gain_min": 1.237191508213679,
+   "vb": [
+    0.055378615856170654,
+    0.013411502353847027
+   ],
+   "yaw_mean_deg": 3.9933061599731445,
+   "yaw_absp50_deg": 13.517122268676758,
+   "yaw_absp95_deg": 47.09799728393554,
+   "pitch_mean": 6.99888277053833,
+   "roll_mean": -0.1164150983095169,
+   "pitch_rms": 0.808404266834259,
+   "roll_rms": 6.824097156524658,
+   "tilt_max_p95": 16.3807430267334,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": false
+  },
+  {
+   "g": 6,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 1.0,
+    "imu_pitch": -1.5,
+    "com_x": 0.0
+   },
+   "n": 256,
+   "fall_warm": 10,
+   "fall_score": 0,
+   "n_score": 246,
+   "fall_rate": 0.0,
+   "fall_ci": [
+    0.0,
+    0.015376142323776345
+   ],
+   "alt": 1.0,
+   "step_rate": 2.133333206176758,
+   "gain_x": 0.8914874245723089,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 1.152628262837728,
+   "gain_disp_y": null,
+   "gain_path_x": 1.1990280201037726,
+   "gain_path_y": null,
+   "disp_v": [
+    0.06915769577026368,
+    0.013796250025431315
+   ],
+   "gain_min": 1.1990280201037726,
+   "vb": [
+    0.05348924547433853,
+    0.013498649001121521
+   ],
+   "yaw_mean_deg": 4.860812187194824,
+   "yaw_absp50_deg": 11.185126304626465,
+   "yaw_absp95_deg": 41.62334060668945,
+   "pitch_mean": 6.408885478973389,
+   "roll_mean": -0.18046438694000244,
+   "pitch_rms": 0.8013332486152649,
+   "roll_rms": 6.822378635406494,
+   "tilt_max_p95": 16.206565380096436,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": false
+  },
+  {
+   "g": 7,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 1.0,
+    "imu_pitch": 1.5,
+    "com_x": 0.0
+   },
+   "n": 256,
+   "fall_warm": 19,
+   "fall_score": 0,
+   "n_score": 237,
+   "fall_rate": 0.0,
+   "fall_ci": [
+    0.0,
+    0.01595073276377503
+   ],
+   "alt": 0.9995915293693542,
+   "step_rate": 2.1324894428253174,
+   "gain_x": 0.8910249297817548,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 1.0825326707628038,
+   "gain_disp_y": null,
+   "gain_path_x": 1.1533646533886592,
+   "gain_path_y": null,
+   "disp_v": [
+    0.06495196024576823,
+    0.012302785118420919
+   ],
+   "gain_min": 1.1533646533886592,
+   "vb": [
+    0.05346149578690529,
+    0.013026856817305088
+   ],
+   "yaw_mean_deg": 2.333784341812134,
+   "yaw_absp50_deg": 18.255985260009766,
+   "yaw_absp95_deg": 60.83311614990234,
+   "pitch_mean": 3.207832098007202,
+   "roll_mean": -0.1454159915447235,
+   "pitch_rms": 0.9053254723548889,
+   "roll_rms": 6.991847515106201,
+   "tilt_max_p95": 15.068006706237792,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": false
+  },
+  {
+   "g": 8,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 1.0,
+    "imu_pitch": 2.0,
+    "com_x": 0.0
+   },
+   "n": 256,
+   "fall_warm": 16,
+   "fall_score": 0,
+   "n_score": 240,
+   "fall_rate": 0.0,
+   "fall_ci": [
+    0.0,
+    0.015754489799935698
+   ],
+   "alt": 1.0,
+   "step_rate": 2.133333444595337,
+   "gain_x": 0.8889920388658842,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 1.0954264137479994,
+   "gain_disp_y": null,
+   "gain_path_x": 1.1530347168445587,
+   "gain_path_y": null,
+   "disp_v": [
+    0.06572558482487996,
+    0.013506491978963217
+   ],
+   "gain_min": 1.1530347168445587,
+   "vb": [
+    0.05333952233195305,
+    0.012440024875104427
+   ],
+   "yaw_mean_deg": 5.083971977233887,
+   "yaw_absp50_deg": 15.304508209228516,
+   "yaw_absp95_deg": 45.265560340881336,
+   "pitch_mean": 2.7440617084503174,
+   "roll_mean": -0.13919697701931,
+   "pitch_rms": 0.9498130083084106,
+   "roll_rms": 6.8998847007751465,
+   "tilt_max_p95": 14.89499273300171,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": false
+  },
+  {
+   "g": 9,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 1.0,
+    "imu_pitch": 0.0,
+    "com_x": -0.03
+   },
+   "n": 256,
+   "fall_warm": 80,
+   "fall_score": 0,
+   "n_score": 176,
+   "fall_rate": 0.0,
+   "fall_ci": [
+    1.734723475976807e-18,
+    0.021361019919751596
+   ],
+   "alt": 1.0,
+   "step_rate": 2.133333444595337,
+   "gain_x": 0.6261260559161504,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 0.8067204554875692,
+   "gain_disp_y": null,
+   "gain_path_x": 0.8930978054801624,
+   "gain_path_y": null,
+   "disp_v": [
+    0.04840322732925415,
+    0.011293761928876241
+   ],
+   "gain_min": 0.8930978054801624,
+   "vb": [
+    0.037567563354969025,
+    0.011571645736694336
+   ],
+   "yaw_mean_deg": 5.868759632110596,
+   "yaw_absp50_deg": 18.609222412109375,
+   "yaw_absp95_deg": 77.47945213317871,
+   "pitch_mean": 2.543818950653076,
+   "roll_mean": -0.16907286643981934,
+   "pitch_rms": 1.0300415754318237,
+   "roll_rms": 6.556197166442871,
+   "tilt_max_p95": 14.973841905593872,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": false
+  },
+  {
+   "g": 10,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 1.0,
+    "imu_pitch": 0.0,
+    "com_x": -0.01
+   },
+   "n": 256,
+   "fall_warm": 34,
+   "fall_score": 0,
+   "n_score": 222,
+   "fall_rate": 0.0,
+   "fall_ci": [
+    0.0,
+    0.017010152248301463
+   ],
+   "alt": 1.0,
+   "step_rate": 2.133333444595337,
+   "gain_x": 0.8056052029132843,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 1.0425212648179796,
+   "gain_disp_y": null,
+   "gain_path_x": 1.0963367919127147,
+   "gain_path_y": null,
+   "disp_v": [
+    0.06255127588907877,
+    0.012178092201550802
+   ],
+   "gain_min": 1.0963367919127147,
+   "vb": [
+    0.04833631217479706,
+    0.013070422224700451
+   ],
+   "yaw_mean_deg": 2.5405125617980957,
+   "yaw_absp50_deg": 14.550314903259277,
+   "yaw_absp95_deg": 49.793507194519044,
+   "pitch_mean": 4.164711952209473,
+   "roll_mean": -0.1608356237411499,
+   "pitch_rms": 0.8581315279006958,
+   "roll_rms": 6.702786922454834,
+   "tilt_max_p95": 15.528245544433592,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": false
+  },
+  {
+   "g": 11,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 1.0,
+    "imu_pitch": 0.0,
+    "com_x": 0.01
+   },
+   "n": 256,
+   "fall_warm": 8,
+   "fall_score": 0,
+   "n_score": 248,
+   "fall_rate": 0.0,
+   "fall_ci": [
+    0.0,
+    0.015254032693566115
+   ],
+   "alt": 0.9998698830604553,
+   "step_rate": 2.132795810699463,
+   "gain_x": 0.9760582198699316,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 1.2181454234653049,
+   "gain_disp_y": null,
+   "gain_path_x": 1.2662717451651893,
+   "gain_path_y": null,
+   "disp_v": [
+    0.07308872540791829,
+    0.012496299544970195
+   ],
+   "gain_min": 1.2662717451651893,
+   "vb": [
+    0.05856349319219589,
+    0.014038301073014736
+   ],
+   "yaw_mean_deg": 1.3985931873321533,
+   "yaw_absp50_deg": 13.817338943481445,
+   "yaw_absp95_deg": 48.382735252380336,
+   "pitch_mean": 5.523372173309326,
+   "roll_mean": -0.18150365352630615,
+   "pitch_rms": 0.8447796702384949,
+   "roll_rms": 6.994903564453125,
+   "tilt_max_p95": 16.170480155944823,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": false
+  },
+  {
+   "g": 12,
+   "cmd": "f06",
+   "cmd_v": [
+    0.06,
+    0.0,
+    0.0
+   ],
+   "ax": {
+    "play": 1.0,
+    "imu_pitch": 0.0,
+    "com_x": 0.03
+   },
+   "n": 256,
+   "fall_warm": 5,
+   "fall_score": 8,
+   "n_score": 251,
+   "fall_rate": 0.03187250996015936,
+   "fall_ci": [
+    0.01623687056557588,
+    0.06162168941835139
+   ],
+   "alt": 1.0,
+   "step_rate": 2.133333206176758,
+   "gain_x": 1.1695507913827896,
+   "gain_y": null,
+   "gain_yaw": null,
+   "gain_disp_x": 1.4188437991672094,
+   "gain_disp_y": null,
+   "gain_path_x": 1.469324032465617,
+   "gain_path_y": null,
+   "disp_v": [
+    0.08513062795003255,
+    0.011708903312683105
+   ],
+   "gain_min": 1.469324032465617,
+   "vb": [
+    0.07017304748296738,
+    0.012231903150677681
+   ],
+   "yaw_mean_deg": 2.840064764022827,
+   "yaw_absp50_deg": 14.304601669311523,
+   "yaw_absp95_deg": 51.18359031677235,
+   "pitch_mean": 7.097682476043701,
+   "roll_mean": -0.016514059156179428,
+   "pitch_rms": 0.8870056867599487,
+   "roll_rms": 7.238546371459961,
+   "tilt_max_p95": 17.22303524017334,
+   "wz_cmd_mean": 0.0,
+   "wz_cmd_rms": 0.0,
+   "collapse": true
+  }
+ ]
+}

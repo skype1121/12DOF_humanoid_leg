@@ -1,0 +1,200 @@
+{
+ "rec_gyro_obs": [
+  {
+   "env": 0,
+   "old_15deg_stop_s": null,
+   "new_fire": [
+    11.8,
+    "imu",
+    "stop"
+   ],
+   "imu_mis_max_deg": 13.29,
+   "hl_err_max_deg": 8.3
+  },
+  {
+   "env": 1,
+   "old_15deg_stop_s": 36.68,
+   "new_fire": null,
+   "imu_mis_max_deg": 4.07,
+   "hl_err_max_deg": 15.1
+  },
+  {
+   "env": 2,
+   "old_15deg_stop_s": null,
+   "new_fire": [
+    25.88,
+    "imu",
+    "stop"
+   ],
+   "imu_mis_max_deg": 6.94,
+   "hl_err_max_deg": 6.9
+  }
+ ],
+ "rec_gyro_true": [
+  {
+   "env": 0,
+   "old_15deg_stop_s": null,
+   "new_fire": null,
+   "imu_mis_max_deg": 5.55,
+   "hl_err_max_deg": 8.3
+  },
+  {
+   "env": 1,
+   "old_15deg_stop_s": 36.68,
+   "new_fire": null,
+   "imu_mis_max_deg": 4.07,
+   "hl_err_max_deg": 15.1
+  },
+  {
+   "env": 2,
+   "old_15deg_stop_s": null,
+   "new_fire": null,
+   "imu_mis_max_deg": 4.56,
+   "hl_err_max_deg": 6.9
+  }
+ ],
+ "rec_jump10": [
+  {
+   "env": 0,
+   "old_15deg_stop_s": 30.16,
+   "new_fire": [
+    11.8,
+    "imu",
+    "stop"
+   ],
+   "imu_mis_max_deg": 18.32,
+   "hl_err_max_deg": 18.3
+  },
+  {
+   "env": 1,
+   "old_15deg_stop_s": 30.0,
+   "new_fire": [
+    30.0,
+    "imu",
+    "stop"
+   ],
+   "imu_mis_max_deg": 14.05,
+   "hl_err_max_deg": 25.1
+  },
+  {
+   "env": 2,
+   "old_15deg_stop_s": null,
+   "new_fire": [
+    25.88,
+    "imu",
+    "stop"
+   ],
+   "imu_mis_max_deg": 9.14,
+   "hl_err_max_deg": 14.8
+  }
+ ],
+ "rec_drift6dps": [
+  {
+   "env": 0,
+   "old_15deg_stop_s": 31.240000000000002,
+   "new_fire": [
+    11.8,
+    "imu",
+    "stop"
+   ],
+   "imu_mis_max_deg": 25.29,
+   "hl_err_max_deg": 30.1
+  },
+  {
+   "env": 1,
+   "old_15deg_stop_s": 31.02,
+   "new_fire": [
+    30.48,
+    "imu",
+    "stop"
+   ],
+   "imu_mis_max_deg": 15.94,
+   "hl_err_max_deg": 30.1
+  },
+  {
+   "env": 2,
+   "old_15deg_stop_s": 32.06,
+   "new_fire": [
+    25.88,
+    "imu",
+    "stop"
+   ],
+   "imu_mis_max_deg": 11.38,
+   "hl_err_max_deg": 30.1
+  }
+ ],
+ "real": [
+  {
+   "file": "rl_bridge_20261001_184814.jsonl",
+   "ticks": 3414,
+   "mis_p99": 0.2,
+   "mis_max": 0.26,
+   "fires": [],
+   "n_fires": 0
+  },
+  {
+   "file": "rl_bridge_20261001_185555.jsonl",
+   "ticks": 1286,
+   "mis_p99": 1.04,
+   "mis_max": 1.6,
+   "fires": [],
+   "n_fires": 0
+  },
+  {
+   "file": "rl_bridge_20261001_193901.jsonl",
+   "ticks": 1996,
+   "mis_p99": 0.15,
+   "mis_max": 0.39,
+   "fires": [],
+   "n_fires": 0
+  },
+  {
+   "file": "rl_bridge_20261002_143511.jsonl",
+   "ticks": 3253,
+   "mis_p99": 2.58,
+   "mis_max": 3.25,
+   "fires": [],
+   "n_fires": 0
+  },
+  {
+   "file": "rl_bridge_20261003_174906.jsonl",
+   "ticks": 15299,
+   "mis_p99": 1.08,
+   "mis_max": 2.76,
+   "fires": [],
+   "n_fires": 0
+  },
+  {
+   "file": "rl_bridge_20261004_220509.jsonl",
+   "ticks": 5935,
+   "mis_p99": 0.6,
+   "mis_max": 0.74,
+   "fires": [],
+   "n_fires": 0
+  },
+  {
+   "file": "rl_bridge_20261004_221209.jsonl",
+   "ticks": 4171,
+   "mis_p99": 0.16,
+   "mis_max": 1.51,
+   "fires": [],
+   "n_fires": 0
+  },
+  {
+   "file": "rl_bridge_20261004_221920.jsonl",
+   "ticks": 1909,
+   "mis_p99": 0.6,
+   "mis_max": 1.3,
+   "fires": [],
+   "n_fires": 0
+  },
+  {
+   "file": "rl_bridge_20261004_223349.jsonl",
+   "ticks": 4643,
+   "mis_p99": 1.52,
+   "mis_max": 3.2,
+   "fires": [],
+   "n_fires": 0
+  }
+ ]
+}

@@ -1,0 +1,9 @@
+# W3 parity 기록 w3s3dnbj2_16299_d3
+- ckpt /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-10_03-05-58_w3s3dnbj_s2_from_15800/model_16299.pt
+- task Biped12-HangStand-W3S3dNB-v0 seed 11 delay 3 envs 3 steps 2250 (+리셋 관측 1) wall 63.4s
+- env 별 지연 [3, 3, 3] · LPF β [0.27000001072883606, 0.27000001072883606, 0.27000001072883606] · 자이로 지연 [3, 0, 2] · IMU 지연 [2, 1, 0]
+- 보조 α env 1.0 (STEP_ASSIST_ALPHA=0.0) · assist_last max 0.0 · ref_last max 0.0
+- 낙상(종료) env: [] · 생존 끝 [True, True, True]
+- 헤딩 고리 켜짐 틱 500 · ge 1 틱(env0) 1865
+- npz /home/ryu/humanoid_leg_test1/log_picture/w3parity_rec_w3s3dnbj2_16299_d3.npz sha256[:16] 0f85330339148e58 크기 3.6 MB
+COMPLETE

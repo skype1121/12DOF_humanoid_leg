@@ -1,0 +1,16 @@
+nb_15800_z_s1	W3S3dNB	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	1	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0,0,0
+nb_15800_f_s1	W3S3dNB	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	1	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0.06,0,0
+nb_15800_stop_s1	W3S3dNB	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	1	--warmup 2 --num_envs 384 --seconds 14 --delay 2 --cmd=0.06,0,0 --stop_at 8
+nb_15800_st_s1	W3S3dNB	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	1	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0,0,0 --gait_enable 0
+nb_15800_z_s2	W3S3dNB	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	2	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0,0,0
+nb_15800_f_s2	W3S3dNB	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	2	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0.06,0,0
+nb_15800_stop_s2	W3S3dNB	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	2	--warmup 2 --num_envs 384 --seconds 14 --delay 2 --cmd=0.06,0,0 --stop_at 8
+nb_15800_st_s2	W3S3dNB	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	2	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0,0,0 --gait_enable 0
+ob_15800_z_s1	W3S3d	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	1	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0,0,0
+ob_15800_f_s1	W3S3d	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	1	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0.06,0,0
+ob_15800_stop_s1	W3S3d	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	1	--warmup 2 --num_envs 384 --seconds 14 --delay 2 --cmd=0.06,0,0 --stop_at 8
+ob_15800_st_s1	W3S3d	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	1	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0,0,0 --gait_enable 0
+ob_15800_z_s2	W3S3d	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	2	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0,0,0
+ob_15800_f_s2	W3S3d	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	2	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0.06,0,0
+ob_15800_stop_s2	W3S3d	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	2	--warmup 2 --num_envs 384 --seconds 14 --delay 2 --cmd=0.06,0,0 --stop_at 8
+ob_15800_st_s2	W3S3d	2026-10-07_00-11-12_w3S3d_from_s2d	model_15800.pt	2	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0,0,0 --gait_enable 0

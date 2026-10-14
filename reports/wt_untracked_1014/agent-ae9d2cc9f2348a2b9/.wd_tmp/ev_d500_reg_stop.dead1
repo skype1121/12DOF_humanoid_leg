@@ -1,0 +1,94 @@
+[3gH    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H   [INFO] Using python from: /home/ryu/IsaacLab/_isaac_sim/python.sh
+[INFO][AppLauncher]: Using device: cuda:0
+[INFO][AppLauncher]: Loading experience file: /home/ryu/IsaacLab/apps/isaaclab.python.headless.kit
+[INFO]: Parsing configuration from: rl_walking.hang_stand_env_cfg:Biped12HangStandW3S4dDEnvCfg
+[INFO]: Parsing configuration from: rl_walking.agents:Biped12StepB0PPORunnerCfg
+
+[36m======================================================================================[0m
+[36m[1m[INFO][IsaacLab]: Logging to file: /tmp/isaaclab/logs/isaaclab_2026-10-07_05-44-57.log[0m
+[36m======================================================================================[0m
+
+[33m05:44:57 [simulation_context.py] WARNING: The `enable_external_forces_every_iteration` parameter in the PhysxCfg is set to False. If you are experiencing noisy velocities, consider enabling this flag. You may need to slightly increase the number of velocity iterations (setting it to 1 or 2 rather than 0), together with this flag, to improve the accuracy of velocity updates.[0m
+Warp CUDA error 2: out of memory (in function alloc_device_async, /builds/omniverse/warp/warp/native/warp.cu:611)
+[INFO]: Base environment:
+	Environment device    : cuda:0
+	Environment seed      : 1
+	Physics step-size     : 0.005
+	Rendering step-size   : 0.02
+	Environment step-size : 0.02
+[INFO]: Time taken for scene creation : 1.167019 seconds
+[INFO]: Scene manager:  <class InteractiveScene>
+	Number of environments: 256
+	Environment spacing   : 2.5
+	Source prim name      : /World/envs/env_0
+	Global prim paths     : ['/World/ground']
+	Replicate physics     : True
+[INFO]: Starting the simulation. This may take a few seconds. Please wait...
+[INFO]: Time taken for simulation start : 0.654264 seconds
+Loading user config located at: '/home/ryu/isaacsim/isaac-sim-5.1.0/kit/data/Kit/Isaac-Sim/5.1/user.config.json'
+[Info] [carb] Logging to file: /home/ryu/isaacsim/isaac-sim-5.1.0/kit/logs/Kit/Isaac-Sim/5.1/kit_20261007_054447.log
+2026-10-06T20:44:47Z [332ms] [Warning] [omni.usd_config.extension] Enable omni.materialx.libs extension to use MaterialX
+2026-10-06T20:44:47Z [672ms] [Warning] [carb] Acquiring non optional plugin interface which is not listed as dependency: [omni::physx::IPhysxBenchmarks v1.0] (plugin: <default plugin>), by client: omni.physics.physx.plugin. Add it to CARB_PLUGIN_IMPL_DEPS() macro of a client.
+2026-10-06T20:44:48Z [823ms] [Warning] [omni.isaac.dynamic_control] omni.isaac.dynamic_control is deprecated as of Isaac Sim 4.5. No action is needed from end-users.
+
+|---------------------------------------------------------------------------------------------|
+| Driver Version: 580.159.04    | Graphics API: Vulkan
+|=============================================================================================|
+| GPU | Name                             | Active | LDA | GPU Memory | Vendor-ID | LUID       |
+|     |                                  |        |     |            | Device-ID | UUID       |
+|     |                                  |        |     |            | Bus-ID    |            |
+|---------------------------------------------------------------------------------------------|
+| 0   | NVIDIA GeForce RTX 5080          | Yes: 0 |     | 16303   MB | 10de      | 0          |
+|     |                                  |        |     |            | 2c02      | 965e7aeb.. |
+|     |                                  |        |     |            | 1         |            |
+|=============================================================================================|
+| OS: 22.04.5 LTS (Jammy Jellyfish) ubuntu, Version: 22.04.5, Kernel: 6.8.0-138-generic
+| XServer Vendor: The X.Org Foundation, XServer Version: 12101004 (1.21.1.4)
+| Processor: AMD Ryzen 9 7900X 12-Core Processor
+| Cores: 12 | Logical Cores: 24
+|---------------------------------------------------------------------------------------------|
+| Total Memory (MB): 63875 | Free Memory: 47790
+| Total Page/Swap (MB): 8191 | Free Page/Swap: 7598
+|---------------------------------------------------------------------------------------------|
+2026-10-06T20:44:55Z [8,236ms] [Warning] [omni.kvdb.plugin] Disabling key-value database because another kit process is locking it
+Traceback (most recent call last):
+  File "/home/ryu/humanoid_leg_test1/.claude/worktrees/agent-ae9d2cc9f2348a2b9/rl_walking/scripts/eval_w3.py", line 160, in <module>
+    env = gym.make(a.task, cfg=env_cfg)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ryu/IsaacLab/_isaac_sim/kit/python/lib/python3.11/site-packages/gymnasium/envs/registration.py", line 734, in make
+    env = env_creator(**env_spec_kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/envs/manager_based_rl_env.py", line 80, in __init__
+    super().__init__(cfg=cfg)
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/envs/manager_based_env.py", line 173, in __init__
+    self.sim.reset()
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/sim/simulation_context.py", line 530, in reset
+    self.render()
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/sim/simulation_context.py", line 601, in render
+    raise exception_to_raise
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/assets/asset_base.py", line 317, in _initialize_callback
+    self._initialize_impl()
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation.py", line 1581, in _initialize_impl
+    self._create_buffers()
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation.py", line 1601, in _create_buffers
+    self._instantaneous_wrench_composer = WrenchComposer(self)
+                                          ^^^^^^^^^^^^^^^^^^^^
+  File "/home/ryu/IsaacLab/source/isaaclab/isaaclab/utils/wrench_composer.py", line 51, in __init__
+    self._composed_force_b = wp.zeros((self.num_envs, self.num_bodies), dtype=wp.vec3f, device=self.device)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ryu/isaacsim/isaac-sim-5.1.0/extscache/omni.warp.core-1.8.2+lx64/warp/context.py", line 5117, in zeros
+    arr = empty(shape=shape, dtype=dtype, device=device, requires_grad=requires_grad, pinned=pinned, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ryu/isaacsim/isaac-sim-5.1.0/extscache/omni.warp.core-1.8.2+lx64/warp/context.py", line 5333, in empty
+    return warp.array(shape=shape, dtype=dtype, device=device, requires_grad=requires_grad, pinned=pinned, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ryu/isaacsim/isaac-sim-5.1.0/extscache/omni.warp.core-1.8.2+lx64/warp/types.py", line 1971, in __init__
+    self._init_new(dtype, shape, strides, device, pinned)
+  File "/home/ryu/isaacsim/isaac-sim-5.1.0/extscache/omni.warp.core-1.8.2+lx64/warp/types.py", line 2366, in _init_new
+    ptr = allocator.alloc(capacity)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ryu/isaacsim/isaac-sim-5.1.0/extscache/omni.warp.core-1.8.2+lx64/warp/context.py", line 2526, in alloc
+    raise RuntimeError(f"Failed to allocate {size_in_bytes} bytes on device '{self.device}'")
+RuntimeError: Failed to allocate 39936 bytes on device 'cuda:0'
+2026-10-06T20:44:59Z [12,509ms] [Warning] [omni.physx.plugin] USD stage detach not called, holding a loose ptr to a stage!
+2026-10-06T20:45:00Z [12,816ms] [Warning] [carb] Recursive unloadAllPlugins() detected!

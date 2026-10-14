@@ -1,0 +1,8 @@
+nbj2_16299_z_s1	W3S3dNB	2026-10-10_03-05-58_w3s3dnbj_s2_from_15800	model_16299.pt	1	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0,0,0
+nbj2_16299_f_s1	W3S3dNB	2026-10-10_03-05-58_w3s3dnbj_s2_from_15800	model_16299.pt	1	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0.06,0,0
+nbj2_16299_stop_s1	W3S3dNB	2026-10-10_03-05-58_w3s3dnbj_s2_from_15800	model_16299.pt	1	--warmup 2 --num_envs 384 --seconds 14 --delay 2 --cmd=0.06,0,0 --stop_at 8
+nbj2_16299_st_s1	W3S3dNB	2026-10-10_03-05-58_w3s3dnbj_s2_from_15800	model_16299.pt	1	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0,0,0 --gait_enable 0
+nbj2_16299_z_s2	W3S3dNB	2026-10-10_03-05-58_w3s3dnbj_s2_from_15800	model_16299.pt	2	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0,0,0
+nbj2_16299_f_s2	W3S3dNB	2026-10-10_03-05-58_w3s3dnbj_s2_from_15800	model_16299.pt	2	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0.06,0,0
+nbj2_16299_stop_s2	W3S3dNB	2026-10-10_03-05-58_w3s3dnbj_s2_from_15800	model_16299.pt	2	--warmup 2 --num_envs 384 --seconds 14 --delay 2 --cmd=0.06,0,0 --stop_at 8
+nbj2_16299_st_s2	W3S3dNB	2026-10-10_03-05-58_w3s3dnbj_s2_from_15800	model_16299.pt	2	--warmup 2 --num_envs 384 --seconds 15 --delay 2 --cmd=0,0,0 --gait_enable 0

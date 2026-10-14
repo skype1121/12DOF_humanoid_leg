@@ -1,0 +1,32 @@
+03:47:17 [Stage8-12Axis] command topic = /humanoid/stage8_12axis_mit_command
+03:47:17 [Stage8-12Axis] status topic = /humanoid/stage8_12axis_mit_status
+03:47:17 [Stage8-12Axis] CAN channel = can1
+03:47:17 [Stage8-12Axis] CAN send timeout = 0.2 s
+03:47:17 [Stage8-12Axis] 요구 토크 상한 켬: 전 관절 25 N·m, 관절별 {'hip_a': 20.0} (허용 |목표−실측| = degrees(상한/kp))
+03:47:17 [Stage8-12Axis] latency options = {'feedback_after_send': False, 'feedback_wait_ms': 4.0, 'send_on_command': False, 'control_hz': 50.0, 'time_based_slew': False, 'slew_deg_per_sec': 200.0}
+03:47:17 [Stage8-12Axis] REAL_CAN_WRITE_ENABLED = True
+03:47:17 [Stage8-12Axis] ALLOWED_JOINTS = ['left_hip_f_joint', 'left_hip_a_joint', 'left_hip_r_joint', 'left_knee_joint', 'left_ankle_f_joint', 'left_ankle_r_joint', 'right_hip_f_joint', 'right_hip_a_joint', 'right_hip_r_joint', 'right_knee_joint', 'right_ankle_f_joint', 'right_ankle_r_joint']
+03:47:17 [Stage8-12Axis] 기구 고정(송신 제외·피드백 합성) = [(3, 'left_hip_r_joint'), (9, 'right_hip_r_joint')]
+03:47:17 [Stage8-12Axis] 12-axis MIT control node started
+03:48:51 [takeover] 인수 전 RX 백로그 278프레임 폐기
+03:48:51 [takeover] hold 0s 최대괴리 +0.00° (-)
+03:48:52 [takeover] hold 1s 최대괴리 -0.84° (left_hip_f_joint)
+03:48:53 [takeover] hold 2s 최대괴리 -0.84° (left_hip_f_joint)
+03:48:54 [takeover] hold 3s 최대괴리 -0.88° (left_hip_f_joint)
+03:54:19 Traceback (most recent call last):
+03:54:19   File "/home/mama/humanoid_repo/jetson/scripts/stage8_12axis_mit_control_node.py", line 2025, in <module>
+03:54:19     raise SystemExit(main())
+03:54:19   File "/home/mama/humanoid_repo/jetson/scripts/stage8_12axis_mit_control_node.py", line 2014, in main
+03:54:19     rclpy.spin(node.node)
+03:54:19   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 229, in spin
+03:54:19     executor.spin_once()
+03:54:19   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 776, in spin_once
+03:54:19     self._spin_once_impl(timeout_sec)
+03:54:19   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 765, in _spin_once_impl
+03:54:19     handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+03:54:19   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 748, in wait_for_ready_callbacks
+03:54:19     return next(self._cb_iter)
+03:54:19   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 649, in _wait_for_ready_callbacks
+03:54:19     raise ExternalShutdownException()
+03:54:19 rclpy.executors.ExternalShutdownException
+[종료] 반환코드 1

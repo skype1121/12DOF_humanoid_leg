@@ -1,0 +1,5 @@
+05:02 학습 시작 PID 3754072
+실행 디렉터리 logs/rsl_rl/biped12_stepb0/2026-10-07_04-59-14_w3S4dDb_from_s4d
+[INFO]: Loading model checkpoint from: /home/ryu/humanoid_leg_test1/.claude/worktrees/agent-ae9d2cc9f2348a2b9/logs/rsl_rl/biped12_stepb0/2026-10-07_01-53-16_w3S4d2_from_s4d/model_16299.pt
+05:33 학습 종료 model_16700.pt
+model_16798.pt

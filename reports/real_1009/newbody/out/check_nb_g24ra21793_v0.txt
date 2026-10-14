@@ -1,0 +1,110 @@
+# check_newbody_env · task Biped12-HangStand-G24RaNB-v0 · envs 1024 · seed 1 · 2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/model_21793.pt · steps 1500
+[event] startup | physics_material | isaaclab.envs.mdp.events.randomize_rigid_body_material | {'asset_cfg': "SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=['.*'], body_ids=[0, 1, 2, 3, 4, 5, 6, 7", 'static_friction_range': '(0.5, 1.1)', 'dynamic_friction_range': '(0.4, 0.9)', 'restitution_range': '(0.0, 0.1)', 'num_buckets': '64', 'make_consistent': 'True'}
+[event] startup | add_base_mass | isaaclab.envs.mdp.events.randomize_rigid_body_mass | {'asset_cfg': "SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=['base'], body_ids=[0], object_collectio", 'mass_distribution_params': '(0.0, 0.5)', 'operation': 'add'}
+[event] startup | base_com | isaaclab.envs.mdp.events.randomize_rigid_body_com | {'asset_cfg': "SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=['base'], body_ids=[0], object_collectio", 'com_range': "{'x': (-0.02, 0.02), 'y': (-0.01, 0.01), 'z': (0.0, 0.05)}"}
+[event] startup | actuator_gains | isaaclab.envs.mdp.events.randomize_actuator_gains | {'asset_cfg': "SceneEntityCfg(name='robot', joint_names=['.*'], joint_ids=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=None, body_ids=slice(No", 'stiffness_distribution_params': '(0.85, 1.1)', 'damping_distribution_params': '(0.8, 1.2)', 'operation': 'scale'}
+[event] startup | joint_friction | isaaclab.envs.mdp.events.randomize_joint_parameters | {'asset_cfg': "SceneEntityCfg(name='robot', joint_names=['.*'], joint_ids=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=None, body_ids=slice(No", 'friction_distribution_params': '(0.0, 0.1)', 'operation': 'abs'}
+[event] startup | joint_armature | isaaclab.envs.mdp.events.randomize_joint_parameters | {'asset_cfg': "SceneEntityCfg(name='robot', joint_names=['.*'], joint_ids=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=None, body_ids=slice(No", 'armature_distribution_params': '(0.5, 1.5)', 'operation': 'scale'}
+[event] startup | link_mass_calib | isaaclab.envs.mdp.events.randomize_rigid_body_mass | {'asset_cfg': "SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=['.*'], body_ids=[0, 1, 2, 3, 4, 5, 6, 7", 'mass_distribution_params': '(1.0, 1.0)', 'operation': 'scale'}
+[event] startup | ankle_r_friction | isaaclab.envs.mdp.events.randomize_joint_parameters | {'asset_cfg': "SceneEntityCfg(name='robot', joint_names=['.*_ankle_r_joint'], joint_ids=[10, 11], fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=None, body_ids=slice(None, None, None),", 'friction_distribution_params': '(0.1, 0.6)', 'operation': 'abs'}
+[event] startup | joint_limits_config | rl_walking.mdp_hang.set_joint_limits_from_config | {'config_path': '/home/ryu/humanoid_leg_test1/config/joint_limits_12dof.json'}
+[event] startup | step_assist | rl_walking.mdp_hang.install_step_assist | {'ref_path': '/home/ryu/humanoid_leg_test1/reports/gen_step/ref_step_primitive_flex.npz', 'lead_ticks': '6', 'alpha0': '0.0'}
+[event] startup | nb_link_inertials | rl_walking.newbody_1009.nb_apply_link_inertials | {'urdf_path': '/home/ryu/humanoid_leg_test1/rl_walking/assets/biped12_final3_hiprpla.urdf', 'links': "('left_hip_a_joint', 'right_hip_a_joint', 'left_hip_r_joint', 'right_hip_r_joint')"}
+[event] startup | nb_lock_startup | rl_walking.newbody_1009.nb_lock_joints_startup | {'joint_names': "('left_hip_r_joint', 'right_hip_r_joint')", 'offset_deg': '(-2.0, 2.0)', 'band_deg': '0.0'}
+[event] reset | base_external_force_torque | isaaclab.envs.mdp.events.apply_external_force_torque | {'asset_cfg': "SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=['base'], body_ids=[0], object_collectio", 'force_range': '(0.0, 0.0)', 'torque_range': '(-0.0, 0.0)'}
+[event] reset | reset_base | isaaclab.envs.mdp.events.reset_root_state_uniform | {'pose_range': "{'x': (-0.3, 0.3), 'y': (-0.3, 0.3), 'yaw': (-3.14, 3.14), 'roll': (-0.035, 0.035), 'pitch': (-0.05, 0.05), 'z': (0.0, 0.01)}", 'velocity_range': "{'x': (0.0, 0.0), 'y': (0.0, 0.0), 'z': (0.0, 0.0), 'roll': (0.0, 0.0), 'pitch': (0.0, 0.0), 'yaw': (0.0, 0.0)}"}
+[event] reset | reset_robot_joints | isaaclab.envs.mdp.events.reset_joints_by_offset | {'position_range': '(-0.02, 0.02)', 'velocity_range': '(0.0, 0.0)'}
+[event] reset | calib_bias | rl_walking.mdp_stage4.resample_calib_bias | {'joint_bias_rad': '(-0.0175, 0.0175)', 'imu_tilt_rad': '(-0.026, 0.026)', 'imu_roll_rad': '(-0.026, 0.026)', 'ankle_bias_rad': '(-0.0175, 0.0175)', 'knee_bias_rad': '(-0.0175, 0.0175)', 'imu_lag_steps': '(0, 3)'}
+[event] reset | stance_asym | rl_walking.mdp_stage4.reset_stance_asymmetry | {'fore_aft_m': '(-0.03, 0.03)', 'yaw_rad': '(-0.087, 0.087)'}
+[event] reset | hang_support_reset | rl_walking.mdp_hang.hang_support_reset | {'r0_range': '(0.0, 0.0)', 'hold_range': '(0.1, 0.1)', 'release_range': '(0.1, 0.2)', 'rope_len_range': '(1.0, 2.0)', 'bias_frac': '0.01', 'point_xy': '0.01', 'asset_cfg': "SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=['base'], body_ids=[0], object_collectio", 'level_gain_range': '(0.0, 0.0)', 'level_damp_range': '(0.0, 0.0)', 'ramp_rate_range': '(0.05, 0.6)', 'ramp_cap_range': '(2.0, 12.0)', 'ramp_start_range': '(1.0, 8.0)', 'ramp_sign_random': 'True'}
+[event] reset | default_pose_bias | rl_walking.mdp_hang.resample_default_pose_bias | {'hip_f_rad': '(-0.035, 0.035)', 'knee_rad': '(-0.0175, 0.0175)', 'ankle_f_rad': '(-0.01, 0.01)', 'reset_noise_rad': '0.025', 'action_term': 'joint_pos', 'asset_cfg': "SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=['base'], body_ids=[0], object_collectio", 'shared_knee_rad': '(-0.236, -0.183)', 'shared_ankle_f_rad': 'None', 'shared_hip_f_rad': '(-0.052, -0.018)'}
+[event] reset | disturbance | rl_walking.mdp_hang.disturbance_reset_g22r | {'n_range': '(1, 3)', 't0_range': '(2.0, 10.0)', 'gap_range': '(3.0, 7.0)', 'ramp_prob': '0.6', 'F_ramp_range': '(3.0, 20.0)', 'rise_range': '(1.0, 4.0)', 'hold_range': '(1.0, 3.0)', 'F_imp_range': '(5.0, 30.0)', 'dur_imp_range': '(0.2, 0.4)', 'lateral_prob': '0.3', 'lateral_scale': '0.6', 'p_active': '0.9', 'branch': 'g22r', 'stage_override': '2'}
+[event] reset | nb_lock_reset | rl_walking.newbody_1009.nb_lock_joints_reset | {}
+[event] interval | push_robot | rl_walking.mdp_hang.push_with_arm_g22 | {'velocity_range': "{'x': (-0.25, 0.25), 'y': (-0.25, 0.25)}", 'arm_s': '2.5', 'branch': 'g22r'}
+[event] interval | hang_support_step | rl_walking.mdp_hang.hang_support_step | {'asset_cfg': "SceneEntityCfg(name='robot', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=['base'], body_ids=[0], object_collectio", 'sensor_cfg': "SceneEntityCfg(name='contact_forces', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixed_tendon_ids=slice(None, None, None), body_names=['left_ankle_r_joint', 'right_a", 'threshold': '5.0'}
+[event] interval | recovery_gate | rl_walking.mdp_hang.recovery_gate_step | {'tilt_ok': '6.5', 'w_ok': '1.5', 'v_ok': '0.5', 'settle_s': '0.3', 'max_open_s': '4.0', 'lift_tilt': '3.0'}
+[event] interval | sb0 | rl_walking.mdp_hang.sb0_step | {'td_any_dir': 'True'}
+[event] interval | sbi | rl_walking.mdp_hang.sbi_step | {'ref_path': '/home/ryu/humanoid_leg_test1/reports/gen_step/ref_step_primitive_flex.npz', 'vx_foot_gain': '0.91'}
+[obs] policy | base_ang_vel | rl_walking.mdp_hang.base_ang_vel_lagged | dim (15,) | noise (-0.05, 0.05) | clip (-20.0, 20.0) | {'max_lag': '3'}
+[obs] policy | projected_gravity | rl_walking.mdp_stage4.projected_gravity_lagged | dim (15,) | noise (-0.02, 0.02) | clip None | {}
+[obs] policy | velocity_commands | isaaclab.envs.mdp.observations.generated_commands | dim (15,) | noise None | clip None | {'command_name': 'base_velocity'}
+[obs] policy | joint_pos | rl_walking.newbody_1009.nb_obs_fixed_zero | dim (60,) | noise None | clip (-10.0, 10.0) | {'func': 'encoder_joint_pos_rel_v2', 'params': '{}', 'joint_names': "('left_hip_r_joint', 'right_hip_r_joint')", 'noise': '(-0.01, 0.01)'}
+[obs] policy | joint_vel | rl_walking.newbody_1009.nb_obs_fixed_zero | dim (60,) | noise None | clip (-60.0, 60.0) | {'func': 'encoder_joint_vel_lpf', 'params': "{'beta': 0.25}", 'joint_names': "('left_hip_r_joint', 'right_hip_r_joint')", 'noise': '(-0.3, 0.3)'}
+[obs] policy | actions | rl_walking.mdp_hang.last_action_lpf | dim (60,) | noise None | clip (-10.0, 10.0) | {'action_name': 'joint_pos'}
+[obs] policy | gait_clock | rl_walking.mdp_stage4.gait_clock | dim (10,) | noise None | clip None | {'freq': '1.1'}
+[obs] policy | feet_contact | rl_walking.mdp_hang.feet_contact_real_v2 | dim (10,) | noise None | clip None | {'sensor_cfg': "SceneEntityCfg(name='contact_forces', joint_names=None, joint_ids=slice(None, None, None), fixed_tendon_names=None, fixe", 'threshold': '5.0', 'threshold_range': '(2.0, 20.0)', 'hold_ticks': '5', 'extra_delay': '1', 'tilt_off_deg': '(6.0, 20.0)'}
+[obs] policy | gyro_ema | rl_walking.mdp_hang.gyro_ema_lagged | dim (15,) | noise None | clip (-20.0, 20.0) | {'alpha': '0.1', 'noise': '0.05', 'max_lag': '3'}
+[obs] policy | joint_vel_ema | rl_walking.newbody_1009.nb_obs_fixed_zero | dim (60,) | noise None | clip (-60.0, 60.0) | {'func': 'encoder_joint_vel_ema_v2', 'params': "{'alpha': 0.1, 'noise': 0.3}", 'joint_names': "('left_hip_r_joint', 'right_hip_r_joint')", 'noise': 'None'}
+[obs] critic | base_lin_vel | isaaclab.envs.mdp.observations.base_lin_vel | dim (15,) | noise None | clip (-15.0, 15.0) | {}
+[obs] 차원 policy (320,) · 행동 12
+[reward] track_lin_vel_xy_exp | 2.0
+[reward] track_ang_vel_z_exp | 2.0
+[reward] flat_orientation_l2 | -8.0
+[reward] base_height_l2 | -2.0
+[reward] lin_vel_z_l2 | -0.2
+[reward] ang_vel_xy_l2 | -0.1
+[reward] feet_slide | -0.1
+[reward] feet_contact_forces | -0.002
+[reward] joint_deviation_hip | -0.5
+[reward] joint_deviation_ankle_roll | -0.2
+[reward] joint_vel_l2 | -0.0005
+[reward] dof_acc_l2 | -2.5e-07
+[reward] dof_torques_l2 | -0.0001
+[reward] action_rate_l2 | -0.2
+[reward] dof_pos_limits | -5.0
+[reward] undesired_contacts | -1.0
+[reward] termination_penalty | -75.0
+[reward] feet_gap | -5.0
+[reward] foot_yaw_slip | -0.5
+[reward] march_anchor | -1.0
+[reward] knee_stance_flexion | 4.0
+[reward] feet_impact | -0.01
+[reward] torque_saturation | -2.0
+[reward] feet_contact_gated | 2.0
+[reward] survive_after_release | 1.0
+[reward] hang_quiet | -0.002
+[reward] pose_symmetry | -3.0
+[reward] stance_shape | -5.0
+[reward] torso_pitch_band | -25.0
+[reward] hip_r_deviation | -3.0
+[reward] settle_quiet_bonus | 2.0
+[reward] leg_pose_deviation | -1.5
+[reward] action_rate_window | -0.06
+[reward] recovery_quality | 5.0
+[reward] recovery_event | 30.0
+[reward] feet_slide_step | -0.15
+[reward] foot_yaw_slip_step | -0.5
+[reward] action_rate_l2_step | -0.1
+[reward] swing_unload | 0.5
+[reward] swing_clearance | 1.0
+[reward] swing_progress | 0.5
+[reward] touchdown_event | 5.0
+[reward] load_accept_event | 10.0
+[reward] settle_event | 15.0
+[reward] premature_swing | -2.0
+[reward] joint_pose_reference | 1.5
+[reward] foot_position_reference | 2.0
+[reward] contact_phase_reference | 2.0
+[reward] missed_step_event | -20.0
+[reward] track_lin_vel_walk | 3.0
+[reward] track_ang_vel_walk | 1.5
+[cfg] episode_length_s 20.0 · decimation 4 · sim dt 0.005 · usd /home/ryu/humanoid_leg_test1/rl_walking/assets/usd_final3/biped12.usd
+[cfg] action scale 0.25 · delay 0-3 · slew 0.06981317007977318 · lpf (0.2, 0.4) · backlash (0.005, 0.026)
+[actuator] ak70 | ImplicitActuator | kp(env0) [129.12, 138.97, 153.88, 137.07, 161.23, 147.93, 162.58, 142.68] | kd(env0) [4.437, 4.787, 5.841, 5.9, 4.511, 4.453, 4.405, 5.689] | effort [25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0]
+[actuator] ankle_roll | ImplicitActuator | kp(env0) [138.53, 141.62] | kd(env0) [4.34, 4.612] | effort [24.0, 24.0]
+[actuator] ankle_f_play | DeadzoneCoulombImplicitActuator | kp(env0) [131.62, 131.09] | kd(env0) [5.447, 4.843] | effort [25.0, 25.0]
+[mass] 전체 질량 env 평균 16.2595 kg · 범위 16.2595–16.2595 · base 질량 범위 7.2831–7.2831 · base 뺀 합(env 범위) 8.9763–8.9763 · default_mass 합 16.2595
+[mass] left_hip_a_joint: 질량 0.89063 (env 범위 0.89063–0.89063) · com [-0.000572, -0.007162, -0.024058] · 관성 9 ['1.0677e-03', '-8.6099e-05', '4.4128e-06', '-8.6099e-05', '4.8472e-04', '-9.5157e-05', '4.4128e-06', '-9.5157e-05', '1.2010e-03']
+[mass] right_hip_a_joint: 질량 0.89063 (env 범위 0.89063–0.89063) · com [0.00051, -0.007162, -0.024059] · 관성 9 ['1.0680e-03', '8.8679e-05', '-2.6388e-06', '8.8679e-05', '4.8537e-04', '-9.5090e-05', '-2.6388e-06', '-9.5090e-05', '1.2014e-03']
+[mass] left_hip_r_joint: 질량 0.32535 (env 범위 0.32535–0.32535) · com [-0.001905, -0.025158, 0.000311] · 관성 9 ['1.6667e-03', '1.1956e-04', '9.7371e-09', '1.1956e-04', '1.8352e-04', '-2.6927e-06', '9.7352e-09', '-2.6927e-06', '1.6344e-03']
+[mass] right_hip_r_joint: 질량 0.32535 (env 범위 0.32535–0.32535) · com [0.002068, -0.025158, -0.000525] · 관성 9 ['1.6666e-03', '-1.2292e-04', '-3.9786e-07', '-1.2292e-04', '1.8317e-04', '1.5293e-05', '-3.9786e-07', '1.5293e-05', '1.6342e-03']
+[lock] hip_r 한계(env0) [[1.4402313232421875, 1.4402313232421875], [1.4019734859466553, 1.4019734859466553]]° · 한계 폭 최대 0.0000° · 한계 중심 env 범위 -1.997–2.000° · 기본자세 hip_r(env 범위) 0.000–0.000° · _nb_lock 있음
+[policy] /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stepb0/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/model_21793.pt
+[roll] 1500 스텝(30.0 s) · 유한값 예 · 스텝 평균 보상 0.15741 · 20 s 환산 157.41
+[roll] 종료 사유별 건수(100 env·s 당): time_out 831 (2.705) · base_contact 0 (0.000) · bad_orientation 79 (0.257) · base_too_low 668 (2.174)
+[roll] 낙상류 종료(time_out 제외) 747 건 = 100 env·s 당 2.432 · 끝난 에피소드 1560 개 평균 길이 13.97 s
+[roll] 보상 항별 스텝 평균(가중·dt 적용 뒤): track_lin_vel_xy_exp +0.96903 · track_ang_vel_z_exp +0.96452 · flat_orientation_l2 -0.03065 · base_height_l2 -0.00419 · lin_vel_z_l2 -0.00232 · ang_vel_xy_l2 -0.03024 · feet_slide -0.00054 · feet_contact_forces -0.01458 · joint_deviation_hip -0.04716 · joint_deviation_ankle_roll -0.01526 · joint_vel_l2 -0.00126 · dof_acc_l2 -0.00326 · dof_torques_l2 -0.05354 · action_rate_l2 -0.01043 · dof_pos_limits -0.00820 · undesired_contacts +0.00000 · termination_penalty -0.03560 · feet_gap -0.00035 · foot_yaw_slip -0.01621 · march_anchor -0.02448 · knee_stance_flexion +1.65818 · feet_impact -0.00409 · torque_saturation -0.00651 · feet_contact_gated +0.82051 · survive_after_release +1.00000 · hang_quiet +0.00000 · pose_symmetry -0.01352 · stance_shape -0.00876 · torso_pitch_band -0.03237 · hip_r_deviation -0.05297 · settle_quiet_bonus +0.54418 · leg_pose_deviation -0.16235 · action_rate_window -0.00340 · recovery_quality +0.27294 · recovery_event +0.03301 · feet_slide_step -0.00425 · foot_yaw_slip_step -0.07060 · action_rate_l2_step -0.03780 · swing_unload +0.07009 · swing_clearance +0.07691 · swing_progress +0.02371 · touchdown_event +0.06875 · load_accept_event +0.12544 · settle_event +0.11062 · premature_swing -0.01736 · joint_pose_reference +0.42144 · foot_position_reference +0.23522 · contact_phase_reference +0.88717 · missed_step_event -0.15945 · track_lin_vel_walk +0.27446 · track_ang_vel_walk +0.18609
+[lock] 고정 관절 |q−θ| 최대: 전 env 0.4196° · env 중앙값 0.0397° · 99 % 0.2531° · 관절 속도 최대 14.105 rad/s
+[obs] 정책 관측의 고정 관절 열(joint_pos·joint_vel·joint_vel_ema × 이력) |값| 최대 0.000e+00 · 다른 관절 열 |값| 최대 9.339 · 정책이 낸 고정 관절 행동 |a| 최대 2377.811
+[mass] 끝 재확인: 처음 읽음 대비 링크 질량 최대 차 0.00e+00 kg · 전체 질량 env 평균 16.2595 kg
+DONE

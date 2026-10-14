@@ -1,0 +1,271 @@
+[3gH    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H   [INFO] Using python from: /home/ryu/IsaacLab/_isaac_sim/python.sh
+[INFO][AppLauncher]: Using device: cuda:0
+[INFO][AppLauncher]: Loading experience file: /home/ryu/IsaacLab/apps/isaaclab.python.headless.kit
+Loading user config located at: '/home/ryu/isaacsim/isaac-sim-5.1.0/kit/data/Kit/Isaac-Sim/5.1/user.config.json'
+[Info] [carb] Logging to file: /home/ryu/isaacsim/isaac-sim-5.1.0/kit/logs/Kit/Isaac-Sim/5.1/kit_20261010_010155.log
+2026-10-09T16:01:55Z [0ms] [Warning] [carb.crashreporter-breakpad.plugin] [previous crash] preventing upload of minidump due to user opt-out: '/home/ryu/isaacsim/isaac-sim-5.1.0/kit/data/Kit/Isaac-Sim/5.1/7adcd3f3-d3c9-4f87-2e507dad-fe6407a6.dmp'
+2026-10-09T16:01:55Z [1ms] [Warning] [carb.crashreporter-breakpad.plugin] [previous crash] preventing upload of minidump due to user opt-out: '/home/ryu/isaacsim/isaac-sim-5.1.0/kit/data/Kit/Isaac-Sim/5.1/d7771e94-646e-4e73-c4cea1b4-3d128d1c.dmp'
+2026-10-09T16:01:55Z [1ms] [Warning] [carb.crashreporter-breakpad.plugin] [previous crash] preventing upload of minidump due to user opt-out: '/home/ryu/isaacsim/isaac-sim-5.1.0/kit/data/Kit/Isaac-Sim/5.1/1ab5e867-af12-4dc0-fe50b79f-5eccd050.dmp'
+2026-10-09T16:01:55Z [1ms] [Warning] [carb.crashreporter-breakpad.plugin] [previous crash] preventing upload of minidump due to user opt-out: '/home/ryu/isaacsim/isaac-sim-5.1.0/kit/data/Kit/Isaac-Sim/5.1/eee41d06-9cb6-432b-102702b7-a5f80dbf.dmp'
+2026-10-09T16:01:55Z [307ms] [Error] [omni.core.ITypeFactory] Circular dependency detected! Interface: omni::platforminfo::ICpuInfo requested. But plugin with an interface: /home/ryu/isaacsim/isaac-sim-5.1.0/kit/kernel/plugins/libomni.platforminfo.plugin.so is already in resolving state.
+2026-10-09T16:01:55Z [307ms] [Error] [carb] [Plugin: gpu.foundation.plugin] Dependency: [omni::platforminfo::ICpuInfo v1.0] failed to be resolved.
+2026-10-09T16:01:55Z [322ms] [Warning] [omni.usd_config.extension] Enable omni.materialx.libs extension to use MaterialX
+2026-10-09T16:01:56Z [655ms] [Warning] [carb] Acquiring non optional plugin interface which is not listed as dependency: [omni::physx::IPhysxBenchmarks v1.0] (plugin: <default plugin>), by client: omni.physics.physx.plugin. Add it to CARB_PLUGIN_IMPL_DEPS() macro of a client.
+2026-10-09T16:01:56Z [803ms] [Warning] [omni.isaac.dynamic_control] omni.isaac.dynamic_control is deprecated as of Isaac Sim 4.5. No action is needed from end-users.
+
+|---------------------------------------------------------------------------------------------|
+| Driver Version: 580.159.04    | Graphics API: Vulkan
+|=============================================================================================|
+| GPU | Name                             | Active | LDA | GPU Memory | Vendor-ID | LUID       |
+|     |                                  |        |     |            | Device-ID | UUID       |
+|     |                                  |        |     |            | Bus-ID    |            |
+|---------------------------------------------------------------------------------------------|
+| 0   | NVIDIA GeForce RTX 5080          | Yes: 0 |     | 16303   MB | 10de      | 0          |
+|     |                                  |        |     |            | 2c02      | 965e7aeb.. |
+|     |                                  |        |     |            | 1         |            |
+|=============================================================================================|
+| OS: 22.04.5 LTS (Jammy Jellyfish) ubuntu, Version: 22.04.5, Kernel: 6.8.0-138-generic
+| XServer Vendor: The X.Org Foundation, XServer Version: 12101004 (1.21.1.4)
+| Processor: AMD Ryzen 9 7900X 12-Core Processor
+| Cores: 12 | Logical Cores: 24
+|---------------------------------------------------------------------------------------------|
+| Total Memory (MB): 63875 | Free Memory: 53105
+| Total Page/Swap (MB): 8191 | Free Page/Swap: 8191
+|---------------------------------------------------------------------------------------------|
+2026-10-09T16:02:00Z [5,251ms] [Warning] [omni.kvdb.plugin] Disabling key-value database because another kit process is locking it
+[INFO]: Parsing configuration from: rl_walking.agents:Biped12Stage4PPOHoldPriorRunnerCfg
+[INFO]: Parsing configuration from: rl_walking.hang_stand_env_cfg:Biped12HangStandG11aEnvCfg
+[enc_obs] 정책 관측 엔코더 함수 = v2
+[contact_real] 정책 접촉 관측 = 실물 계약(평평·10 Hz·1틱) · v2
+[last_action_ema] 정책 last_action 관측 = EMA α0.27 (진단 전용, 배포 계약 아님)
+
+[36m======================================================================================[0m
+[36m[1m[INFO][IsaacLab]: Logging to file: /tmp/isaaclab/logs/isaaclab_2026-10-10_01-02-02.log[0m
+[36m======================================================================================[0m
+
+[33m01:02:02 [simulation_context.py] WARNING: The `enable_external_forces_every_iteration` parameter in the PhysxCfg is set to False. If you are experiencing noisy velocities, consider enabling this flag. You may need to slightly increase the number of velocity iterations (setting it to 1 or 2 rather than 0), together with this flag, to improve the accuracy of velocity updates.[0m
+[INFO]: Base environment:
+	Environment device    : cuda:0
+	Environment seed      : 2
+	Physics step-size     : 0.005
+	Rendering step-size   : 0.02
+	Environment step-size : 0.02
+[INFO]: Time taken for scene creation : 1.146519 seconds
+[INFO]: Scene manager:  <class InteractiveScene>
+	Number of environments: 384
+	Environment spacing   : 2.5
+	Source prim name      : /World/envs/env_0
+	Global prim paths     : ['/World/ground']
+	Replicate physics     : True
+[INFO]: Starting the simulation. This may take a few seconds. Please wait...
+[INFO]: Time taken for simulation start : 0.740916 seconds
+[INFO] Command Manager:  <CommandManager> contains 1 active terms.
++-------------------------------------------------+
+|               Active Command Terms              |
++-------+---------------+-------------------------+
+| Index | Name          |           Type          |
++-------+---------------+-------------------------+
+|   0   | base_velocity | Stage4V2VelocityCommand |
++-------+---------------+-------------------------+
+
+[INFO] Event Manager:  <EventManager> contains 3 active terms.
++--------------------------------------+
+| Active Event Terms in Mode: 'startup' |
++---------+----------------------------+
+|  Index  | Name                       |
++---------+----------------------------+
+|    0    | physics_material           |
+|    1    | add_base_mass              |
+|    2    | base_com                   |
+|    3    | actuator_gains             |
+|    4    | joint_friction             |
+|    5    | joint_armature             |
+|    6    | link_mass_calib            |
+|    7    | ankle_r_friction           |
+|    8    | joint_limits_config        |
++---------+----------------------------+
++---------------------------------------+
+|  Active Event Terms in Mode: 'reset'  |
++--------+------------------------------+
+| Index  | Name                         |
++--------+------------------------------+
+|   0    | base_external_force_torque   |
+|   1    | reset_base                   |
+|   2    | reset_robot_joints           |
+|   3    | calib_bias                   |
+|   4    | stance_asym                  |
+|   5    | hang_support_reset           |
+|   6    | default_pose_bias            |
++--------+------------------------------+
++-----------------------------------------------------+
+|        Active Event Terms in Mode: 'interval'       |
++-------+-------------------+-------------------------+
+| Index | Name              | Interval time range (s) |
++-------+-------------------+-------------------------+
+|   0   | hang_support_step |        (0.0, 0.0)       |
+|   1   | recovery_gate     |        (0.0, 0.0)       |
++-------+-------------------+-------------------------+
+
+[INFO] Recorder Manager:  <RecorderManager> contains 0 active terms.
++---------------------+
+| Active Recorder Terms |
++-----------+---------+
+|   Index   | Name    |
++-----------+---------+
++-----------+---------+
+
+[INFO] Action Manager:  <ActionManager> contains 1 active terms.
++------------------------------------+
+|  Active Action Terms (shape: 12)   |
++--------+-------------+-------------+
+| Index  | Name        |   Dimension |
++--------+-------------+-------------+
+|   0    | joint_pos   |          12 |
++--------+-------------+-------------+
+
+[INFO] Observation Manager: <ObservationManager> contains 2 groups.
++---------------------------------------------------------+
+| Active Observation Terms in Group: 'policy' (shape: (320,)) |
++-----------+---------------------------------+-----------+
+|   Index   | Name                            |   Shape   |
++-----------+---------------------------------+-----------+
+|     0     | base_ang_vel                    |   (15,)   |
+|     1     | projected_gravity               |   (15,)   |
+|     2     | velocity_commands               |   (15,)   |
+|     3     | joint_pos                       |   (60,)   |
+|     4     | joint_vel                       |   (60,)   |
+|     5     | actions                         |   (60,)   |
+|     6     | gait_clock                      |   (10,)   |
+|     7     | feet_contact                    |   (10,)   |
+|     8     | gyro_ema                        |   (15,)   |
+|     9     | joint_vel_ema                   |   (60,)   |
++-----------+---------------------------------+-----------+
++-------------------------------------------------------+
+| Active Observation Terms in Group: 'critic' (shape: (15,)) |
++-------------+---------------------------+-------------+
+|    Index    | Name                      |    Shape    |
++-------------+---------------------------+-------------+
+|      0      | base_lin_vel              |    (15,)    |
++-------------+---------------------------+-------------+
+
+[INFO] Termination Manager:  <TerminationManager> contains 4 active terms.
++------------------------------------+
+|      Active Termination Terms      |
++-------+-----------------+----------+
+| Index | Name            | Time Out |
++-------+-----------------+----------+
+|   0   | time_out        |   True   |
+|   1   | base_contact    |  False   |
+|   2   | bad_orientation |  False   |
+|   3   | base_too_low    |  False   |
++-------+-----------------+----------+
+
+[INFO] Reward Manager:  <RewardManager> contains 35 active terms.
++-----------------------------------------------+
+|              Active Reward Terms              |
++-------+----------------------------+----------+
+| Index | Name                       |   Weight |
++-------+----------------------------+----------+
+|   0   | track_lin_vel_xy_exp       |      2.0 |
+|   1   | track_ang_vel_z_exp        |      2.0 |
+|   2   | flat_orientation_l2        |     -8.0 |
+|   3   | base_height_l2             |     -2.0 |
+|   4   | lin_vel_z_l2               |     -0.2 |
+|   5   | ang_vel_xy_l2              |     -0.1 |
+|   6   | feet_slide                 |     -0.1 |
+|   7   | feet_contact_forces        |   -0.002 |
+|   8   | joint_deviation_hip        |     -0.5 |
+|   9   | joint_deviation_ankle_roll |     -0.2 |
+|   10  | joint_vel_l2               |  -0.0005 |
+|   11  | dof_acc_l2                 | -2.5e-07 |
+|   12  | dof_torques_l2             |  -0.0001 |
+|   13  | action_rate_l2             |     -0.2 |
+|   14  | dof_pos_limits             |     -5.0 |
+|   15  | undesired_contacts         |     -1.0 |
+|   16  | termination_penalty        |    -10.0 |
+|   17  | feet_gap                   |     -5.0 |
+|   18  | foot_yaw_slip              |     -0.5 |
+|   19  | march_anchor               |     -1.0 |
+|   20  | knee_stance_flexion        |      4.0 |
+|   21  | feet_impact                |    -0.01 |
+|   22  | torque_saturation          |     -2.0 |
+|   23  | feet_contact_gated         |      2.0 |
+|   24  | survive_after_release      |      1.0 |
+|   25  | hang_quiet                 |   -0.002 |
+|   26  | pose_symmetry              |     -3.0 |
+|   27  | stance_shape               |     -5.0 |
+|   28  | torso_pitch_band           |    -25.0 |
+|   29  | hip_r_deviation            |     -3.0 |
+|   30  | settle_quiet_bonus         |      2.0 |
+|   31  | leg_pose_deviation         |     -1.5 |
+|   32  | action_rate_window         |    -0.06 |
+|   33  | recovery_quality           |      5.0 |
+|   34  | recovery_event             |     30.0 |
++-------+----------------------------+----------+
+
+[INFO] Curriculum Manager:  <CurriculumManager> contains 0 active terms.
++----------------------+
+| Active Curriculum Terms |
++-----------+----------+
+|   Index   | Name     |
++-----------+----------+
++-----------+----------+
+
+[limits] config → {'left_ankle_f_joint': (-22.0, 39.0, -45.0, 40.0), 'right_ankle_f_joint': (-39.0, 18.5, -40.0, 45.0)}
+[INFO]: Completed setting up the environment...
+[link_urdf] 링크 교체(biped12_final3_hiprpla.urdf) | left_hip_a_joint 종전: 질량 0.96740 · com [0.00019, -0.01516, -0.02374, 0.02565, 0.00926, -0.00742, 0.9996] · 관성 고유값 ['8.7750e-04', '2.0320e-03', '2.1739e-03'] · 관성 9 ['2.032e-03', '-1.779e-05', '1.663e-06', '-1.779e-05', '8.812e-04', '-6.625e-05', '1.663e-06', '-6.625e-05', '2.170e-03'] || right_hip_a_joint 종전: 질량 0.96740 · com [-0.00025, -0.01516, -0.02374, 0.02559, -0.00365, 0.00891, 0.99963] · 관성 고유값 ['8.7737e-04', '2.0321e-03', '2.1738e-03'] · 관성 9 ['2.032e-03', '2.081e-05', '9.385e-08', '2.081e-05', '8.811e-04', '-6.617e-05', '9.385e-08', '-6.617e-05', '2.170e-03'] || left_hip_r_joint 종전: 질량 0.93635 · com [-0.0007, 0.00154, 0.00012, 9e-05, -0.0015, 0.02897, 0.99958] · 관성 고유값 ['7.8174e-04', '2.5345e-03', '2.5722e-03'] · 관성 9 ['2.566e-03', '1.035e-04', '1.234e-07', '1.035e-04', '7.878e-04', '-1.701e-07', '1.234e-07', '-1.701e-07', '2.535e-03'] || right_hip_r_joint 종전: 질량 0.93635 · com [0.00068, 0.00154, 6e-05, -0.00197, 0.00579, -0.02924, 0.99955] · 관성 고유값 ['7.8165e-04', '2.5346e-03', '2.5723e-03'] · 관성 9 ['2.566e-03', '-1.044e-04', '6.619e-09', '-1.044e-04', '7.878e-04', '7.516e-06', '6.619e-09', '7.516e-06', '2.535e-03'] || left_hip_a_joint 적용 뒤 읽음: 질량 0.89063(목표 0.89063276) 일치 · com [-0.00057, -0.00716, -0.02406, 0.0671, 0.06074, -0.06552, 0.99374] 일치 · 관성 9 ['1.068e-03', '-8.610e-05', '4.413e-06', '-8.610e-05', '4.847e-04', '-9.516e-05', '4.413e-06', '-9.516e-05', '1.201e-03'] · 고유값 ['4.6045e-04', '1.0778e-03', '1.2152e-03'] vs URDF ['4.6045e-04', '1.0778e-03', '1.2152e-03'] 일치 || right_hip_a_joint 적용 뒤 읽음: 질량 0.89063(목표 0.89063276) 일치 · com [0.00051, -0.00716, -0.02406, 0.06696, -0.0561, 0.06802, 0.99385] 일치 · 관성 9 ['1.068e-03', '8.868e-05', '-2.639e-06', '8.868e-05', '4.854e-04', '-9.509e-05', '-2.639e-06', '-9.509e-05', '1.201e-03'] · 고유값 ['4.6032e-04', '1.0792e-03', '1.2153e-03'] vs URDF ['4.6032e-04', '1.0792e-03', '1.2153e-03'] 일치 || left_hip_r_joint 적용 뒤 읽음: 질량 0.32535(목표 0.32534972) 일치 · com [-0.00191, -0.02516, 0.00031, 0.00082, 0.00248, 0.03995, 0.9992] 일치 · 관성 9 ['1.667e-03', '1.196e-04', '9.737e-09', '1.196e-04', '1.835e-04', '-2.693e-06', '9.735e-09', '-2.693e-06', '1.634e-03'] · 고유값 ['1.7394e-04', '1.6344e-03', '1.6763e-03'] vs URDF ['1.7394e-04', '1.6344e-03', '1.6763e-03'] 일치 || right_hip_r_joint 적용 뒤 읽음: 질량 0.32535(목표 0.32534972) 일치 · com [0.00207, -0.02516, -0.00053, -0.0044, 0.01963, -0.04113, 0.99895] 일치 · 관성 9 ['1.667e-03', '-1.229e-04', '-3.979e-07', '-1.229e-04', '1.832e-04', '1.529e-05', '-3.979e-07', '1.529e-05', '1.634e-03'] · 고유값 ['1.7290e-04', '1.6343e-03', '1.6768e-03'] vs URDF ['1.7290e-04', '1.6343e-03', '1.6768e-03'] 일치 | 전체 질량 env 평균 17.6350→16.2595 kg (범위 16.259–16.259)
+[lock] 고정 ['left_hip_r_joint', 'right_hip_r_joint'] ids [4, 5] · 목표(env0) [0.0, 0.0]° ± 0.0° · 종전 한계(env0) [[-30.000001907348633, 30.000001907348633], [-30.000001907348633, 30.000001907348633]]° · 리셋 직후 어긋남 최대 [1.4304097890853882, 1.431626319885254]° → 목표로 놓음
+--------------------------------------------------------------------------------
+Resolved observation sets: 
+	 policy :  ['policy']
+	 critic :  ['policy', 'critic']
+--------------------------------------------------------------------------------
+Actor MLP: MLP(
+  (0): Linear(in_features=320, out_features=512, bias=True)
+  (1): ELU(alpha=1.0)
+  (2): Linear(in_features=512, out_features=256, bias=True)
+  (3): ELU(alpha=1.0)
+  (4): Linear(in_features=256, out_features=128, bias=True)
+  (5): ELU(alpha=1.0)
+  (6): Linear(in_features=128, out_features=12, bias=True)
+)
+Critic MLP: MLP(
+  (0): Linear(in_features=335, out_features=512, bias=True)
+  (1): ELU(alpha=1.0)
+  (2): Linear(in_features=512, out_features=256, bias=True)
+  (3): ELU(alpha=1.0)
+  (4): Linear(in_features=256, out_features=128, bias=True)
+  (5): ELU(alpha=1.0)
+  (6): Linear(in_features=128, out_features=1, bias=True)
+)
+--------------------------------------------------------------------------------
+Resolved observation sets: 
+	 policy :  ['policy']
+	 critic :  ['policy', 'critic']
+--------------------------------------------------------------------------------
+Actor MLP: MLP(
+  (0): Linear(in_features=320, out_features=512, bias=True)
+  (1): ELU(alpha=1.0)
+  (2): Linear(in_features=512, out_features=256, bias=True)
+  (3): ELU(alpha=1.0)
+  (4): Linear(in_features=256, out_features=128, bias=True)
+  (5): ELU(alpha=1.0)
+  (6): Linear(in_features=128, out_features=12, bias=True)
+)
+Critic MLP: MLP(
+  (0): Linear(in_features=335, out_features=512, bias=True)
+  (1): ELU(alpha=1.0)
+  (2): Linear(in_features=512, out_features=256, bias=True)
+  (3): ELU(alpha=1.0)
+  (4): Linear(in_features=256, out_features=128, bias=True)
+  (5): ELU(alpha=1.0)
+  (6): Linear(in_features=128, out_features=1, bias=True)
+)
+[switch] 주 정책 /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-10-02_21-23-08_g21a/model_11300.pt ↔ 회복 정책 /home/ryu/humanoid_leg_test1/logs/rsl_rl/biped12_stage4/2026-10-04_10-08-41_g24ra_seed1_from_w2e20294/model_21793.pt · 켜기 [3.0, 0.5] · 끄기 [1.5, 0.3, 1.0, 0.4]
+Traceback (most recent call last):
+  File "/home/ryu/humanoid_leg_test1/rl_walking/scripts/eval_ground_recovery_lock.py", line 673, in <module>
+    assert _lzs % J == 0, (_lzn, _lzs)
+                  ^
+NameError: name 'J' is not defined
+2026-10-09T16:02:05Z [9,787ms] [Warning] [omni.physx.plugin] USD stage detach not called, holding a loose ptr to a stage!
+2026-10-09T16:02:05Z [10,102ms] [Warning] [carb] Recursive unloadAllPlugins() detected!

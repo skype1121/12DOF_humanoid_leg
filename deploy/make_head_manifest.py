@@ -421,7 +421,7 @@ def build(args):
             org = history_origin(e["path"], e["jetson"])
             if org is None and os.path.isfile(os.path.join(REPO, "deploy/cand/c5krh_1007", os.path.basename(e["path"]))) \
                     and md5_file(os.path.join(REPO, "deploy/cand/c5krh_1007", os.path.basename(e["path"]))) == e["jetson"]:
-                org = "8af2f6e5 + 1007 krh 패치(deploy/cand/c5krh_1007)"
+                org = "e7710c63 + 1007 krh 패치(deploy/cand/c5krh_1007)"
             if org is None:
                 raise SystemExit(f"[중단] {e['path']}: 젯슨 판({e['jetson'][:8]})이 git 이력에 없다 — 젯슨 로컬 수정본일 수 있어 덮어쓰지 않는다."
                                  " 확인 뒤 인벤토리를 갱신하거나 이 파일을 묶음에서 빼라")

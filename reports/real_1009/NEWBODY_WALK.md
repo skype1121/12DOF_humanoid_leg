@@ -223,7 +223,7 @@ ob = 원래 몸(`W3S3d`), nb = 새 몸(`W3S3dNB`). 낙상 괄호 = 95 % Wilson. 
 - 종합(정정 정의 적용 시): J2 = T1·T2·T3·T4 통과. J1 = T2 미달(지연 4 에서 끝내 못 켠 걷기 1 건) 그대로.
 - 120 s 요 누적 84–109° 는 그대로 남는 사실이다(허용 여부는 사용자 결정).
 
-## 12. 키 등록안 — 격리 브랜치 `claude2-nbj-key`(커밋 1b750c10, 워크트리 `/home/ryu/h2_nbj`) · **병합·배포 없음** (2026-10-10 05:23 — 처음에 05:40 으로 잘못 적은 것을 시계로 정정)
+## 12. 키 등록안 — 격리 브랜치 `claude2-nbj-key`(커밋 0cbf0286, 워크트리 `/home/ryu/h2_nbj`) · **병합·배포 없음** (2026-10-10 05:23 — 처음에 05:40 으로 잘못 적은 것을 시계로 정정)
 T4 정정 정의에서 NBj-s2 가 통과했으므로(§11.6) 걷기 = NBj-s2 로 등록안을 만들었다. 본 작업 트리의 배포 모듈은 건드리지 않았다.
 - 새 키: 걷기 `stand_w3s3dnbj2_16299`(run_rel = 배포 계약 폴더 `…/2026-10-10_03-05-58_w3s3dnbj_s2_from_15800/deploy_16299`) · 합성 `stand_kew3qa_g21a_g24ra_w3nbj2_16299`
   (= 현 기본 합성 키에서 걷기 키만 교체: 서기 KE G21a + G24Ra·갇힘 해소·공중·착지 G21h 그대로). 명령 한계 앞 0.03–0.06, 뒤·옆·회전 (0, 0).
@@ -244,7 +244,7 @@ T4 정정 정의에서 NBj-s2 가 통과했으므로(§11.6) 걷기 = NBj-s2 로
   parity 기록의 명령열에는 학습에 없던 옆·회전이 들어 있다(계약 대조용 — 성능 평가 아님). 합성 키의 공중 시작 구간(G21h)은 새 몸에서 시뮬 평가하지 않았다.
 
 ### 젯슨 배포 때 필요한 것(승인 뒤 — 지금은 아무것도 보내지 않았다)
-1. 코드: 브랜치 `claude2-nbj-key` 병합 → `deploy/make_head_manifest.py` 로 매니페스트 재생성 → 로컬 왕복 시험 → dry-run → 적용(기존 절차 `deploy_head_1008.sh`). 기구 고정 묶음(ff15b238)이 함께 간다.
+1. 코드: 브랜치 `claude2-nbj-key` 병합 → `deploy/make_head_manifest.py` 로 매니페스트 재생성 → 로컬 왕복 시험 → dry-run → 적용(기존 절차 `deploy_head_1008.sh`). 기구 고정 묶음(1399f522)이 함께 간다.
 2. 정책 파일(새로 보낼 것): `logs/rsl_rl/biped12_stepb0/2026-10-10_03-05-58_w3s3dnbj_s2_from_15800/deploy_16299/` 통째 —
    `exported/policy.onnx`(md5 b3dc8a72…)·`exported/policy.pt`(c5658563…)·`exported/SOURCE_CHECKPOINT`·`params/env.yaml`(계약 사본)·`README.txt`. 원 체크포인트 `model_16299.pt`(83dbc060…)는 젯슨에 필요 없다(로컬 보존).
    서기 G21a·회복 G24Ra-21793·공중 G21h2 는 이미 젯슨에 있는 것 그대로.
@@ -285,7 +285,7 @@ T4 정정 정의에서 NBj-s2 가 통과했으므로(§11.6) 걷기 = NBj-s2 로
 - 판정 표 `reports/real_1009/newbody/tr/air_nb_judge.md`(1008 판정 도구 출력), 결과 `newbody/tr/out/ground_recovery_tr{nb,ob}air_T_s*.{txt,_envs.csv}`·`log_picture/{kwloop,transall}_tr{nb,ob}air_T_s*.npz`.
 - 재지 않은 것: 명목 팔(A2·A2r1·L2·L20·L2s — 힘 모형·긴 매달림·빠른/느린 하강), 고정각 ≠ 0°, 착지 뒤 앞 걷기(제자리만), 지연 4 틱. 지지 모형은 가정이다(1008 과 같은 한계).
 
-### 14.2 구성 불일치 가드 — 브랜치 `claude2-nbj-key` 커밋 61ce92f3 (1b750c10 위에, 병합 없음)
+### 14.2 구성 불일치 가드 — 브랜치 `claude2-nbj-key` 커밋 095f324d (0cbf0286 위에, 병합 없음)
 - `w3_deploy.W3_REQUIRED_MECH_FIXED`(걷기 키 → 기구 고정이어야 하는 관절 집합; 새 몸 종종걸음 키 = 좌우 hip_r) + 브리지 `body_config_verdict`·`body_config_gate`.
   | 정책 키 | 맵 선언 없음 | 맵이 좌우 hip_r 선언 | 한쪽만·다른 관절까지 선언 |
   |---|---|---|---|

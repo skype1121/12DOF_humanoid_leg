@@ -1276,9 +1276,9 @@ def main():
     STRIP_MECH_FIXED = True
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ref", default="68493c11", help="플래그 꺼짐 노드 비트 비교 기준 커밋(감독기 도입 전)")
-    ap.add_argument("--ref-w3", default="95946e41", help="W3-A 세션 노드 비트 비교 기준 커밋(1007 명령 채널 도입 전)")
-    ap.add_argument("--ref-kew3", default="b79370ca", help="합성 플래그 꺼짐/다른 키 세션 노드 비트 비교 기준 커밋(1007 KE↔W3 합성 러너 연결 전)")
+    ap.add_argument("--ref", default="e8489de4", help="플래그 꺼짐 노드 비트 비교 기준 커밋(감독기 도입 전)")
+    ap.add_argument("--ref-w3", default="b58a39cb", help="W3-A 세션 노드 비트 비교 기준 커밋(1007 명령 채널 도입 전)")
+    ap.add_argument("--ref-kew3", default="443ef820", help="합성 플래그 꺼짐/다른 키 세션 노드 비트 비교 기준 커밋(1007 KE↔W3 합성 러너 연결 전)")
     a = ap.parse_args()
     tmp = tempfile.mkdtemp(prefix="w3node_")
     os.environ["HOME"] = tmp

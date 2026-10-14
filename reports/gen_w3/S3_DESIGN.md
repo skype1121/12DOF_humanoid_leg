@@ -36,7 +36,7 @@ W3S3h·W3S3s2 는 Isaac 설정 생성 검증을 하지 않았다(W3S3 은 지형
 | reward_landscape | `--yaw_torque 'LABEL:Tz'`(회전 대리), `[W3S3]` 행(착지 Δψ·부호·스윙/피벗 요 속도·비틀림) | 기존 옵션 불변 |
 
 ## 3. CPU 단위시험(`python3 rl_walking/scripts/unit_w3_s3.py` — 실패 0, `unit_w3_s2.py` 도 계속 실패 0)
-- **[A] 비트 동일**: 바뀐 기존 함수는 install_w3_cmd·w3_gait_update 둘뿐이다(AST, 기준 68493c11).
+- **[A] 비트 동일**: 바뀐 기존 함수는 install_w3_cmd·w3_gait_update 둘뿐이다(AST, 기준 e8489de4).
   - install_w3_cmd S0·S1·S1b/c·S1d·S2: 40 회 리샘플 결과가 같다.
   - gait_update: 400 틱(vy·wz ≠ 0, lead_vy 0/0.02) 결과가 같다.
   - Stage 2 합성 궤적: (vx, vy) 5 종 × 양발 × 요 32 종, 발 요 ±17° 포함. 회전 추적기를 함께 돌려도 `_w3`·`_w3lat`·stride·stride2·폭 벌점이 torch.equal 이고, 회전 보상은 0 이다.

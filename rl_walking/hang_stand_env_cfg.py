@@ -1558,7 +1558,7 @@ class Biped12HangStandG15wEnvCfg(Biped12HangStandG12EnvCfg):
 
 @configclass
 class Biped12HangStandG15dEnvCfg(Biped12HangStandG12EnvCfg):
-    """G15d: **액션 지연 9–14 → 0–14 틱** 단일 변경. stage8 적체 수정(1f67f48) 뒤 실물 루프 ≈ 시뮬 지연 0–1틱(추정, 실물 재측정 전).
+    """G15d: **액션 지연 9–14 → 0–14 틱** 단일 변경. stage8 적체 수정(1e31a27) 뒤 실물 루프 ≈ 시뮬 지연 0–1틱(추정, 실물 재측정 전).
     G12(9–14 학습)가 지연 1·3틱에서 오히려 가장 안정했으므로 긴 지연은 유지하고 짧은 쪽만 넓힌다."""
 
     def __post_init__(self):

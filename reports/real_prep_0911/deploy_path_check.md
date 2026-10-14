@@ -1,11 +1,11 @@
 # 배포 경로 정합성 & 롤백 점검 (item 7/8)
 
-- 작성 2026-09-11 22:55 KST · 저장소 `/home/ryu/humanoid_leg_test1` · 브랜치 `hang2stand-prep-0911` · HEAD `258229a`
+- 작성 2026-09-11 22:55 KST · 저장소 `/home/ryu/humanoid_leg_test1` · 브랜치 `hang2stand-prep-0911` · HEAD `19528d0`
 - 실행한 것: 로컬 파일 읽기·md5·tar 목록(추출 없음)·CPU 전용 selftest 2종·CPU torch 가중치 대조
 - **실행하지 않은 것: ssh·젯슨 접촉·Isaac/GPU·기존 파일 수정.** 젯슨 상태는 전부 UNKNOWN(로컬 산출물에서 추론만)
 - 태그 규칙: **MEASURED**(원자료에서 직접) / **COMPUTED**(계산식 명시) / **HYPOTHESIS**(반증 안 된 추정)
 - 압력패드 유래 수치(`foot_n`·`pct`·`raw_sum`·CoP)는 전부 **비교정 진단값(uncalibrated diagnostic)** — 하중으로 읽지 않는다. 접촉 비트만 판정용.
-- ⚠ 감사 도중 저장소가 움직였다: 세션 시작 스냅샷은 HEAD `1aaedb1` + 더티 트리(`deploy_package.sh`·`operator_console.py` 수정, 콘솔 3파일 untracked)였고, 22:51 에 `8489315`·`258229a` 가 커밋되며 전부 트래킹됐다. 아래는 **`258229a` 기준**.
+- ⚠ 감사 도중 저장소가 움직였다: 세션 시작 스냅샷은 HEAD `81f8980` + 더티 트리(`deploy_package.sh`·`operator_console.py` 수정, 콘솔 3파일 untracked)였고, 22:51 에 `8489315`·`19528d0` 가 커밋되며 전부 트래킹됐다. 아래는 **`19528d0` 기준**.
 
 ---
 
@@ -104,7 +104,7 @@ CKPT_DEFAULT = CKPT_CHOICES[0]      # = "stand_hang_v5"
 
 ## 3. `jetson/deploy_package.sh` — 정확히 무엇을 싣는가
 
-최근 Codex 수정본(현재 `258229a`; 세션 시작 시점엔 미커밋 상태였다). **수정하지 않았다.**
+최근 Codex 수정본(현재 `19528d0`; 세션 시작 시점엔 미커밋 상태였다). **수정하지 않았다.**
 
 ### 3.1 정책 자산 (`GENS` 루프)
 `GENS=${GENS:-"stand_v15 stand_v16 stand_v17 stand_v18 stand_v18b"}` — 각 `g` 에 대해 `models/$g/meta.json` 이 있어야 하고(없으면 건너뜀), `run` 을 읽어:
@@ -198,21 +198,21 @@ models/stand_hang_v5/policy.onnx : actor.0.weight(655,360 B)·actor.6.weight 의
 **완화(MEASURED)**: `deploy_to_jetson.sh` `[3b/7]`·`[3c/7]` 가 v5 selftest·md5 로 **중단**시키므로 조용히 잘못 배포되지는 않는다. 다만 `[2/7]` MD5 는 새 MANIFEST 로 통과하므로 방어는 3b/3c 두 단계에만 의존한다.
 
 ### 5-2. **[높음] 마지막 패키지(0910_1526)가 HEAD 보다 낡았다 — 인계 워밍업 수정이 안 실려 있다** (MEASURED)
-`deploy/MANIFEST.md5`(2026-09-10 15:26, 커밋 `9c934e9`) vs 현재 워킹트리 비교 — 드리프트 5건:
+`deploy/MANIFEST.md5`(2026-09-10 15:26, 커밋 `47c863e`) vs 현재 워킹트리 비교 — 드리프트 5건:
 
 | 패키지 대상 파일 | MANIFEST md5 | 현재 md5 | 마지막 커밋 |
 |---|---|---|---|
-| `jetson/scripts/rl_bridge_node.py` | `423706aa` | `57ce5fb1` | `2a88452` 09-11 21:31 (stand 직후 `sensor_stale` tick-1 오정지 수정 = **인계 워밍업**) |
+| `jetson/scripts/rl_bridge_node.py` | `423706aa` | `57ce5fb1` | `42b1e6b` 09-11 21:31 (stand 직후 `sensor_stale` tick-1 오정지 수정 = **인계 워밍업**) |
 | `jetson/scripts/operator_console.py` | `fda3157a` | `b2d3e26c` | `8489315` 09-11 22:51 (Codex 리뉴얼) |
-| `jetson/scripts/foot_force_adapter_node.py` | `071a0d57` | `b715d63d` | `1a18b8f` 09-11 15:10 (per-foot npc 스케일) |
-| `rl_walking/__init__.py` | `67f67d55` | `38f3f2d0` | `ededc14` 09-11 03:14 (케이블 지지 모델) |
-| `docs/A1_stand_hang_v5_실행카드.md` | `8e61b810` | `5a35627c` | `fc431f9` 09-10 20:51 |
+| `jetson/scripts/foot_force_adapter_node.py` | `071a0d57` | `b715d63d` | `71819ff` 09-11 15:10 (per-foot npc 스케일) |
+| `rl_walking/__init__.py` | `67f67d55` | `38f3f2d0` | `0589184` 09-11 03:14 (케이블 지지 모델) |
+| `docs/A1_stand_hang_v5_실행카드.md` | `8e61b810` | `5a35627c` | `99a2994` 09-10 20:51 |
 
 + 패키지 목록에 새로 추가된 4파일(`console_state.py`·`console_demo.py`·`console_ui.html`·`operator_console_renewal.md`)은 MANIFEST 에 아예 없다.
 **HYPOTHESIS**: 젯슨이 0910_1526 패키지 상태라면 **tick-1 오정지 수정이 없는 브리지**로 A1 을 돌게 된다. 젯슨 실제 상태는 UNKNOWN.
 
 ### 5-3. **[높음] 콘솔 기본 정책이 젯슨에 실제로 복사됐는지 MANIFEST 로 증명되지 않는다** (MEASURED + HYPOTHESIS)
-커밋 `8a2d7f0`(09-10 15:33) 이 `CKPT_CHOICES` 첫 항목을 `stand_v18b` → `stand_hang_v5` 로 바꿨다. 메시지는 "젯슨 사본 갱신·**MANIFEST 항목 갱신**·콘솔 재기동". 그러나 **MEASURED: 그 커밋은 `operator_console.py` 한 파일만 바꿨고(`git show --stat`), `deploy/MANIFEST.md5` 는 건드리지 않았다.** MANIFEST 의 콘솔 md5 `fda3157a` 는 **그 직전 커밋 `56cb903` 의 콘솔**(기본값 `stand_v18b`)이고, 0910_1431·0910_1526 두 tar 안의 콘솔도 동일하게 `fda3157a` 다.
+커밋 `992d1a7`(09-10 15:33) 이 `CKPT_CHOICES` 첫 항목을 `stand_v18b` → `stand_hang_v5` 로 바꿨다. 메시지는 "젯슨 사본 갱신·**MANIFEST 항목 갱신**·콘솔 재기동". 그러나 **MEASURED: 그 커밋은 `operator_console.py` 한 파일만 바꿨고(`git show --stat`), `deploy/MANIFEST.md5` 는 건드리지 않았다.** MANIFEST 의 콘솔 md5 `fda3157a` 는 **그 직전 커밋 `ddcd80f` 의 콘솔**(기본값 `stand_v18b`)이고, 0910_1431·0910_1526 두 tar 안의 콘솔도 동일하게 `fda3157a` 다.
 → 젯슨에 기본값 v5 콘솔이 **수동 scp** 로만 올라갔다면, 젯슨에서 `md5sum -c deploy/MANIFEST.md5` 는 `./jetson/scripts/operator_console.py` 줄에서 **FAILED** 가 나고, 같은 패키지의 재배포는 `[2/7]` 에서 중단된다. (젯슨 미확인 → HYPOTHESIS.)
 
 ### 5-4. **[높음] 콘솔 드롭다운 4개는 패키지로 만들 수 없는 세대다** (MEASURED)
@@ -248,7 +248,7 @@ runner.load(resume_path); policy = runner.get_inference_policy(device=dev)
 뒤의 두 개는 `deploy_package.sh` 파일 목록에 **없다** → 배포로 갱신되지도, MANIFEST 로 검증되지도 않는다. 하필 `zero_anchor.py` 는 CLAUDE.md 가 "가장 위험한 쓰기"로 규정한 영점 재앵커 도구이고, `stage8_12axis_mit_control_node.py` 는 CAN 으로 모터를 구동하는 노드다. (구 콘솔도 동일하게 불렀다 — **신규 결함 아님**, 기존 사각지대.)
 `~/rl_calib/` 쪽 호출(`can_up.sh`·`sensors_up.sh`·`stage8_cmd.py`·`hang_stand.py`)은 설계상 젯슨 로컬 자산이며 `release_all.py`·`boot_pose_check.py` 만 `deploy_to_jetson.sh` 가 갱신한다.
 
-### 5-10. **[중간] 콘솔 리뉴얼이 selftest 가드 3개를 떨어뜨렸다** (MEASURED — `1aaedb1` vs `258229a` 대조)
+### 5-10. **[중간] 콘솔 리뉴얼이 selftest 가드 3개를 떨어뜨렸다** (MEASURED — `81f8980` vs `19528d0` 대조)
 구판 `selftest()` 에 있었고 신판에 없는 검사:
 - `if CKPT_DEFAULT != "stand_hang_v5": fails.append(...)` — **승윤님 확정 데뷔 정책 고정핀**
 - `⑤ 경로 실재 확인` — `~/rl_calib`, `jetson/scripts` 디렉토리 존재(= 젯슨 배치 확인)
@@ -379,7 +379,7 @@ CLAUDE.md 는 "판정 1순위는 발력 총합 %" 라고 못박고 있어, **카
 ## 7. 권고 (승윤님 결정 대기, 본 감사에서는 아무것도 바꾸지 않음)
 
 1. `deploy_package.sh` 의 `GENS` 기본값을 현행 배포 세트(`stand_v18b stand_hang_v4 stand_hang_v5`)로 맞추거나, 기본값 사용 시 **명시 실패**시킨다 (§5-1).
-2. HEAD 기준으로 패키지를 **재조립**한다 — 인계 워밍업 수정(`2a88452`)·콘솔 리뉴얼·어댑터 per-foot 스케일이 전부 미배포다 (§5-2).
+2. HEAD 기준으로 패키지를 **재조립**한다 — 인계 워밍업 수정(`42b1e6b`)·콘솔 리뉴얼·어댑터 per-foot 스케일이 전부 미배포다 (§5-2).
 3. 패키지에 `models/<gen>/meta.json` 을 함께 실어 젯슨이 **자력으로 provenance 를 답할 수 있게** 한다 (§3.1).
 4. `deploy_to_jetson.sh` `[3c/7]` 의 md5 대조를 `policy.onnx` 까지 확장하고, 실제 선택된 백엔드를 로그로 남긴다 (§5-8).
 5. 콘솔 `CKPT_CHOICES` 에서 `models/` 레지스트리가 없는 4개(`stand_v7/v8/v9/march_v5b`)를 제거한다 (§5-4).

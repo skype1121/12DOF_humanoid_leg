@@ -8,9 +8,9 @@ a5fa5daded4c1414023155959dc87af8  ./config/sim_joint_limits.json
 b3a81341c71d3e3876f03aa116743df2  ./config/sim_walk_params.json
 40b97b1fd605a7b3ad7870002cd1c3f8  ./deploy/MANIFEST.md5
 89e76dedf8c53f6d35925b5f44fb7a73  ./deploy/cand/head_1008/OPERATOR_COMMANDS.md
-2ddfc1e75480add425ea213663c49670  ./deploy/cand/head_1008/ref_bridge/rl_bridge_node.68493c11.ref
-621cb77f26014ed7a7469d0666768064  ./deploy/cand/head_1008/ref_bridge/rl_bridge_node.95946e41.ref
-9d78084d26824d1e3d043811d9c7eeb9  ./deploy/cand/head_1008/ref_bridge/rl_bridge_node.b79370ca.ref
+2ddfc1e75480add425ea213663c49670  ./deploy/cand/head_1008/ref_bridge/rl_bridge_node.e8489de4.ref
+621cb77f26014ed7a7469d0666768064  ./deploy/cand/head_1008/ref_bridge/rl_bridge_node.b58a39cb.ref
+9d78084d26824d1e3d043811d9c7eeb9  ./deploy/cand/head_1008/ref_bridge/rl_bridge_node.443ef820.ref
 40edb00b9d06bde97f39f2b12efb1e09  ./deploy/cand/head_1008/selftest_w3_node_refs.py
 5a921c923a9e77bd81cc82d8ddc99d2b  ./deploy/head_1008.VERSION
 8f4373d380d9e07a97408a69f3e3acdc  ./deploy/head_1008.md5

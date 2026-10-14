@@ -20,7 +20,7 @@ HTURN2(rl_walking/deploy/hturn2.py)와 같은 방식: 러너는 `w3=None`(기본
       → 서기(ge 0, 램프 끝) = (0, 0). 램프 내림 중에는 u = 0 이므로 (0, ge_obs).
   (c) 명령: Stage 0 = velocity_commands (0,0,0) + gait_enable. ge 는 관측에 따로 들어가지 않는다(클록 게이트로만 보인다).
   (d) 행동 체인 = 기존 stand 계열과 같음(러너 target → 러너 슬루 → 브리지 LPF β0.27 → 노드 슬루). W3 보조(assist)·참조(ref)는
-      배포에 없다 — W3-A 400 은 보조 α 0·참조 0 평가 통과(LOG a8a5db22). 이 모듈에 행동 잔차는 없다.
+      배포에 없다 — W3-A 400 은 보조 α 0·참조 0 평가 통과(LOG 6b976e9e). 이 모듈에 행동 잔차는 없다.
 
 틱 대응(러너 n번째 호출 = env episode_length_buf n): 관측 n 은 그 틱의 want_n 으로 래치를 한 번 갱신한 뒤 조립한다
 (ManagerBasedRLEnv.step: buf+1 → 리셋 → command.compute(_ge_cmd 갱신) → interval(w3_gait_update) → 관측).

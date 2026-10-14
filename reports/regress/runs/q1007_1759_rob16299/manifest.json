@@ -45,7 +45,7 @@
  "started": "2026-10-07 17:59:22",
  "code": {
   "worktree": "/home/ryu/humanoid_leg_test1",
-  "head": "fa0cd415876b8fdfabb7577ab6d04d389c87dfeb",
+  "head": "e2bb489c143eb4334765010b36db1a5895b0d853",
   "branch": "hang2stand-prep-0911",
   "dirty": [
    "?? reports/regress/runs/q1007_1759_rob16299/"

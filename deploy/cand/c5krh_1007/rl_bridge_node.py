@@ -272,7 +272,7 @@ CHECKPOINTS = {
     "stand_crouch_g12": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported"),
     # stand_crouch_g12_ema0 (1001) — **같은 정책 파일**, 관측 joint_vel_ema 만 0 (CKPT_JVEL_EMA_MODE). G4~G15 는 학습 중 이 채널이
-    #   0+잡음이었다(mdp_hang 구버전 encoder_joint_vel_ema 결함, 커밋 9264b5a) → 학습 계약 복원판. 시뮬 단일 변수 대조(311쌍):
+    #   0+잡음이었다(mdp_hang 구버전 encoder_joint_vel_ema 결함, 커밋 d4421df) → 학습 계약 복원판. 시뮬 단일 변수 대조(311쌍):
     #   무외란·8 N 동일, d3 뒤 18 N 낙상 v2 52.1 % vs 학습 계약 44.7 % (McNemar p=0.019). 이름 그대로 = 0929 과 같은 동작(v2).
     "stand_crouch_g12_ema0": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported"),

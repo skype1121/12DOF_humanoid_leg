@@ -15,7 +15,7 @@ def _mod(name, path):
     sp = importlib.util.spec_from_file_location(name, path); m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m); return m
 
 
-RV3MOD = _mod("c5_switch_rv3", os.path.join(S, "c5_switch_rv3_f8e4025d.py"))      # 1004 젯슨 배포본(md5 2c8943b8 = deploy/c5_1004.md5)
+RV3MOD = _mod("c5_switch_rv3", os.path.join(S, "c5_switch_rv3_75e2d2b0.py"))      # 1004 젯슨 배포본(md5 2c8943b8 = deploy/c5_1004.md5)
 from rl_walking.deploy import c5_switch as NOW  # noqa: E402  현재 작업 트리(KE 로컬·1005 배포본과 imu 경로 비트 동일 주장 — selftest_odic_equiv [A])
 
 # 브리지 설정 사본(코드에서 읽은 값 — jetson/scripts/rl_bridge_node.py)

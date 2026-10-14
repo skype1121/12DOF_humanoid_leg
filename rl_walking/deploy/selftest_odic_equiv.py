@@ -1,6 +1,6 @@
 """1007 병목 2 odic 배포 연결 동치 검증 — PC 전용(torch CPU 필요, GPU·Isaac 불필요). 젯슨 브리지 selftest 와 별개.
 
-  python3 rl_walking/deploy/selftest_odic_equiv.py [--ref f44e8701]
+  python3 rl_walking/deploy/selftest_odic_equiv.py [--ref 8995a833]
 
 검사:
   [A] 기본(imu) 경로 비트 동일: --ref 커밋의 c5_switch.py(`git show`)를 별도 모듈로 올려, 같은 입력열(켜짐·조기 복귀·불응기·cue 포함)에서
@@ -15,7 +15,7 @@
   [C] 브리지 코어 기본 경로(--c5-settle 생략) = --ref 커밋 브리지와 비트 동일(실모델 C5 kr·C5·G21a, 기울기 펄스로 전환 포함).
   [B'] (1007 odicw) 시뮬 --settle_w 0.4 = 배포 settle w_thr 0.4: 입력열에 '다리 정지 + 몸통 진동'(양발 지지 진동 모사, 평균 0 인 자이로 3–6 Hz
       0.5–2 rad/s) 구간을 더해 |ω_xy| 조건이 실제로 조기 복귀를 막는 틱(n_w_block > 0)을 덮는다. 진동 난수는 별도 RNG(기존 [B] 입력열 불변).
-  [D] (1007) odic(w_thr 0) 배포 경로 = --ref-odic 커밋(28657c3f, odicw 도입 전) c5_switch 의 odic 와 비트 동일(진동 입력열 포함, 모드·|v̄|·블랙박스).
+  [D] (1007) odic(w_thr 0) 배포 경로 = --ref-odic 커밋(10c5b4fd, odicw 도입 전) c5_switch 의 odic 와 비트 동일(진동 입력열 포함, 모드·|v̄|·블랙박스).
       민감도 확인(1007, 수동): odicw 를 필터 전 |ω| 로 바꾼 뮤턴트를 [B'] 가 잡는지 — STOPEST §11 기록.
 """
 from __future__ import annotations
@@ -349,8 +349,8 @@ def check_bridge_off(ref):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ref", default="f44e8701")
-    ap.add_argument("--ref-odic", default="28657c3f", help="odicw 도입 전 odic 커밋([D])")
+    ap.add_argument("--ref", default="8995a833")
+    ap.add_argument("--ref-odic", default="10c5b4fd", help="odicw 도입 전 odic 커밋([D])")
     a = ap.parse_args()
     fails = 0
     for f, kw in ((check_default_bitident, dict(ref=a.ref)), (check_bridge_off, dict(ref=a.ref)),

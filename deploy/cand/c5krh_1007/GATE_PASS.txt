@@ -1,4 +1,4 @@
-# 로컬 게이트(젯슨 배포본 8af2f6e5 스냅샷 + 후보 2 파일, 1007 19:55) — 통과한 후보의 md5
+# 로컬 게이트(젯슨 배포본 e7710c63 스냅샷 + 후보 2 파일, 1007 19:55) — 통과한 후보의 md5
 15dcabf224f9bbfdc01f1017c93d101a  rl_bridge_node.py
 90b7ef283a9da1450de34d3f3da09cc2  operator_console.py
 runner: selftest: ALL PASS

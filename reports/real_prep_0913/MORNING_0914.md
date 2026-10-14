@@ -68,6 +68,6 @@
 - 정정 뒤 매달림 발바닥 자세가 바뀌므로(외번 2~4°) 착지 접촉 패턴이 달라짐 — 첫 착지에서 발력·lat 확인.
 
 ## 4. 밤사이 산출물·상태
-- 커밋: 3bd92bd → 7fac7fb → 0dd82fc → 2cdb815 → 9a31dc8 (+최종). 문서: `promotion_criteria_v7.md`(좌표계 재검토·공중 기준값 v2·지면 연성 플랜트), `PROGRESS.md`(시각순), `SUMMARY.md` §0-1(정정), 실행카드 §2.6·§2.7, 이 문서. 로그·분석 스크립트: `reports/real_prep_0913/logs_0914/`. 실물 블랙박스(0914 공중 3회): `scratchpad/real0914/`(세션 임시 → 필요 시 복사).
+- 커밋: 5c0fad7 → 9554cb9 → 882c026 → abf92b3 → 4e4e06f (+최종). 문서: `promotion_criteria_v7.md`(좌표계 재검토·공중 기준값 v2·지면 연성 플랜트), `PROGRESS.md`(시각순), `SUMMARY.md` §0-1(정정), 실행카드 §2.6·§2.7, 이 문서. 로그·분석 스크립트: `reports/real_prep_0913/logs_0914/`. 실물 블랙박스(0914 공중 3회): `scratchpad/real0914/`(세션 임시 → 필요 시 복사).
 - eval 새 옵션(커밋됨): --dump_obs, --flip_joints, --yaw_damp, --joint_offset, --dump_feet_quat, --rotor_obs/--rotor_tau, --ground_compliance. 도구: `jetson/scripts/propose_ankle_r_direction_fix.py`(--apply 없이는 쓰지 않음).
 - GPU 유휴, 실행 중 작업 없음(마지막 배터리 gc5 결과는 §1.6). 새 체크포인트 없음. 젯슨: 브리지·stage8 미기동, 맵 두 사본 roll_comp false, 어댑터만 실행 중.

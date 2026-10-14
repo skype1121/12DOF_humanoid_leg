@@ -3,7 +3,7 @@
 == [2] 로컬 원본 ↔ 계획서 md5 (deploy/head_1008.plan)
    일치 127/127 — 전송 대상 71 개(9144 KB) · 확인만 56 개 · 매니페스트 b6d9793c
    package: head_1008
-   source_commit: 385686de411ecb153fb790628d9e3178ef272d06 2026-10-08T16:44:22+09:00
+   source_commit: 2c5488f0163a617fc1d81897de2e36c00c70531d 2026-10-08T16:44:22+09:00
    source_uncommitted: none
 == [3] 로컬 selftest 게이트 (CPU 만 — GPU 를 쓰지 않는다)
    PASS 러너

@@ -3,7 +3,7 @@
 대상: 오늘 갱신된 콘솔(`jetson/scripts/operator_console.py`, `console_state.py`,
 `console_ui.html`, `console_demo.py`, `tests/test_operator_console.py`,
 `docs/operator_console_renewal.md`)과 **같은 날 따로 바뀐 브리지**
-(`jetson/scripts/rl_bridge_node.py`, 커밋 `2a88452` — stand 인계 워밍업 추가).
+(`jetson/scripts/rl_bridge_node.py`, 커밋 `42b1e6b` — stand 인계 워밍업 추가).
 
 질문: **"브리지는 살아 있지만 정책은 아직 구동 전"인 4초 창을 콘솔이 어떻게 읽는가.**
 

@@ -278,7 +278,7 @@ CHECKPOINTS = {
     "stand_crouch_g12": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported"),
     # stand_crouch_g12_ema0 (1001) — **같은 정책 파일**, 관측 joint_vel_ema 만 0 (CKPT_JVEL_EMA_MODE). G4~G15 는 학습 중 이 채널이
-    #   0+잡음이었다(mdp_hang 구버전 encoder_joint_vel_ema 결함, 커밋 9264b5a) → 학습 계약 복원판. 시뮬 단일 변수 대조(311쌍):
+    #   0+잡음이었다(mdp_hang 구버전 encoder_joint_vel_ema 결함, 커밋 d4421df) → 학습 계약 복원판. 시뮬 단일 변수 대조(311쌍):
     #   무외란·8 N 동일, d3 뒤 18 N 낙상 v2 52.1 % vs 학습 계약 44.7 % (McNemar p=0.019). 이름 그대로 = 0929 과 같은 동작(v2).
     "stand_crouch_g12_ema0": os.path.join(
         REPO, "logs/rsl_rl/biped12_stage4/2026-09-29_14-32-50_g12/exported"),
@@ -489,7 +489,7 @@ CKPT_REQUIRE_ENV_YAML = {"stand_crouch_g21a", "stand_c5_g21a_g24ra", "stand_c5kr
 # [관측 필터 act β0.27·jvel β0.25]. selftest 'G21h 키' 가 env.yaml 로 대조한다).
 # 쓰임: 합성 러너의 **"공중 ~ 착지" 구간 서기 정책**(아래 KEW3QA_CKPT_KEY 의 명세 air — 착지가 가라앉으면 종전 KE[G21a + G24Ra]로 넘긴다).
 # 기각된 구성(다시 만들지 말 것): G21h 를 서기 정책 **전체**로 바꾼 KE(G21h + G24Ra) — 공중 시작은 서지만 지면 회복(앞 램프)이 기준 미달(+8.2 %p,
-# 메인 세션 평가 1008 — kew3_runner 커밋 67a008aa·AIR_START_1008.md §9). 그래서 그 KE 키(stand_c5kr_g21h_g24ra)는 등록하지 않는다.
+# 메인 세션 평가 1008 — kew3_runner 커밋 b78a5b9f·AIR_START_1008.md §9). 그래서 그 KE 키(stand_c5kr_g21h_g24ra)는 등록하지 않는다.
 # 파일이 없으면 다른 미배포 세대처럼 selftest '정책 500틱' 에서 SKIP, 기동 --checkpoint 로(직접 또는 합성 키의 air 로) 고르면 필수 파일 FAIL.
 # ---------------------------------------------------------------------------
 # 1008 16:20: 정책 파일 = **G21h2**(G21h-12299 이어 학습 — 기운 채 매달림 ±8°·긴 매달림·줄 길이 모형·정정한 지지 모형 + 공중 자세 유지 보상, AIR_START_1008.md §14.4).

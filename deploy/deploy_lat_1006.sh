@@ -6,7 +6,7 @@
 #   (인자 없음)        : 로컬 매니페스트(deploy/lat_1006.md5) 대조 → 로컬 selftest·단위 테스트 → 젯슨 현재 md5·제어 프로세스·
 #                        옵션 파일·콘솔 환경변수 확인(읽기만)
 #   --apply            : 제어 프로세스(브리지·stage8) 없음 확인 → 백업(.bak_1006) → 복사 → md5 대조 → 젯슨 selftest·테스트
-#   --restart-console  : (--apply 와 함께) 콘솔 서비스 재기동 — 젯슨 콘솔이 옵션 파일을 읽는 판(a9bdc83c 이후)이 아닐 때만 필요
+#   --restart-console  : (--apply 와 함께) 콘솔 서비스 재기동 — 젯슨 콘솔이 옵션 파일을 읽는 판(df9108db 이후)이 아닐 때만 필요
 #   --stage off|fas|soc: 젯슨 config/stage8_latency_opts 내용 설정 (off=비움, fas='fas', soc='fas,soc').
 #                        제어 프로세스가 없을 때만. 효과는 **다음 stage8 기동부터**(콘솔 '스택' 정상 순서로 재기동).
 #                        soc 는 젯슨 ~/logs/latency_check/last_fas.json 이 PASS(기대 fas·실로드 fas 단독)이고

@@ -51,7 +51,7 @@ import zero_anchor as za  # noqa: E402
 from ak_mit_command import pack_ak_mit_command  # noqa: E402
 from jetson.scripts import stage8_12axis_mit_control_node as s8  # noqa: E402
 
-BASE_REV = "50a10f71"                 # 수정 전 기준 커밋 (C·D 대조군)
+BASE_REV = "2a43786d"                 # 수정 전 기준 커밋 (C·D 대조군)
 REAL_MAP = REPO / "config" / "robot_12dof_hardware_map.json"
 FIXED = ("left_hip_r_joint", "right_hip_r_joint")
 FIXED_IDS = (3, 9)

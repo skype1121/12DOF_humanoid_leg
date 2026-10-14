@@ -1,6 +1,6 @@
 """HTURN2 실험 플래그 동치 검증 (1006) — PC 전용(torch 필요, GPU·Isaac 불필요). 젯슨 브리지 selftest 와 별개.
 
-  python3 rl_walking/deploy/selftest_hturn2_equiv.py [--ref a9bdc83c]
+  python3 rl_walking/deploy/selftest_hturn2_equiv.py [--ref df9108db]
 
 검사:
   [A] 플래그 꺼짐 = 기존 러너와 비트 동일: --ref 커밋의 policy_runner_stage4.py(`git show`)를 별도 모듈로 올려,
@@ -263,7 +263,7 @@ def check_bridge_off(ref):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ref", default="a9bdc83c", help="플래그 꺼짐 비교 기준 커밋(HTURN2 이전 러너)")
+    ap.add_argument("--ref", default="df9108db", help="플래그 꺼짐 비교 기준 커밋(HTURN2 이전 러너)")
     a = ap.parse_args()
     failed = 0
     for fn in (lambda: check_flag_off(a.ref), check_flag_on, check_heading, lambda: check_bridge_off(a.ref)):

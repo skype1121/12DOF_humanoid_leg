@@ -23,7 +23,7 @@
 나머지는 W3S1c 와 같다. 추적 `w3_track_rel` 은 이미 2D(골반 한 주기 이동평균)이고, 순 표류 −3·순 요 −4·착지 목표·유효 스텝·놓침·예정 밖·기울기·종료 항도 그대로 둔다.
 
 ## 3. CPU 단위시험(`python3 rl_walking/scripts/unit_w3_s2.py` — 실패 0)
-w3.py 를 가짜 mdp_hang 과 함께 올리고, 기준 커밋 6a91c303 의 w3.py(git show)와 비교한다. tracker 는 합성 발 궤적으로 실제로 구동한다.
+w3.py 를 가짜 mdp_hang 과 함께 올리고, 기준 커밋 442ff09f 의 w3.py(git show)와 비교한다. tracker 는 합성 발 궤적으로 실제로 구동한다.
 이륙 → 12 틱 공중, 정점 3.7 cm → 착지 순서이고, 요 0°·180°(스폰 실제 요)·40° 에서 모두 돌렸다.
 
 - **[A] 비트 동일**: 바뀐 기존 함수는 install_w3_cmd·w3_gait_update 둘뿐이다(AST 비교).

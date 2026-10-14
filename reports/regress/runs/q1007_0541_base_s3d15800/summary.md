@@ -2,7 +2,7 @@
 
 - 종합: **PASS(경계 있음)** · PASS 63 · 경계 1 · 미실행 29 · 참고 4
 - W3: `Biped12-HangStand-W3S3d-v0` `2026-10-07_00-11-12_w3S3d_from_s2d:model_15800.pt` · 서기 `2026-10-02_21-23-08_g21a:model_11300.pt` · 회복 `2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt`
-- 코드 `be5f45f2e3` (worktree-agent-aadaeed1e0a42a88a) · 작업 트리 변경 1 건 · 체크포인트 md5 w3 3da9f2e5 · stand 599c47d3 · rec 05e6b8ee
+- 코드 `38b973322e` (worktree-agent-aadaeed1e0a42a88a) · 작업 트리 변경 1 건 · 체크포인트 md5 w3 3da9f2e5 · stand 599c47d3 · rec 05e6b8ee
 - 시작 2026-10-07 05:41:39 · 끝 2026-10-07 07:41:57 · 문턱 `THRESHOLDS.md` md5 35d66433 · 이전 실행 비교: 없음(첫 실행)
 - 시뮬 판정이다. 실물 성공 확률이 아니다. '경계' = 점추정은 문턱 밖이나 95 % 구간이 문턱을 걸침(표본 부족 → 전체 모드로 재확인).
 

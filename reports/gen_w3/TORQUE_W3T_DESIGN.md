@@ -181,11 +181,11 @@
 ## 3. `effort_scale` 을 왜 뺐나
 | 시점 | 무엇 | 근거 |
 |---|---|---|
-| 0904 03:38 | `resample_effort_scale`(리셋마다 0.6–1.0 배) 도입 — stand_v16 "모터·센서 부하 현실화 3축" | 커밋 253c8101 · `rl_walking/stage4_v2_env_cfg.py:1207–1211` · `rl_walking/mdp_stage4.py:608–635` |
+| 0904 03:38 | `resample_effort_scale`(리셋마다 0.6–1.0 배) 도입 — stand_v16 "모터·센서 부하 현실화 3축" | 커밋 510a3f9d · `rl_walking/stage4_v2_env_cfg.py:1207–1211` · `rl_walking/mdp_stage4.py:608–635` |
 | 0905 | 액추에이터 모델 한계도 함께 갱신(포화 지표 정합) | `mdp_stage4.py:631–635` · `reports/audit_0905_adversarial.json` |
-| 0908 17:12 | 축소 DR 분기(S1r–S3r)에서 `stance_asym`·`effort_scale` 제거 — "전체 DR S1 은 1100 반복 학습 정체" | 커밋 088c0cd9 · `rl_walking/hang_stand_env_cfg.py:110–112` · `reports/hang2stand_0908/README.md:40`(실측 근거 칸 "—") |
+| 0908 17:12 | 축소 DR 분기(S1r–S3r)에서 `stance_asym`·`effort_scale` 제거 — "전체 DR S1 은 1100 반복 학습 정체" | 커밋 c7d707e8 · `rl_walking/hang_stand_env_cfg.py:110–112` · `reports/hang2stand_0908/README.md:40`(실측 근거 칸 "—") |
 | 0908–0920 | **현 계열(S4m → … → G5)에는 그대로 남아 있었다** — `_real_band_dr`(148–172 행)는 지우지 않는다. G5 학습 설정에 `effort_scale: (0.6, 1.0)` | `logs/rsl_rl/biped12_stage4/2026-09-20_13-39-35_g5/params/env.yaml:974–980`. README 표의 "S4m: 제거"는 코드와 다르다 |
-| **0920 15:06** | **G6 에서 제거**(현 계열의 실제 제거 지점) | 커밋 31ba3637 · `rl_walking/hang_stand_env_cfg.py:1145–1162`(docstring + `ev.effort_scale = None`) · G6 env.yaml `effort_scale: null` |
+| **0920 15:06** | **G6 에서 제거**(현 계열의 실제 제거 지점) | 커밋 6f198d1f · `rl_walking/hang_stand_env_cfg.py:1145–1162`(docstring + `ev.effort_scale = None`) · G6 env.yaml `effort_scale: null` |
 - G6 의 이유(docstring·커밋 메시지 그대로): "정답 동작(홀드)을 아는데 6000 회 실패면 정합을 강제로 올리자"(사용자 0920) — **서기 정책**이 안 배워져서 상속된 광대역 DR 을 한 번에 좁힌 묶음이다
   (kp 0.3–1.1 → 0.85–1.1 · CoM ±2 cm · 질량 0–0.5 kg · **effort_scale 제거** · 영점 ±1° · 리셋 관절 ±1.1° · 스폰 롤 ±2°).
 - kp·CoM 에는 실측 근거가 적혀 있으나 `effort_scale` 에는 측정 근거가 없다. 여러 항목(docstring 기준 일곱)을 한꺼번에 바꿨으므로 이 항만의 효과는 분리된 적이 없다.

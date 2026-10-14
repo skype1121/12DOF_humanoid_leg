@@ -35,7 +35,7 @@ def no_real_process():
 
 
 class PublicApi:
-    """공개 목록이 **있는** 판의 모양(주 작업자 커밋 6c62defc 의 w3_deploy 와 같은 API)을 원본 모듈 위에 덧씌운다 — 원본에 없을 때의 대역."""
+    """공개 목록이 **있는** 판의 모양(주 작업자 커밋 7f439c75 의 w3_deploy 와 같은 API)을 원본 모듈 위에 덧씌운다 — 원본에 없을 때의 대역."""
 
     def __init__(self, real, disabled):
         self._real = real

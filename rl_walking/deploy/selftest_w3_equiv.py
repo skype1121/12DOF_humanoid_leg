@@ -1,6 +1,6 @@
 """W3 실험 플래그 동치 검증 (1006) — PC 전용(torch 필요, GPU·Isaac 불필요). 젯슨 브리지 selftest 와 별개.
 
-  python3 rl_walking/deploy/selftest_w3_equiv.py [--ref 35b69b4a]
+  python3 rl_walking/deploy/selftest_w3_equiv.py [--ref 44983f46]
 
 검사:
   [A] 플래그 꺼짐 = 기존 러너와 비트 동일: --ref 커밋의 policy_runner_stage4.py(`git show`)를 별도 모듈로 올려 같은 결정적 스텁
@@ -431,7 +431,7 @@ def check_heading_loop():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ref", default="35b69b4a", help="플래그 꺼짐 비교 기준 커밋(W3 플래그 이전)")
+    ap.add_argument("--ref", default="44983f46", help="플래그 꺼짐 비교 기준 커밋(W3 플래그 이전)")
     a = ap.parse_args()
     failed = 0
     for fn in (lambda: check_flag_off(a.ref), check_flag_on, lambda: check_bridge_off(a.ref), check_carry, check_lead,

@@ -13,7 +13,7 @@ G24R-a(Biped12HangStandG24RaEnvCfg) 설정에 아래만 더한다. 보상·외�
   2) 질량: 변형 URDF(biped12_final3_hiprpla.urdf)의 네 링크 inertial(질량·질량 중심·관성 텐서)을 startup 마지막에 덮어쓴다.
      base 의 질량·질량 중심 무작위화(add_base_mass 0–0.5 kg, base_com)는 다른 링크라 그대로 남는다.
      asset.data.default_mass 도 같이 고친다(보상의 체중 정규화 mg 가 새 몸 무게를 쓰도록).
-  3) 관측 계약: 실물 stage8 은 기구 고정 관절의 피드백을 합성한다(실측 = stand_zero_deg, 속도 0 — 커밋 b15c343e).
+  3) 관측 계약: 실물 stage8 은 기구 고정 관절의 피드백을 합성한다(실측 = stand_zero_deg, 속도 0 — 커밋 e1e92131).
      그래서 정책이 보는 그 관절의 joint_pos·joint_vel·joint_vel_ema 열은 **정확히 0**(잡음도 없음)으로 둔다.
      직전 행동(actions) 열은 정책 자신의 출력이라 그대로다(브리지도 정책 입력·LPF 상태는 그대로 둔다).
 

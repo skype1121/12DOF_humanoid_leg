@@ -1151,7 +1151,7 @@ def act_can_up():
     return p.returncode == 0, "\n".join(tail) or "완료"
 
 
-# 1006: stage8 실효 지연 단축 옵션(73889d5f, 기본 꺼짐) — 환경변수 STAGE8_LATENCY_OPTS 에 허용 목록 키만(쉼표 구분).
+# 1006: stage8 실효 지연 단축 옵션(8f345289, 기본 꺼짐) — 환경변수 STAGE8_LATENCY_OPTS 에 허용 목록 키만(쉼표 구분).
 #   fas = --feedback-after-send, soc = --send-on-command, w<ms> = --feedback-wait-ms <ms>(0.5–8). 비우면 종전 기동 인자 그대로.
 #   1010: tc<N·m> = --target-torque-cap-nm(전 관절 요구 토크 상한), tcj.<이름조각>=<N·m> = --target-torque-cap-joint(관절별). 예: "tc25,tcj.hip_a=20".
 #   권장 단계(승인 후): "fas" → "fas,soc". 100 Hz(--control-hz)는 여기서 켜지 않는다(별도 승인).

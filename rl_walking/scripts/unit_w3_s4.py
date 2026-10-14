@@ -1,6 +1,6 @@
 """W3 Stage 4(혼합 명령 vx·vy·wz, 곡선 보행) CPU 단위시험 (1006) — torch CPU 만(Isaac·GPU 불필요).
 
-  python3 rl_walking/scripts/unit_w3_s4.py [--ref 190f3b19]
+  python3 rl_walking/scripts/unit_w3_s4.py [--ref 2aeb91cd]
 
 rl_walking/w3.py 를 가짜 mdp_hang(스텁)과 함께 올리고 --ref 커밋(W3 Stage 3 구현)의 w3.py 와 비교한다. 가짜 env·스텁은 unit_w3_s3.py 의 것을 재사용.
   [A] Stage 0–3 비트 동일: 바뀐 기존 함수 = install_w3_cmd 뿐(AST). install_w3_cmd S0·S1·S1b/c·S1d·S2·S3·S3h·S3s2 40 회 리샘플(명령·ge_cmd·wz₀·고리 표시) 같음,
@@ -412,7 +412,7 @@ def test_G(new):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--ref", default="190f3b19")
+    ap = argparse.ArgumentParser(); ap.add_argument("--ref", default="2aeb91cd")
     a = ap.parse_args()
     src_old = subprocess.run(["git", "-C", REPO, "show", f"{a.ref}:rl_walking/w3.py"], check=True, capture_output=True, text=True).stdout
     src_new = open(os.path.join(REPO, "rl_walking", "w3.py")).read()

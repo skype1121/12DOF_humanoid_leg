@@ -13,7 +13,7 @@
  "started": "2026-10-07 09:18:31",
  "code": {
   "worktree": "/home/ryu/humanoid_leg_test1/.claude/worktrees/agent-aadaeed1e0a42a88a",
-  "head": "9ae5d610a1835aa4b1f4740165df530c25761309",
+  "head": "974718a70d3a0d06aed1eef256553b82e00b0c7a",
   "branch": "worktree-agent-aadaeed1e0a42a88a",
   "dirty": [
    "?? reports/regress/runs/smc1007_0918_stand_mode_cmp/"

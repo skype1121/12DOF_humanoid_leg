@@ -3,7 +3,7 @@
 - 종합: **PASS** · PASS 6 · 미실행 91
 - W3: `Biped12-HangStand-W3S3d-v0` `2026-10-07_00-11-12_w3S3d_from_s2d:model_15800.pt` · 서기 `2026-10-02_21-23-08_g21a:model_11300.pt` · 회복 `2026-10-04_10-08-41_g24ra_seed1_from_w2e20294:model_21793.pt`
 - 추가 인자: w3 `` · stand `--after_s 35` · ke ``
-- 코드 `696df191e5` (hang2stand-prep-0911) · 작업 트리 변경 2 건 · 체크포인트 md5 w3 3da9f2e5 · stand 599c47d3 · rec 05e6b8ee
+- 코드 `d393d771e5` (hang2stand-prep-0911) · 작업 트리 변경 2 건 · 체크포인트 md5 w3 3da9f2e5 · stand 599c47d3 · rec 05e6b8ee
 - 시작 2026-10-08 06:11:22 · 끝 2026-10-08 06:24:02 · 문턱 `THRESHOLDS.md` md5 2463c5de · 이전 실행 비교: f1007_0852_d2base_s3d15800
 - 시뮬 판정이다. 실물 성공 확률이 아니다. '경계' = 점추정은 문턱 밖이나 95 % 구간이 문턱을 걸침(표본 부족 → 전체 모드로 재확인).
 

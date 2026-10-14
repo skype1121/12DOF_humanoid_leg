@@ -1,6 +1,6 @@
 """W3 Stage 2(옆걸음) CPU 단위시험 (1006) — torch CPU 만(Isaac·GPU 불필요).
 
-  python3 rl_walking/scripts/unit_w3_s2.py [--ref 6a91c303]
+  python3 rl_walking/scripts/unit_w3_s2.py [--ref 442ff09f]
 
 rl_walking/w3.py 를 가짜 mdp_hang(스텁)과 함께 올리고, --ref 커밋의 w3.py(git show)를 같은 방식으로 올려 비교한다.
   [A] Stage 0/1 비트 동일: install_w3_cmd(stage 0·1, S1b/S1c/S1d 인자)·w3_gait_update(lead 기본 0)·w3_step_tracker+w3_stride(vs w3_stride2, vy 0)
@@ -360,7 +360,7 @@ def test_F(new):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--ref", default="6a91c303")
+    ap = argparse.ArgumentParser(); ap.add_argument("--ref", default="442ff09f")
     a = ap.parse_args()
     src_old = subprocess.run(["git", "-C", REPO, "show", f"{a.ref}:rl_walking/w3.py"], check=True, capture_output=True, text=True).stdout
     src_new = open(os.path.join(REPO, "rl_walking", "w3.py")).read()

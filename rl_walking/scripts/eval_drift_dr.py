@@ -200,7 +200,7 @@ if args_cli.stiff_range:
     env_cfg.events.actuator_gains.params["stiffness_distribution_params"] = (_lo, _hi)
     print(f"[stiff] 강성 DR 대역 → ({_lo}, {_hi})")
 if args_cli.still:
-    # 7f52452 가 이 파일만 빠뜨렸었다 (적대검증 지적). 실물 5차 인수는 줄에
+    # 350b645 가 이 파일만 빠뜨렸었다 (적대검증 지적). 실물 5차 인수는 줄에
     # 매달려 정지한 상태에서 시작한다 — ±17°/s 초기 각속도는 실물에 없는 외란.
     _vr = env_cfg.events.reset_base.params.get("velocity_range")
     if isinstance(_vr, dict):

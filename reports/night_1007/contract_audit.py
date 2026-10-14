@@ -14,7 +14,7 @@
             시뮬 롤아웃 기록(log_picture/w3parity_rec_*.npz — 있으면)의 관절 순서·이력 배열 순서, 시뮬 평가 스크립트의 인자(safe_tr.sh·imuh_q.sh).
   배포 쪽 : 브리지 모듈을 CPU 에서 import 해 `_make_runner(키)` 로 **실제 러너 객체**를 만들고 합성 입력을 넣어 조립된 관측 벡터·목표각을 읽는다
             (속성값을 읽는 데서 그치지 않고 입출력에서 β·α·주파수·스케일·슬루·기본자세를 역산한다). 노드(_tick)는 가짜 rclpy 로 main() 을 그대로 돌려
-            LPF·블렌딩·유한차분 속도·발행 목표를 본다. HEAD 와 **젯슨 판**(커밋 8af2f6e5 + deploy/cand/c5krh_1007 의 브리지)을 따로 올려 같은 표로 비교한다.
+            LPF·블렌딩·유한차분 속도·발행 목표를 본다. HEAD 와 **젯슨 판**(커밋 e7710c63 + deploy/cand/c5krh_1007 의 브리지)을 따로 올려 같은 표로 비교한다.
             실물 블랙박스(reports/real_1003·real_1007 의 rl_bridge_*.jsonl — 젯슨이 실제로 낸 관측·행동·목표)를 두 판에 재생해 대조한다.
 
 하지 않는 것 — 젯슨 접속·ROS·CAN·GPU·Isaac 실행 없음(CUDA_VISIBLE_DEVICES="" 강제, rclpy 는 가짜 모듈, 블랙박스는 임시 폴더). 기존 파일 수정 없음.
@@ -56,8 +56,8 @@ DEPLOY_TREE = REPO
 #: 감사 대상(브리지 키). 실험 키는 워커가 enable_experimental_w3()·enable_experimental_kew3() 로 등록해 만든다.
 POLICY_KEYS = ["stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra", "stand_w3s3d_15800",
                "stand_kew3_g21a_g24ra_w3s3d15800"]
-#: 젯슨에 올라가 있는 판(지시서): 커밋 8af2f6e5 의 러너·c5_switch + deploy/cand/c5krh_1007 의 브리지(= 8af2f6e5 브리지 + c5krh_1007.patch).
-JET_COMMIT = "8af2f6e5"
+#: 젯슨에 올라가 있는 판(지시서): 커밋 e7710c63 의 러너·c5_switch + deploy/cand/c5krh_1007 의 브리지(= e7710c63 브리지 + c5krh_1007.patch).
+JET_COMMIT = "e7710c63"
 JET_BRIDGE_REL = "deploy/cand/c5krh_1007/rl_bridge_node.py"
 JET_PATCH_REL = "deploy/cand/c5krh_1007/c5krh_1007.patch"
 JET_KEYS = ["stand_crouch_g21a", "stand_c5kr_g21a_g24ra", "stand_c5krh_g21a_g24ra"]
@@ -1537,7 +1537,7 @@ def worker_main(a):
 # 부모 — 젯슨 판 트리 구성, 워커 실행, 검산, 표
 # =====================================================================================================================
 def build_jetson_tree(dst):
-    """dst 에 젯슨 판 소스 트리(8af2f6e5 의 rl_walking/deploy·robot_runtime·config + 후보 브리지)를 만든다. 반환 = 근거 dict."""
+    """dst 에 젯슨 판 소스 트리(e7710c63 의 rl_walking/deploy·robot_runtime·config + 후보 브리지)를 만든다. 반환 = 근거 dict."""
     ev = {}
     paths = ["rl_walking/__init__.py", "rl_walking/deploy", "robot_runtime", "config"]
     data = git("archive", JET_COMMIT, *paths, binary=True)
@@ -1550,7 +1550,7 @@ def build_jetson_tree(dst):
     ev["runner_md5"] = md5_of(os.path.join(dst, "rl_walking/deploy/policy_runner_stage4.py"))
     ev["c5_md5"] = md5_of(os.path.join(dst, "rl_walking/deploy/c5_switch.py"))
     ev["base_bridge_md5"] = hashlib.md5(git("show", f"{JET_COMMIT}:jetson/scripts/rl_bridge_node.py", binary=True)).hexdigest()
-    # 8af2f6e5 브리지 + 패치(브리지 부분) = 후보 파일인가
+    # e7710c63 브리지 + 패치(브리지 부분) = 후보 파일인가
     ev["patch_reproduces"] = None
     try:
         with open(os.path.join(REPO, JET_PATCH_REL), encoding="utf-8") as f:
@@ -2543,7 +2543,7 @@ def build_rows(key, ctx):
     ld = ctx.get("limits_date")
     R.add("2 행동", "소프트 한계 클램프(자르는 관절)", f"clamp_to_soft_limits {tr0.act.get('clamp_to_soft_limits')}: config soft 를 '{clamp_re}' 관절만(그 밖은 물리 한계까지 통과)"
           + (f" · 한계 파일 마지막 변경 {ld[0]}" + ("(모든 run 학습 시작 전 — 학습과 실물이 같은 표를 읽었다)" if ld[2] else " ⚠학습 시작 뒤 바뀜 — 학습 때 값과 다를 수 있다") if ld else ""),
-          "stage8 노드: **전 관절**을 config soft 경계로 자른다(러너·브리지는 자르지 않음)" + ("" if s8f.get("clamp_all") else " ⚠소스 확인 실패"), J_("같음(stage8 — 8af2f6e5 판도 같은 규칙)" if s8f.get("jet_same") else "stage8 판 미확인"),
+          "stage8 노드: **전 관절**을 config soft 경계로 자른다(러너·브리지는 자르지 않음)" + ("" if s8f.get("clamp_all") else " ⚠소스 확인 실패"), J_("같음(stage8 — e7710c63 판도 같은 규칙)" if s8f.get("jet_same") else "stage8 판 미확인"),
           BAD if clamp_re != ".*" else OK,
           "학습과 같은 쪽이 없다(실물이 더 많은 관절을 자른다). 실물 로그에서 목표가 soft 를 넘은 틱 — " + " / ".join(_ex_txt(rel_, v_) for rel_, v_ in ex_logs) + ". "
           + (f"그중 **학습에서 자르지 않는 관절: {nt_txt}**. " if nt_txt else "")
@@ -2920,7 +2920,7 @@ EXISTING = [
     ("selftest_w3_equiv", ["rl_walking/deploy/selftest_w3_equiv.py"], "W3 클록·래치·리드 발·헤딩 고리 = 시뮬 소스 실행([B]·[E]·[F]), 플래그 꺼짐 비트 동일([A]·[C])"),
     ("selftest_w3_rollout_parity", ["rl_walking/deploy/selftest_w3_rollout_parity.py"], "W3S3d 시뮬 롤아웃 기록 원천 → 러너·브리지 코어 관측 320·행동·체인([P1]–[P6])"),
     ("selftest_odic_equiv", ["rl_walking/deploy/selftest_odic_equiv.py"], "감지기 기본(imu) 경로 기준 커밋 비트 동일([A]·[C])·odic = 시뮬 평가 소스 실행([B])"),
-    ("selftest_c5_imu_f32 --ref 6260e281~1", ["rl_walking/deploy/selftest_c5_imu_f32.py", "--ref", "6260e281~1"], "KE imu 조기 복귀: 시뮬 평가 소스 실행 vs 배포(float32 옵션 0 불일치·기본 float64 는 −1 틱)"),
+    ("selftest_c5_imu_f32 --ref 870b17a3~1", ["rl_walking/deploy/selftest_c5_imu_f32.py", "--ref", "870b17a3~1"], "KE imu 조기 복귀: 시뮬 평가 소스 실행 vs 배포(float32 옵션 0 불일치·기본 float64 는 −1 틱)"),
     ("selftest_w3_bridge_node", ["jetson/scripts/selftest_w3_bridge_node.py"], "가짜 ROS 로 노드 main(): W3·합성 세션 명령·감독기·지연 동결, 플래그 꺼짐 발행 = 기준 커밋(스텁 정책)"),
 ]
 
@@ -2930,7 +2930,7 @@ BLIND_SPOTS = [
     "회복 정책(G24Ra) run 의 env.yaml 자동 검사 — 브리지 '학습 계약'은 서기 run(G21a)만 읽는다(C5 키의 경로 = 서기 정책). 종전에는 주석의 수동 확인뿐.",
     "G21a·G24Ra 의 policy.onnx(젯슨 추론 경로) — onnx 대 pt 시험은 W3S3d 만 있고 Isaac 파이썬이 필요하다 → 이 감사: 세 run 모두 체크포인트 = pt = onnx 가중치 비트 비교(패키지 불필요) + 실물 기록의 원시 행동 재생.",
     "감지기 설정값 ↔ 시뮬 평가 인자의 자동 대조 — 종전에는 브리지 주석으로만 대응시켰다 → 이 감사: 평가 산출물 머리의 '인자:' 줄과 실제 감지기 객체를 대조.",
-    "젯슨 판 ↔ HEAD 직접 비교 — 기존 비트 비교들은 기준 커밋이 제각각(68493c11·95946e41·b79370ca·f44e8701 …)이고 젯슨 판을 기준으로 삼은 것이 없다.",
+    "젯슨 판 ↔ HEAD 직접 비교 — 기존 비트 비교들은 기준 커밋이 제각각(e8489de4·b58a39cb·443ef820·8995a833 …)이고 젯슨 판을 기준으로 삼은 것이 없다.",
     "실물 블랙박스로 관측·행동 전체를 재생하는 상시 도구 — 감지기 재생(reports/gen_c5/replay_kr*.py)만 있었다.",
     "노드(_tick) 수준의 LPF·블렌딩·유한차분을 실모델로 재구성하는 시험 — 스텁 정책의 기준 커밋 비트 비교만 있었다.",
     "stage8 식 전 관절 soft 클램프·25° 거부가 들어간 **KE 회복** 시뮬 평가 — W3 걷기만 있다(PARITY §4.4). 실물 1007 에서는 회복 중 힙이 잘렸다(1 절의 '소프트 한계 클램프').",
@@ -2940,9 +2940,9 @@ BLIND_SPOTS = [
 ]
 
 LIMITS = [
-    "**젯슨의 현재 파일·프로세스를 읽지 않았다**(접속 금지). '젯슨 판'은 저장소의 배포 기록(커밋 8af2f6e5, 후보 브리지, md5 매니페스트)으로 재구성한 것이다. 실물 블랙박스 재생이 그 재구성과 맞는 것은 1003(G21a)·1007(krh) 두 세션에 한한다 — 저장소에 c5kr 키의 실물 기록은 없다"
+    "**젯슨의 현재 파일·프로세스를 읽지 않았다**(접속 금지). '젯슨 판'은 저장소의 배포 기록(커밋 e7710c63, 후보 브리지, md5 매니페스트)으로 재구성한 것이다. 실물 블랙박스 재생이 그 재구성과 맞는 것은 1003(G21a)·1007(krh) 두 세션에 한한다 — 저장소에 c5kr 키의 실물 기록은 없다"
     "(1004·1005 의 기록 6 개는 앞선 키 stand_c5_g21a_g24ra 의 것이고 이 감사의 대상 키가 아니어서 재생하지 않았다).",
-    "젯슨의 **stage8 노드 판**은 확인 범위 밖이다(지시서는 브리지·러너만 지정). HEAD 와 커밋 8af2f6e5 의 stage8 소스에서 슬루·주기·클램프·거부 규칙이 같음을 읽었고, "
+    "젯슨의 **stage8 노드 판**은 확인 범위 밖이다(지시서는 브리지·러너만 지정). HEAD 와 커밋 e7710c63 의 stage8 소스에서 슬루·주기·클램프·거부 규칙이 같음을 읽었고, "
     "실물 1007 기록의 클램프 누계가 그 규칙(soft 초과 틱마다 한 번)과 맞는 것만 확인했다.",
     "민감도 시험은 **배포 쪽** 결함만 심는다. 학습 쪽 값을 잘못 읽는 종류의 감사 결함은 '일치' 줄이 실제 러너 값과 맞아떨어지는 것으로만 간접 확인된다.",
     "열린 고리 계약 검증이다. 같은 입력 → 같은 관측·행동임을 보였을 뿐, 실물 센서의 분포(잡음·지연·패드 오판)가 학습 분포 안인지와 폐루프 성능은 말하지 못한다.",

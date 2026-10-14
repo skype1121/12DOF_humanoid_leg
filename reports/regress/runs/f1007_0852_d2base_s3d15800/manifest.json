@@ -55,7 +55,7 @@
  "started": "2026-10-07 08:52:08",
  "code": {
   "worktree": "/home/ryu/humanoid_leg_test1/.claude/worktrees/agent-aadaeed1e0a42a88a",
-  "head": "9422040dcf339f2a1660fde164f0b251e3690ef0",
+  "head": "e86afbfb248c7434420552516ffb3895901c71a7",
   "branch": "worktree-agent-aadaeed1e0a42a88a",
   "dirty": [
    "M reports/regress/regress_lib.py",

@@ -1,6 +1,6 @@
 """W3 Stage 3(제자리 회전, wz) CPU 단위시험 (1006) — torch CPU 만(Isaac·GPU 불필요).
 
-  python3 rl_walking/scripts/unit_w3_s3.py [--ref 68493c11]
+  python3 rl_walking/scripts/unit_w3_s3.py [--ref e8489de4]
 
 rl_walking/w3.py 를 가짜 mdp_hang(스텁)과 함께 올리고, --ref 커밋의 w3.py(git show)와 비교한다.
   [A] Stage 0–2 비트 동일: 바뀐 기존 함수 = install_w3_cmd·w3_gait_update 뿐(AST), install_w3_cmd stage 0/1/S1b/S1d/2 의 40 회 리샘플,
@@ -477,7 +477,7 @@ def test_H(new):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--ref", default="68493c11")
+    ap = argparse.ArgumentParser(); ap.add_argument("--ref", default="e8489de4")
     a = ap.parse_args()
     src_old = subprocess.run(["git", "-C", REPO, "show", f"{a.ref}:rl_walking/w3.py"], check=True, capture_output=True, text=True).stdout
     src_new = open(os.path.join(REPO, "rl_walking", "w3.py")).read()

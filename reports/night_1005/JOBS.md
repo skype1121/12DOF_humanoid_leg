@@ -40,7 +40,7 @@
 | 1006 | WSTEER +300 평가 수동(태그 _s1m) → kill 아님, 계속 | — | walk_eval_wsteer_*_25900_a1.0_s1m | DECISION 기록 |
 | 1006 | 메모리 경합 방지: wsteer.sh 하위 서브셸 2368274(+300 평가 대기)·2368275(대조 C 대기) 명시 PID 종료 → seqC.sh PID 2387614(RH2 끝 → 대조 C 학습 → 평가 α1 s1·s2, α0 s1) | "대조 C 평가 끝" in scratchpad/seqC.out | walk_eval_w2qC_* | 감시 추가 |
 | 1006 | RH2 | — | COMPLETED → KILL(sf15 +13 pp) → H2 기각 → NEXT=PA1 | — |
-| 1006 | PA1 병합(39653e9f, worktree 브랜치 cherry-pick) | — | — | — |
+| 1006 | PA1 병합(30fb2a29, worktree 브랜치 cherry-pick) | — | — | — |
 | 1006 | PA1(pa1.sh PID 2410779: GPU ≤ 7.5 GB 대기 → 학습 1000 → 22300 d3 평가 → 끝 d3·d4) | "PA1 학습 시작/22300 평가 끝/PA1 끝" in scratchpad/pa1.out | ground_recovery_pa1* | 감시 b7zadq0nc(초기 신호), bjdfqw9m0(22300 kill 판정) |
 | 1006 | 대조 C 학습 시작 06:03(seqC.sh) | "대조 C 평가 끝" | walk_eval_w2qC_* | 감시 b0txw20d2(WSTEER·C 최종) |
 | 1006 | PA1 | — | 22300 KILL → H1 미지지 → NEXT=WRAPFIT | — |
@@ -54,13 +54,13 @@
 | 1006 | HTURN2-C·CSTAB | — | COMPLETED → ANALYZED → DECISION(견고성 미확인 — 왼 회전 약점 / 확률적 붕괴) → NEXT=WSTEER2 | — |
 | 1006 | WSTEER2(wsteer2.sh PID 2482537: W2qS seed 1·2 × 600 → 선택 평가 26100/26189 seed1 d3) | "WSTEER2 선택 평가 끝" in scratchpad/wsteer2.out | walk_eval_ws2sel_* | 감시 b30dinzhz → 선택 후 확인 4 run 별도 기동 |
 | 1006 | WSTEER2 | — | COMPLETED → KILL(+45° 기준선 미달) | — |
-| 1006 | 지연 감소 구현 병합(73889d5f) | — | 오프라인 검증 완료, 배포 승인 대기 | — |
+| 1006 | 지연 감소 구현 병합(8f345289) | — | 오프라인 검증 완료, 배포 승인 대기 | — |
 | 1006 | DLYGAIN(dlygain.sh PID 2505693: KE d2 전 조건 + d4 fs80·fi40) | "DLYGAIN 끝" in scratchpad/dlygain.out | ground_recovery_fked2_*·fked4_f* | 감시 brb3j51gx |
 | 1006 | SRTURN(srturn.sh PID 2506895: vx 0.03/0.05 + HTURN2 ±90°) | "SRTURN 끝" in scratchpad/srturn.out | walk_eval_srturn_v*.txt | 감시 bbrmnuyld |
 | 1006 | SRTURN | — | COMPLETED → 기각 → NEXT=W2omM | — |
 | 1006 | W2omM(w2omm.sh PID 2513099: 600 반복 → 26700·끝 평가 α_turn 1.5) | "W2omM 학습 시작/끝/W2omM 끝" in scratchpad/w2omm.out | walk_eval_w2omM_* | 감시 btopb2u94(+300 블록) |
 | 1006 | DLYGAIN | — | COMPLETED → ANALYZED → DECISION(지연 단축 배포 근거, 승인 요청 대상) | — |
-| 1006 | 콘솔 STAGE8_LATENCY_OPTS(5814c5c7, 로컬) | — | 테스트 51 passed | — |
+| 1006 | 콘솔 STAGE8_LATENCY_OPTS(0b85750c, 로컬) | — | 테스트 51 passed | — |
 | 1006 | W2omM | — | +300 KILL(걸음 억제), 명시 PID 종료 | — |
 | 1006 | A0MT(a0mt.sh: A0m 14299 × omni 게이트 × α 0/1.5) | "A0MT 끝" in scratchpad/a0mt.out | walk_eval_a0mt_a*.txt | 감시 btqo17yor |
 | 1006 | A0MT | — | 기각(vx 관측이 걸음 촉발) → NEXT=W2omP | — |
@@ -84,7 +84,7 @@
 | 1006 | 서브에이전트 5(감사·구조조사✓·A0m 분석·지연 배포 준비·HTURN2 플래그) | 완료 알림 | — | — |
 | 1006 | 보상 지형 배치 | — | COMPLETED → ANALYZED → DECISION(W3 착수) | — |
 | 1006 | 클록 대조(G21a 서기: 정상/0,0/정지) | — | 57/57/58 % — 서기 = (0,0) 게이트 안전 | — |
-| 1006 | 병합: 지연 1단계 도구(517aed4d)·HTURN2 플래그(6b21120f)·확장 로더(aa39791f)·W3 코어(8a4a8885) | — | — | — |
+| 1006 | 병합: 지연 1단계 도구(2c62fdb6)·HTURN2 플래그(371e1085)·확장 로더(e219a08b)·W3 코어(a87ac728) | — | — | — |
 | 1006 | 트랙 B LPFR(lpfr.sh PID 2639886: KE × 체인 β 0.5/0.4/1.0 × d3 × 7조건) | "LPFR 끝" | ground_recovery_lpf*d3_* | 감시 bk7i8t3zn |
 | 1006 | 트랙 A W3 단위시험(w3unit.sh PID 2640739) | "W3UNIT 끝" | landscape_u_* | 감시 bj54x9yd2 |
 | 1006 | 서브에이전트: 회복 병목(진행)·W3 채점표 도구(진행) | 완료 알림 | — | — |
@@ -112,7 +112,7 @@
 | 1006 | 서브에이전트 4: Stage0 진단·Stage1 적대 검토·옆/요 설계·W3 브리지 플래그 | 완료 알림 | — | — |
 - 12:22 S1UNIT3(W3S1b 단위시험 3차) s1unit3.sh PID 2735381 → s1unit3.out, 감시 = 백그라운드 대기(S1UNIT3/W3A2 500 중 먼저 끝나는 것)
 - 12:30 W3CI 12200 평가 무효(PhysX GPU 메모리 실패: 물리 정지, 모든 수치 0) → safe_eval.sh 재평가 PID 2739757 (w3ci_re.out)
-- 12:40 W3 브리지 실험 플래그(에이전트) 반영 7e3803eb, selftest_w3_equiv 본 트리 ALL PASS — 젯슨 미배포, exported 없음
+- 12:40 W3 브리지 실험 플래그(에이전트) 반영 3f80f908, selftest_w3_equiv 본 트리 ALL PASS — 젯슨 미배포, exported 없음
 - 12:50 S1UNIT4 s1unit4.sh PID 2743262 (메모리 실패 재시도 내장)
 - 13:00 A3UNIT a3unit.sh PID 2750044 (S1UNIT4 뒤)
 - 13:10 39시간 된 멈춘 play.py(G24Ra export, PID 409807, GPU 1 GB) 명시 PID 종료
@@ -148,7 +148,7 @@
   주 체인 492530(tr2_q ab 613791 → tr_q c → tr2_q c → GRID_DONE) → imuH v2 체인 485643(GRID_DONE 뒤 ab3 → imuh2_q.sh). 서브에이전트 5(브리지 연결[워크트리]·코드 리뷰 진행 중, 검산·실물 로그·헤딩 완료).
 - 1007 20:58 claude2: imuH v2(seed 13–18) 체인을 GRID_DONE 대기에서 떼어 바로 시작(imuh2_q.sh, tr/imuh2_chain.pid 825993, 우선 폴링). 종전 대기 셸 485643 은 명시 PID 로 종료하고 ab3 만 기다리는 대기 셸(826925)로 교체 — 같은 태그 이중 실행 방지.
   실행 중: KE-q 배터리(keq_chain 709224, 13/72) · X10 발목 슬루(x10_chain 761550, 19/24) · X7b 왕복 원인 분리(x7b_chain 816087) · 주 체인(grid 492530). 완료: X7·X10b·X10c·x11(W3 걷기 부하).
-  병합: 합성 러너 브리지 연결(9574679f)·krh 키 본 코드 반영(809f9e9f)·W3 명령 경계 여유(6af73c31). 실물: 1007 20:04 krh 첫 실행 분석(reports/real_1007/README.md).
+  병합: 합성 러너 브리지 연결(ad5370d2)·krh 키 본 코드 반영(c86bc7e7)·W3 명령 경계 여유(31b599a7). 실물: 1007 20:04 krh 첫 실행 분석(reports/real_1007/README.md).
 - 1007 21:08 claude2: KE-q 배터리 체인이 일반 폴링이라 우선 체인들(X7b·imuH v2·HD1)에 밀려 15 분간 레인을 못 잡음 → 대기 중이던 래퍼까지 명시 PID(709224·736253·818708)로 종료하고 우선 폴링으로 재시작(tr/keq_chain.pid 842343, 완료 태그는 건너뜀).
   X10 판정용 기준선 keq_KE_{sf15,b18,fi40,bb}_d2_s22 앞당김(tr/keq_s22_base.pid 841220). HD1(헤딩 고리 켬/끔) 체인 837427. 주 체인(grid 492530)은 일반 폴링 유지(최저 우선).
 - 1007 21:30 claude2 실행 중(scratchpad f0e5…/tr/*.pid, 우선 폴링·실행 사이 3 s 양보·태그 잠금): KE-q 배터리(keq_chain 842343) · imuH v2(imuh2_chain 867360, imuh2b_q.sh) ·

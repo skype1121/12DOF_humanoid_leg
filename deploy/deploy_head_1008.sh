@@ -391,7 +391,7 @@ EOS
     else echo "     ★FAIL $name (rc=$r 토큰=$tok [FAIL] 줄=$nf, ${secs}s) — $last"; rc=1; fi
     # 콘솔의 '브리지 셀프테스트' 준비 단계는 이 selftest 를 그대로 돌리고 CONSOLE_SELFTEST_TIMEOUT_S 뒤 시간 초과로 실패 처리한다
     # (console_state.py). 새 selftest 는 항목이 늘어 종전보다 오래 걸린다 → 콘솔 선택지 키의 selftest 가 여유 없이 길면 배포 실패로 본다.
-    # 1007 밤(42da0c21): 걷기 실험 키 2 개도 콘솔 선택지가 됐다 — 콘솔이 같은 인자(--experimental-w3 [--experimental-kew3])로 돌리므로 같이 본다.
+    # 1007 밤(d7d7963b): 걷기 실험 키 2 개도 콘솔 선택지가 됐다 — 콘솔이 같은 인자(--experimental-w3 [--experimental-kew3])로 돌리므로 같이 본다.
     # 1008: 둘째 합성 키($KEY_KEW3Q)도 같은 이름 무늬("브리지(합성 ")라 이 시간 제한을 같이 받는다.
     case "$name" in "브리지(기본)"|"브리지(서기 "*|"브리지(회복 "*|"브리지(W3 "*|"브리지(합성 "*)
       if [ "${secs:-0}" -gt "$CONSOLE_SELFTEST_LIMIT_S" ]; then

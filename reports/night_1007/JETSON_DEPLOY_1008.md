@@ -7,7 +7,7 @@
 | 항목 | 값 |
 |---|---|
 | 묶음 | `head_1008` (`deploy/deploy_head_1008.sh`·`deploy/make_head_manifest.py`, 에이전트 작성·주 작업자 검토) |
-| 원본 커밋 | `42da0c21`(실행 코드를 마지막으로 바꾼 커밋 — 콘솔 걷기 패널·모터 오류 기록 병합) |
+| 원본 커밋 | `d7d7963b`(실행 코드를 마지막으로 바꾼 커밋 — 콘솔 걷기 패널·모터 오류 기록 병합) |
 | 매니페스트 | `deploy/head_1008.md5` md5 `8c210340a7a64e13da28c663c980809f` — 122 파일(전송 66·확인만 56) |
 | 젯슨 위치 | `/home/mama/humanoid_repo` · 버전 파일 `deploy/head_1008.VERSION` |
 | 백업(되돌리기용) | `/home/mama/humanoid_repo_bak_1008/` — 덮어쓴 원본 14 개(md5 검증)·새로 만든 파일 목록 52 개 |
@@ -58,7 +58,7 @@
 **한 일은 처음과 같다: 파일 복사·오프라인 selftest·콘솔 서비스 재기동. CAN 송신·ARM·토크·영점·센서 기동·제어 프로세스 조작·물리 실행은 없다.**
 | 항목 | 값 |
 |---|---|
-| 원본 커밋 | `f1ad8221`(실행 코드를 마지막으로 바꾼 커밋 — 둘째 합성 키) |
+| 원본 커밋 | `524336ff`(실행 코드를 마지막으로 바꾼 커밋 — 둘째 합성 키) |
 | 매니페스트 | `deploy/head_1008.md5` md5 `8f4373d380d9e07a97408a69f3e3acdc` — 122 파일(전송 66·확인만 56). 직전 배포(`8c210340…`) 대비 바뀐 파일 12 개 |
 | 바뀐 파일 | `rl_bridge_node.py` · `operator_console.py` · `console_state.py` · `selftest_w3_bridge_node.py` · `jetson_parity.py` · `parity_ref.npz`(5 → 6 키) · `rl_walking/__init__.py`(학습 태스크 등록 줄) · 시험 2 · `OPERATOR_COMMANDS.md` · 매니페스트·VERSION |
 | 백업·되돌리기 | 그대로 `~/humanoid_repo_bak_1008/` — **처음(1005 판 + 패치) 상태의 원본**을 보존한다(재적용은 원본 백업을 덮어쓰지 않는다 — 로컬 왕복 시험 T14). 되돌리기 한 줄 동일 |
@@ -85,7 +85,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 원본 커밋 | `90d52a9a`(코드) — 매니페스트 md5 `5d51b9b8978eafdb5596e1f770245201`, 123 파일 |
+| 원본 커밋 | `d746c86e`(코드) — 매니페스트 md5 `5d51b9b8978eafdb5596e1f770245201`, 123 파일 |
 | 바뀐 파일(8) | `jetson/scripts/operator_console.py` · `jetson/scripts/robotctl.py` · `rl_walking/deploy/c5_switch.py` · `tests/test_operator_console.py` · `tests/test_console_walk.py` · `deploy/cand/head_1008/OPERATOR_COMMANDS.md` · 매니페스트 · VERSION |
 | 새 파일(1) | `tests/test_robotctl.py` |
 | 안 바뀐 것 | 하드웨어맵 `41b68a6f`(적용 뒤 재확인) · 영점·보정 · 브리지·stage8·정책 파일 전부 |
@@ -102,7 +102,7 @@
 **로컬 근거**: 콘솔 selftest ALL PASS(메뉴 항목 ②a 추가) · pytest 101 통과 · 가짜 젯슨 왕복 PASS 37 / FAIL 0(기존 키의 브리지 발행·CAN 프레임 비교 포함) · 예행 예상 밖 0.
 
 **되돌리기**: `deploy/deploy_head_1008.sh --rollback --restart-console` 은 1007 밤의 원래 상태(head_1008 이전)로 돌아간다.
-오늘 아침 상태(매니페스트 `8f4373d3`, 정책 10 개 메뉴)로만 되돌리려면 커밋 `6b58d6e6` 의 해당 파일로 매니페스트를 다시 만들어 적용한다.
+오늘 아침 상태(매니페스트 `8f4373d3`, 정책 10 개 메뉴)로만 되돌리려면 커밋 `de6243b9` 의 해당 파일로 매니페스트를 다시 만들어 적용한다.
 
 ---
 
@@ -110,7 +110,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 원본 커밋(실행 코드) | `385686de` (기록·문서 커밋 `e636e162`) |
+| 원본 커밋(실행 코드) | `2c5488f0` (기록·문서 커밋 `346761d8`) |
 | 매니페스트 | `deploy/head_1008.md5` md5 `b6d9793c095182ea3b4da1d469355844` (직전 `5d51b9b8…`) |
 | 바뀐 파일 16 | 콘솔 3(`operator_console.py`·`console_state.py`·`console_ui.html`) · 브리지 `rl_bridge_node.py` · 러너 `kew3_runner.py` · `robotctl.py` · `selftest_w3_bridge_node.py` · 시험 4 · 운영 문서 · 러너 동치 2 · 매니페스트·VERSION |
 | 새 파일 4 | 공중·착지 정책 G21h2-13498: `logs/rsl_rl/biped12_stage4/2026-10-08_16-04-12_g21h2_s1_from_12299/exported/{policy.onnx(2b718875…),policy.pt,SOURCE_CHECKPOINT}` · `params/env.yaml` |
@@ -130,7 +130,7 @@
 **한계**: 실물 미검증. 지지 모형은 가정. G21h2 는 seed 1 한 번의 학습. 판정이 본 매달림 피치는 −2.9 ~ +6.2°, 매달림 시간은 20 s 까지.
 
 **되돌리기**: `deploy/deploy_head_1008.sh --rollback --restart-console` 은 1007 밤의 원래 상태(head_1008 이전)로 돌아간다.
-오늘 낮 상태(매니페스트 `5d51b9b8`, 접지 방식 기본)로만 되돌리려면 커밋 `90d52a9a` 의 해당 파일로 매니페스트를 다시 만들어 적용한다.
+오늘 낮 상태(매니페스트 `5d51b9b8`, 접지 방식 기본)로만 되돌리려면 커밋 `d746c86e` 의 해당 파일로 매니페스트를 다시 만들어 적용한다.
 공중 방식만 쓰지 않으려면 되돌릴 필요 없이 `robotctl config ground` 면 된다.
 
 **실물 첫 공중 시험 전 확인(현장)**: ① 매달린 상태의 콘솔 fwd·lat(−3 ~ +6° 안인가) ② 공중에서 양발 접촉 비트 0 ③ 정책 ON 직후 다리 움직임이 작고(시뮬 4–6°) 커지지 않는가
@@ -139,7 +139,7 @@
 
 ## 정책 ON 경합·계약 검사 시간 수정 배포(22:58–23:05) — 승윤님 지시("정책 ON 경합이랑 계약검사 수정 배포해")
 
-1008 밤 첫 공중 정책 시작 실물 세션 도중(모터 전원이 꺼진 뒤, 제어 프로세스 0 인 때)에 적용했다. 원본 커밋 `8e67b87a`, 매니페스트 `181d53c4555401e3860c3a1dc6b1abfa`.
+1008 밤 첫 공중 정책 시작 실물 세션 도중(모터 전원이 꺼진 뒤, 제어 프로세스 0 인 때)에 적용했다. 원본 커밋 `0432daad`, 매니페스트 `181d53c4555401e3860c3a1dc6b1abfa`.
 
 | 바뀐 파일 | 젯슨 md5 전 → 후 | 내용 |
 |---|---|---|

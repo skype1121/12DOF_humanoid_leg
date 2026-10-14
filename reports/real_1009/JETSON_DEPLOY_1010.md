@@ -104,12 +104,12 @@
 - 매니페스트 d8e7a171(직전 젯슨 = 66297d40). 젯슨에서 바뀌는 파일 8: `rl_walking/deploy/kew3_runner.py`·`w3_deploy.py`, `jetson/scripts/rl_bridge_node.py`·`operator_console.py`·
   `console_state.py`, `tests/test_console_walk.py`·`test_operator_console.py`, `reports/night_1007/jetson_parity.py`. 새 정책 폴더 4 파일 추가(옛 NBjE 폴더는 매니페스트에서 빠짐).
   **stage8 노드는 바뀌지 않는다**(T9b: CAN 프레임 39056 개 젯슨 판과 동일).
-- 허용 목록 `deploy/head_1008.accept`: 02:10 젯슨 무응답이라 실기에서 읽지 못하고 커밋 cee1f169 의 매니페스트(= 66297d40)에서 옮겼다. 배포 dry-run 이 실기 md5 와 대조한다(★예상 밖 0 이어야 적용).
+- 허용 목록 `deploy/head_1008.accept`: 02:10 젯슨 무응답이라 실기에서 읽지 못하고 커밋 07df021a 의 매니페스트(= 66297d40)에서 옮겼다. 배포 dry-run 이 실기 md5 와 대조한다(★예상 밖 0 이어야 적용).
 - 로컬 모의 배포(`deploy/test_head_1008_local.sh`): **PASS 37 · FAIL 0** — selftest 23/23, 자동 롤백, 종전 서기·회복 키의 브리지 발행 27 건 젯슨 판과 동일.
 - 자가검증: kew3_runner·rl_bridge_node(정책 500 틱 ×17)·selftest_w3_bridge_node·operator_console ALL PASS. 등록 키 폐루프 = 평가 구성과 수치 일치.
 - 시뮬(계획 그대로: 제자리걸음 5 s × 2, 힙 외전 한계 20): 낙상 2/214·다른 초기조건 0/204(종전 키 3/214), 8번 제한 뒤 최대 20.0·요구 최대 29.7, 걷기 켠 뒤 0.2 s 목표 변화 0.5°(종전 11.4°).
 - 미검증: 젯슨 추론 시간(전환 완화 hold 는 추론 추가 없음), 실물에서 처음 도는 것 = 이 러너 변경·stage8 위치 항 상한(10/10 판)·사고 뒤의 모터 6.
-- 되돌리기: 커밋 cee1f169 의 묶음(66297d40)을 다시 배포.
+- 되돌리기: 커밋 07df021a 의 묶음(66297d40)을 다시 배포.
 - 배포 절차(승인 뒤, 젯슨이 켜져 있고 콘솔 유휴일 때): `HEAD1008_ALLOW_LATENCY_OPTS=1 deploy/deploy_head_1008.sh`(dry-run, ★예상 밖 0 확인) → `--apply --restart-console`.
 
 **03:40 갱신(같은 묶음에 robotctl 걷기 명령 추가)** — 매니페스트 d8e7a171 → **1339b4f6**. 승윤님 "콘솔은 이제 안써 robotctl로만 제어".

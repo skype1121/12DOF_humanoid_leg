@@ -123,7 +123,7 @@ python3 ~/humanoid_repo/jetson/scripts/rl_bridge_node.py --live --experimental-w
 - W3 세션에는 회복 정책이 없다 — 걷는 중 밀기 금지, 줄 운영자 상시 대기.
 
 **기동 주체 [결정](계획서 D4)**
-- (a) 콘솔 걷기 패널 — **1007 23:53 병합(42da0c21) [실물 미검증]**. 아래는 코드(`operator_console.py`·`console_state.py`)에서 읽은 것이다.
+- (a) 콘솔 걷기 패널 — **1007 23:53 병합(d7d7963b) [실물 미검증]**. 아래는 코드(`operator_console.py`·`console_state.py`)에서 읽은 것이다.
   - 드롭다운 **뒤쪽**에 걷기 실험 키 2 개가 생긴다: `stand_w3s3d_15800`(W3 단독)·`stand_kew3_g21a_g24ra_w3s3d15800`(서기 KE + 걷기 W3 합성). 기본값과 기존 키 7 개,
     그 키들의 브리지 기동 인자는 그대로다(콘솔 selftest 가 고정). 걷기 모듈을 불러오지 못하면 걷기 키는 목록에 올라오지 않는다.
     **1008 추가(이 묶음이 다시 배포된 뒤에 보인다)**: 맨 뒤에 `stand_kew3q_g21a_g24ra_w3s3d15800`(서기 KE + 걷기 W3 합성 + 갇힘 해소 — 시뮬 평가 구성 · 실물 미검증).

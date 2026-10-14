@@ -6,6 +6,8 @@
 12축 AK MIT 모터 하체를 젯슨에서 CAN으로 직접 구동하고, Isaac Lab에서 학습한 정책으로
 공중/매달림 → 착지 → 무보조 서기 → 밀려도 넘어지지 않는 서기까지 실물에서 해냈다.
 
+![10-14 외란 대응 — 막대로 밀어도 버티고 다시 선다](docs/images/01_push_recovery_1014.jpg)
+
 ## 결과
 
 | 날짜 | 실물 결과 |
@@ -17,6 +19,14 @@
 | **2026-10-14** | **막대 밀기 외란 대응 성공** — [`reports/real_1014/`](reports/real_1014/) |
 
 최종 정책 구성: 3단 합성 러너 `AIR → KE ⇄ W3`, KE = 서기 G21a-11300 ⇄ 회복 G24Ra-21793 (IMU 감지기 전환).
+
+| 실물 하체 (09-07) | 매달림 장치 (09-08) | 무보조 서기 101 s (09-28) |
+|---|---|---|
+| <img src="docs/images/02_hardware_0907.jpg" width="260"> | <img src="docs/images/03_hang_rig_0908.jpg" width="260"> | <img src="docs/images/05_unassisted_stand_0928.jpg" width="260"> |
+
+![성과 요약 — 10-14 발표 자료](docs/images/09_slide_results.jpg)
+
+그림 전체와 출처: [`docs/images/`](docs/images/).
 
 ## 구성
 
